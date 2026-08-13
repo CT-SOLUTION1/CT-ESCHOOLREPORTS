@@ -1,0 +1,16 @@
+{
+  "name": "CT-E SOLUTIONS — School Report System",
+  "short_name": "CT-E SOLUTIONS",
+  "description": "School report, grading, and administration system by CT-E SOLUTIONS.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#E9F1FA",
+  "theme_color": "#0A2A4A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
