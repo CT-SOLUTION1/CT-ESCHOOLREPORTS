@@ -113,7 +113,17 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 #deliveredToast .tick{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.25);font-size:12px;line-height:1;}
 
 /* ---- Report card (Sample School official layout) ---- */
-.rc-card{background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);}
+.rc-card{background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);position:relative;overflow:hidden;}
+/* Faint background watermark of the school logo — purely decorative, sits behind every
+   other element on the card via z-index. Centered and oversized (60% of the card width)
+   at very low opacity so it never competes with the actual text/tables for legibility,
+   and never printed/exported darker than intended since opacity is baked into the image
+   itself via CSS (not something a printer driver can "brighten" back to full strength).
+   pointer-events:none so it never intercepts clicks/taps on the editable score cells
+   above it. This is separate from — and does not change — the sharp, full-opacity logo
+   already shown in the header block (.rc-title-block .rc-logo below). */
+.rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.06;z-index:0;pointer-events:none;user-select:none;}
+.rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
 .rc-title-block{display:flex;align-items:stretch;gap:12px;text-align:center;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;}
 /* Logo is sized to match the header text block's own height (via align-items:stretch
@@ -290,8 +300,9 @@ function migrateBackupData(raw){
   info.pExtraSubjects = Array.isArray(info.pExtraSubjects) ? info.pExtraSubjects : [];
   info.aExtraSubjects = Array.isArray(info.aExtraSubjects) ? info.aExtraSubjects : [];
   info.examConfig = info.examConfig || {};
-  // oCompulsoryLower/oCompulsoryUpper are deliberately left untouched if absent —
-  // oCompulsoryFor() already treats "not present" as "use the syllabus defaults".
+  // oCompulsoryLower/oCompulsoryUpper (and the newer pCompulsory/aCompulsoryExtra) are
+  // deliberately left untouched if absent — their respective helper functions already
+  // treat "not present" as "use the syllabus defaults".
   return {
     ...d, // keep any fields this version of the code doesn't know about yet
     schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -422,18 +433,45 @@ function oCompulsoryFor(form){
   return lower ? O_LOWER_COMPULSORY : O_UPPER_COMPULSORY;
 }
 function pOptionalList(){ return [...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || [])]; }
-// Shared helper for any "subject list" level (O-Level and Primary both work this way —
-// fixed compulsory subjects plus a school-chosen set of optionals), used by the class/
-// student forms so they don't need to special-case Primary everywhere.
+// Every subject name a Primary school could conceivably mark compulsory (core): the
+// syllabus-default PLE-core set, the base optional set, and anything the admin has
+// added. Feeds the compulsory-subject picker in oLevelSubjectsView, same pattern as
+// oAllSubjectPool() above.
+function pAllSubjectPool(){
+  return [...new Set([...P_CORE_SUBJECTS, ...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || [])])].sort();
+}
+// Which subjects are compulsory (auto-included for every Primary student, no ticking
+// needed). Admin-chosen via oLevelSubjectsView and saved on DB.info.pCompulsory; falls
+// back to the PLE syllabus default (P_CORE_SUBJECTS) until the admin picks their own
+// set — an admin who explicitly saves an empty selection is respected too, since only a
+// genuinely-unset (undefined/null) value falls back. NOTE: Uganda's PLE division bands
+// (PLE_DIVISIONS) are calibrated for exactly 4 core subjects; changing the count here
+// still works (nothing breaks), but the Division label on report cards should then be
+// read as approximate rather than an exact match to the official UNEB bands.
+function pCompulsoryList(){
+  const custom = DB.info && DB.info.pCompulsory;
+  if(custom) return custom;
+  return P_CORE_SUBJECTS;
+}
+// Additional A-Level subjects (beyond the fixed, specially-graded GENERAL PAPER) that
+// the admin wants auto-included for every A-Level student, no ticking needed. Admin-
+// chosen via oLevelSubjectsView and saved on DB.info.aCompulsoryExtra; empty by default.
+// GENERAL PAPER itself is never editable here — it's graded on its own pass/fail scale
+// (see gradeFor) and its point is baked into maxPointsFor, so removing it would silently
+// break every A-Level student's max-points denominator. These extras, by contrast, are
+// graded on the normal A-E scale like any other principal subject.
+function aCompulsoryExtra(){
+  return (DB.info && DB.info.aCompulsoryExtra) || [];
+}
 function subjectOptionalListFor(level){ return level==='P' ? pOptionalList() : oOptionalList(); }
-function subjectCompulsoryFor(cls){ return cls.level==='P' ? P_CORE_SUBJECTS : oCompulsoryFor(cls.form); }
+function subjectCompulsoryFor(cls){ return cls.level==='P' ? pCompulsoryList() : oCompulsoryFor(cls.form); }
 // Whether a given subject is compulsory (taken by every student) in a given class, across
 // all three levels — used to decide whether that subject's teacher gets a "select all"
 // shortcut when ticking their roster, instead of ticking students in one by one.
 function isCompulsorySubjectFor(subject, cls){
   if(!cls) return false;
-  if(cls.level==='A') return COMPULSORY.includes(subject);
-  if(cls.level==='P') return P_CORE_SUBJECTS.includes(subject);
+  if(cls.level==='A') return COMPULSORY.includes(subject) || aCompulsoryExtra().includes(subject);
+  if(cls.level==='P') return pCompulsoryList().includes(subject);
   return oCompulsoryFor(cls.form).includes(subject);
 }
 function levelLabel(c){
@@ -1023,22 +1061,25 @@ function studentSubjects(st, cls){
     return [...new Set([...compulsory, ...extra])];
   }
   if(cls.level==='P'){
-    const extra = rosterSubjectsFor(st, cls).filter(s=>!P_CORE_SUBJECTS.includes(s));
-    return [...new Set([...P_CORE_SUBJECTS, ...extra])];
+    const compulsory = pCompulsoryList();
+    const extra = rosterSubjectsFor(st, cls).filter(s=>!compulsory.includes(s));
+    return [...new Set([...compulsory, ...extra])];
   }
   // A-Level: principals are whichever principal-subject teachers have ticked this
   // student into their own class roster. General Paper is compulsory for every A-Level
   // student, and the subsidiary (Maths or Computer) is derived automatically from the
   // science-group/Maths rule — neither needs a separate tick to exist on the report card,
-  // though their own teachers still keep their own roster for marking purposes.
+  // though their own teachers still keep their own roster for marking purposes. Any
+  // admin-added extra compulsory subjects (aCompulsoryExtra) are auto-included the same
+  // way, on top of whatever the student's ticked principals already are.
   const principals = principalsFor(st, cls);
   if(!principals.length) return [];
-  return [...principals, 'GENERAL PAPER', autoSubsidiary(principals)];
+  return [...new Set([...principals, 'GENERAL PAPER', ...aCompulsoryExtra(), autoSubsidiary(principals)])];
 }
 function comboLabel(st, cls){
   if(!cls) return '—';
   if(cls.level==='O' || cls.level==='P'){
-    const compulsory = cls.level==='O' ? oCompulsoryFor(cls.form) : P_CORE_SUBJECTS;
+    const compulsory = cls.level==='O' ? oCompulsoryFor(cls.form) : pCompulsoryList();
     const extra = rosterSubjectsFor(st, cls).filter(s=>!compulsory.includes(s));
     return extra.length ? extra.map(s=>ABBR[s]||s.slice(0,4).toUpperCase()).join('/') : '—';
   }
@@ -1046,6 +1087,17 @@ function comboLabel(st, cls){
   return principals.length ? combinationCode(principals) : '—';
 }
 function classOf(st){ return DB.classes.find(c=>c.id===st.classId); }
+// Every class where the currently signed-in teacher is the designated Class Teacher
+// (cls.classTeacher === their username). Empty for admins/parents or a teacher who
+// isn't set as any class's Class Teacher yet. Used to give a Class Teacher visibility
+// into Mark Sheets, Class Analysis and the Master Mark Sheet for their WHOLE class —
+// every subject, not just the ones they personally teach — without opening those up to
+// every teacher in the school.
+function classTeacherClasses(){
+  if(!CUR || CUR.role!=='teacher') return [];
+  return DB.classes.filter(c=>c.classTeacher===CUR.username);
+}
+function classTeacherClassIds(){ return classTeacherClasses().map(c=>c.id); }
 
 function rawScores(studentId, subject, term, year){
   term = term || DB.info.currentTerm; year = year || DB.info.currentYear;
@@ -1240,6 +1292,16 @@ function gradeFor(subject, avg, level){
 // report card the Grade column itself should read "Pass"/"Fail" rather than the bare
 // letter — the Descriptor column already showed those words via GRADE_COMMENT, this just
 // brings the Grade column into agreement for subsidiary subjects specifically.
+// Color-codes a grade letter/code so it's unmistakable at a glance on wide tables like
+// the Master Mark Sheet (bold text alone gets lost next to columns of plain numbers).
+// Covers O/A-Level letters (A-F,O) and Primary PLE codes (D1-F9) in one lookup.
+function gradeColorFor(grade){
+  if(!grade || grade==='—') return '';
+  if(['A','D1','D2'].includes(grade)) return 'var(--good)';
+  if(['F','F9'].includes(grade)) return 'var(--danger)';
+  if(['E','O','P7','P8'].includes(grade)) return '#8a6d00';
+  return 'var(--navy)'; // B, C, D, C3-C6
+}
 function gradeDisplay(subject, grade, level){
   if(level==='A' && (subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject))){
     if(grade==='O') return 'Pass';
@@ -1247,17 +1309,22 @@ function gradeDisplay(subject, grade, level){
   }
   return grade;
 }
-// Aggregate of the 4 PLE-core subjects for a Primary student (lower = better, like real PLE) → Division.
+// Aggregate (sum of grade-points) of the school's Primary compulsory (core) subjects →
+// Division, the Ugandan primary equivalent of an O/A-Level overall grade. Uses whatever
+// the admin currently has set as compulsory (pCompulsoryList(), default: the 4 real
+// PLE-core subjects) — see the note on pCompulsoryList() about Division accuracy if that
+// set is changed from the standard 4.
 function primaryAggregate(st, cls, term, year){
   if(!cls || cls.level!=='P') return null;
+  const coreSubjects = pCompulsoryList();
   let sum=0, count=0;
-  for(const subj of P_CORE_SUBJECTS){
+  for(const subj of coreSubjects){
     const avg = subjectAverage(st.id, subj, term, year);
     if(avg===null) continue;
     const g = gradeFor(subj, avg, 'P');
     sum += PLE_GRADE_POINTS[g]; count++;
   }
-  if(count < P_CORE_SUBJECTS.length) return null; // Division needs all 4 core subjects on record
+  if(count < coreSubjects.length) return null; // Division needs every compulsory subject on record
   return sum;
 }
 function gradeColsFor(level){
@@ -1271,7 +1338,11 @@ function teacherForSubjectClass(subject, classId){
   if(!a) return null;
   return DB.accounts.find(acc=>acc.username===a.teacherUsername) || null;
 }
-function maxPointsFor(st, cls){ return principalsFor(st, cls || classOf(st)).length*5 + 1 + 1; }
+// maxPointsFor: every ticked principal is worth 5, GENERAL PAPER and the auto-derived
+// subsidiary are each worth a flat 1 (their own pass/fail scale — see gradeFor), and any
+// admin-added extra compulsory A-Level subjects (aCompulsoryExtra) are graded normally
+// (A-E scale) so each is worth 5, same as a principal.
+function maxPointsFor(st, cls){ return principalsFor(st, cls || classOf(st)).length*5 + 1 + 1 + aCompulsoryExtra().length*5; }
 
 function computeSubjectRows(st, cls, term, year){
   const subs = studentSubjects(st, cls);
@@ -1726,10 +1797,11 @@ const NAV_BY_ROLE = {
     ['accounts','Staff & Parent Accounts','👥'],['students','Students','🎓'],['assignsubjects','Assign Subjects','📌'],
     ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Promote Students','⬆️'],
     ['ascores','Enter / Download Scores','✍️'],['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
-    ['reports','Report Cards','📄'],['password','Change Password','🔒']
+    ['reports','Report Cards','📄'],['mastermarksheet','Master Mark Sheet','🗂️'],['password','Change Password','🔒']
   ],
   teacher: [
     ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
+    ['classanalysis','Class Analysis','📈'],['mastermarksheet','Master Mark Sheet','🗂️'],
     ['treports','View Report Cards','📄'],['password','Change Password','🔒']
   ],
   parent: [
@@ -1767,6 +1839,12 @@ function renderShell(){
 // already hides these links from non-admins, but this makes it impossible to reach them
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
 const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','accounts','students','assignsubjects','olevel','grading','promote','teacherprofile','studentprofile','restoreitems']);
+// Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
+// student) — open to Admin always, and to a Teacher only for a class where they're the
+// designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
+// Teacher anywhere sees a friendly permission message instead, same pattern as the
+// admin-only backstop above.
+const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
 const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems']);
@@ -1774,6 +1852,9 @@ function renderView(view){
   try{
     if(ADMIN_ONLY_VIEWS.has(view) && (!CUR || CUR.role!=='admin')){
       return '<p>You don\'t have permission to view this page. Only an Admin can manage this.</p>';
+    }
+    if(CLASS_TEACHER_VIEWS.has(view) && (!CUR || (CUR.role!=='admin' && !(CUR.role==='teacher' && classTeacherClasses().length)))){
+      return '<p>You don\'t have permission to view this page. Only an Admin, or a Teacher designated as a Class Teacher, can view this.</p>';
     }
     switch(view){
       case 'dashboard': return adminDashboard();
@@ -1794,6 +1875,7 @@ function renderView(view){
       case 'ascores': return CUR.role==='admin' ? scoresEntryView(DB.assignments) : '<p>You don\'t have permission to view this page.</p>';
       case 'marksheets': return marksheetsListView();
       case 'classanalysis': return classAnalysisView();
+      case 'mastermarksheet': return masterMarkSheetView();
       case 'tdash': return teacherDashboard();
       case 'tscores': return scoresEntryView(DB.assignments.filter(a=>a.teacherUsername===CUR.username));
       case 'treports': return reportsListView();
@@ -2169,7 +2251,15 @@ function oLevelSubjectsView(){
   </div>
   <div class="card">
     <h3>Compulsory</h3><p>${COMPULSORY.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
-    <h3>Subsidiaries (auto-assigned)</h3><p>${SUBSIDIARIES.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
+    <p class="small">General Paper is fixed and can't be removed — it's graded on its own pass/fail scale and its point is built into every A-Level student's max-points total. You can add further subjects below that should also be auto-included for every A-Level student, no roster tick needed (these are graded normally, A-E, like any other principal subject).</p>
+    <form data-form="saveACompulsoryExtra">
+      <h4 style="margin:8px 0 4px;">Additional compulsory subjects (optional)</h4>
+      <div class="flex" style="gap:6px 18px;flex-wrap:wrap;">
+        ${aOptionalList().map(s=>`<label class="flex" style="gap:6px;width:auto;"><input type="checkbox" name="extraCompulsory" value="${esc(s)}" style="width:auto;" ${aCompulsoryExtra().includes(s)?'checked':''}> <span>${esc(s)}</span></label>`).join('')}
+      </div>
+      <div style="margin-top:10px;"><button class="btn">Save additional compulsory subjects</button></div>
+    </form>
+    <h3 style="margin-top:16px;">Subsidiaries (auto-assigned)</h3><p>${SUBSIDIARIES.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Base principal subjects</h3><p>${A_OPTIONALS_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Your added subjects</h3>
     <p>${aExtra.length? aExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delASubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
@@ -2204,6 +2294,17 @@ function oLevelSubjectsView(){
     <p>${extra.length? extra.map(s=>`<span class="chip">${esc(s)} <span data-action="delOSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
   </div>
   <div class="card">
+    <h3>Compulsory (core) subjects</h3>
+    <p class="small">Ticked subjects are automatically included on every Primary student's report card — no roster tick needed from the subject teacher. Anything left unticked is optional: only students a subject teacher ticks into their own class roster will show it. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
+    <div class="note">Uganda's official PLE Division bands assume exactly 4 core subjects. If you change the number of compulsory subjects from 4, the Aggregate figure still totals correctly, but the Division label becomes approximate rather than an exact match to the UNEB standard.</div>
+    <form data-form="savePCompulsory" style="margin-top:10px;">
+      <div class="flex" style="gap:6px 18px;flex-wrap:wrap;">
+        ${pAllSubjectPool().map(s=>`<label class="flex" style="gap:6px;width:auto;"><input type="checkbox" name="coreSubjects" value="${esc(s)}" style="width:auto;" ${pCompulsoryList().includes(s)?'checked':''}> <span>${esc(s)}</span></label>`).join('')}
+      </div>
+      <div style="margin-top:10px;"><button class="btn">Save compulsory subjects</button></div>
+    </form>
+  </div>
+  <div class="card">
     <h3>Primary</h3>
     <form data-form="addPSubject" class="flex">
       <div style="flex:2;"><label>New Primary subject name</label><input name="subjectName" placeholder="e.g. COMPUTER STUDIES" required></div>
@@ -2211,7 +2312,7 @@ function oLevelSubjectsView(){
     </form>
   </div>
   <div class="card">
-    <h3>PLE-core (examined at PLE — every Primary class)</h3><p>${P_CORE_SUBJECTS.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
+    <h3>PLE syllabus default</h3><p>${P_CORE_SUBJECTS.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Base optional</h3><p>${P_OPTIONAL_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Your added subjects</h3>
     <p>${pExtra.length? pExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delPSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
@@ -2512,6 +2613,11 @@ function reportsListView(){
     </select>
     ${isAdmin ? `<div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>
+      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open Master Mark Sheet</b></button>
+      <button class="btn-outline" data-action="nav:classanalysis"><b>Open Class Analysis</b></button>
+    </div>` : (isTeacher && classTeacherClassIds().length) ? `<div class="flex" style="margin-top:12px;">
+      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open Master Mark Sheet</b></button>
+      <button class="btn-outline" data-action="nav:classanalysis"><b>Open Class Analysis</b></button>
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
   <div class="card">
@@ -2535,11 +2641,13 @@ function marksheetGroups(pool){
   return [...map.values()];
 }
 function marksheetsListView(){
-  const pool = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(a=>a.teacherUsername===CUR.username);
+  const ctClassIds = classTeacherClassIds();
+  const pool = CUR.role==='admin' ? DB.assignments
+    : DB.assignments.filter(a=>a.teacherUsername===CUR.username || ctClassIds.includes(a.classId));
   const groups = marksheetGroups(pool);
   return `
   <h2>Mark Sheets</h2>
-  <div class="note">An integrated mark sheet lists every test and exam recorded for a subject in a class, side by side for every student — handy for spotting missing marks or reviewing a subject at a glance. You can also download a blank sheet for a specific test from the "Enter Scores" page.</div>
+  <div class="note">An integrated mark sheet lists every test and exam recorded for a subject in a class, side by side for every student — handy for spotting missing marks or reviewing a subject at a glance. You can also download a blank sheet for a specific test from the "Enter Scores" page.${ctClassIds.length?' As Class Teacher, you can also see and download every subject for your class(es), not just the ones you personally teach.':''}</div>
   <div class="card" style="margin-top:14px;">
     <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Action</th></tr>
     ${groups.map(g=>{
@@ -2737,10 +2845,12 @@ function classStudentStats(cls, term, year){
   }).sort((a,b)=>a.position-b.position);
 }
 function classAnalysisView(){
-  if(!DB.classes.length) return `<h2>Class Analysis</h2><div class="card"><p>No classes yet — add a class first.</p></div>`;
+  const isAdmin = CUR.role==='admin';
+  const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
+  if(!visibleClasses.length) return `<h2>Class Analysis</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
   const sel = VIEW.params;
-  const classId = sel.classId || DB.classes[0].id;
-  const cls = DB.classes.find(c=>c.id===classId) || DB.classes[0];
+  const classId = (sel.classId && visibleClasses.some(c=>c.id===sel.classId)) ? sel.classId : visibleClasses[0].id;
+  const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
   const term = sel.term || DB.info.currentTerm;
   const year = sel.year || DB.info.currentYear;
   const isA = cls.level==='A';
@@ -2766,7 +2876,7 @@ function classAnalysisView(){
   <div class="card">
     <div class="grid3">
       <div><label>Class</label><select onchange="setAnalysisParam('classId', this.value)">
-        ${DB.classes.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+        ${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
       </select></div>
       <div><label>Term</label><select onchange="setAnalysisParam('term', this.value)">
         ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
@@ -2798,6 +2908,153 @@ function classAnalysisView(){
 function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
 // Note: Class Analysis is exported as a PDF only (see downloadElementAsPdf / the
 // "dlClassAnalysisPdf" action) — no CSV export is offered for this view by design.
+
+/* ---------- Master Mark Sheet (admin): every student x every subject, one class ----------
+   One wide table for a whole class/term/year: every subject the class takes as its own
+   column group (with a sub-column per paper for subjects that have more than one paper,
+   e.g. Physics Paper 1 / Paper 2), plus each subject's combined Average and Grade, and a
+   final Total/Overall/Position summary per student. Deliberately wide — meant to be
+   downloaded or printed on LANDSCAPE paper (see printLandscape() and the PDF export
+   below, which both force landscape regardless of what orientation the rest of the app
+   prints in). */
+function masterMarkSheetView(){
+  const isAdmin = CUR.role==='admin';
+  const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
+  if(!visibleClasses.length) return `<h2>Master Mark Sheet</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
+  const sel = VIEW.params;
+  const classId = (sel.mmClassId && visibleClasses.some(c=>c.id===sel.mmClassId)) ? sel.mmClassId : visibleClasses[0].id;
+  const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
+  const term = sel.mmTerm || DB.info.currentTerm;
+  const year = sel.mmYear || DB.info.currentYear;
+  // Two flavors of the same sheet, picked with the tabs below: 'scores' shows the raw
+  // marks (per paper, per subject) with nothing graded, so it reads like a scanned exam
+  // register; 'grades' shows only the letter/code each learner earned per subject, so it
+  // reads like an official results sheet. Kept as one function (same underlying data,
+  // same landscape layout) so the two never drift out of sync with each other.
+  const mode = sel.mmMode==='grades' ? 'grades' : 'scores';
+  const isA = cls.level==='A';
+  const isP = cls.level==='P';
+  const cfg = examConfig(cls.id);
+
+  // One column-group per subject actually taken by someone in this class. In Scores mode
+  // a multi-paper subject gets one sub-column per paper plus its combined Avg; a
+  // single-paper subject gets one Score column. In Grades mode every subject — no matter
+  // how many papers — collapses to a single Grade column, since a letter/code is awarded
+  // for the subject as a whole, never for one paper alone (mirrors the report card).
+  const subjectMeta = classSubjectsFor(cls).sort((a,b)=>a.localeCompare(b)).map(subj=>{
+    const papers = subjectPapersFor(subj, cls);
+    const multi = papers.length>=2;
+    const colspan = mode==='grades' ? 1 : (multi ? papers.length+1 : 1);
+    return {subject:subj, papers, multi, colspan};
+  });
+
+  const students = DB.students.filter(s=>s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  const rowsData = students.map(s=>{
+    const {totalPoints, avgPct} = computeSubjectRows(s, cls, term, year);
+    const {position, size} = classPosition(s, cls, term, year);
+    const maxP = isA ? maxPointsFor(s, cls) : 100;
+    const overallGrade = isP ? null : gradeFor('', avgPct, cls.level);
+    const pAggregate = isP ? primaryAggregate(s, cls, term, year) : null;
+    const pDivision = isP ? primaryDivisionFor(pAggregate) : null;
+    const perSubject = subjectMeta.map(sm=>{
+      const bd = subjectBreakdown(s.id, sm.subject, term, year);
+      const grade = bd.final===null ? '—' : gradeFor(sm.subject, bd.final, cls.level);
+      let paperCells = [];
+      if(sm.multi){
+        const pb = subjectPaperBreakdown(s.id, sm.subject, cls, term, year);
+        paperCells = sm.papers.map(p=>{
+          const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
+          if(!row || !row.hasAny) return '—';
+          const val = combinePaper(row.aoiAvg, row.eotAvg, cfg);
+          return val===null ? '—' : val.toFixed(1);
+        });
+      }
+      return { paperCells, avg: bd.final===null?'—':bd.final.toFixed(1), grade };
+    });
+    return { student:s, perSubject, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
+  });
+
+  const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
+
+  let headerRow1, headerRow2, bodyRows, colCount;
+
+  if(mode==='scores'){
+    // Raw marks only — no grading. Overall column is the plain Average % (Points and
+    // Aggregate are themselves grade-derived, so they belong on the Grades sheet, not here).
+    headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>` +
+      subjectMeta.map(sm=>sm.colspan>1?`<th colspan="${sm.colspan}">${esc(sm.subject)}</th>`:`<th rowspan="2">${esc(sm.subject)}</th>`).join('') +
+      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">Position</th>`;
+    headerRow2 = subjectMeta.map(sm=> sm.multi ? sm.papers.map(p=>`<th>P${esc(String(p))}</th>`).join('') + `<th>Avg</th>` : '').join('');
+    bodyRows = rowsData.map((r,i)=>{
+      const subjectCells = r.perSubject.map(ps=>{
+        const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
+        return `${paperTds}<td>${ps.avg}</td>`;
+      }).join('');
+      return `<tr><td>${i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td><td>${r.position}/${r.size}</td></tr>`;
+    }).join('');
+    colCount = 6 + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
+  } else {
+    // Letter/code grades only — one Grade column per subject, plus the official overall
+    // Points/Average, Grade/Aggregate(+Division), and Position, exactly as they'd appear
+    // on a results/release sheet.
+    headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>` +
+      subjectMeta.map(sm=>`<th rowspan="2">${esc(sm.subject)}</th>`).join('') +
+      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th><th rowspan="2">${isP?'Aggregate':'Grade'}</th>${isP?'<th rowspan="2">Division</th>':''}<th rowspan="2">Position</th>`;
+    headerRow2 = '';
+    bodyRows = rowsData.map((r,i)=>{
+      const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
+      const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : `${r.avgPct.toFixed(0)}%`;
+      const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
+      return `<tr><td>${i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
+    }).join('');
+    colCount = 6 + subjectMeta.length + (isP?1:0);
+  }
+
+  const tabBtn = (val,label)=>`<button class="${mode===val?'btn':'btn-outline'}" onclick="setMasterMarkSheetParam('mmMode','${val}')">${label}</button>`;
+
+  return `
+  <h2>Master Mark Sheet</h2>
+  <div class="card">
+    <div class="grid3">
+      <div><label>Class</label><select onchange="setMasterMarkSheetParam('mmClassId', this.value)">
+        ${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select></div>
+      <div><label>Term</label><select onchange="setMasterMarkSheetParam('mmTerm', this.value)">
+        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
+    </div>
+    <label style="margin-top:14px;">View</label>
+    <div class="flex">${tabBtn('scores','Real Scores (marks per subject/paper)')}${tabBtn('grades','Letter Grades (per subject)')}</div>
+    <div class="note" style="margin-top:12px;">${mode==='scores'
+      ? 'This sheet lists every student\'s raw marks — no grading — with a sub-column per paper for subjects that have more than one. Switch to "Letter Grades" for the graded version.'
+      : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position. Switch to "Real Scores" to see the underlying marks.'
+    } Either way, it\'s wide — download it as a PDF or print it, and choose <b>LANDSCAPE</b> paper for clarity.</div>
+    <div class="flex" style="margin-top:12px;">
+      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${mode}"><b>Download as PDF (landscape)</b></button>
+      <button class="btn" onclick="printLandscape()">Print (landscape)</button>
+      <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
+    </div>
+  </div>
+  <div id="printArea">
+  <div class="card" style="overflow:auto;">
+    <h3>${esc(DB.info.schoolName||'')} — ${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''} — Master Mark Sheet (${mode==='scores'?'Real Scores':'Letter Grades'}) — ${esc(term)}, ${esc(String(year))}</h3>
+    <table class="data-table" style="font-size:11px;">
+      <tr>${headerRow1}</tr>
+      ${headerRow2?`<tr>${headerRow2}</tr>`:''}
+      ${bodyRows || `<tr><td colspan="${colCount}">No students in this class yet.</td></tr>`}
+    </table>
+    ${mode==='grades' ? `<p class="small" style="margin-top:10px;">${isP
+      ? 'Grading scale (Primary/PLE): D1, D2 = Distinction &nbsp; C3–C6 = Credit &nbsp; P7, P8 = Pass &nbsp; F9 = Fail. Aggregate = sum of grade-points for the compulsory subjects; Division is derived from that aggregate.'
+      : `Grading scale (${isA?'A-Level':'O-Level'}): A = Excellent &nbsp; B = Very Good &nbsp; C = Good &nbsp; D = Fair &nbsp; E = Weak${isA?' &nbsp; O = Subsidiary Pass &nbsp; F = Fail':''}.`
+    }</p>` : ''}
+  </div>
+  </div>`;
+}
+function setMasterMarkSheetParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
+// Note: like Class Analysis and the Integrated Mark Sheet, the Master Mark Sheet is
+// exported as a PDF only — no CSV export is offered for this view by design.
 
 function passwordView(){
   const showRecovery = CUR && (CUR.role==='admin' || CUR.role==='teacher');
@@ -3055,13 +3312,12 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const breakdowns = rows.map(r=>subjectBreakdown(s.id, r.subject, term, year));
 
   // ---- Inline editing (Open Report) ----
-  // Marks can be typed straight into the report card instead of going through a
-  // separate mark-sheet screen. Only allowed on the live, non-embedded view (never in
-  // the printed/PDF snapshot), only for the CURRENT term/year (past terms stay
-  // read-only, since they're historical record), and only for whoever is actually
-  // allowed to enter that mark: Admin always, a Teacher only for their own assigned
-  // subject+paper, and only while their score deadline for that kind hasn't passed.
-  const editableNow = !embedded && isCurrentPeriod && CUR && (CUR.role==='admin' || CUR.role==='teacher');
+  // Inline editing directly on the report card has been switched off entirely — marks
+  // are now only ever entered via the dedicated Enter/Download Scores and Mark Sheet
+  // screens (which still work exactly as before). This just stops the report card
+  // itself from rendering editable <input> boxes for anyone, admin included; canEditScore
+  // below still short-circuits to false for every call since it all flows through this.
+  const editableNow = false;
   function assignmentFor(subject, paper){
     const asns = DB.assignments.filter(a=>a.subject===subject && a.classId===cls.id);
     if(!asns.length) return null;
@@ -3199,7 +3455,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '—';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
   const totalDescriptor = rows.length ? (commentMap[totalGrade] || '—') : '—';
-  const totalFinalTxt = isA ? `${totalPoints}/${maxP}` : avgPct.toFixed(0)+'%';
+  // Final Average column, TOTAL row: this column is a percentage (see header "Final
+  // Average (%)"), same as every subject row above it (r.avg.toFixed(1)) — it must NOT
+  // repeat the Points total for A-Level, since Points already gets its own column right
+  // next to this one. Uses avgPct (the average of every subject's own Final Average) so
+  // it's the true average, not points-in-disguise. O-Level/Primary formatting (with the
+  // trailing %) is unchanged.
+  const totalFinalTxt = isA ? avgPct.toFixed(1) : avgPct.toFixed(0)+'%';
   const totalCwHtml = showCW ? (useCwTestCols ? cwTests.map(()=>'<td>—</td>').join('') + `<td>${cwTotalTxt}</td>` : `<td>${cwTotalTxt}</td>`) : '';
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
@@ -3225,6 +3487,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   ${periodPicker}
   ${editNote}
   <div id="printArea"><div class="rc-card">
+    ${DB.info.logo?`<img src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
+    <div class="rc-content">
     <div class="rc-topline"><span>ADM NO: ${esc(s.admNo||'—')}${s.feesCode?` &nbsp;|&nbsp; FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
 
     <div class="rc-title-block">
@@ -3307,6 +3571,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
     <div class="legend-strip">
       <span>Fees balance: ${s.feesBalance!=null?('UGX '+Number(s.feesBalance).toLocaleString()):'—'} · Next term fees: ${s.nextTermFees!=null?('UGX '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
+    </div>
     </div>
   </div></div>
   ${embedded? '' : `<div class="flex" style="margin-top:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
@@ -3591,6 +3856,14 @@ document.addEventListener('click', async (e)=>{
       await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_class_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'portrait'});
       break;
     }
+    case 'dlMasterMarkSheetPdf': {
+      const [classId, termEnc, year, modeArg] = (arg||'').split(':');
+      const cls = DB.classes.find(c=>c.id===classId);
+      const term = termEnc?decodeURIComponent(termEnc):'';
+      const modeLabel = modeArg==='grades' ? 'grades' : 'scores';
+      await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
+      break;
+    }
     case 'approveAcc': { const code=prompt('Enter your private owner code to approve:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); render(); } break; }
@@ -3851,7 +4124,7 @@ document.addEventListener('submit', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','saveClassExamConfig','addClassCwTest','schoolInfo','setTerm','restoreBackup','promote','quickAddStudent',
-    'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','browseRestore','selectiveRestore']);
+    'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
   if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
@@ -4246,6 +4519,14 @@ document.addEventListener('submit', async (e)=>{
       DB.info.oCompulsoryUpper = fd.getAll('upperSubjects');
       await saveInfo(); render();
     }
+    else if(type==='savePCompulsory'){
+      DB.info.pCompulsory = fd.getAll('coreSubjects');
+      await saveInfo(); render();
+    }
+    else if(type==='saveACompulsoryExtra'){
+      DB.info.aCompulsoryExtra = fd.getAll('extraCompulsory');
+      await saveInfo(); render();
+    }
     else if(type==='addPSubject'){
       const name = (fd.get('subjectName')||'').trim().toUpperCase();
       if(!name) return;
@@ -4459,6 +4740,14 @@ document.addEventListener('submit', async (e)=>{
       const max = Math.max(1, Number(form.dataset.max)||100);
       const a = DB.assignments.find(x=>x.id===assignId);
       if(!a){ alert('Assignment not found.'); return; }
+      // Same deadline rule as typing marks in directly (saveScores below) — without this
+      // check a teacher could bypass a locked score deadline simply by using the CSV
+      // upload form instead of the on-screen boxes, which defeats the whole point of
+      // deadlines. Admins are still never blocked.
+      if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, kind)){
+        alert(`The score submission deadline (${fmtDateTime(scoreDeadlineFor(kind).deadline)}) has passed, so this can't be imported. Ask your admin to reopen score entry for you if you need to submit or correct marks.`);
+        return;
+      }
       const file = fd.get('marksheetFile');
       if(!file || file.size===0){ alert('Please choose a CSV file first.'); return; }
       const text = await file.text();
@@ -4466,7 +4755,7 @@ document.addEventListener('submit', async (e)=>{
       if(!lines.length){ alert('That file appears to be empty.'); return; }
       const rosterIds = Array.isArray(a.studentIds) ? a.studentIds : DB.students.filter(s=>s.classId===a.classId).map(s=>s.id);
       const byAdmNo = new Map(DB.students.filter(s=>rosterIds.includes(s.id)).map(s=>[s.admNo, s]));
-      let imported=0, skipped=0;
+      let imported=0, skipped=0, outOfRange=0;
       const importRows = [];
       for(const line of lines){
         const parts = parseCsvLine(line);
@@ -4476,6 +4765,10 @@ document.addEventListener('submit', async (e)=>{
         const st = byAdmNo.get(admNo);
         const marks = Number(marksRaw);
         if(!st || marksRaw===undefined || marksRaw==='' || !isFinite(marks)){ skipped++; continue; }
+        // Same 0–max range rule as saveScores — a mark that's negative or above this
+        // paper's maximum is rejected rather than silently saved, exactly like it would
+        // be if typed straight into the on-screen mark sheet.
+        if(marks<0 || marks>max){ outOfRange++; continue; }
         if(kind==='EOT'){
           const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
           importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'EOT', label:'', term:DB.info.currentTerm, year:DB.info.currentYear, marks, max, teacher:CUR.username});
@@ -4486,7 +4779,10 @@ document.addEventListener('submit', async (e)=>{
         imported++;
       }
       await upsertScores(importRows); form.reset();
-      alert(`Mark sheet imported: ${imported} score(s) saved${skipped?`, ${skipped} row(s) skipped (blank marks or admission number not on your list)`:''}.`);
+      const skipMsgParts = [];
+      if(skipped) skipMsgParts.push(`${skipped} row(s) skipped (blank marks or admission number not on your list)`);
+      if(outOfRange) skipMsgParts.push(`${outOfRange} row(s) rejected (mark outside 0–${max})`);
+      alert(`Mark sheet imported: ${imported} score(s) saved${skipMsgParts.length?`, ${skipMsgParts.join(', ')}`:''}.`);
       render();
     }
     else if(type==='saveScores'){
@@ -4636,6 +4932,19 @@ function preloadHeavyLibsWhenIdle(){
 }
 
 /* ---------- Generic HTML-to-PDF export (mark sheets & performance analysis) ---------- */
+// Forces the browser's native Print dialog (window.print()) into landscape for this one
+// print job, regardless of what the rest of the app prints as (report cards etc. stay
+// portrait). Works by temporarily injecting a stylesheet that overrides @page's size —
+// the only way to control print orientation from CSS — then removing it again afterward
+// so it doesn't leak into any later print of a different (portrait) page.
+function printLandscape(){
+  const st = document.createElement('style');
+  st.id = 'landscapePrintOverride';
+  st.textContent = '@page{ size: A4 landscape; margin:10mm; }';
+  document.head.appendChild(st);
+  window.print();
+  setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
+}
 async function downloadElementAsPdf(elementId, filename, opts={}){
   const el = document.getElementById(elementId);
   if(!el){ alert('Nothing to export yet.'); return; }
