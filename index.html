@@ -242,6 +242,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
   <div class="boot-splash">
     <img src="icon-192.png" alt="" class="boot-splash-icon">
     <div class="boot-splash-brand">CT-E <span>SOLUTIONS</span></div>
+    <div class="boot-splash-sub" style="margin-bottom:2px;">Tel: 0757132542 / 0786814513</div>
     <div class="boot-splash-sub">Loading…</div>
   </div>
 </div>
@@ -318,6 +319,11 @@ const AUTO_SNAPSHOT_KEEP = 6; // ~6 weeks of history at the default weekly caden
    initial spread rather than silently dropped, so nothing is lost on a
    later re-restore either.
    ============================================================ */
+// Founder's contact line, shown under the "CT-E SOLUTIONS" brand on every screen that
+// displays it (boot splash, all sign-in/sign-up screens, the main app topbar, and the
+// Founder Panel topbar). Kept as one constant so all of them always stay in sync — change
+// the number here once and it updates everywhere.
+const FOUNDER_CONTACT = 'Tel: 0757132542 / 0786814513';
 const BACKUP_SCHEMA_VERSION = 2;
 function migrateBackupData(raw){
   const d = (raw && typeof raw==='object') ? raw : {};
@@ -535,6 +541,13 @@ let SCHOOL_ID = null;
 let REGISTRY = [];
 let SYSTEM_OWNER = null;
 let VIEW = { name:'boot' };
+// Bumped on every click-driven action (see the delegated click listener below).
+// Screens that kick off a background data refresh (see 'nav'/'viewReport')
+// capture the token before the refresh starts and only re-render with the
+// fresh data if it's unchanged when the refresh completes — so a slow
+// background fetch can never overwrite whatever screen the user has since
+// navigated to.
+let NAV_TOKEN = 0;
 // Tracks, per mark-entry column (assignment+paper+kind+label), which students were
 // left blank on the teacher's *last* submit for that column and still have no score.
 // Populated right after a "saveScores" submit so the mark sheet can flag them with an
@@ -713,69 +726,114 @@ async function saveScoresShardedFor(schoolId, scores){
 }
 
 /* ------------------------------------------------------------
-   MERGE-SAFE SCORE WRITES.
-   saveScores()/saveScoresShardedFor() above write out whatever this browser
-   tab currently has in DB.scores — but DB.scores is only loaded once (at
-   login) and several teachers can be entering marks for the same term/year
-   shard at the same time. If Teacher A's tab has been open for a while and
-   Teacher B saves a score in between, Teacher A's next save would overwrite
-   the whole shard with A's stale copy and silently erase B's score. That is
-   the "scores sometimes don't persist" bug.
-   Every place a teacher (or admin) enters/deletes an individual score now
-   goes through upsertScores()/deleteScores() below instead of mutating
-   DB.scores directly and calling saveScores(). These re-fetch the affected
-   shard fresh from the database immediately before writing, apply only this
-   tab's change on top of that fresh copy, and write the merged result — so
-   two people saving around the same time both keep their data. They also
-   refresh DB.scores locally so the current screen/report card immediately
-   reflects everyone's latest marks, not just this tab's cached copy.
+   CONCURRENT-SAFE, NO-WAIT SCORE WRITES.
+   Two things matter when several teachers save marks at the same moment:
+   (1) no teacher should ever sit and wait for the network just to see their
+       own mark reflected, no matter how many others are saving right then,
+       and (2) every mark any of them submits must end up permanently stored
+       and visible on report cards — none silently dropped.
+
+   INSTANT (no delay): upsertScores()/deleteScores() merge the change into
+   the in-memory DB.scores array synchronously, before any network request
+   even starts. Callers can render the updated screen immediately after
+   calling them — the on-screen data is already correct by the time the
+   function call returns, regardless of how long the actual save takes.
+
+   GUARANTEED PERSISTENCE (no lost writes): the real save happens inside a
+   Firestore transaction (mergeScoreShard below), not a plain "read, then
+   write". A transaction reads the shard's current server state and writes
+   the merged result back atomically; if a second teacher's transaction
+   touched the same shard in between, Firestore detects that conflict itself
+   and automatically re-runs the transaction against the new state — so two,
+   ten, or fifty teachers saving marks in the exact same instant can never
+   overwrite one another. Every submitted mark is retried until it's safely
+   stored, entirely transparently, with no extra waiting on the teacher's end.
+
+   Rows are matched by natural key (student+subject+paper+kind+label+term+
+   year) as well as by id, so that if two tabs each generate a fresh id for
+   what turns out to be the same logical mark, the merge still lands as one
+   corrected value instead of two duplicate rows.
 ------------------------------------------------------------- */
+function scoreNaturalKey(r){ return [r.studentId,r.subject,r.paper,r.kind,r.label||'',r.term,r.year].join('|'); }
+function mergeRowIntoShard(fresh, row){
+  let idx = fresh.findIndex(x=>x.id===row.id);
+  if(idx<0){
+    idx = fresh.findIndex(x=>scoreNaturalKey(x)===scoreNaturalKey(row));
+    // Same logical mark already exists under a different id (a race between
+    // two tabs creating it at once) — keep the existing id so we correct
+    // that one row instead of adding a duplicate.
+    if(idx>=0) row = Object.assign({}, row, {id: fresh[idx].id});
+  }
+  if(idx>=0) fresh[idx]=row; else fresh.push(row);
+  return fresh;
+}
 async function mergeScoreShard(schoolId, term, year, mutate){
   const shardSuffix = scoreShardKey(term, year);
   const shardKey = `sch_${schoolId}_scores_${shardSuffix}`;
-  const fresh = await getShared(shardKey, []);
-  const merged = mutate(fresh.slice());
-  await setShared(shardKey, merged);
+  let merged;
+  if(DEMO_MODE){
+    // Single device — no real concurrent writers, so a plain read-merge-write
+    // (via localStorage) is safe and there's no transaction API to use here.
+    const fresh = await getShared(shardKey, []);
+    merged = mutate(fresh.slice());
+    await setShared(shardKey, merged);
+  } else {
+    if(AUTH_READY) await AUTH_READY;
+    merged = await db.runTransaction(async tx=>{
+      const ref = db.collection(COLLECTION).doc(shardKey);
+      const snap = await tx.get(ref);
+      const fresh = snap.exists ? (snap.data().value||[]) : [];
+      const result = mutate(fresh.slice());
+      tx.set(ref, { value: result, updatedAt: Date.now() });
+      return result;
+    });
+  }
   const known = KNOWN_SCORE_SHARDS[schoolId] = KNOWN_SCORE_SHARDS[schoolId] || new Set();
   known.add(shardSuffix);
   if(schoolId===SCHOOL_ID){
-    // Replace just this shard's slice of the in-memory array with the freshly
-    // merged server truth, leaving every other term/year shard untouched.
+    // Reconcile with the authoritative, transaction-merged server truth —
+    // this folds in anything another teacher saved to this same shard in
+    // the meantime too, not just this tab's own change.
     DB.scores = DB.scores.filter(r=>scoreShardKey(r.term,r.year)!==shardSuffix).concat(merged);
   }
   return merged;
 }
-// Upsert one or more score rows (by id). Each row carries its own term/year,
-// so rows for different shards are grouped and merged independently.
-async function upsertScores(rows){
+// Upsert one or more score rows. Updates DB.scores immediately (synchronously,
+// before the returned promise's network write even begins) so the caller can
+// render right away; the promise resolves once the change is safely and
+// permanently persisted (or rejects if it ultimately couldn't be saved, e.g.
+// no connection — callers should surface that to the teacher rather than
+// assume success).
+function upsertScores(rows){
   rows = Array.isArray(rows) ? rows : [rows];
-  if(!rows.length) return;
+  if(!rows.length) return Promise.resolve();
+  rows.forEach(row=>{ mergeRowIntoShard(DB.scores, row); }); // optimistic local update
   const byShard = {};
   rows.forEach(r=>{
     const k = scoreShardKey(r.term, r.year);
     (byShard[k] = byShard[k] || {term:r.term, year:r.year, rows:[]}).rows.push(r);
   });
-  await Promise.all(Object.values(byShard).map(({term,year,rows})=>
+  return Promise.all(Object.values(byShard).map(({term,year,rows})=>
     mergeScoreShard(SCHOOL_ID, term, year, fresh=>{
-      rows.forEach(row=>{
-        const idx = fresh.findIndex(x=>x.id===row.id);
-        if(idx>=0) fresh[idx]=row; else fresh.push(row);
-      });
+      rows.forEach(row=>{ mergeRowIntoShard(fresh, row); });
       return fresh;
     })
   ));
 }
 // Delete one or more score rows. Pass the full row (not just an id) so the
-// row's term/year is known and the right shard gets merged.
-async function deleteScores(rows){
+// row's term/year is known and the right shard gets merged. Same instant
+// local update + guaranteed-persistence pattern as upsertScores.
+function deleteScores(rows){
   rows = Array.isArray(rows) ? rows : [rows];
-  if(!rows.length) return;
+  if(!rows.length) return Promise.resolve();
+  const idsToRemove = new Set(rows.map(r=>r.id));
+  DB.scores = DB.scores.filter(x=>!idsToRemove.has(x.id)); // optimistic local update
   const byShard = {};
   rows.forEach(r=>{
     const k = scoreShardKey(r.term, r.year);
     (byShard[k] = byShard[k] || {term:r.term, year:r.year, ids:new Set()}).ids.add(r.id);
   });
-  await Promise.all(Object.values(byShard).map(({term,year,ids})=>
+  return Promise.all(Object.values(byShard).map(({term,year,ids})=>
     mergeScoreShard(SCHOOL_ID, term, year, fresh=>fresh.filter(x=>!ids.has(x.id)))
   ));
 }
@@ -795,8 +853,12 @@ async function getPersonal(key, fallback){
 async function setPersonal(key, val){ try{ localStorage.setItem('cte_session_'+key, JSON.stringify(val)); }catch(e){} }
 
 async function loadAll(){
-  REGISTRY = await getShared('schools_registry', []);
-  SYSTEM_OWNER = await getShared('system_owner', null);
+  // Two independent documents — fetch together instead of one after another.
+  const [registry, systemOwner] = await Promise.all([
+    getShared('schools_registry', []),
+    getShared('system_owner', null),
+  ]);
+  REGISTRY = registry; SYSTEM_OWNER = systemOwner;
   const sess = await getPersonal('session', null);
   CUR = null; SCHOOL_ID = null;
   if(sess && sess.scope==='founder' && SYSTEM_OWNER){
@@ -814,25 +876,40 @@ async function loadAll(){
   if(SCHOOL_ID && CUR){ maybeTakeAutoSnapshot().catch(e=>console.error(e)); }
 }
 async function loadSchoolData(id){
-  DB.info = await getShared(`sch_${id}_info`, null);
-  DB.accounts = await getShared(`sch_${id}_accounts`, []);
-  DB.classes = await getShared(`sch_${id}_classes`, []);
-  DB.students = await getShared(`sch_${id}_students`, []);
-  DB.assignments = await getShared(`sch_${id}_assignments`, []);
-  DB.scores = await loadAllScores(id);
-  DB.bands = await getShared(`sch_${id}_bands`, DEFAULT_A_BANDS);
-  DB.obands = await getShared(`sch_${id}_obands`, DEFAULT_O_BANDS);
-  DB.pbands = await getShared(`sch_${id}_pbands`, DEFAULT_P_BANDS);
-  DB.autoSnapshots = await getShared(`sch_${id}_autosnaps_index`, []);
+  // These 9 reads are all independent documents — awaiting them one at a time
+  // (the old code) meant paying a full network round trip for each, back to
+  // back, which is what made logging in and loading a school feel slow.
+  // Firing them together and waiting on the whole batch cuts load time down
+  // to roughly the time of the single slowest read instead of the sum of all
+  // of them.
+  const [info, accounts, classes, students, assignments, scores, bands, obands, pbands, autoSnapshots] = await Promise.all([
+    getShared(`sch_${id}_info`, null),
+    getShared(`sch_${id}_accounts`, []),
+    getShared(`sch_${id}_classes`, []),
+    getShared(`sch_${id}_students`, []),
+    getShared(`sch_${id}_assignments`, []),
+    loadAllScores(id),
+    getShared(`sch_${id}_bands`, DEFAULT_A_BANDS),
+    getShared(`sch_${id}_obands`, DEFAULT_O_BANDS),
+    getShared(`sch_${id}_pbands`, DEFAULT_P_BANDS),
+    getShared(`sch_${id}_autosnaps_index`, []),
+  ]);
+  DB.info = info; DB.accounts = accounts; DB.classes = classes; DB.students = students;
+  DB.assignments = assignments; DB.scores = scores; DB.bands = bands; DB.obands = obands;
+  DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
 }
 /* ---- Global credential uniqueness (no two accounts anywhere may share a
    username, and no two accounts anywhere may share a password) ---- */
 async function collectAllCredentials(){
+  // Every school's accounts doc is independent — fetch them all together
+  // instead of one school at a time (this ran on every signup/account-create,
+  // so on a platform with many schools the old sequential loop was one of the
+  // slower things a user could trigger).
+  const perSchool = await Promise.all(REGISTRY.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
   const all = [];
-  for(const reg of REGISTRY){
-    const accounts = await getShared(`sch_${reg.id}_accounts`, []);
-    accounts.forEach(a=> all.push({username:a.username, password:a.password, schoolId:reg.id}));
-  }
+  REGISTRY.forEach((reg,i)=>{
+    perSchool[i].forEach(a=> all.push({username:a.username, password:a.password, schoolId:reg.id}));
+  });
   if(SYSTEM_OWNER) all.push({username:SYSTEM_OWNER.username, password:SYSTEM_OWNER.password, schoolId:null});
   return all;
 }
@@ -885,15 +962,17 @@ async function openFounderLogins(schoolId){
 // format the school's own Admin can export/restore — so the founder can
 // keep (or hand back) a copy if a school ever loses their data.
 async function downloadFounderSchoolBackup(schoolId){
-  const info = await getShared(`sch_${schoolId}_info`, null);
-  const accounts = await getShared(`sch_${schoolId}_accounts`, []);
-  const classes = await getShared(`sch_${schoolId}_classes`, []);
-  const students = await getShared(`sch_${schoolId}_students`, []);
-  const assignments = await getShared(`sch_${schoolId}_assignments`, []);
-  const scores = await loadAllScores(schoolId);
-  const bands = await getShared(`sch_${schoolId}_bands`, DEFAULT_A_BANDS);
-  const obands = await getShared(`sch_${schoolId}_obands`, DEFAULT_O_BANDS);
-  const pbands = await getShared(`sch_${schoolId}_pbands`, DEFAULT_P_BANDS);
+  const [info, accounts, classes, students, assignments, scores, bands, obands, pbands] = await Promise.all([
+    getShared(`sch_${schoolId}_info`, null),
+    getShared(`sch_${schoolId}_accounts`, []),
+    getShared(`sch_${schoolId}_classes`, []),
+    getShared(`sch_${schoolId}_students`, []),
+    getShared(`sch_${schoolId}_assignments`, []),
+    loadAllScores(schoolId),
+    getShared(`sch_${schoolId}_bands`, DEFAULT_A_BANDS),
+    getShared(`sch_${schoolId}_obands`, DEFAULT_O_BANDS),
+    getShared(`sch_${schoolId}_pbands`, DEFAULT_P_BANDS),
+  ]);
   const data = {
     app:'CT-E SOLUTIONS backup', schemaVersion: BACKUP_SCHEMA_VERSION, schoolId, exportedAt: new Date().toISOString(), exportedBy:'founder',
     info, accounts, classes, students, assignments, scores, bands, obands, pbands
@@ -1550,6 +1629,7 @@ function renderFounderSetup(){
   <div class="auth-wrap"><div class="auth-box">
     <div style="text-align:center;margin-bottom:10px;">
       <div class="display" style="font-size:26px;font-weight:800;color:var(--navy);">CT-E <span style="color:var(--gold)">SOLUTIONS</span></div>
+      <div class="small">${esc(FOUNDER_CONTACT)}</div>
       <div class="small">One-time founder setup for this platform</div>
     </div>
     <div class="note">This runs once, ever. Whoever sets this up becomes the <b>Founder</b> — the only account that can approve new schools and close/reopen any school, with a private code only they know.</div>
@@ -1571,7 +1651,9 @@ function renderFounderShell(){
   const view = (VIEW.name==='boot'||!(nav.some(n=>n[0]===VIEW.name)||extraViews.includes(VIEW.name))) ? 'fdash' : VIEW.name;
   return `
   <div class="topbar">
-    <div class="brand">CT-E <span>SOLUTIONS</span> <span class="small" style="color:#cfe0f2;font-weight:400;">— Founder Panel</span></div>
+    <div class="brand">CT-E <span>SOLUTIONS</span> <span class="small" style="color:#cfe0f2;font-weight:400;">— Founder Panel</span>
+      <div class="small" style="color:#cfe0f2;font-weight:400;font-family:'Inter',system-ui,sans-serif;letter-spacing:0;">${esc(FOUNDER_CONTACT)}</div>
+    </div>
     <div class="flex"><span class="badge-role">founder</span><span>${esc(CUR.name)}</span>
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
@@ -1684,6 +1766,7 @@ function renderPlatformAuth(){
   <div class="auth-wrap"><div class="auth-box">
     <div style="text-align:center;margin-bottom:6px;">
       <div class="school-name-big" style="font-size:22px;">CT-E <span style="color:var(--gold)">SOLUTIONS</span></div>
+      <div class="small">${esc(FOUNDER_CONTACT)}</div>
       <div class="small">School Report System</div>
     </div>
     <div class="role-icons" style="margin-top:16px;">
@@ -1868,7 +1951,9 @@ function renderShell(){
   const view = (VIEW.name==='boot' || (!nav.some(n=>n[0]===VIEW.name) && !DETAIL_VIEWS.has(VIEW.name))) ? nav[0][0] : VIEW.name;
   return `
   <div class="topbar">
-    <div class="brand">CT-E <span>SOLUTIONS</span> <span class="small" style="color:#cfe0f2;font-weight:400;">— ${esc(DB.info.schoolName)}</span></div>
+    <div class="brand">CT-E <span>SOLUTIONS</span> <span class="small" style="color:#cfe0f2;font-weight:400;display:inline-flex;align-items:center;gap:8px;">— ${esc(DB.info.schoolName)}${DB.info.logo?`<img src="${DB.info.logo}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;">`:''}</span>
+      <div class="small" style="color:#cfe0f2;font-weight:400;font-family:'Inter',system-ui,sans-serif;letter-spacing:0;">${esc(FOUNDER_CONTACT)}</div>
+    </div>
     <div class="flex"><span class="badge-role">${CUR.role}</span><span>${esc(CUR.name)}</span>
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
@@ -1945,7 +2030,13 @@ function backupReminderBanner(){
 function adminDashboard(){
   const i = DB.info;
   return `
-  <h2>Welcome, ${esc(CUR.name)}</h2>
+  <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
+    ${i.logo?`<img src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
+    <div>
+      <div class="school-name-big" style="font-size:20px;line-height:1.2;">${esc(i.schoolName||'')}</div>
+      <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)}</h2>
+    </div>
+  </div>
   ${backupReminderBanner()}
   ${featureTilesHTML('admin','dashboard')}
   <div class="grid3">
@@ -3117,7 +3208,15 @@ function passwordView(){
 /* ---------- Teacher ---------- */
 function teacherDashboard(){
   const mine = DB.assignments.filter(a=>a.teacherUsername===CUR.username);
-  return `<h2>Welcome, ${esc(CUR.name)}</h2>
+  const i = DB.info;
+  return `
+  <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
+    ${i.logo?`<img src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
+    <div>
+      <div class="school-name-big" style="font-size:20px;line-height:1.2;">${esc(i.schoolName||'')}</div>
+      <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)}</h2>
+    </div>
+  </div>
   <p class="small">Your staff initials on report cards: <b>${initials(CUR.name)}</b></p>
   ${featureTilesHTML('teacher','tdash')}
   <div class="card"><h3>Your subject assignments</h3>
@@ -3636,8 +3735,9 @@ async function inlineSaveReportScore(el){
   try{
     const existing = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && String(sc.paper)===String(paper)
       && sc.kind===kind && (sc.label||'')===label && sc.term===term && sc.year===year);
+    let savePromise = null;
     if(valRaw===''){
-      if(existing){ await deleteScores([existing]); }
+      if(existing){ savePromise = deleteScores([existing]); }
     } else {
       const num = Number(valRaw);
       if(!isFinite(num) || num<0 || num>max){
@@ -3646,13 +3746,19 @@ async function inlineSaveReportScore(el){
         return;
       }
       const row = {id: existing?existing.id:uid('sc'), studentId, subject, paper, kind, label, term, year, marks:num, max, teacher:CUR.username};
-      await upsertScores([row]);
+      savePromise = upsertScores([row]);
     }
-    // Re-render the whole report card so merged/split rows, averages, grade, position
-    // and totals all pick up the change immediately, exactly as if it had been entered
-    // through the mark sheet.
+    // upsertScores/deleteScores update DB.scores synchronously before their
+    // network write even starts, so the report card can be re-rendered right
+    // now — no waiting on the network, no matter how many other teachers are
+    // saving marks at the same moment. The write itself keeps going safely in
+    // the background (see mergeScoreShard); we only need to hear back if it
+    // ultimately fails, so nothing is silently lost.
     document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(studentId,false));
     const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
+    if(savePromise){
+      savePromise.catch(err=>{ console.error(err); alert('Could not save that mark — check your internet connection and try again.'); });
+    }
   }catch(err){
     console.error(err); alert('Could not save that mark — please try again.');
   }
@@ -3669,6 +3775,9 @@ document.addEventListener('click', async (e)=>{
   const _sep = _raw.indexOf(':');
   const action = _sep===-1 ? _raw : _raw.slice(0,_sep);
   const arg = _sep===-1 ? undefined : _raw.slice(_sep+1);
+  // Every click invalidates any previous screen's pending background refresh
+  // (see 'nav'/'viewReport' below) — whatever the user is looking at now wins.
+  const myNavToken = ++NAV_TOKEN;
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
@@ -3688,11 +3797,18 @@ document.addEventListener('click', async (e)=>{
     case 'logout': CUR=null; SCHOOL_ID=null; await setPersonal('session', null); render(); break;
     case 'nav': {
       VIEW = {name:arg, params:{}};
-      // These screens display scores/report cards — pull the latest saved
-      // marks from the database first so nothing another teacher just
-      // entered is missing or looks reverted.
-      if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet'].includes(arg)) await refreshScores();
+      // Render immediately with whatever's already in memory — DB.scores is
+      // kept fresh locally on every save via upsertScores/deleteScores, so
+      // it's rarely more than a few minutes stale. Waiting on a network round
+      // trip before showing the screen at all was the main cause of navigation
+      // feeling slow. Instead, catch up on anything another teacher/tab saved
+      // in the background and only re-render if the user is still on this
+      // same screen when it lands (myNavToken guards against a stale refresh
+      // overwriting a screen they've since navigated away from).
       render();
+      if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet'].includes(arg)){
+        refreshScores().then(()=>{ if(NAV_TOKEN===myNavToken) render(); }).catch(e=>console.error(e));
+      }
       break;
     }
     case 'editTeacherProfile': VIEW = {name:'teacherprofile', params:{username:arg}}; render(); break;
@@ -3700,9 +3816,13 @@ document.addEventListener('click', async (e)=>{
     case 'editClass': VIEW = {name:'classedit', params:{classId:arg}}; render(); break;
     case 'viewReport': {
       if(CUR.role==='parent' && arg!==CUR.studentId){ alert("You can only view your own child's report card."); break; }
-      await refreshScores();
       document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
       const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
+      refreshScores().then(()=>{
+        if(NAV_TOKEN!==myNavToken) return; // user has since navigated elsewhere
+        document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
+        const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
+      }).catch(e=>console.error(e));
       break;
     }
     case 'printReport': {
@@ -4270,11 +4390,15 @@ document.addEventListener('submit', async (e)=>{
       const errEl = document.getElementById('loginErr');
       if(!u || !p){ errEl.textContent='Please enter your username and password.'; return; }
       const activeSchools = REGISTRY.filter(r=>r.status==='active');
+      // Every school's accounts doc is independent, so fetch them all at once
+      // instead of reading one school at a time until a match turns up — the
+      // old sequential loop got slower with every school added to the
+      // platform, and login is the single most common thing a user does.
+      const accountsPerSchool = await Promise.all(activeSchools.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
       let foundAcc=null, foundSchoolId=null;
-      for(const reg of activeSchools){
-        const accounts = await getShared(`sch_${reg.id}_accounts`, []);
-        const acc = accounts.find(a=>a.username===u && a.password===p && a.role===role);
-        if(acc){ foundAcc=acc; foundSchoolId=reg.id; break; }
+      for(let i=0;i<activeSchools.length;i++){
+        const acc = accountsPerSchool[i].find(a=>a.username===u && a.password===p && a.role===role);
+        if(acc){ foundAcc=acc; foundSchoolId=activeSchools[i].id; break; }
       }
       let err='';
       if(!foundAcc) err='Invalid username, password, or role.';
@@ -4293,11 +4417,11 @@ document.addEventListener('submit', async (e)=>{
       const errEl = document.getElementById('loginErr');
       if(role!=='admin' && role!=='teacher'){ errEl.textContent='Recovery is only available for Owner/Admin and Teacher accounts.'; return; }
       const activeSchools = REGISTRY.filter(r=>r.status==='active');
+      const accountsPerSchool = await Promise.all(activeSchools.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
       let foundAcc=null, foundSchoolId=null, foundAccounts=null;
-      for(const reg of activeSchools){
-        const accounts = await getShared(`sch_${reg.id}_accounts`, []);
-        const acc = accounts.find(a=>a.username===u && a.role===role && a.recovery && a.recovery===rec);
-        if(acc){ foundAcc=acc; foundSchoolId=reg.id; foundAccounts=accounts; break; }
+      for(let i=0;i<activeSchools.length;i++){
+        const acc = accountsPerSchool[i].find(a=>a.username===u && a.role===role && a.recovery && a.recovery===rec);
+        if(acc){ foundAcc=acc; foundSchoolId=activeSchools[i].id; foundAccounts=accountsPerSchool[i]; break; }
       }
       if(!foundAcc){ errEl.textContent='Username, account type, or recovery code did not match — or no recovery code is on file for this account.'; return; }
       const newPassword = fd.get('newPassword'), newRecovery = fd.get('newRecovery');
@@ -4884,7 +5008,20 @@ document.addEventListener('submit', async (e)=>{
           submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'AOI', label, term:DB.info.currentTerm, year:DB.info.currentYear, marks:Number(val), max, teacher:CUR.username});
         }
       }
-      await upsertScores(submitRows); alert('Scores saved and sent.'); render();
+      // upsertScores updates DB.scores synchronously before its network write
+      // even starts, so the mark sheet can be re-rendered — showing this
+      // teacher's own marks as saved — immediately, with no wait, no matter
+      // how many other teachers are submitting marks at the same moment.
+      // The write is then persisted safely in the background via an atomic
+      // transaction (see mergeScoreShard) that's guaranteed not to lose this
+      // teacher's marks even if others save to the same term at the exact
+      // same instant; we only need to speak up if it ultimately fails.
+      const saveScoresPromise = upsertScores(submitRows);
+      render();
+      saveScoresPromise.catch(err=>{
+        console.error(err);
+        alert('Some scores could not be saved — check your internet connection and try submitting again.');
+      });
     }
   }catch(err){ console.error(err); alert('Something went wrong. Please try again.'); }
 });
@@ -5016,9 +5153,48 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
 
+  // Mobile browsers — iOS Safari in particular — cap how large a single
+  // <canvas> is allowed to be. Past that cap the browser doesn't throw an
+  // error, it silently blanks out or truncates part of the image instead —
+  // which is exactly what shows up as missing columns/rows in a downloaded
+  // Master Mark Sheet on a phone, since a class with many subjects can lay
+  // out to several thousand pixels wide. Rather than always capturing at a
+  // fixed scale and hoping it fits, measure the element first and pick the
+  // largest scale (up to the normal 2x) that keeps the resulting canvas
+  // safely under every major mobile browser's limit. Ordinary sheets are
+  // unaffected — this only backs off scale for genuinely large ones, and
+  // even then the multi-page tiling below still lays every column/row out
+  // legibly across as many pages as needed; nothing is dropped either way.
+  //
+  // FIX: the total-AREA budget above (MAX_CANVAS_PIXELS) isn't the only limit
+  // that matters — browsers also cap the SINGLE LONGEST SIDE a canvas can be,
+  // independent of area, and the old floor never let captureScale drop below
+  // 1x. So a sheet whose natural, un-scaled width alone (many subjects x
+  // multiple papers each) already exceeds that per-side cap was captured
+  // truncated on the right no matter what, even though the area check passed.
+  // That's the actual cause of subject columns silently vanishing on phones.
+  // Now we also enforce a conservative per-side cap and allow captureScale to
+  // go below 1x when needed to satisfy it — the sheet's final printed size on
+  // the page is governed separately below (by `scale`, with its own floor),
+  // so a lower capture resolution here only costs a little sharpness on
+  // pathologically wide sheets, never a missing column.
+  const MAX_CANVAS_PIXELS = 16 * 1024 * 1024; // ~16 megapixels — total-area budget
+  const MAX_CANVAS_SIDE = 4000; // conservative per-side cap, safe across mobile browsers
+  const naturalW = Math.max(el.scrollWidth, el.offsetWidth) || 1;
+  const naturalH = Math.max(el.scrollHeight, el.offsetHeight) || 1;
+  let captureScale = 2;
+  while(captureScale > 0.1 && (
+    naturalW*captureScale*naturalH*captureScale > MAX_CANVAS_PIXELS ||
+    naturalW*captureScale > MAX_CANVAS_SIDE ||
+    naturalH*captureScale > MAX_CANVAS_SIDE
+  )){
+    captureScale -= 0.1;
+  }
+  captureScale = Math.max(0.1, captureScale);
+
   let canvas;
   try{
-    canvas = await html2canvas(el, {scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY});
+    canvas = await html2canvas(el, {scale:captureScale, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY});
   } finally {
     restore.forEach(r=>{ r.node.style.overflow=r.overflow; r.node.style.overflowX=r.overflowX; r.node.style.overflowY=r.overflowY; r.node.style.maxWidth=r.maxWidth; });
   }
@@ -5040,8 +5216,9 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
   let first = true;
   for(let r=0; r<rows; r++){
     for(let c=0; c<cols; c++){
-      const sx = c*pxPerPageW, sy = r*pxPerPageH;
-      const sw = Math.min(pxPerPageW, canvas.width-sx), sh = Math.min(pxPerPageH, canvas.height-sy);
+      const sx = Math.floor(c*pxPerPageW), sy = Math.floor(r*pxPerPageH);
+      const sw = Math.min(Math.ceil(pxPerPageW), canvas.width-sx);
+      const sh = Math.min(Math.ceil(pxPerPageH), canvas.height-sy);
       if(sw<=0 || sh<=0) continue;
       const tile = document.createElement('canvas');
       tile.width = sw; tile.height = sh;
@@ -5098,23 +5275,30 @@ async function pdfForStudents(students, filename, opts={}){
   if(!students.length){ alert('No students to export.'); return; }
   try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF('p','pt','a4');
+  // compress:true turns on jsPDF's internal stream (Flate) compression for the
+  // PDF's own text/vector overhead — free file-size savings, zero effect on the
+  // embedded card image, safe to leave on for every export.
+  const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const holder = document.createElement('div');
   holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='780px'; holder.style.background='#fff';
   document.body.appendChild(holder);
-  // A single student's card is still rendered at full quality (scale 3, lossless
-  // PNG) since that's one image and the cost is trivial. A bulk class export is
-  // 20, 40, 80+ of those, rendered back-to-back on the main thread — at scale 3 +
-  // PNG that was piling up tens of MB of uncollected canvas memory per student
-  // with no pause to let the browser breathe, which is exactly what made large
-  // classes take 5+ minutes or lock up on a phone. For bulk we drop to scale 2
-  // and JPEG (still perfectly crisp for a printed report card, just not
-  // pixel-lossless) and explicitly release each canvas/holder before moving on.
+  // Render RESOLUTION (the scale factor) is what determines print sharpness.
+  // Bulk used to render at a lower scale than single purely because the old
+  // code rendered lossless PNG — PNG's uncompressed pixel buffers were what
+  // piled up tens of MB of memory across 20-100+ students. Now that BOTH paths
+  // encode to JPEG (much lighter to hold and compress), bulk renders at the
+  // same scale 3 as a single card — identical resolution and print sharpness
+  // either way — and file size is controlled entirely by JPEG quality instead
+  // of by dropping resolution. Quality 0.8 for bulk still looks crisp for text
+  // and table borders (a report card has no photographic gradients to reveal
+  // compression) while keeping each page down in the tens-to-low-hundreds of
+  // KB rather than the multi-MB a lossless PNG at this scale would produce.
   const bulk = students.length > 1;
-  const scale = bulk ? 2 : 3;
-  const format = bulk ? 'JPEG' : 'PNG';
+  const scale = 3;
+  const format = 'JPEG';
+  const jpegQuality = bulk ? 0.8 : 0.95;
   for(let i=0;i<students.length;i++){
     holder.innerHTML = `<div style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
@@ -5127,7 +5311,7 @@ async function pdfForStudents(students, filename, opts={}){
     // onto the page mathematically below — that can never crop anything, no
     // matter how long or short the card is.
     let canvas = await html2canvas(holder, {scale, backgroundColor:'#ffffff', letterRendering:true});
-    let img = canvas.toDataURL(bulk ? 'image/jpeg' : 'image/png', bulk ? 0.92 : undefined);
+    let img = canvas.toDataURL('image/jpeg', jpegQuality);
     // Fit the whole, uncropped card onto one A4 page: try full page width first;
     // if that would run taller than the page, shrink further (letterboxed,
     // centered) so the bottom of the card — the signatures, term dates, motto —
@@ -5162,7 +5346,11 @@ async function pdfForStudents(students, filename, opts={}){
 // split the export into several smaller PDFs ("part 1 of 3", etc.), each
 // generated and downloaded in full before the next one starts — so nothing
 // ever has to hold more than one batch's worth of pages in memory at a time.
-const BULK_BATCH_SIZE = 40;
+// Bulk pages now render at scale 3 (matching single-card resolution) instead
+// of scale 2, which is ~2.25x the raster memory per page. The batch size is
+// trimmed accordingly so peak memory per batch stays roughly where it was
+// before, even though each page is now sharper.
+const BULK_BATCH_SIZE = 25;
 async function bulkPdf(classId, onProgress){
   await refreshScores(); // make sure every teacher's latest marks are in this export
   const students = DB.students.filter(s=>!classId || s.classId===classId);
