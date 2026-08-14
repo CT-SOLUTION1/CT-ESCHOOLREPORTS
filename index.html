@@ -215,10 +215,36 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
   .card{padding:16px;}
   .auth-box{padding:26px;}
 }
+/* Boot splash — shown only until the very first render() call replaces #app's
+   contents, so it never needs to be manually hidden or torn down. */
+.boot-splash{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  background:var(--navy);
+}
+.boot-splash-icon{
+  width:84px;height:84px;border-radius:20px;box-shadow:0 6px 24px rgba(0,0,0,.35);
+  animation:boot-spin 1.1s cubic-bezier(.5,0,.5,1) infinite;
+}
+@keyframes boot-spin{
+  0%{transform:rotate(0deg);}
+  100%{transform:rotate(360deg);}
+}
+.boot-splash-brand{font-family:Georgia,'Playfair Display',serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:.02em;}
+.boot-splash-brand span{color:var(--gold);}
+.boot-splash-sub{font-size:13px;color:#cfe0f2;letter-spacing:.04em;}
 </style>
 </head>
 <body>
-<div id="app">Loading CT-E SOLUTIONS…</div>
+<!-- Boot splash: shown the instant the page loads, before any JS/data has run.
+     render() overwrites #app's innerHTML on first successful boot, which
+     naturally removes this — no extra code needed to dismiss it. -->
+<div id="app">
+  <div class="boot-splash">
+    <img src="icon-192.png" alt="" class="boot-splash-icon">
+    <div class="boot-splash-brand">CT-E <span>SOLUTIONS</span></div>
+    <div class="boot-splash-sub">Loading…</div>
+  </div>
+</div>
 
 <script>
 /* ============================================================
@@ -1359,15 +1385,32 @@ function computeSubjectRows(st, cls, term, year){
   return { rows, totalPoints, avgPct: countAvg? sumAvg/countAvg : 0 };
 }
 function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, term, year); return cls.level==='A' ? d.totalPoints : d.avgPct; }
-function classPosition(student, cls, term, year){
+// classPosition() is called once PER STUDENT from every whole-class view (Master Mark
+// Sheet, Class Analysis, Report Cards) — so without caching, ranking a class of N
+// students redid the full O(N) ranking pass N times (O(N^2) overall), redundantly
+// recomputing every peer's subject/score totals on every single call. For a
+// realistically sized class that's enough synchronous work on the main thread to make
+// a single tap look "unresponsive" for several seconds before anything repaints. This
+// cache computes the ranking once per (class, term, year, current scores) and reuses
+// it for every student, cutting a full render down to O(N) total.
+let _rankCache = {scoresRef:null, key:'', map:null};
+function computeClassRankings(cls, term, year){
+  const key = cls.id+'|'+term+'|'+year;
+  if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
   const peers = DB.students.filter(s=>s.classId===cls.id);
   const scored = peers.map(s=>({id:s.id, m:metricFor(s, cls, term, year)})).sort((a,b)=>b.m-a.m);
+  const map = new Map();
   let position = scored.length;
   for(let i=0;i<scored.length;i++){
     if(i===0 || scored[i].m < scored[i-1].m) position = i+1;
-    if(scored[i].id===student.id) return {position, size:peers.length};
+    map.set(scored[i].id, {position, size:peers.length});
   }
-  return {position, size:peers.length};
+  _rankCache = {scoresRef:DB.scores, key, map};
+  return map;
+}
+function classPosition(student, cls, term, year){
+  const map = computeClassRankings(cls, term, year);
+  return map.get(student.id) || {position: DB.students.filter(s=>s.classId===cls.id).length || 1, size: DB.students.filter(s=>s.classId===cls.id).length};
 }
 function overallRemark(pct, who){
   if(who==='class'){
@@ -3648,7 +3691,7 @@ document.addEventListener('click', async (e)=>{
       // These screens display scores/report cards — pull the latest saved
       // marks from the database first so nothing another teacher just
       // entered is missing or looks reverted.
-      if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis'].includes(arg)) await refreshScores();
+      if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet'].includes(arg)) await refreshScores();
       render();
       break;
     }
