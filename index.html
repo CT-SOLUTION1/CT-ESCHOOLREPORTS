@@ -32,9 +32,6 @@
   Until you do this, the app runs in DEMO MODE (data stays only on this
   device) so you can still click through everything.
 ======================================================================= -->
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <!-- firebase-storage-compat.js intentionally NOT loaded: photos are stored inline in
      Firestore as compressed base64 (see uploadPhotoToStorage), so Storage is unused —
      loading it was pure dead weight on every page load.
@@ -276,6 +273,16 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
     <div class="boot-splash-sub">Loading…</div>
   </div>
 </div>
+
+<!-- Moved here from <head> on purpose: script tags in <head> block the browser
+     from painting ANYTHING — including the boot splash above — until all three
+     download and run. Putting them here means the splash appears instantly,
+     and these load while the user is already looking at "Loading…" instead of
+     a blank white screen. Order still matters (app, then firestore, then
+     auth) so they stay as plain blocking tags, just relocated. -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 
 <script>
 /* ============================================================
@@ -904,7 +911,8 @@ async function loadAll(){
   REGISTRY = registry; SYSTEM_OWNER = systemOwner;
   const sess = await getPersonal('session', null);
   CUR = null; SCHOOL_ID = null;
-  if(sess && sess.scope==='founder' && SYSTEM_OWNER){
+  if(sess && sess.scope==='founder' && SYSTEM_OWNER
+     && sess.token && SYSTEM_OWNER.sessionToken && sess.token===SYSTEM_OWNER.sessionToken){
     CUR = {role:'founder', name:'Founder', username:SYSTEM_OWNER.username};
   } else if(sess && sess.scope==='school'){
     const reg = REGISTRY.find(r=>r.id===sess.schoolId);
@@ -925,7 +933,7 @@ async function loadSchoolData(id){
   // Firing them together and waiting on the whole batch cuts load time down
   // to roughly the time of the single slowest read instead of the sum of all
   // of them.
-  const [info, accounts, classes, students, assignments, scores, bands, obands, pbands, autoSnapshots] = await Promise.all([
+  const [info, accounts, classes, students, assignments, scores, bands, obands, pbands, autoSnapshots, legacyScores] = await Promise.all([
     getShared(`sch_${id}_info`, null),
     getShared(`sch_${id}_accounts`, []),
     getShared(`sch_${id}_classes`, []),
@@ -936,10 +944,20 @@ async function loadSchoolData(id){
     getShared(`sch_${id}_obands`, DEFAULT_O_BANDS),
     getShared(`sch_${id}_pbands`, DEFAULT_P_BANDS),
     getShared(`sch_${id}_autosnaps_index`, []),
+    // One-time migration for scores created before sharding (see loadAllScores):
+    // this used to run as its own extra network round trip AFTER the score
+    // shards finished loading. Now it's fired at the same time as everything
+    // else, so it costs nothing extra once a school has been migrated (which
+    // is every school that has ever saved a score since sharding shipped).
+    getShared(`sch_${id}_scores`, null),
   ]);
   DB.info = info; DB.accounts = accounts; DB.classes = classes; DB.students = students;
   DB.assignments = assignments; DB.scores = scores; DB.bands = bands; DB.obands = obands;
   DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
+  if(legacyScores && legacyScores.length){
+    const seen = new Set(DB.scores.map(r=>r.id));
+    legacyScores.forEach(r=>{ if(!seen.has(r.id)) DB.scores.push(r); });
+  }
 }
 /* ---- Global credential uniqueness (no two accounts anywhere may share a
    username, and no two accounts anywhere may share a password) ---- */
@@ -1033,6 +1051,7 @@ async function founderRestoreSchoolBackup(schoolId, rawData){
   const data = migrateBackupData(rawData);
   await setShared(`sch_${schoolId}_info`, data.info);
   await setShared(`sch_${schoolId}_accounts`, data.accounts);
+  await syncUsernameIndexForSchool(schoolId, data.accounts); // a restore fully replaces accounts too, so the index must follow
   await setShared(`sch_${schoolId}_classes`, data.classes);
   await setShared(`sch_${schoolId}_students`, data.students);
   await setShared(`sch_${schoolId}_assignments`, data.assignments);
@@ -1054,12 +1073,60 @@ async function purgeSchool(schoolId){
   const snapIndex = await getShared(`sch_${schoolId}_autosnaps_index`, []);
   await Promise.all(snapIndex.map(s=>deleteShared(`sch_${schoolId}_autosnap_${s.ts}`)));
   await deleteShared(`sch_${schoolId}_autosnaps_index`);
+  await removeSchoolFromUsernameIndex(schoolId);
   REGISTRY = REGISTRY.filter(x=>x.id!==schoolId);
   await saveRegistry();
 }
+/* ---- Global username -> school index ----
+   Login used to fetch EVERY active school's accounts doc and scan them all
+   for a match — one read per school, every single sign-in, getting slower
+   as more schools joined the platform. This index is one small shared doc
+   mapping each username (lowercased) to the list of {schoolId, role} pairs
+   that currently use it, so login/recovery can jump straight to the one or
+   two schools that could possibly match instead of reading all of them.
+   It only narrows down *which* school to check next — the actual
+   username+password match still happens against that school's own accounts
+   doc, so no password ever needs to live in this index.
+   Kept in sync every time a school's accounts array is written: call
+   syncUsernameIndexForSchool(schoolId, accounts) right after that write. */
+const USERNAME_INDEX_KEY = '_username_index';
+async function loadUsernameIndex(){ return await getShared(USERNAME_INDEX_KEY, {}); }
+async function syncUsernameIndexForSchool(schoolId, accounts){
+  const idx = await loadUsernameIndex();
+  // Drop every existing entry that pointed at this school first, then
+  // re-add one per current account. Doing a full drop-and-rebuild (rather
+  // than trying to diff old vs new) makes this correct no matter whether an
+  // account was added, renamed, had its role changed, or removed.
+  for(const key of Object.keys(idx)){
+    idx[key] = (idx[key]||[]).filter(e=>e.schoolId!==schoolId);
+    if(idx[key].length===0) delete idx[key];
+  }
+  (accounts||[]).forEach(a=>{
+    if(!a.username || !a.role) return;
+    const key = a.username.trim().toLowerCase();
+    if(!key) return;
+    if(!idx[key]) idx[key]=[];
+    idx[key].push({schoolId, role:a.role});
+  });
+  await setShared(USERNAME_INDEX_KEY, idx);
+}
+// Founder-only: strip every entry for a school out of the index when the
+// whole school is purged, so deleted schools can never surface as a login
+// candidate again.
+async function removeSchoolFromUsernameIndex(schoolId){
+  const idx = await loadUsernameIndex();
+  let changed=false;
+  for(const key of Object.keys(idx)){
+    const before = idx[key].length;
+    idx[key] = idx[key].filter(e=>e.schoolId!==schoolId);
+    if(idx[key].length!==before) changed=true;
+    if(idx[key].length===0) delete idx[key];
+  }
+  if(changed) await setShared(USERNAME_INDEX_KEY, idx);
+}
 async function saveSystemOwner(){ await setShared('system_owner', SYSTEM_OWNER); }
 async function saveInfo(){ await setShared(`sch_${SCHOOL_ID}_info`, DB.info); }
-async function saveAccounts(){ await setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts); }
+async function saveAccounts(){ await setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts); await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }
 async function saveClasses(){ await setShared(`sch_${SCHOOL_ID}_classes`, DB.classes); }
 async function saveStudents(){ await setShared(`sch_${SCHOOL_ID}_students`, DB.students); }
 async function saveAssignments(){ await setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments); }
@@ -1128,6 +1195,49 @@ async function restoreAutoSnapshot(ts){
    5. HELPERS
    ============================================================ */
 function uid(p){ return p+'_'+Math.random().toString(36).slice(2,9); }
+
+// ---- Founder-account hardening helpers ----
+// A real random, unguessable token (not Math.random-based uid()) used to prove
+// a *live* login happened. Restoring a session now requires this token to
+// match what's on the SYSTEM_OWNER record in the database, so pasting
+// {scope:'founder'} into localStorage directly no longer signs anyone in —
+// you'd also need the exact current token, which only exists after a real
+// password check succeeded and only lives in the DB record + this device.
+function genSessionToken(){
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b=>b.toString(16).padStart(2,'0')).join('');
+}
+// Simple client-side brute-force throttle for the founder login form, keyed
+// by username so a stolen/guessed username can't just be hammered with
+// passwords. Not a substitute for server-side rate limiting (a determined
+// attacker can clear localStorage or use another device), but it meaningfully
+// slows down casual/scripted guessing in this client-only app, and should be
+// paired with Firestore rules and, ideally, a real backend rate limiter.
+const FOUNDER_LOCKOUT_KEY = 'cte_founder_login_attempts';
+function getFounderLoginState(){
+  try{ return JSON.parse(localStorage.getItem(FOUNDER_LOCKOUT_KEY)) || {fails:0, lockUntil:0}; }
+  catch(e){ return {fails:0, lockUntil:0}; }
+}
+function setFounderLoginState(state){
+  try{ localStorage.setItem(FOUNDER_LOCKOUT_KEY, JSON.stringify(state)); }catch(e){}
+}
+function founderLockoutRemainingMs(){
+  const st = getFounderLoginState();
+  return Math.max(0, st.lockUntil - Date.now());
+}
+function recordFounderLoginFailure(){
+  const st = getFounderLoginState();
+  st.fails = (st.fails||0) + 1;
+  // Exponential backoff: 5s, 10s, 20s, 40s ... capped at 5 minutes, starting
+  // after the 3rd consecutive failure so normal typos aren't punished.
+  if(st.fails >= 3){
+    const step = st.fails - 2;
+    st.lockUntil = Date.now() + Math.min(5*60*1000, 5000*Math.pow(2, step-1));
+  }
+  setFounderLoginState(st);
+}
+function clearFounderLoginFailures(){ setFounderLoginState({fails:0, lockUntil:0}); }
 function initials(name){ if(!name) return '--'; const parts=name.trim().split(/\s+/); return (parts[0][0]+(parts[1]?parts[1][0]:'')).toUpperCase(); }
 function esc(s){ return (s===null||s===undefined?'':s).toString().replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -1215,14 +1325,31 @@ function studentSubjects(st, cls){
   }
   // A-Level: principals are whichever principal-subject teachers have ticked this
   // student into their own class roster. General Paper is compulsory for every A-Level
-  // student, and the subsidiary (Maths or Computer) is derived automatically from the
-  // science-group/Maths rule — neither needs a separate tick to exist on the report card,
-  // though their own teachers still keep their own roster for marking purposes. Any
-  // admin-added extra compulsory subjects (aCompulsoryExtra) are auto-included the same
-  // way, on top of whatever the student's ticked principals already are.
+  // student. The subsidiary (Maths or Computer) is normally derived automatically from
+  // the science-group/Maths rule below — but if a Subsidiary Mathematics or Subsidiary
+  // Computer teacher has actually ticked this student into their own roster (i.e. they
+  // teach and mark that specific student), that real tick wins over the formula. This
+  // matters because the formula can only ever guess before anyone has taught the
+  // student; once a subsidiary teacher has entered real scores for them, those scores
+  // must be the ones that show up — a student can only ever do ONE subsidiary, so
+  // whichever one they were actually ticked/marked under is authoritative. Admin-added
+  // extra compulsory subjects (aCompulsoryExtra) are auto-included the same way, on top
+  // of whatever the student's ticked principals already are.
   const principals = principalsFor(st, cls);
   if(!principals.length) return [];
-  return [...new Set([...principals, 'GENERAL PAPER', ...aCompulsoryExtra(), autoSubsidiary(principals)])];
+  const roster = rosterSubjectsFor(st, cls);
+  const tickedSubsidiary = SUBSIDIARIES.find(s=>roster.includes(s));
+  const subsidiary = tickedSubsidiary || autoSubsidiary(principals);
+  return [...new Set([...principals, 'GENERAL PAPER', ...aCompulsoryExtra(), subsidiary])];
+}
+// True only if a student has been ticked into BOTH subsidiary rosters by mistake — an
+// admin data-entry conflict that needs manual resolution, since a student can only take
+// one subsidiary. Surfaced in the admin UI so it doesn't silently pick one and hide the
+// problem.
+function hasSubsidiaryConflict(st, cls){
+  if(!cls || cls.level!=='A') return false;
+  const roster = rosterSubjectsFor(st, cls);
+  return SUBSIDIARIES.filter(s=>roster.includes(s)).length > 1;
 }
 function comboLabel(st, cls){
   if(!cls) return '—';
@@ -1700,9 +1827,9 @@ function renderFounderSetup(){
     <form data-form="founderSetup" novalidate style="margin-top:14px;">
       <label>Your name</label><input name="name" required>
       <label>Founder username</label><input name="username" required>
-      <label>Founder password</label><input name="password" type="password" required minlength="4">
-      <label>Private founder code (separate from your password)</label><input name="code" required minlength="4">
-      <label>Recovery code</label><input name="recovery" required minlength="4">
+      <label>Founder password</label><input name="password" type="password" required minlength="8" title="At least 8 characters">
+      <label>Private founder code (separate from your password)</label><input name="code" required minlength="6">
+      <label>Recovery code</label><input name="recovery" required minlength="6">
       <p class="small">Save this recovery code somewhere safe (a password manager, a printed note). If you ever forget your password or founder code, this is the only way back in — without it, no one can reset the founder account.</p>
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit — claim founder account</button>
     </form>
@@ -1807,9 +1934,9 @@ function renderFounderView(view){
     <div class="card" style="max-width:420px;margin-top:14px;"><form data-form="founderPassword">
       <label>Current password</label><input name="oldPassword" type="password" required>
       <label>Current founder code</label><input name="oldCode" required>
-      <label>New password (leave blank to keep)</label><input name="newPassword" type="password">
-      <label>New founder code (leave blank to keep)</label><input name="newCode">
-      <label>${SYSTEM_OWNER && SYSTEM_OWNER.recovery ? 'New recovery code (leave blank to keep)' : 'Set a recovery code'}</label><input name="newRecovery">
+      <label>New password (leave blank to keep)</label><input name="newPassword" type="password" minlength="8" title="At least 8 characters">
+      <label>New founder code (leave blank to keep)</label><input name="newCode" minlength="6">
+      <label>${SYSTEM_OWNER && SYSTEM_OWNER.recovery ? 'New recovery code (leave blank to keep)' : 'Set a recovery code'}</label><input name="newRecovery" minlength="6">
       <button class="btn" style="margin-top:14px;">Submit — update</button>
     </form></div>`;
   }
@@ -1865,15 +1992,17 @@ function renderPlatformAuth(){
   </div></div>`;
 }
 function renderFounderLoginForm(){
+  const lockedMs = founderLockoutRemainingMs();
+  const locked = lockedMs > 0;
   return `
   <div class="auth-wrap"><div class="auth-box">
     <div class="school-name-big" style="font-size:20px;text-align:center;">Founder Sign-In</div>
     <form data-form="founderLogin" novalidate style="margin-top:14px;">
-      <label>Username</label><input name="username" required>
-      <label>Password</label><input name="password" type="password" required>
-      <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Sign in</button>
+      <label>Username</label><input name="username" required ${locked?'disabled':''}>
+      <label>Password</label><input name="password" type="password" required ${locked?'disabled':''}>
+      <button class="btn" style="width:100%;margin-top:16px;padding:12px;" ${locked?'disabled':''}>${locked?`Locked — retry in ${Math.ceil(lockedMs/1000)}s`:'Sign in'}</button>
     </form>
-    <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></p>
+    <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;">${locked?'Too many failed attempts. Please wait before trying again.':''}</p>
     <p class="small" style="text-align:center;margin-top:12px;"><a href="#" data-action="gotoFounderRecovery">Forgot your password or founder code?</a></p>
     <p class="small" style="text-align:center;margin-top:6px;"><a href="#" data-action="gotoLogin">Back</a></p>
   </div></div>`;
@@ -1886,9 +2015,9 @@ function renderFounderRecoveryForm(){
     <form data-form="founderRecovery" novalidate style="margin-top:14px;">
       <label>Founder username</label><input name="username" required>
       <label>Recovery code</label><input name="recovery" required>
-      <label>New password</label><input name="newPassword" type="password" required minlength="4">
-      <label>New founder code</label><input name="newCode" required minlength="4">
-      <label>New recovery code (leave blank to keep your current one)</label><input name="newRecovery">
+      <label>New password</label><input name="newPassword" type="password" required minlength="8" title="At least 8 characters">
+      <label>New founder code</label><input name="newCode" required minlength="6">
+      <label>New recovery code (leave blank to keep your current one)</label><input name="newRecovery" minlength="6">
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit — reset and sign in</button>
     </form>
     <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></p>
@@ -3420,7 +3549,10 @@ function scoresEntryView(mine){
               return row ? `<td class="small">${esc(row.marks)}/${esc(row.max)}</td>` : `<td class="small" style="color:var(--muted);">—</td>`;
             }).join('');
             const isMissing = !existingRow && missSet.has(s.id);
-            return `<tr><td style="text-align:left;">${esc(s.name)}</td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">Remove from list</button></td></tr>`;
+            const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
+            const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
+            const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one. Remove them from whichever one is wrong, or their report card subsidiary result is ambiguous.">⚠ dual subsidiary</span>` : '';
+            return `<tr><td style="text-align:left;">${esc(s.name)}${conflictBadge}</td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">Remove from list</button></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length+3}">No students on your list yet. Use "Edit my student list" above.</td></tr>`}
           </table>
           <p class="small">"Delete score" removes just this test's saved mark for a student (it disappears from the mark sheet and their report card immediately) without taking them off your marking list. "Remove from list" takes them off your list entirely but keeps any scores already saved.</p>
@@ -3886,7 +4018,14 @@ document.addEventListener('click', async (e)=>{
     case 'gotoLogin': AUTH_VIEW='login'; render(); break;
     case 'retryConnection': await loadAll(); render(); break;
     case 'setRole': loginRole = arg; render(); break;
-    case 'logout': CUR=null; SCHOOL_ID=null; await setPersonal('session', null); render(); break;
+    case 'logout': {
+      const wasFounder = CUR && CUR.role==='founder';
+      CUR=null; SCHOOL_ID=null; await setPersonal('session', null);
+      // Burn the token so any other device/browser holding the old founder
+      // session (or someone who copied it out of localStorage) is kicked out too.
+      if(wasFounder && SYSTEM_OWNER){ SYSTEM_OWNER.sessionToken = genSessionToken(); await saveSystemOwner(); }
+      render(); break;
+    }
     case 'nav': {
       VIEW = {name:arg, params:{}};
       // Render immediately with whatever's already in memory — DB.scores is
@@ -4082,6 +4221,21 @@ document.addEventListener('click', async (e)=>{
       await saveAssignments(); render();
       break;
     }
+    case 'clearMissing': {
+      // Un-flag a single student's "X" (missing mark) placeholder for one specific
+      // paper/kind/test column, without needing to touch anyone else's row or
+      // resubmit the whole mark sheet. Typing a real score and hitting Submit already
+      // clears the X automatically (a saved score row means isMissing can never be
+      // true again) — this button covers the other case: the teacher now knows the
+      // score isn't actually missing (it was a mis-tick, or the mark is being
+      // recorded another way) and just wants the red flag gone.
+      const [assignId, paper, kind, labelEnc, studentId] = (arg||'').split(':');
+      const label = labelEnc ? decodeURIComponent(labelEnc) : '';
+      const key = missingMarkersKey(assignId, paper, kind, label);
+      if(MISSING_MARKERS[key]) MISSING_MARKERS[key].delete(studentId);
+      render();
+      break;
+    }
     case 'dlMarksheet': {
       const [assignId, paper, kind, labelEnc, maxStr] = (arg||'').split(':');
       downloadMarksheetCSV(assignId, paper, kind, labelEnc?decodeURIComponent(labelEnc):'', Number(maxStr)||100);
@@ -4179,6 +4333,7 @@ document.addEventListener('click', async (e)=>{
       if(conflict.exactMatch){ alert('That username and password combination is already used by another account elsewhere. Pick a different username or reset the password too.'); break; }
       acc.username = trimmedU;
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_accounts`, FOUNDER_LOGINS.accounts);
+      await syncUsernameIndexForSchool(FOUNDER_LOGINS.schoolId, FOUNDER_LOGINS.accounts); // username changed, so the index must follow
       alert('Username updated.'); render(); break; }
     case 'foundResetLoginPw': { const code=prompt('Enter your founder code to reset this password:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
@@ -4389,18 +4544,32 @@ document.addEventListener('submit', async (e)=>{
       if(missing.length){ showFatal('Please fill in: '+missing.join(', ')); return; }
       { const conflict = await checkCredentialUniqueness(fd.get('username'), fd.get('password'));
         if(conflict.exactMatch){ showFatal('That exact username and password combination is already used by another account. Please change the username or the password.'); return; } }
-      SYSTEM_OWNER = {name:fd.get('name'), username:fd.get('username'), password:fd.get('password'), code:fd.get('code'), recovery:fd.get('recovery')};
+      SYSTEM_OWNER = {name:fd.get('name'), username:fd.get('username'), password:fd.get('password'), code:fd.get('code'), recovery:fd.get('recovery'), sessionToken:genSessionToken()};
       await saveSystemOwner();
-      await setPersonal('session', {scope:'founder'});
+      await setPersonal('session', {scope:'founder', token:SYSTEM_OWNER.sessionToken});
       CUR = {role:'founder', name:SYSTEM_OWNER.name, username:SYSTEM_OWNER.username};
       render();
     }
     else if(type==='founderLogin'){
+      const lockedMs = founderLockoutRemainingMs();
+      if(lockedMs > 0){
+        document.getElementById('loginErr').textContent =
+          `Too many failed attempts. Try again in ${Math.ceil(lockedMs/1000)}s.`;
+        return;
+      }
       const u=fd.get('username'), p=fd.get('password');
       if(SYSTEM_OWNER && SYSTEM_OWNER.username===u && SYSTEM_OWNER.password===p){
-        await setPersonal('session', {scope:'founder'});
+        clearFounderLoginFailures();
+        // Fresh token per login: also invalidates any older founder session
+        // sitting in localStorage on another device/browser.
+        SYSTEM_OWNER.sessionToken = genSessionToken();
+        await saveSystemOwner();
+        await setPersonal('session', {scope:'founder', token:SYSTEM_OWNER.sessionToken});
         CUR = {role:'founder', name:SYSTEM_OWNER.name, username:u}; render();
-      } else { document.getElementById('loginErr').textContent = 'Invalid founder username or password.'; }
+      } else {
+        recordFounderLoginFailure();
+        document.getElementById('loginErr').textContent = 'Invalid founder username or password.';
+      }
     }
     else if(type==='founderRecovery'){
       const u = fd.get('username'), rec = fd.get('recovery');
@@ -4413,8 +4582,10 @@ document.addEventListener('submit', async (e)=>{
       SYSTEM_OWNER.password = newPassword;
       SYSTEM_OWNER.code = newCode;
       if(newRecovery && newRecovery.trim()) SYSTEM_OWNER.recovery = newRecovery.trim();
+      SYSTEM_OWNER.sessionToken = genSessionToken();
       await saveSystemOwner();
-      await setPersonal('session', {scope:'founder'});
+      clearFounderLoginFailures();
+      await setPersonal('session', {scope:'founder', token:SYSTEM_OWNER.sessionToken});
       CUR = {role:'founder', name:SYSTEM_OWNER.name, username:SYSTEM_OWNER.username};
       AUTH_VIEW = 'login';
       alert('Founder password and code have been reset. You are now signed in.');
@@ -4469,28 +4640,49 @@ document.addEventListener('submit', async (e)=>{
           status:'pending', studentId: st? st.id: null, pendingAdmNo: st? null: fd.get('childAdmNo')});
       }
       await setShared(`sch_${schoolId}_accounts`, accounts);
+      await syncUsernameIndexForSchool(schoolId, accounts); // new account created, index must know about it
       alert('Request submitted. The school owner must approve your account before you can sign in.');
       AUTH_VIEW='login'; render();
     }
     else if(type==='login'){
       // No school-picker: the account's username + password + role is enough
-      // to identify it. We look it up by checking each active school's
-      // account list (still in Firestore — same shared data as before) until
-      // we find a match. This lets the same credentials be used to sign in
-      // from any device, without first choosing a school.
+      // to identify it. Rather than reading every active school's accounts
+      // doc and scanning them all (one read per school, every sign-in), we
+      // first check the single username->school index doc to see which
+      // school(s) this username+role combo could even belong to, and only
+      // read those schools' accounts docs to verify the password. For the
+      // overwhelmingly common case of one school per username+role, that's
+      // one index read + one accounts read, instead of N accounts reads.
       const role=fd.get('role'), u=(fd.get('username')||'').trim(), p=fd.get('password');
       const errEl = document.getElementById('loginErr');
       if(!u || !p){ errEl.textContent='Please enter your username and password.'; return; }
       const activeSchools = REGISTRY.filter(r=>r.status==='active');
-      // Every school's accounts doc is independent, so fetch them all at once
-      // instead of reading one school at a time until a match turns up — the
-      // old sequential loop got slower with every school added to the
-      // platform, and login is the single most common thing a user does.
-      const accountsPerSchool = await Promise.all(activeSchools.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
+      const activeSchoolIds = new Set(activeSchools.map(r=>r.id));
+      const idx = await loadUsernameIndex();
+      const uniqueCandidates = [...new Set((idx[u.toLowerCase()]||[])
+        .filter(e=>e.role===role && activeSchoolIds.has(e.schoolId))
+        .map(e=>e.schoolId))];
       let foundAcc=null, foundSchoolId=null;
-      for(let i=0;i<activeSchools.length;i++){
-        const acc = accountsPerSchool[i].find(a=>a.username===u && a.password===p && a.role===role);
-        if(acc){ foundAcc=acc; foundSchoolId=activeSchools[i].id; break; }
+      if(uniqueCandidates.length){
+        const accountsPerSchool = await Promise.all(uniqueCandidates.map(id=>getShared(`sch_${id}_accounts`, [])));
+        for(let i=0;i<uniqueCandidates.length;i++){
+          const acc = accountsPerSchool[i].find(a=>a.username===u && a.password===p && a.role===role);
+          if(acc){ foundAcc=acc; foundSchoolId=uniqueCandidates[i]; break; }
+        }
+      }
+      if(!foundAcc){
+        // Index came up empty for this username — either it genuinely
+        // doesn't exist, or (most likely the first time this runs after
+        // deployment) this school hasn't been indexed yet. Fall back to the
+        // old full scan so no one is ever locked out by the index being
+        // incomplete, and backfill the index for whichever school we find
+        // the match in so this fallback isn't needed again for that school.
+        const remaining = activeSchools.filter(r=>!uniqueCandidates.includes(r.id));
+        const accountsPerRemaining = await Promise.all(remaining.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
+        for(let i=0;i<remaining.length;i++){
+          const acc = accountsPerRemaining[i].find(a=>a.username===u && a.password===p && a.role===role);
+          if(acc){ foundAcc=acc; foundSchoolId=remaining[i].id; await syncUsernameIndexForSchool(foundSchoolId, accountsPerRemaining[i]); break; }
+        }
       }
       let err='';
       if(!foundAcc) err='Invalid username, password, or role.';
@@ -4509,11 +4701,28 @@ document.addEventListener('submit', async (e)=>{
       const errEl = document.getElementById('loginErr');
       if(role!=='admin' && role!=='teacher'){ errEl.textContent='Recovery is only available for Owner/Admin and Teacher accounts.'; return; }
       const activeSchools = REGISTRY.filter(r=>r.status==='active');
-      const accountsPerSchool = await Promise.all(activeSchools.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
+      const activeSchoolIds = new Set(activeSchools.map(r=>r.id));
+      const idx = await loadUsernameIndex();
+      const candidateSchoolIds = [...new Set((idx[u.toLowerCase()]||[])
+        .filter(e=>e.role===role && activeSchoolIds.has(e.schoolId))
+        .map(e=>e.schoolId))];
       let foundAcc=null, foundSchoolId=null, foundAccounts=null;
-      for(let i=0;i<activeSchools.length;i++){
-        const acc = accountsPerSchool[i].find(a=>a.username===u && a.role===role && a.recovery && a.recovery===rec);
-        if(acc){ foundAcc=acc; foundSchoolId=activeSchools[i].id; foundAccounts=accountsPerSchool[i]; break; }
+      if(candidateSchoolIds.length){
+        const accountsPerSchool = await Promise.all(candidateSchoolIds.map(id=>getShared(`sch_${id}_accounts`, [])));
+        for(let i=0;i<candidateSchoolIds.length;i++){
+          const acc = accountsPerSchool[i].find(a=>a.username===u && a.role===role && a.recovery && a.recovery===rec);
+          if(acc){ foundAcc=acc; foundSchoolId=candidateSchoolIds[i]; foundAccounts=accountsPerSchool[i]; break; }
+        }
+      }
+      if(!foundAcc){
+        // Same self-healing fallback as login: check any schools the index
+        // didn't cover yet, and backfill the index if we find a match there.
+        const remaining = activeSchools.filter(r=>!candidateSchoolIds.includes(r.id));
+        const accountsPerRemaining = await Promise.all(remaining.map(reg=>getShared(`sch_${reg.id}_accounts`, [])));
+        for(let i=0;i<remaining.length;i++){
+          const acc = accountsPerRemaining[i].find(a=>a.username===u && a.role===role && a.recovery && a.recovery===rec);
+          if(acc){ foundAcc=acc; foundSchoolId=remaining[i].id; foundAccounts=accountsPerRemaining[i]; await syncUsernameIndexForSchool(foundSchoolId, accountsPerRemaining[i]); break; }
+        }
       }
       if(!foundAcc){ errEl.textContent='Username, account type, or recovery code did not match — or no recovery code is on file for this account.'; return; }
       const newPassword = fd.get('newPassword'), newRecovery = fd.get('newRecovery');
@@ -4522,6 +4731,7 @@ document.addEventListener('submit', async (e)=>{
       foundAcc.password = newPassword;
       if(newRecovery && newRecovery.trim()) foundAcc.recovery = newRecovery.trim();
       await setShared(`sch_${foundSchoolId}_accounts`, foundAccounts);
+      // password/recovery changed but username+role didn't, so the index entry is still valid — no sync needed here
       if(foundAcc.status==='closed'){
         alert('Your password has been reset, but this account is currently closed. Ask your school owner to reopen it before signing in.');
         AUTH_VIEW='login'; render(); return;
