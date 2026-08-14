@@ -4993,21 +4993,68 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
   if(!el){ alert('Nothing to export yet.'); return; }
   try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
   const { jsPDF } = window.jspdf;
+
+  // Master Mark Sheet / Class Analysis / Integrated Mark Sheet all wrap their table in a
+  // .card with overflow:auto so it can be scrolled sideways on screen when it's wider
+  // than the page. html2canvas only paints what's actually visible inside a scrollable
+  // box though — it doesn't "unroll" the hidden, scrolled-off part — so without this,
+  // every column past the visible edge was silently missing from the downloaded PDF.
+  // Lifting overflow to visible (and clearing any width cap) on every such container
+  // inside the export area lets the FULL table lay out before capture; everything is
+  // put back exactly as it was immediately afterward either way.
+  const restore = [];
+  el.querySelectorAll('*').forEach(node=>{
+    const cs = getComputedStyle(node);
+    if(cs.overflowX==='auto' || cs.overflowX==='scroll' || cs.overflowY==='auto' || cs.overflowY==='scroll'){
+      restore.push({node, overflow:node.style.overflow, overflowX:node.style.overflowX, overflowY:node.style.overflowY, maxWidth:node.style.maxWidth});
+      node.style.overflow = 'visible'; node.style.maxWidth = 'none';
+    }
+  });
+
   const orientation = opts.orientation || 'landscape';
   const pdf = new jsPDF(orientation==='landscape'?'l':'p','pt','a4');
-  const canvas = await html2canvas(el, {scale:2, backgroundColor:'#ffffff'});
-  const img = canvas.toDataURL('image/jpeg',0.95);
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const imgH = canvas.height*pageW/canvas.width;
-  let heightLeft = imgH, position = 0;
-  pdf.addImage(img,'JPEG',0,position,pageW,imgH);
-  heightLeft -= pageH;
-  while(heightLeft > 0){
-    position = heightLeft - imgH;
-    pdf.addPage();
-    pdf.addImage(img,'JPEG',0,position,pageW,imgH);
-    heightLeft -= pageH;
+
+  let canvas;
+  try{
+    canvas = await html2canvas(el, {scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY});
+  } finally {
+    restore.forEach(r=>{ r.node.style.overflow=r.overflow; r.node.style.overflowX=r.overflowX; r.node.style.overflowY=r.overflowY; r.node.style.maxWidth=r.maxWidth; });
+  }
+
+  // Shrinking a very wide sheet down to a single page's width can make the text too
+  // small to read once printed (a class with many subjects can easily need 2000px+ of
+  // columns). Rather than either cutting content or shrinking it into illegibility,
+  // cap how far it's shrunk and tile the sheet across as many pages left-to-right (and
+  // top-to-bottom) as needed at that legible size — every column still ends up in the
+  // PDF, it just spans more pages for very wide classes.
+  const MIN_SCALE = 0.55;
+  const naturalScale = pageW / canvas.width;
+  const scale = Math.max(naturalScale, MIN_SCALE);
+  const pxPerPageW = pageW / scale, pxPerPageH = pageH / scale;
+  const cols = Math.max(1, Math.ceil(canvas.width / pxPerPageW));
+  const rows = Math.max(1, Math.ceil(canvas.height / pxPerPageH));
+  const multiPage = cols>1 || rows>1;
+
+  let first = true;
+  for(let r=0; r<rows; r++){
+    for(let c=0; c<cols; c++){
+      const sx = c*pxPerPageW, sy = r*pxPerPageH;
+      const sw = Math.min(pxPerPageW, canvas.width-sx), sh = Math.min(pxPerPageH, canvas.height-sy);
+      if(sw<=0 || sh<=0) continue;
+      const tile = document.createElement('canvas');
+      tile.width = sw; tile.height = sh;
+      tile.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      const img = tile.toDataURL('image/jpeg',0.95);
+      if(!first) pdf.addPage();
+      first = false;
+      pdf.addImage(img,'JPEG',0,0, sw*scale, sh*scale);
+      if(multiPage){
+        pdf.setFontSize(7); pdf.setTextColor(150);
+        pdf.text(`sheet section — row ${r+1}/${rows}, column ${c+1}/${cols}`, 6, pageH-4);
+      }
+    }
   }
   openOrSavePdf(pdf, filename);
 }
