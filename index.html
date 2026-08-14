@@ -185,6 +185,36 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 .legend-strip{display:flex;gap:9px;flex-wrap:wrap;font-size:9.5px;margin-top:10px;color:var(--muted);align-items:center;justify-content:center;}
 .legend-strip b{color:var(--ink);}
 
+/* ---- Master Mark Sheet / Class Analysis: organized single "page" layout.
+   Presents the wide table inside a bordered, letterhead-style page (school
+   name+logo, sheet title, class/term/year meta line, footer) instead of a
+   bare table floating in a plain card — reads like one clean official
+   document whether viewed on screen, printed, or exported to PDF. The table
+   itself still scrolls horizontally on narrow screens (.mm-tablewrap), but
+   everything around it now frames it as a single organized page. */
+.mm-page{background:#fff;border:1px solid #cfd9e3;padding:22px 26px 20px;width:100%;max-width:1500px;margin:0 auto;box-shadow:0 2px 10px rgba(10,42,74,.08);}
+.mm-header{text-align:center;border-bottom:2px solid var(--navy);padding-bottom:12px;margin-bottom:14px;}
+.mm-header .mm-logo{width:50px;height:50px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:10px;}
+.mm-header .mm-school{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:.03em;color:var(--navy);vertical-align:middle;}
+.mm-header .mm-title{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);margin-top:5px;}
+.mm-header .mm-meta{font-size:12px;color:var(--muted);margin-top:4px;}
+.mm-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--blue);border-radius:6px;}
+table.mm-table{border-collapse:collapse;width:100%;min-width:100%;}
+table.mm-table th, table.mm-table td{border:1px solid var(--blue);padding:6px 8px;font-size:11px;text-align:center;white-space:nowrap;}
+table.mm-table thead th{background:var(--blue);color:#fff;font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.02em;position:sticky;top:0;z-index:2;}
+table.mm-table tbody tr:nth-child(even){background:#F7FAFD;}
+table.mm-table tbody tr:hover{background:var(--blue-light);}
+table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:normal;min-width:130px;}
+.mm-footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;margin-top:14px;padding-top:10px;border-top:1px solid #cfd9e3;font-size:10.5px;color:var(--muted);}
+@media print{
+  .mm-page{box-shadow:none;border:none;max-width:none;}
+  table.mm-table thead th{position:static;}
+}
+@media (max-width:760px){
+  .mm-page{padding:14px 12px;}
+  .mm-header .mm-school{font-size:17px;}
+}
+
 @media print{
   body *{visibility:hidden;}
   #printArea, #printArea *{visibility:visible;}
@@ -540,6 +570,14 @@ let CUR = null;
 let SCHOOL_ID = null;
 let REGISTRY = [];
 let SYSTEM_OWNER = null;
+// Set true the moment any read from the shared database fails (offline, DNS down,
+// Firestore misconfigured, etc). SYSTEM_OWNER stays null in that case too — same as
+// on a brand new install that's never been set up — so this flag is what tells
+// render() the difference: a real first-run should offer founder setup, but a failed
+// read should never show "claim founder account", since that could let a stranger
+// register themselves as founder just because the connection dropped. Cleared at the
+// start of every fresh loadAll() so a later successful load recovers automatically.
+let DATA_LOAD_FAILED = false;
 let VIEW = { name:'boot' };
 // Bumped on every click-driven action (see the delegated click listener below).
 // Screens that kick off a background data refresh (see 'nav'/'viewReport')
@@ -576,6 +614,7 @@ async function getShared(key, fallback){
     return snap.exists ? snap.data().value : fallback;
   }catch(e){
     console.error(e);
+    DATA_LOAD_FAILED = true;
     if(e && e.code && e.code.indexOf('auth/')===0){
       showFatal('Sign-in to the database failed. In the Firebase console, go to Build → Authentication → Sign-in method, and enable "Anonymous".');
     } else {
@@ -674,6 +713,7 @@ async function loadAllScores(schoolId){
       });
     }catch(e){
       console.error(e);
+      DATA_LOAD_FAILED = true;
       showFatal('Could not reach the database. Check your internet connection and Firestore setup.');
     }
   }
@@ -853,6 +893,9 @@ async function getPersonal(key, fallback){
 async function setPersonal(key, val){ try{ localStorage.setItem('cte_session_'+key, JSON.stringify(val)); }catch(e){} }
 
 async function loadAll(){
+  // Fresh attempt — any earlier failure shouldn't keep flagging us as offline
+  // forever if this load actually succeeds.
+  DATA_LOAD_FAILED = false;
   // Two independent documents — fetch together instead of one after another.
   const [registry, systemOwner] = await Promise.all([
     getShared('schools_registry', []),
@@ -1615,6 +1658,11 @@ function render(){
   const app = document.getElementById('app');
   let banner = '';
   if(DEMO_MODE) banner = `<div class="warn-banner">⚠ Not connected to a shared database — running in single-device demo mode. See the setup comment at the top of this file to connect Firebase so all devices share the same data.</div>`;
+  // A failed read leaves SYSTEM_OWNER null exactly like a genuine first-ever run
+  // does, but the two must never be shown the same way: offering "claim founder
+  // account" here would let anyone who catches the platform mid-outage register
+  // themselves as founder. Show a plain "can't connect" notice instead.
+  if(SYSTEM_OWNER===null && DATA_LOAD_FAILED){ app.innerHTML = banner + renderConnectionTrouble(); return; }
   if(SYSTEM_OWNER===null){ app.innerHTML = banner + renderFounderSetup(); return; }
   if(CUR && CUR.role==='founder'){ app.innerHTML = banner + renderFounderShell(); return; }
   if(SCHOOL_ID && CUR){ app.innerHTML = banner + renderShell(); return; }
@@ -1624,6 +1672,22 @@ function render(){
 /* ============================================================
    7. FOUNDER SETUP + FOUNDER SHELL
    ============================================================ */
+// Shown instead of any sign-in/sign-up screen whenever we couldn't reach the
+// database at all (offline, DNS down, Firestore misconfigured, etc). We have no
+// idea yet whether this device belongs to an existing school, a teacher, a parent,
+// or nobody — so the only honest, safe thing to show is who we are and how to
+// reach us, never a form that assumes a particular kind of visitor.
+function renderConnectionTrouble(){
+  return `
+  <div class="auth-wrap"><div class="auth-box" style="text-align:center;">
+    <div class="display" style="font-size:26px;font-weight:800;color:var(--navy);">CT-E <span style="color:var(--gold)">SOLUTIONS</span></div>
+    <div class="small" style="margin-top:2px;">School Report System</div>
+    <div class="note" style="margin-top:16px;text-align:left;">We couldn't reach the database right now. This usually means the internet connection is down, or is having trouble.</div>
+    <p class="small" style="margin-top:14px;">Please check your connection and try again. If this keeps happening, reach out to us:</p>
+    <div style="margin-top:6px;font-weight:700;">${esc(FOUNDER_CONTACT)}</div>
+    <button class="btn" style="width:100%;margin-top:18px;padding:12px;" data-action="retryConnection">Try again</button>
+  </div></div>`;
+}
 function renderFounderSetup(){
   return `
   <div class="auth-wrap"><div class="auth-box">
@@ -1951,8 +2015,12 @@ function renderShell(){
   const view = (VIEW.name==='boot' || (!nav.some(n=>n[0]===VIEW.name) && !DETAIL_VIEWS.has(VIEW.name))) ? nav[0][0] : VIEW.name;
   return `
   <div class="topbar">
-    <div class="brand">CT-E <span>SOLUTIONS</span> <span class="small" style="color:#cfe0f2;font-weight:400;display:inline-flex;align-items:center;gap:8px;">— ${esc(DB.info.schoolName)}${DB.info.logo?`<img src="${DB.info.logo}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;">`:''}</span>
+    <div class="brand" style="text-align:center;">
+      <div>CT-E <span>SOLUTIONS</span></div>
       <div class="small" style="color:#cfe0f2;font-weight:400;font-family:'Inter',system-ui,sans-serif;letter-spacing:0;">${esc(FOUNDER_CONTACT)}</div>
+      <div class="small" style="color:#cfe0f2;font-weight:700;font-family:'Inter',system-ui,sans-serif;letter-spacing:0;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px;">
+        ${esc(DB.info.schoolName)}${DB.info.logo?`<img src="${DB.info.logo}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;">`:''}
+      </div>
     </div>
     <div class="flex"><span class="badge-role">${CUR.role}</span><span>${esc(CUR.name)}</span>
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
@@ -2043,6 +2111,15 @@ function adminDashboard(){
     <div class="card"><div class="small">CLASSES</div><h1 style="margin:4px 0;">${DB.classes.length}</h1></div>
     <div class="card"><div class="small">STUDENTS</div><h1 style="margin:4px 0;">${DB.students.length}</h1></div>
     <div class="card"><div class="small">TERM / YEAR</div><h1 style="margin:4px 0;">${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</h1></div>
+  </div>
+  <div class="card">
+    <h3>Enrollment by class</h3>
+    ${DB.classes.length ? `<table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Students</th></tr>
+    ${DB.classes.map(c=>{
+      const count = DB.students.filter(s=>s.classId===c.id).length;
+      return `<tr><td>${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${count}</td></tr>`;
+    }).join('')}
+    </table>` : '<p class="small">No classes yet — add a class first.</p>'}
   </div>
   <div class="card">
     <h3>Term settings</h3>
@@ -3172,17 +3249,31 @@ function masterMarkSheetView(){
     </div>
   </div>
   <div id="printArea">
-  <div class="card" style="overflow:auto;">
-    <h3>${esc(DB.info.schoolName||'')} — ${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''} — Master Mark Sheet (${mode==='scores'?'Real Scores':'Letter Grades'}) — ${esc(term)}, ${esc(String(year))}</h3>
-    <table class="data-table" style="font-size:11px;">
-      <tr>${headerRow1}</tr>
-      ${headerRow2?`<tr>${headerRow2}</tr>`:''}
-      ${bodyRows || `<tr><td colspan="${colCount}">No students in this class yet.</td></tr>`}
-    </table>
+  <div class="mm-page">
+    <div class="mm-header">
+      ${DB.info.logo?`<img src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
+      <div class="mm-title">Master Mark Sheet — ${mode==='scores'?'Real Scores':'Letter Grades'}</div>
+      <div class="mm-meta">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
+    </div>
+    <div class="mm-tablewrap">
+      <table class="mm-table">
+        <thead>
+          <tr>${headerRow1}</tr>
+          ${headerRow2?`<tr>${headerRow2}</tr>`:''}
+        </thead>
+        <tbody>
+          ${bodyRows || `<tr><td colspan="${colCount}">No students in this class yet.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
     ${mode==='grades' ? `<p class="small" style="margin-top:10px;">${isP
       ? 'Grading scale (Primary/PLE): D1, D2 = Distinction &nbsp; C3–C6 = Credit &nbsp; P7, P8 = Pass &nbsp; F9 = Fail. Aggregate = sum of grade-points for the compulsory subjects; Division is derived from that aggregate.'
       : `Grading scale (${isA?'A-Level':'O-Level'}): A = Excellent &nbsp; B = Very Good &nbsp; C = Good &nbsp; D = Fair &nbsp; E = Weak${isA?' &nbsp; O = Subsidiary Pass &nbsp; F = Fail':''}.`
     }</p>` : ''}
+    <div class="mm-footer">
+      <span>Generated ${esc(new Date().toLocaleDateString())}</span>
+      ${DB.info.headteacher?`<span>Head Teacher: ${esc(DB.info.headteacher)}</span>`:''}
+    </div>
   </div>
   </div>`;
 }
@@ -3793,6 +3884,7 @@ document.addEventListener('click', async (e)=>{
     case 'gotoFounderRecovery': AUTH_VIEW='founderRecovery'; render(); break;
     case 'gotoSchoolRecovery': AUTH_VIEW='schoolRecovery'; render(); break;
     case 'gotoLogin': AUTH_VIEW='login'; render(); break;
+    case 'retryConnection': await loadAll(); render(); break;
     case 'setRole': loginRole = arg; render(); break;
     case 'logout': CUR=null; SCHOOL_ID=null; await setPersonal('session', null); render(); break;
     case 'nav': {
