@@ -1348,23 +1348,28 @@ function studentSubjects(st, cls){
   // student into their own class roster. General Paper is compulsory for every A-Level
   // student. The subsidiary (Maths or Computer) is whichever one a Subsidiary
   // Mathematics or Subsidiary Computer teacher has actually ticked this student into
-  // their own roster — there is no automatic guess based on combination/science-group;
-  // the teacher decides who takes their subject, same as every other subject. A student
-  // with no subsidiary tick yet simply has no subsidiary until a teacher ticks them, and
-  // a student can only ever do ONE subsidiary — see hasSubsidiaryConflict for the
-  // dual-tick case that needs manual resolution. Admin-added extra compulsory subjects
-  // (aCompulsoryExtra) are auto-included the same way, on top of whatever the student's
-  // ticked principals already are.
+  // their own roster — there is no automatic guess or automatic resolution of any
+  // kind; the teacher decides who takes their subject, same as every other subject.
+  // A student with no subsidiary tick yet simply has no subsidiary until a teacher
+  // ticks them. A student can only ever do ONE subsidiary — if they end up ticked
+  // into BOTH rosters by mistake, that's a genuine conflict (see
+  // hasSubsidiaryConflict) and nothing is shown for their subsidiary at all until a
+  // human unticks the wrong one; the code deliberately does not guess which one is
+  // "right" on anyone's behalf. Admin-added extra compulsory subjects
+  // (aCompulsoryExtra) are auto-included the same way, on top of whatever the
+  // student's ticked principals already are.
   const principals = principalsFor(st, cls);
   if(!principals.length) return [];
   const roster = rosterSubjectsFor(st, cls);
-  const tickedSubsidiary = SUBSIDIARIES.find(s=>roster.includes(s));
+  const tickedCandidates = SUBSIDIARIES.filter(s=>roster.includes(s));
+  const tickedSubsidiary = tickedCandidates.length===1 ? tickedCandidates[0] : null;
   return [...new Set([...principals, 'GENERAL PAPER', ...aCompulsoryExtra(), ...(tickedSubsidiary?[tickedSubsidiary]:[])])];
 }
 // True only if a student has been ticked into BOTH subsidiary rosters by mistake — an
 // admin data-entry conflict that needs manual resolution, since a student can only take
 // one subsidiary. Surfaced in the admin UI so it doesn't silently pick one and hide the
-// problem.
+// problem — see studentSubjects, which shows nothing for the subsidiary at all while
+// this is true, rather than guessing.
 function hasSubsidiaryConflict(st, cls){
   if(!cls || cls.level!=='A') return false;
   const roster = rosterSubjectsFor(st, cls);
@@ -2618,7 +2623,8 @@ function oLevelSubjectsView(){
       </div>
       <div style="margin-top:10px;"><button class="btn">Save additional compulsory subjects</button></div>
     </form>
-    <h3 style="margin-top:16px;">Subsidiaries (auto-assigned)</h3><p>${SUBSIDIARIES.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
+    <h3 style="margin-top:16px;">Subsidiaries (teacher-ticked, not auto-assigned)</h3><p>${SUBSIDIARIES.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
+    <p class="small">Every A-Level student is expected to take one of these, but which one is entirely up to the Subsidiary Mathematics or Subsidiary Computer teacher ticking that student into their own roster — nothing is guessed or assigned automatically. A student ticked into neither simply has no subsidiary on their report card yet; a student ticked into both by mistake is flagged as a conflict and shows neither until it's fixed.</p>
     <h3>Base principal subjects</h3><p>${A_OPTIONALS_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Your added subjects</h3>
     <p>${aExtra.length? aExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delASubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
@@ -3570,7 +3576,7 @@ function scoresEntryView(mine){
             const isMissing = !existingRow && missSet.has(s.id);
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
-            const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one. Remove them from whichever one is wrong, or their report card subsidiary result is ambiguous.">⚠ dual subsidiary</span>` : '';
+            const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
             return `<tr><td style="text-align:left;">${esc(s.name)}${conflictBadge}</td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">Remove from list</button></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length+3}">No students on your list yet. Use "Edit my student list" above.</td></tr>`}
           </table>
@@ -5317,11 +5323,28 @@ document.addEventListener('submit', async (e)=>{
         if(!existingRow) missSetNow.add(studentId);
       }
       MISSING_MARKERS[missKeyNow] = missSetNow;
+      // If this column is a subsidiary (Maths or Computer), any student who's been
+      // ticked into BOTH subsidiary rosters by mistake (see hasSubsidiaryConflict) has
+      // no single correct subject to save their mark under — nothing is auto-picked for
+      // them (see studentSubjects). Rather than silently saving it somewhere that then
+      // never shows on the report card, that one student's mark is left out of this
+      // submit entirely and the teacher is warned by name, while everyone else's marks
+      // save and reach the report card completely normally.
+      const a = DB.assignments.find(x=>x.id===assignId);
+      const cls = a ? DB.classes.find(c=>c.id===a.classId) : null;
+      const conflictExcluded = [];
       const submitRows = [];
       for(const [key,val] of fd.entries()){
         if(!key.startsWith('m_')) continue;
         if(val==='') continue; // absent/missing — leave this student's record untouched
         const studentId = key.slice(2);
+        if(SUBSIDIARIES.includes(subject) && cls){
+          const st = DB.students.find(x=>x.id===studentId);
+          if(st && hasSubsidiaryConflict(st, cls)){
+            conflictExcluded.push(st.name);
+            continue; // left out — see warning below, not saved this submit
+          }
+        }
         if(kind==='EOT'){
           const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
           submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'EOT', label:'', term:DB.info.currentTerm, year:DB.info.currentYear, marks:Number(val), max, teacher:CUR.username});
@@ -5329,6 +5352,11 @@ document.addEventListener('submit', async (e)=>{
           const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
           submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'AOI', label, term:DB.info.currentTerm, year:DB.info.currentYear, marks:Number(val), max, teacher:CUR.username});
         }
+      }
+      if(conflictExcluded.length){
+        const names = conflictExcluded.join(', ');
+        const plural = conflictExcluded.length>1;
+        alert(`⚠ ${names} ${plural?'are':'is'} ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters, so ${plural?'their':'their'} mark${plural?'s':''} for ${subject} ${plural?'were':'was'} NOT saved this submit. Remove ${plural?'them':'them'} from whichever roster is wrong, then resubmit ${plural?'their':'their'} mark${plural?'s':''}. Everyone else's marks below were saved normally.`);
       }
       // upsertScores updates DB.scores synchronously before its network write
       // even starts, so the mark sheet can be re-rendered — showing this
