@@ -1812,13 +1812,14 @@ function fitOnePage(root){
   const h = inner.scrollHeight;
   // Scales the card to exactly fill the one-A4-page budget either way: shrinks a
   // report card that's too tall (many subjects) so it still lands on one page,
-  // and — just as importantly — grows a report card that's short (few subjects)
-  // so it fills the page instead of sitting small with empty space below it.
-  // Bounds keep either direction from looking absurd: never blown up past 1.25x
-  // (a 2-3 subject card shouldn't look like a poster) and never shrunk below
-  // 0.7x (past that, text stops being legibly printable).
+  // and — just as importantly — grows a report card that's short (few subjects,
+  // e.g. a light Primary card) so it fills the page top-to-bottom instead of
+  // sitting small with empty space below it. The lower bound (0.7x) keeps very
+  // tall cards from shrinking to illegibly small text; the upper bound (1.8x) is
+  // just a sanity ceiling for a near-empty card, not a deliberate "don't fill the
+  // page" cap — most real cards land well under it and simply scale up to fill.
   let scale = target/h;
-  scale = Math.max(0.7, Math.min(scale, 1.25));
+  scale = Math.max(0.7, Math.min(scale, 1.8));
   if(Math.abs(scale-1)>0.01){
     inner.style.transformOrigin='top left';
     inner.style.transform=`scale(${scale})`;
@@ -5837,20 +5838,17 @@ async function pdfForStudents(students, filename, opts={}){
   holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='780px'; holder.style.background='#fff';
   document.body.appendChild(holder);
   // Render RESOLUTION (the scale factor) is what determines print sharpness.
-  // Bulk used to render at a lower scale than single purely because the old
-  // code rendered lossless PNG — PNG's uncompressed pixel buffers were what
-  // piled up tens of MB of memory across 20-100+ students. Now that BOTH paths
-  // encode to JPEG (much lighter to hold and compress), bulk renders at the
-  // same scale 3 as a single card — identical resolution and print sharpness
-  // either way — and file size is controlled entirely by JPEG quality instead
-  // of by dropping resolution. Quality 0.8 for bulk still looks crisp for text
-  // and table borders (a report card has no photographic gradients to reveal
-  // compression) while keeping each page down in the tens-to-low-hundreds of
-  // KB rather than the multi-MB a lossless PNG at this scale would produce.
-  const bulk = students.length > 1;
+  // Both single and bulk render at scale 3 and encode to JPEG — identical
+  // resolution and print sharpness either way. Quality is now 0.95 for BOTH
+  // paths too (bulk used to sit at 0.8, which visibly dulled colours and
+  // softened table borders/text compared to a single download — the same
+  // report card shouldn't look worse just because it was exported alongside
+  // classmates). This only affects the JPEG *encoding* step, not the
+  // in-memory canvas itself, so it doesn't reopen the old PNG memory problem —
+  // each page still just comes out a little larger/crisper, not heavier to render.
   const scale = 3;
   const format = 'JPEG';
-  const jpegQuality = bulk ? 0.8 : 0.95;
+  const jpegQuality = 0.95;
   for(let i=0;i<students.length;i++){
     holder.innerHTML = `<div style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
@@ -5864,17 +5862,24 @@ async function pdfForStudents(students, filename, opts={}){
     // matter how long or short the card is.
     let canvas = await html2canvas(holder, {scale, backgroundColor:'#ffffff', letterRendering:true});
     let img = canvas.toDataURL('image/jpeg', jpegQuality);
-    // Fit the whole, uncropped card onto one A4 page: try full page width first;
-    // if that would run taller than the page, shrink further (letterboxed,
-    // centered) so the bottom of the card — the signatures, term dates, motto —
-    // is never sliced off.
+    // Fit the whole, uncropped card onto one A4 page — and make sure it actually
+    // fills that page, in both directions, rather than landing at natural size
+    // and leaving the rest blank:
+    //  - If the card is TALLER than one page at full width, shrink it (preserving
+    //    its own aspect ratio, letterboxed/centered) so nothing is ever cropped
+    //    or pushed onto a second page.
+    //  - If the card is SHORTER than one page at full width (a light card — few
+    //    subjects, common on Primary), stretch it to fill the remaining height
+    //    too. Every pixel of the original, uncropped card is still fully there;
+    //    it's just spread out a little further down the page instead of leaving
+    //    blank space beneath it.
     let w = pageW, h = canvas.height*pageW/canvas.width, x = 0, y = 0;
     if(h > pageH){
       h = pageH;
       w = canvas.width*pageH/canvas.height;
       x = (pageW-w)/2;
     } else {
-      y = 0; // top-align rather than vertically centering — matches how it printed before
+      w = pageW; h = pageH; x = 0; y = 0;
     }
     if(i>0) pdf.addPage();
     pdf.addImage(img,format,x,y,w,h);
