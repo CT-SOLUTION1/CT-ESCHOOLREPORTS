@@ -2688,6 +2688,8 @@ function oLevelSubjectsView(){
 /* ---------- Admin: Assign subjects ---------- */
 function assignSubjectsView(){
   const subs = allSubjects();
+  const firstCls = DB.classes[0];
+  const firstIsPrimary = !!(firstCls && firstCls.level==='P');
   return `
   <h2>Assign Subjects to Teachers</h2>
   <div class="note">A teacher can be assigned many subjects, many papers, and many classes.</div>
@@ -2697,13 +2699,13 @@ function assignSubjectsView(){
         <div><label>Teacher</label><select name="teacherUsername" required>
           ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- add a teacher account first --</option>'}
         </select></div>
-        <div><label>Class</label><select name="classId" required>
-          ${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
+        <div><label>Class</label><select name="classId" id="assignClassSel" required>
+          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
         </select></div>
       </div>
       <div class="grid2">
         <div><label>Subject</label><select name="subject" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
-        <div><label>Papers taught (e.g. 1,2)</label><input name="papers" placeholder="1,2" required></div>
+        <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
       </div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
     </form>
@@ -2712,7 +2714,8 @@ function assignSubjectsView(){
     <table class="data-table"><tr><th>Teacher</th><th>Class</th><th>Subject</th><th>Papers</th><th>Action</th></tr>
     ${DB.assignments.map(a=>{
       const t = DB.accounts.find(x=>x.username===a.teacherUsername); const c = DB.classes.find(x=>x.id===a.classId);
-      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(a.papers.join(', '))}</td>
+      const isP = c && c.level==='P';
+      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(a.papers.join(', '))}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="5">No assignments yet.</td></tr>'}
     </table>
@@ -2725,6 +2728,8 @@ function teacherProfileView(username){
   if(!t) return `<h2>Edit Teacher Profile</h2><div class="card"><p>Teacher not found.</p><button class="btn-outline" data-action="nav:accounts">Back to Staff & Parent Accounts</button></div>`;
   const mine = DB.assignments.filter(a=>a.teacherUsername===username);
   const subs = allSubjects();
+  const firstCls = DB.classes[0];
+  const firstIsPrimary = !!(firstCls && firstCls.level==='P');
   return `
   <h2>Edit Teacher Profile</h2>
   <div class="note">Only an Admin can edit which classes, subjects, and papers a teacher is assigned to.</div>
@@ -2743,12 +2748,12 @@ function teacherProfileView(username){
     <form data-form="assignSubject">
       <input type="hidden" name="teacherUsername" value="${esc(username)}">
       <div class="grid2">
-        <div><label>Class</label><select name="classId" required>
-          ${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
+        <div><label>Class</label><select name="classId" id="assignClassSel" required>
+          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
         </select></div>
         <div><label>Subject</label><select name="subject" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
       </div>
-      <label>Papers taught (e.g. 1,2)</label><input name="papers" placeholder="1,2" required>
+      <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
     </form>
   </div>
@@ -2757,11 +2762,12 @@ function teacherProfileView(username){
     <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Papers</th><th>Remove</th></tr>
     ${mine.map(a=>{
       const c = DB.classes.find(x=>x.id===a.classId);
+      const isP = c && c.level==='P';
       return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td>
-      <td><form data-form="editAssignPapers" data-id="${a.id}" style="display:flex;gap:6px;align-items:center;margin:0;">
+      <td>${isP ? '—' : `<form data-form="editAssignPapers" data-id="${a.id}" style="display:flex;gap:6px;align-items:center;margin:0;">
         <input name="papers" value="${esc(a.papers.join(', '))}" style="width:110px;">
         <button class="btn-outline" type="submit" style="padding:6px 10px;">Save</button>
-      </form></td>
+      </form>`}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="4">No assignments yet for this teacher — add one above.</td></tr>'}
     </table>
@@ -3838,7 +3844,11 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       const paperForLookup = useSubrows ? p.paper : (papersList.length===1 ? papersList[0] : null);
       const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
       const initTxt = (!teacherInit || teacherInit==='--') ? '&nbsp;' : esc(teacherInit);
+      // Primary has no concept of papers (single, unlabeled paper per subject), so the
+      // Papers column/cell is omitted entirely on Primary report cards — see isP checks
+      // around this cell and in the header row.
       const papersTxt = useSubrows ? esc(String(p.paper)) : (papersList.length===1 ? esc(String(papersList[0])) : '—');
+      const papersTd = isP ? '' : `<td>${papersTxt}</td>`;
       const cwHtml = cwCellsFor(paperForLookup, p.aoiAvg);
       let eotHtml = '';
       if(showEOT){
@@ -3865,14 +3875,14 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       if(idx===0){
         return `<tr>`+
           `<td rowspan="${spanCount}">${esc(r.subject)}</td>`+
-          `<td>${papersTxt}</td>${cwHtml}${eotHtml}${paperFinalHtml}`+
+          `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
           `<td rowspan="${spanCount}">${r.avg===null?'-':r.avg.toFixed(1)}</td>`+
           `<td rowspan="${spanCount}">${r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-'}</td>`+
           `${isA?`<td rowspan="${spanCount}">${r.avg===null?0:r.pts}</td>`:''}`+
           `<td rowspan="${spanCount}">${esc(descriptor)}</td>`+
           `<td>${initTxt}</td></tr>`;
       }
-      return `<tr class="subrow"><td>${papersTxt}</td>${cwHtml}${eotHtml}${paperFinalHtml}<td>${initTxt}</td></tr>`;
+      return `<tr class="subrow">${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}<td>${initTxt}</td></tr>`;
     }).join('');
   }).join('');
 
@@ -3960,16 +3970,16 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <table class="rc-perf">
       ${useCwTestCols ? `
       <tr>
-        <th rowspan="2">Subjects</th><th rowspan="2">Papers</th>
+        <th rowspan="2">Subjects</th>${isP?'':'<th rowspan="2">Papers</th>'}
         <th colspan="${cwTests.length+1}">${esc(cfg.cwLabel)}</th>
         ${showEOT?`<th rowspan="2">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
         <th rowspan="2">Paper Avg (%)</th>
         <th rowspan="2">Final Average (%)</th><th rowspan="2">Grade</th>${isA?'<th rowspan="2">Points</th>':''}<th rowspan="2">Descriptor</th><th rowspan="2">Teacher Initials</th>
       </tr>
       <tr>${cwTests.map(t=>`<th>${esc(t.name)} (/${t.max})</th>`).join('')}<th>Avg (/${cfg.cwPercent})</th></tr>` : `
-      <tr><th>Subjects</th><th>Papers</th>${showCW?`<th>${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th>${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th>Paper Avg (%)</th><th>Final Average (%)</th><th>Grade</th>${isA?'<th>Points</th>':''}<th>Descriptor</th><th>Teacher Initials</th></tr>`}
+      <tr><th>Subjects</th>${isP?'':'<th>Papers</th>'}${showCW?`<th>${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th>${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th>Paper Avg (%)</th><th>Final Average (%)</th><th>Grade</th>${isA?'<th>Points</th>':''}<th>Descriptor</th><th>Teacher Initials</th></tr>`}
       ${rowsHtml}
-      <tr class="total"><td colspan="2">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
+      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
     </div>
 
@@ -4582,6 +4592,19 @@ document.addEventListener('change', (e)=>{
       if(sel) sel.innerHTML = forms.map(f=>`<option>${f}</option>`).join('');
     }
   }
+  if(e.target.id==='assignClassSel'){
+    // Primary has no concept of papers, so the Papers field is hidden entirely (and
+    // defaulted to a single implicit paper) whenever a Primary class is selected here.
+    const opt = e.target.selectedOptions[0];
+    const isPrimary = !!(opt && opt.dataset.level==='P');
+    const wrap = document.getElementById('papersWrap');
+    const input = document.getElementById('papersInput');
+    if(wrap) wrap.style.display = isPrimary ? 'none' : 'block';
+    if(input){
+      input.required = !isPrimary;
+      if(isPrimary) input.value = '1';
+    }
+  }
   if(e.target.id==='bulkWordFile'){
     loadStudentListFromWord(e.target);
   }
@@ -5164,7 +5187,10 @@ document.addEventListener('submit', async (e)=>{
       alert(`Bulk upload complete: ${added} student(s) added${skipped?`, ${skipped} skipped (missing name/admission number, or duplicate admission number)`:''}.`);
     }
     else if(type==='assignSubject'){
-      const papers = fd.get('papers').split(',').map(p=>p.trim()).filter(Boolean);
+      // Primary has no papers concept — regardless of what the (possibly hidden) Papers
+      // field contains, a Primary-class assignment always gets a single implicit paper.
+      const assignCls = DB.classes.find(c=>c.id===fd.get('classId'));
+      const papers = (assignCls && assignCls.level==='P') ? ['1'] : fd.get('papers').split(',').map(p=>p.trim()).filter(Boolean);
       DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
       await saveAssignments(); form.reset(); render();
     }
