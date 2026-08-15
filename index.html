@@ -3760,24 +3760,41 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const periods = availableTermYears(studentId);
   const { rows, totalPoints, avgPct } = computeSubjectRows(s, cls, term, year);
   const { position, size } = classPosition(s, cls, term, year);
-  // Previous Position: the student's rank in the term immediately before the one being
-  // viewed, following the school calendar's own rotation — Term 1 looks back to Term 3
-  // of the PRIOR year, Term 2 looks back to Term 1 of the same year, and Term 3 looks
-  // back to Term 2 of the same year. This is computed from the calendar, not just "the
-  // next entry in this student's score history", so a gap (e.g. no Term 2 scores on
-  // file) doesn't accidentally pull in the wrong term. It only shows a value if this
-  // student actually has scores on file for that specific prior term.
-  function prevTermYearFor(t, y){
-    if(t==='Term 1') return {term:'Term 3', year:Number(y)-1};
-    if(t==='Term 2') return {term:'Term 1', year:Number(y)};
-    if(t==='Term 3') return {term:'Term 2', year:Number(y)};
-    return null;
-  }
-  const prevTY = prevTermYearFor(term, year);
-  const prevPeriod = prevTY ? (periods.find(p=>p.term===prevTY.term && Number(p.year)===Number(prevTY.year)) || null) : null;
-  const prevPosition = prevPeriod ? classPosition(s, cls, prevPeriod.term, prevPeriod.year) : null;
   const isA = cls.level==='A';
   const isP = cls.level==='P';
+  // Previous Position (Primary only): the student's rank in the term immediately
+  // before the one being viewed, following the school calendar's own rotation —
+  // Term 1 looks back to Term 3 of the PRIOR year, Term 2 looks back to Term 1 of
+  // the same year, and Term 3 looks back to Term 2 of the same year. This is
+  // computed from the calendar, not just "the next entry in this student's score
+  // history", so a gap (e.g. no Term 2 scores on file) doesn't accidentally pull in
+  // the wrong term. It only shows a value if this student actually has scores on
+  // file for that specific prior term.
+  let prevPeriod = null, prevPosition = null;
+  if(isP){
+    function prevTermYearFor(t, y){
+      if(t==='Term 1') return {term:'Term 3', year:Number(y)-1};
+      if(t==='Term 2') return {term:'Term 1', year:Number(y)};
+      if(t==='Term 3') return {term:'Term 2', year:Number(y)};
+      return null;
+    }
+    const prevTY = prevTermYearFor(term, year);
+    prevPeriod = prevTY ? (periods.find(p=>p.term===prevTY.term && Number(p.year)===Number(prevTY.year)) || null) : null;
+    prevPosition = prevPeriod ? classPosition(s, cls, prevPeriod.term, prevPeriod.year) : null;
+  }
+  // Weak Subject(s) (O-Level and A-Level only): whichever subject(s) this learner
+  // scored lowest in this term — their own lowest Final Average among subjects
+  // that actually have a mark on file. Ties (more than one subject sharing the
+  // exact lowest average) are all listed, since picking just one arbitrarily
+  // would be misleading.
+  let weakSubjects = null;
+  if(!isP){
+    const graded = rows.filter(r=>r.avg!==null);
+    if(graded.length){
+      const minAvg = Math.min(...graded.map(r=>r.avg));
+      weakSubjects = graded.filter(r=>Math.abs(r.avg-minAvg)<0.05).map(r=>r.subject);
+    }
+  }
   const maxP = isA ? maxPointsFor(s, cls) : 100;
   const metric = isA ? totalPoints : avgPct;
   const pct = maxP ? metric/maxP : 0;
@@ -4039,7 +4056,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       <tr>
         <td class="lbl">${isP?'Division':'Level'}</td><td class="val">${isP?(pDivision||'—'):(overallDesc||'—')}</td>
         <td class="lbl">${termLbl} Position</td><td class="val">${position} / ${size}</td>
-        <td class="lbl">Previous Position</td><td class="val">${prevPosition?`${prevPosition.position} / ${prevPosition.size} (${esc(prevPeriod.term)}, ${esc(String(prevPeriod.year))})`:'—'}</td>
+        ${isP
+          ? `<td class="lbl">Previous Position</td><td class="val">${prevPosition?`${prevPosition.position} / ${prevPosition.size} (${esc(prevPeriod.term)}, ${esc(String(prevPeriod.year))})`:'—'}</td>`
+          : `<td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.join(', ')):'—'}</td>`}
       </tr>
     </table>
 
