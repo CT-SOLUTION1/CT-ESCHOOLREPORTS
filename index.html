@@ -146,7 +146,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    the school name visibly heavier than everything else without reducing their weight. */
 .rc-title-block .school{font-size:26px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:.03em;color:var(--navy);line-height:1.15;margin:2px 0;}
 .rc-title-block .subtitle{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-top:3px;}
-.rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);margin-top:4px;}
+.rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);margin-top:4px;font-weight:700;}
 
 /* The bio photo now lives INSIDE rc-info-table (as a rowspan cell) instead of
    sitting beside it in a flex row — that old layout shrank the table's own
@@ -181,7 +181,7 @@ table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
 table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
 table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;}
 
-.rc-sign-row{display:flex;justify-content:space-between;font-size:11px;margin:18px 0 10px;flex-wrap:wrap;gap:14px 10px;}
+.rc-sign-row{display:flex;justify-content:space-between;font-size:11px;margin:18px 0 10px;flex-wrap:wrap;gap:14px 10px;font-weight:700;}
 .rc-sign-row span{border-bottom:1px solid var(--ink);padding-bottom:3px;min-width:120px;display:inline-block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
@@ -541,6 +541,30 @@ function aCompulsoryExtra(){
   return (DB.info && DB.info.aCompulsoryExtra) || [];
 }
 function subjectOptionalListFor(level){ return level==='P' ? pOptionalList() : oOptionalList(); }
+// Every subject name that's actually valid for a given level — used to filter the
+// Subject dropdown on "Assign Subjects to Teachers" (and the per-teacher "Assign a new
+// class + subject" form) so a Primary class only offers Primary subjects, an O-Level
+// class only offers O-Level subjects, and an A-Level class only offers A-Level
+// principal/subsidiary subjects — instead of every subject the school has across all
+// three levels dumped into one long list.
+function subjectsForLevel(level){
+  if(level==='A') return [...new Set([...COMPULSORY, ...SUBSIDIARIES, ...aOptionalList()])];
+  if(level==='P') return pAllSubjectPool();
+  return oAllSubjectPool();
+}
+// Teachers relevant to a given level, for the same "Assign Subjects" dropdown: any
+// teacher already assigned to at least one class of this level, PLUS any teacher with
+// no assignments at all yet (a brand-new teacher account has no level to match, so they
+// must still be selectable the first time). A teacher who so far only teaches other
+// levels is hidden, since assigning them here would almost always be a mistake.
+function teachersForLevel(level){
+  const allTeachers = DB.accounts.filter(a=>a.role==='teacher');
+  return allTeachers.filter(t=>{
+    const myAssigns = DB.assignments.filter(a=>a.teacherUsername===t.username);
+    if(!myAssigns.length) return true;
+    return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && c.level===level; });
+  });
+}
 function subjectCompulsoryFor(cls){ return cls.level==='P' ? pCompulsoryList() : oCompulsoryFor(cls.form); }
 // Whether a given subject is compulsory (taken by every student) in a given class, across
 // all three levels — used to decide whether that subject's teacher gets a "select all"
@@ -2687,24 +2711,26 @@ function oLevelSubjectsView(){
 
 /* ---------- Admin: Assign subjects ---------- */
 function assignSubjectsView(){
-  const subs = allSubjects();
   const firstCls = DB.classes[0];
   const firstIsPrimary = !!(firstCls && firstCls.level==='P');
+  const firstLevel = firstCls ? firstCls.level : 'O';
+  const subs = subjectsForLevel(firstLevel);
+  const levelTeachers = teachersForLevel(firstLevel);
   return `
   <h2>Assign Subjects to Teachers</h2>
-  <div class="note">A teacher can be assigned many subjects, many papers, and many classes.</div>
+  <div class="note">A teacher can be assigned many subjects, many papers, and many classes. The Teacher and Subject lists below narrow down to whichever level the selected Class belongs to.</div>
   <div class="card" style="margin-top:14px;">
     <form data-form="assignSubject">
       <div class="grid2">
-        <div><label>Teacher</label><select name="teacherUsername" required>
-          ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- add a teacher account first --</option>'}
+        <div><label>Teacher</label><select name="teacherUsername" id="assignTeacherSel" required>
+          ${levelTeachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- add a teacher account first --</option>'}
         </select></div>
         <div><label>Class</label><select name="classId" id="assignClassSel" required>
           ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
         </select></div>
       </div>
       <div class="grid2">
-        <div><label>Subject</label><select name="subject" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
         <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
       </div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
@@ -2727,9 +2753,9 @@ function teacherProfileView(username){
   const t = DB.accounts.find(a=>a.username===username && a.role==='teacher');
   if(!t) return `<h2>Edit Teacher Profile</h2><div class="card"><p>Teacher not found.</p><button class="btn-outline" data-action="nav:accounts">Back to Staff & Parent Accounts</button></div>`;
   const mine = DB.assignments.filter(a=>a.teacherUsername===username);
-  const subs = allSubjects();
   const firstCls = DB.classes[0];
   const firstIsPrimary = !!(firstCls && firstCls.level==='P');
+  const subs = subjectsForLevel(firstCls ? firstCls.level : 'O');
   return `
   <h2>Edit Teacher Profile</h2>
   <div class="note">Only an Admin can edit which classes, subjects, and papers a teacher is assigned to.</div>
@@ -2751,7 +2777,7 @@ function teacherProfileView(username){
         <div><label>Class</label><select name="classId" id="assignClassSel" required>
           ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
         </select></div>
-        <div><label>Subject</label><select name="subject" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
       </div>
       <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
@@ -3587,9 +3613,12 @@ function scoresEntryView(mine){
       // teacher can see the full picture for each learner (not just the one column
       // they're currently filling in) — reuses the same column logic as the
       // integrated mark sheet.
+      const isP = cls.level==='P';
       const isCurrentCol = c => String(c.paper)===String(sel.paper) && c.kind===sel.kind && (c.kind!=='AOI' || c.label===(sel.label||''));
       const otherCols = marksheetColumns(students, a.subject).filter(c=>!isCurrentCol(c));
-      const colLabel = c => (c.paper!=null && c.paper!=='' ? 'P'+esc(String(c.paper))+' ' : '') + (c.kind==='EOT' ? esc(examConfig(a.classId).eotLabel) : (esc(examConfig(a.classId).cwLabel)+(c.label?': '+esc(c.label):'')));
+      // Primary has no concept of papers (a single implicit paper per subject), so the
+      // "P1"/"Paper 1" prefix is omitted from every column label and heading here.
+      const colLabel = c => (!isP && c.paper!=null && c.paper!=='' ? 'P'+esc(String(c.paper))+' ' : '') + (c.kind==='EOT' ? esc(examConfig(a.classId).eotLabel) : (esc(examConfig(a.classId).cwLabel)+(c.label?': '+esc(c.label):'')));
       const otherColHeaders = otherCols.map(c=>{
         // All scores in a column share the same max, so pull it off whichever student has
         // a mark recorded for this column already (every otherCol has at least one).
@@ -3597,7 +3626,7 @@ function scoresEntryView(mine){
         for(const s of students){ const r=scoreCellFor(s.id, a.subject, c, term, year); if(r){ colMax = r.max; break; } }
         return `<th class="small" style="font-weight:600;"><a href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="Click to edit this test's scores">${colLabel(c)}</a></th>`;
       }).join('');
-      const currentColLabel = (sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?(esc(examConfig(a.classId).cwLabel)+(sel.label?': '+esc(sel.label):'')):esc(examConfig(a.classId).eotLabel));
+      const currentColLabel = (!isP && sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?(esc(examConfig(a.classId).cwLabel)+(sel.label?': '+esc(sel.label):'')):esc(examConfig(a.classId).eotLabel));
       const missKey = missingMarkersKey(a.id, sel.paper, sel.kind, sel.label||'');
       const missSet = MISSING_MARKERS[missKey] || new Set();
       const cfgHere = examConfig(a.classId);
@@ -3607,7 +3636,7 @@ function scoresEntryView(mine){
       ${scoresLocked? `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>The ${esc(sel.kind==='AOI'?cfgHere.cwLabel:cfgHere.eotLabel)} submission deadline (${fmtDateTime(scoreDeadlineFor(sel.kind).deadline)}) has passed.</b> You can still see everything below, but scores can't be submitted, edited, or deleted until your admin reopens entry for you.</div>` : ''}
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center;">
-          <h3 style="margin:0;">${esc(a.subject)} — Paper ${esc(sel.paper)} — ${sel.kind==='AOI'?(esc(cfgHere.cwLabel)+': '+esc(sel.label||'')):esc(cfgHere.eotLabel)} — ${esc(cls.name)}</h3>
+          <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(esc(cfgHere.cwLabel)+': '+esc(sel.label||'')):esc(cfgHere.eotLabel)} — ${esc(cls.name)}</h3>
           <a href="#" class="small" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit my student list</a>
         </div>
         <p class="small">You're entering <b>${currentColLabel}</b>, marked out of <b>${sel.maxScore||100}</b> — that's the highlighted column below. ${otherCols.length?`For context, every other ${esc(a.subject)} test or exam already recorded this term is also shown alongside it, so you can see each learner's full record so far before entering this one. <b>Click any of those column headings to switch straight into editing that test's scores instead.</b>`:''} The report card will automatically convert this test to ${sel.kind==='AOI'?`${esc(cfgHere.cwLabel)}'s /${cfgHere.cwPercent} scale`:`${esc(cfgHere.eotLabel)}'s /${cfgHere.eotPercent} scale`}. Click a box and type marks, then hit Submit below to save &amp; send. <b>You can leave a box empty for a student who was absent or missing</b> — it will simply be skipped, and everyone else's marks will still be saved. Already-submitted marks for the highlighted test are pre-filled below too, so editing and resubmitting a score is as simple as changing the number and hitting Submit again.</p>
@@ -3670,7 +3699,7 @@ function scoresEntryView(mine){
               return `<option value="${a.id}">${esc(a.subject)} — ${c?esc(c.name):''}${teacherBit}</option>`; }).join('') || '<option value="">-- no subject assignments yet --</option>'}
           </select>
         </div>
-        <div><label>Paper</label><select name="paper" required id="paperSelect"></select></div>
+        <div id="paperFieldWrap"><label>Paper</label><select name="paper" required id="paperSelect"></select></div>
       </div>
       <div class="grid2">
         <div><label>Assessment type</label><select name="kind" id="kindSel">
@@ -3730,6 +3759,22 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const periods = availableTermYears(studentId);
   const { rows, totalPoints, avgPct } = computeSubjectRows(s, cls, term, year);
   const { position, size } = classPosition(s, cls, term, year);
+  // Previous Position: the student's rank in the term immediately before the one being
+  // viewed, following the school calendar's own rotation — Term 1 looks back to Term 3
+  // of the PRIOR year, Term 2 looks back to Term 1 of the same year, and Term 3 looks
+  // back to Term 2 of the same year. This is computed from the calendar, not just "the
+  // next entry in this student's score history", so a gap (e.g. no Term 2 scores on
+  // file) doesn't accidentally pull in the wrong term. It only shows a value if this
+  // student actually has scores on file for that specific prior term.
+  function prevTermYearFor(t, y){
+    if(t==='Term 1') return {term:'Term 3', year:Number(y)-1};
+    if(t==='Term 2') return {term:'Term 1', year:Number(y)};
+    if(t==='Term 3') return {term:'Term 2', year:Number(y)};
+    return null;
+  }
+  const prevTY = prevTermYearFor(term, year);
+  const prevPeriod = prevTY ? (periods.find(p=>p.term===prevTY.term && Number(p.year)===Number(prevTY.year)) || null) : null;
+  const prevPosition = prevPeriod ? classPosition(s, cls, prevPeriod.term, prevPeriod.year) : null;
   const isA = cls.level==='A';
   const isP = cls.level==='P';
   const maxP = isA ? maxPointsFor(s, cls) : 100;
@@ -3960,7 +4005,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         <td class="lbl">Sex</td><td class="val">${esc(s.gender||'—')}</td>
       </tr>
       <tr>
-        <td class="lbl">${isA?'Combination':'Optional Subjects'}</td><td class="val">${esc(comboLabel(s,cls))}</td>
+        <td class="lbl">${isA?'Combination':(isP?'Fees Pay Code':'Optional Subjects')}</td><td class="val">${isP?(s.feesCode?esc(s.feesCode):'—'):esc(comboLabel(s,cls))}</td>
         <td class="lbl">Admission No</td><td class="val">${esc(s.admNo||'—')}</td>
       </tr>
     </table>
@@ -3992,8 +4037,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       </tr>
       <tr>
         <td class="lbl">${isP?'Division':'Level'}</td><td class="val">${isP?(pDivision||'—'):(overallDesc||'—')}</td>
-        <td class="lbl">Position</td><td class="val">${position} / ${size}</td>
-        <td class="lbl">Fees Pay Code</td><td class="val">${s.feesCode?esc(s.feesCode):'—'}</td>
+        <td class="lbl">${termLbl} Position</td><td class="val">${position} / ${size}</td>
+        <td class="lbl">Previous Position</td><td class="val">${prevPosition?`${prevPosition.position} / ${prevPosition.size} (${esc(prevPeriod.term)}, ${esc(String(prevPeriod.year))})`:'—'}</td>
       </tr>
     </table>
 
@@ -4596,13 +4641,34 @@ document.addEventListener('change', (e)=>{
     // Primary has no concept of papers, so the Papers field is hidden entirely (and
     // defaulted to a single implicit paper) whenever a Primary class is selected here.
     const opt = e.target.selectedOptions[0];
-    const isPrimary = !!(opt && opt.dataset.level==='P');
+    const level = opt ? opt.dataset.level : null;
+    const isPrimary = level==='P';
     const wrap = document.getElementById('papersWrap');
     const input = document.getElementById('papersInput');
     if(wrap) wrap.style.display = isPrimary ? 'none' : 'block';
     if(input){
       input.required = !isPrimary;
       if(isPrimary) input.value = '1';
+    }
+    // Narrow the Subject (and, on "Assign Subjects to Teachers", Teacher) dropdowns to
+    // match the newly selected class's level, instead of leaving every subject/teacher
+    // from every level listed regardless of what's actually relevant here.
+    if(level){
+      const form = e.target.closest('form');
+      const subjSel = form ? form.querySelector('#assignSubjectSel') : null;
+      if(subjSel){
+        const prevSubj = subjSel.value;
+        const subs = subjectsForLevel(level);
+        subjSel.innerHTML = subs.map(s=>`<option value="${s}">${s}</option>`).join('');
+        if(subs.includes(prevSubj)) subjSel.value = prevSubj;
+      }
+      const teachSel = form ? form.querySelector('#assignTeacherSel') : null;
+      if(teachSel){
+        const prevTeacher = teachSel.value;
+        const teachers = teachersForLevel(level);
+        teachSel.innerHTML = teachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- no matching teacher yet --</option>';
+        if(teachers.some(t=>t.username===prevTeacher)) teachSel.value = prevTeacher;
+      }
     }
   }
   if(e.target.id==='bulkWordFile'){
@@ -4635,6 +4701,13 @@ document.addEventListener('change', (e)=>{
     const a = mine.find(x=>x.id===e.target.value);
     const paperSel = form.querySelector('#paperSelect');
     if(a && paperSel){ paperSel.innerHTML = a.papers.map(p=>`<option value="${p}">Paper ${p}</option>`).join(''); }
+    // Primary has no concept of papers (always a single implicit paper), so the Paper
+    // field is hidden entirely on the score-entry form once a Primary class/subject
+    // assignment is chosen — nothing for the teacher to pick.
+    const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
+    const isPrimaryAssign = !!(assignedCls && assignedCls.level==='P');
+    const paperFieldWrap = form.querySelector('#paperFieldWrap');
+    if(paperFieldWrap) paperFieldWrap.style.display = isPrimaryAssign ? 'none' : 'block';
     // The chosen class may have its own custom assessment type (Settings → Grading
     // Setup → per-class override), so refresh the AOI/EOT labels, the Course Work
     // test picker, and the suggested max score to match THIS class the moment it's
