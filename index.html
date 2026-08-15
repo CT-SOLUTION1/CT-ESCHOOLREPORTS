@@ -2196,7 +2196,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet']);
 function renderView(view){
   try{
     if(ADMIN_ONLY_VIEWS.has(view) && (!CUR || CUR.role!=='admin')){
@@ -2223,6 +2223,7 @@ function renderView(view){
       case 'password': return passwordView();
       case 'ascores': return CUR.role==='admin' ? scoresEntryView(DB.assignments) : '<p>You don\'t have permission to view this page.</p>';
       case 'marksheets': return marksheetsListView();
+      case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
       case 'classanalysis': return classAnalysisView();
       case 'mastermarksheet': return masterMarkSheetView();
       case 'tdash': return teacherDashboard();
@@ -3005,6 +3006,38 @@ function marksheetGroups(pool){
   pool.forEach(a=>{ const key=a.classId+'||'+a.subject; if(!map.has(key)) map.set(key,{classId:a.classId, subject:a.subject}); });
   return [...map.values()];
 }
+// A big class (or a Master Mark Sheet with many subjects) can make for a very tall
+// table on a phone or laptop screen — this splits the ON-SCREEN view into pages of
+// MARKSHEET_PAGE_SIZE students at a time so it stays scrollable and readable.
+// Downloads and prints NEVER use this: both are always generated from the FULL,
+// unpaginated student list (see the forExport parameter on integratedMarksheetView
+// and masterMarkSheetView, and the dlIntegratedPdf/dlMasterMarkSheetPdf/
+// printIntegrated/printMasterMarkSheet action handlers), so a downloaded or printed
+// mark sheet always contains every student regardless of which on-screen page is
+// showing when the button is clicked.
+const MARKSHEET_PAGE_SIZE = 25;
+function paginateMarksheet(list, page, forExport, pageSize){
+  const size = pageSize || MARKSHEET_PAGE_SIZE;
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total/size));
+  if(forExport) return { pageItems:list, page:1, totalPages:1, total, size, startIndex:0 };
+  const p = Math.min(Math.max(1, Number(page)||1), totalPages);
+  const startIndex = (p-1)*size;
+  return { pageItems:list.slice(startIndex, startIndex+size), page:p, totalPages, total, size, startIndex };
+}
+function marksheetPaginationBar(page, totalPages, total, size, startIndex, pageAction){
+  if(totalPages<=1) return '';
+  const from = total? startIndex+1 : 0, to = Math.min(startIndex+size, total);
+  return `
+  <div class="flex" style="justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;">
+    <span class="small">Showing ${from}–${to} of ${total} students — page ${page} of ${totalPages}</span>
+    <div class="flex">
+      <button class="btn-outline" ${page<=1?'disabled':''} data-action="${pageAction}:${page-1}">‹ Prev</button>
+      <button class="btn-outline" ${page>=totalPages?'disabled':''} data-action="${pageAction}:${page+1}">Next ›</button>
+    </div>
+  </div>
+  <div class="note" style="margin-top:8px;">This page shows students ${from}–${to} on screen for readability. <b>Downloading or printing this mark sheet always includes all ${total} students</b>, no matter which page is shown here.</div>`;
+}
 function marksheetsListView(){
   const ctClassIds = classTeacherClassIds();
   const pool = CUR.role==='admin' ? DB.assignments
@@ -3056,11 +3089,13 @@ function marksheetColumns(students, subject){
 function scoreCellFor(studentId, subject, col, term, year){
   return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==col.paper && sc.kind===col.kind && (col.kind!=='AOI' || sc.label===col.label) && sc.term===term && sc.year===year);
 }
-function integratedMarksheetView(classId, subject){
+function integratedMarksheetView(classId, subject, page, forExport){
   if(!classId || !subject) return '<p>Choose a class and subject from Mark Sheets.</p>';
-  const {cls, students} = marksheetRoster(classId, subject);
+  const {cls, students:allStudents} = marksheetRoster(classId, subject);
   if(!cls) return '<p>Class not found.</p>';
-  const cols = marksheetColumns(students, subject);
+  const pg = paginateMarksheet(allStudents, page, !!forExport);
+  const students = pg.pageItems;
+  const cols = marksheetColumns(allStudents, subject);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const colHeaders = cols.map(c=>`<th>P${esc(String(c.paper))} ${c.kind==='EOT'?'EOT':('AOI'+(c.label?': '+esc(c.label):''))}</th>`).join('');
   const rowsHtml = students.map(s=>{
@@ -3079,21 +3114,22 @@ function integratedMarksheetView(classId, subject){
   <h2>Integrated Mark Sheet</h2>
   <div class="card">
     <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
-      <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))}</div>
+      <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
       <div class="flex">
         <button class="btn-outline" data-action="dlIntegratedPdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
-        <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+        <button class="btn" data-action="printIntegrated:${classId}:${encodeURIComponent(subject)}">Print / Save as PDF</button>
         <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
       </div>
     </div>
   </div>
   <div id="printArea">
   <div class="card" style="overflow:auto;">
-    ${cols.length || students.length ? `<table class="data-table"><tr><th>Student</th><th>Adm No</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
+    ${cols.length || allStudents.length ? `<table class="data-table"><tr><th>Student</th><th>Adm No</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
     ${rowsHtml || `<tr><td colspan="${5+cols.length}">No students on record for this subject yet.</td></tr>`}
     </table>` : `<p class="small">No students or scores are on record yet for ${esc(subject)} in ${esc(cls.name)} this term.</p>`}
   </div>
-  </div>`;
+  </div>
+  ${!forExport ? marksheetPaginationBar(pg.page, pg.totalPages, pg.total, pg.size, pg.startIndex, `imsPage:${classId}:${encodeURIComponent(subject)}`) : ''}`;
 }
 function csvEscape(v){
   const s = (v===null||v===undefined)?'':String(v);
@@ -3282,7 +3318,7 @@ function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: val
    downloaded or printed on LANDSCAPE paper (see printLandscape() and the PDF export
    below, which both force landscape regardless of what orientation the rest of the app
    prints in). */
-function masterMarkSheetView(){
+function masterMarkSheetView(forExport){
   const isAdmin = CUR.role==='admin';
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
   if(!visibleClasses.length) return `<h2>Master Mark Sheet</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
@@ -3313,7 +3349,9 @@ function masterMarkSheetView(){
     return {subject:subj, papers, multi, colspan};
   });
 
-  const students = DB.students.filter(s=>s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const allStudents = DB.students.filter(s=>s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const pg = paginateMarksheet(allStudents, sel.mmPage, !!forExport);
+  const students = pg.pageItems;
 
   const rowsData = students.map(s=>{
     const {totalPoints, avgPct} = computeSubjectRows(s, cls, term, year);
@@ -3356,7 +3394,7 @@ function masterMarkSheetView(){
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
         return `${paperTds}<td>${ps.avg}</td>`;
       }).join('');
-      return `<tr><td>${i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td><td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td><td>${r.position}/${r.size}</td></tr>`;
     }).join('');
     colCount = 6 + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
@@ -3371,7 +3409,7 @@ function masterMarkSheetView(){
       const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
       const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : `${r.avgPct.toFixed(0)}%`;
       const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
-      return `<tr><td>${i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
     colCount = 6 + subjectMeta.length + (isP?1:0);
   }
@@ -3398,7 +3436,7 @@ function masterMarkSheetView(){
     } Either way, it\'s wide — download it as a PDF or print it, and choose <b>LANDSCAPE</b> paper for clarity.</div>
     <div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${mode}"><b>Download as PDF (landscape)</b></button>
-      <button class="btn" onclick="printLandscape()">Print (landscape)</button>
+      <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${mode}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
   </div>
@@ -3407,7 +3445,7 @@ function masterMarkSheetView(){
     <div class="mm-header">
       ${DB.info.logo?`<img src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
       <div class="mm-title">Master Mark Sheet — ${mode==='scores'?'Real Scores':'Letter Grades'}</div>
-      <div class="mm-meta">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
+      <div class="mm-meta">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
     </div>
     <div class="mm-tablewrap">
       <table class="mm-table">
@@ -3429,9 +3467,18 @@ function masterMarkSheetView(){
       ${DB.info.headteacher?`<span>Head Teacher: ${esc(DB.info.headteacher)}</span>`:''}
     </div>
   </div>
-  </div>`;
+  </div>
+  ${!forExport ? marksheetPaginationBar(pg.page, pg.totalPages, pg.total, pg.size, pg.startIndex, `mmPage`) : ''}`;
 }
-function setMasterMarkSheetParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
+// Changing class/term/year/mode always jumps back to page 1 (the old page number
+// likely no longer makes sense for a different roster) — except when the change
+// IS the page number itself.
+function setMasterMarkSheetParam(key, value){
+  const params = {...VIEW.params, [key]: value};
+  if(key!=='mmPage') params.mmPage = 1;
+  VIEW.params = params;
+  render();
+}
 // Note: like Class Analysis and the Integrated Mark Sheet, the Master Mark Sheet is
 // exported as a PDF only — no CSV export is offered for this view by design.
 
@@ -4274,14 +4321,38 @@ document.addEventListener('click', async (e)=>{
     }
     case 'openMarksheet': {
       const [classId, subjEnc] = (arg||'').split(':');
-      document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subjEnc?decodeURIComponent(subjEnc):''));
+      VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage:1}};
+      render();
+      break;
+    }
+    case 'imsPage': {
+      const [classId, subjEnc, pageNum] = (arg||'').split(':');
+      VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage: Number(pageNum)||1}};
+      render();
       break;
     }
     case 'dlIntegratedPdf': {
       const [classId, subjEnc] = (arg||'').split(':');
       const cls = DB.classes.find(c=>c.id===classId);
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
-      await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {orientation:'landscape'});
+      // Always exported from the FULL, unpaginated student list (forExport=true),
+      // regardless of which on-screen page the user was viewing when they clicked.
+      document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
+      try{
+        await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {orientation:'landscape'});
+      } finally {
+        render();
+      }
+      break;
+    }
+    case 'printIntegrated': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      const subject = subjEnc?decodeURIComponent(subjEnc):'';
+      // Same principle as dlIntegratedPdf: print the FULL student list, not just the
+      // page currently showing on screen.
+      document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
+      window.print();
+      render();
       break;
     }
     case 'dlClassAnalysisPdf': {
@@ -4291,12 +4362,31 @@ document.addEventListener('click', async (e)=>{
       await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_class_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'portrait'});
       break;
     }
+    case 'mmPage': {
+      setMasterMarkSheetParam('mmPage', Number(arg)||1);
+      break;
+    }
     case 'dlMasterMarkSheetPdf': {
       const [classId, termEnc, year, modeArg] = (arg||'').split(':');
       const cls = DB.classes.find(c=>c.id===classId);
       const term = termEnc?decodeURIComponent(termEnc):'';
       const modeLabel = modeArg==='grades' ? 'grades' : 'scores';
-      await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
+      // Always exported from the FULL, unpaginated student list (forExport=true),
+      // regardless of which on-screen page the user was viewing when they clicked.
+      document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
+      try{
+        await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
+      } finally {
+        render();
+      }
+      break;
+    }
+    case 'printMasterMarkSheet': {
+      // Same principle as dlMasterMarkSheetPdf: print the FULL student list, not just
+      // the page currently showing on screen.
+      document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
+      printLandscape();
+      render();
       break;
     }
     case 'approveAcc': { const code=prompt('Enter your private owner code to approve:'); if(code===null) break;
