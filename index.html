@@ -315,22 +315,105 @@ if(FIREBASE_READY){
     // Firestore document (see uploadPhotoToStorage below) — Firebase Storage
     // is not used, since it requires the paid "Blaze" plan even for small
     // amounts of data.
-    // Silent anonymous sign-in: gives Firestore security rules something to
-    // check (request.auth != null) without showing the user any extra login
-    // screen — the app's own username/password system is unaffected.
+    // Silent sign-in: gives Firestore security rules something to check
+    // (request.auth != null) without showing the user any extra login screen —
+    // the app's own username/password system is unaffected.
+    // Important for speed: Firebase already persists the signed-in user across
+    // reloads on this device (whether that's the old throwaway anonymous kind,
+    // or — once a school has been logged into — that school's shared identity).
+    // onAuthStateChanged's FIRST callback already reflects that restored session,
+    // so we only fall back to creating a fresh anonymous user if there truly is
+    // none yet. This means a device that has already switched to its school's
+    // identity stays on it across reloads, instead of quietly getting knocked
+    // back to anonymous every time the page loads — which is what made every
+    // single login redo the school-identity network round trip before.
     AUTH_READY = new Promise((resolve, reject)=>{
+      let settled = false;
       firebase.auth().onAuthStateChanged((user)=>{
-        if(user) resolve(user);
-      });
-      firebase.auth().signInAnonymously().catch((e)=>{
-        console.error('Anon auth failed:', e);
-        reject(e);
+        if(settled) return;
+        if(user){ settled = true; resolve(user); return; }
+        firebase.auth().signInAnonymously().catch((e)=>{
+          console.error('Anon auth failed:', e);
+          if(!settled){ settled = true; reject(e); }
+        });
       });
     });
   }
   catch(e){ console.error(e); DEMO_MODE = true; }
 }
 const COLLECTION = 'cte_solutions';
+
+/* ============================================================
+   1B. PER-SCHOOL AUTH IDENTITY
+   ------------------------------------------------------------
+   The anonymous sign-in above only exists so Firestore's security rules see
+   request.auth != null before we know which school (if any) this device
+   belongs to — it has nothing to do with the app's own username/password
+   accounts, which are unaffected by any of this.
+   Once a school is known (right after a successful login, or right after a
+   school finishes registering), the device switches from that throwaway
+   anonymous identity to ONE stable Firebase Auth identity shared by every
+   device/teacher/admin at that school, built from the school's own
+   registered email. That collapses "one new anonymous user per device,
+   forever" down to "one identity per school, reused". It carries no
+   access-control meaning by itself — who can see/do what is still entirely
+   governed by the app's own username/password/role system.
+============================================================ */
+function schoolAuthPassword(schoolId){
+  // Deterministic (not secret) — every device for a school needs to be able
+  // to derive the same password to sign in to that school's shared identity.
+  let h = 0;
+  const s = 'cte-school-auth::' + schoolId;
+  for(let i=0;i<s.length;i++){ h = ((h<<5)-h + s.charCodeAt(i))|0; }
+  const base = Math.abs(h).toString(36) + Math.abs((h*2654435761)|0).toString(36) + Math.abs((h^0x5bd1e995)|0).toString(36);
+  return ('Aa1!' + base).slice(0, 24); // comfortably meets Firebase's 6-char minimum
+}
+function normalizeSchoolEmail(email){ return (email||'').trim().toLowerCase(); }
+function isValidEmailFormat(email){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email||''); }
+function isSchoolEmailTaken(email, excludeSchoolId){
+  const e = normalizeSchoolEmail(email);
+  if(!e) return false;
+  return REGISTRY.some(r=>r.id!==excludeSchoolId && normalizeSchoolEmail(r.email)===e);
+}
+// Creates (if needed) and switches this device's Firestore session to a school's
+// shared auth identity. Safe to call repeatedly. Silently leaves the device on
+// its existing (anonymous) session if the school has no email on file yet, or
+// if anything here fails — a school's own username/password login must never
+// be blocked by this.
+async function switchToSchoolAuthIdentity(schoolId, email){
+  if(DEMO_MODE || !FIREBASE_READY) return;
+  const e = normalizeSchoolEmail(email);
+  if(!e || !isValidEmailFormat(e)) return;
+  // Already this school's identity (typical case after the first login on a
+  // device, thanks to Firebase persisting it across reloads) — nothing to do,
+  // no network round trip at all.
+  const cur = firebase.auth().currentUser;
+  if(cur && !cur.isAnonymous && cur.email && normalizeSchoolEmail(cur.email)===e) return;
+  const pw = schoolAuthPassword(schoolId);
+  try{
+    await firebase.auth().signInWithEmailAndPassword(e, pw);
+  }catch(err){
+    if(err && (err.code==='auth/user-not-found')){
+      try{ await firebase.auth().createUserWithEmailAndPassword(e, pw); }
+      catch(err2){ console.error('Could not create school auth identity:', err2); }
+    } else {
+      console.error('Could not switch to school auth identity:', err);
+    }
+  }
+}
+async function ensureSchoolAuthIdentity(schoolId, email){
+  if(DEMO_MODE || !FIREBASE_READY) return;
+  const e = normalizeSchoolEmail(email);
+  if(!e || !isValidEmailFormat(e)) return;
+  const pw = schoolAuthPassword(schoolId);
+  try{ await firebase.auth().createUserWithEmailAndPassword(e, pw); }
+  catch(err){
+    if(err && err.code==='auth/email-already-in-use'){
+      // Identity already exists (e.g. retry after a partial failure) — just switch to it.
+      try{ await firebase.auth().signInWithEmailAndPassword(e, pw); }catch(err2){ console.error(err2); }
+    } else { console.error('Could not create school auth identity:', err); }
+  }
+}
 
 /* ============================================================
    1A. AUTOMATIC SNAPSHOTS
@@ -2104,7 +2187,8 @@ function renderCreateSchoolForm(){
       <label>School name</label><input name="schoolName" required>
       <label>Address</label><input name="address">
       <label>Phone contact</label><input name="phone">
-      <label>Email</label><input name="email" type="email">
+      <label>School email</label><input name="email" type="email" required autocomplete="email">
+      <p class="small">Required for new schools — this becomes the school's registered contact email and secures your account's cross-device sign-in. It must be unique to your school.</p>
       <label>Motto (optional)</label><input name="motto">
       <label>Headteacher's full name</label><input name="headteacher" required>
       <hr style="margin:14px 0;border:none;border-top:1px solid #e2e8f0;">
@@ -2435,7 +2519,9 @@ function schoolInfoView(){
         <div><label>Phone</label><input name="phone" value="${esc(i.phone||'')}"></div>
       </div>
       <div class="grid2">
-        <div><label>Email</label><input name="email" type="email" value="${esc(i.email||'')}"></div>
+        <div><label>Email</label><input name="email" type="email" value="${esc(i.email||'')}">
+          ${!i.email?'<p class="small">New schools now require this, but yours was registered before that rule — it stays optional for you. Adding it is still recommended.</p>':''}
+        </div>
         <div><label>Motto</label><input name="motto" value="${esc(i.motto||'')}"></div>
       </div>
       <label>Headteacher's full name</label><input name="headteacher" value="${esc(i.headteacher||'')}" required>
@@ -4835,21 +4921,30 @@ document.addEventListener('submit', async (e)=>{
       await saveSystemOwner(); alert('Updated.');
     }
     else if(type==='createSchool'){
-      const req = ['schoolName','headteacher','username','password','ownerCode'];
+      // Email is required for every NEW school (existing schools registered before this
+      // requirement was added keep working without one — see switchToSchoolAuthIdentity,
+      // which simply stays on the anonymous session if a school has no email on file).
+      const req = ['schoolName','headteacher','username','password','ownerCode','email'];
       const missing = req.filter(k=>!fd.get(k) || !fd.get(k).trim());
       if(missing.length){ showFatal('Please fill in: '+missing.join(', ')); return; }
+      const email = normalizeSchoolEmail(fd.get('email'));
+      if(!isValidEmailFormat(email)){ showFatal('Please enter a valid school email address.'); return; }
+      if(isSchoolEmailTaken(email)){ showFatal('That email is already registered to another school. Each school needs its own email address.'); return; }
       { const conflict = await checkCredentialUniqueness(fd.get('username'), fd.get('password'));
         if(conflict.exactMatch){ showFatal('That exact username and password combination is already used by another account. Please change the username or the password.'); return; } }
       const id = uid('s');
-      REGISTRY.push({id, name:fd.get('schoolName'), ownerUsername:fd.get('username'), status:'pending', createdAt:Date.now()});
+      REGISTRY.push({id, name:fd.get('schoolName'), ownerUsername:fd.get('username'), status:'pending', createdAt:Date.now(), email});
       await saveRegistry();
       SCHOOL_ID = id;
-      DB.info = { schoolName:fd.get('schoolName'), address:fd.get('address')||'', phone:fd.get('phone')||'', email:fd.get('email')||'',
+      DB.info = { schoolName:fd.get('schoolName'), address:fd.get('address')||'', phone:fd.get('phone')||'', email,
         motto:fd.get('motto')||'', headteacher:fd.get('headteacher'), logo:null, currentTerm:'Term 1', currentYear:new Date().getFullYear(),
         ownerCode:fd.get('ownerCode'), oExtraSubjects:[], pExtraSubjects:[], aExtraSubjects:[], termEndDate:'', nextTermBeginDate:'' };
       DB.accounts = [{username:fd.get('username'), password:fd.get('password'), role:'admin', name:'School Owner', status:'active', recovery: (fd.get('recovery')||'').trim()||null}];
       DB.classes=[]; DB.students=[]; DB.assignments=[]; DB.scores=[]; DB.bands=DEFAULT_A_BANDS; DB.obands=DEFAULT_O_BANDS;
-      await Promise.all([saveInfo(),saveAccounts(),saveClasses(),saveStudents(),saveAssignments(),saveScores(),saveBands(),saveOBands()]);
+      await Promise.all([
+        saveInfo(),saveAccounts(),saveClasses(),saveStudents(),saveAssignments(),saveScores(),saveBands(),saveOBands(),
+        ensureSchoolAuthIdentity(id, email) // independent of the writes above — run alongside them, not after
+      ]);
       SCHOOL_ID = null; DB = { info:null, accounts:[], classes:[], students:[], assignments:[], scores:[], bands:null, obands:null, autoSnapshots:[] };
       alert('Your school has been submitted. It will work once the CT-E SOLUTIONS founder approves it.');
       AUTH_VIEW='login'; render();
@@ -4857,6 +4952,7 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='signupTeacher' || type==='signupParent'){
       const schoolId = fd.get('schoolId');
       if(!schoolId){ showFatal('Please choose your school.'); return; }
+      const switchPromise = switchToSchoolAuthIdentity(schoolId, (REGISTRY.find(r=>r.id===schoolId)||{}).email); // runs in parallel below, no extra fetch needed
       const uname = (fd.get('username')||'').trim();
       if(!fd.get('name') || !uname || (fd.get('password')||'').length<4){ showFatal('Please fill in all fields (password at least 4 characters).'); return; }
       const accounts = await getShared(`sch_${schoolId}_accounts`, []);
@@ -4871,6 +4967,7 @@ document.addEventListener('submit', async (e)=>{
         accounts.push({username:uname, password:fd.get('password'), role:'parent', name:fd.get('name'),
           status:'pending', studentId: st? st.id: null, pendingAdmNo: st? null: fd.get('childAdmNo')});
       }
+      await switchPromise; // must be done before we write, but has been running in parallel with the checks above
       await setShared(`sch_${schoolId}_accounts`, accounts);
       await syncUsernameIndexForSchool(schoolId, accounts); // new account created, index must know about it
       alert('Request submitted. The school owner must approve your account before you can sign in.');
@@ -4922,7 +5019,18 @@ document.addEventListener('submit', async (e)=>{
       else if(foundAcc.status==='closed') err='This account has been closed.';
       errEl.textContent = err;
       if(foundAcc && !err){
-        await loadSchoolData(foundSchoolId);
+        // Run in parallel, not sequentially: loading the school's data and
+        // switching this device's auth identity both need the network, and
+        // neither depends on the other finishing first. Only the switch needs
+        // to be DONE before the user starts making writes, not before reads.
+        // The email comes straight from REGISTRY (already in memory, no extra
+        // fetch needed) rather than DB.info, which isn't loaded until
+        // loadSchoolData finishes.
+        const schoolEmail = (REGISTRY.find(r=>r.id===foundSchoolId)||{}).email;
+        await Promise.all([
+          loadSchoolData(foundSchoolId),
+          switchToSchoolAuthIdentity(foundSchoolId, schoolEmail)
+        ]);
         CUR=foundAcc; SCHOOL_ID=foundSchoolId;
         await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u});
         render();
@@ -4968,7 +5076,10 @@ document.addEventListener('submit', async (e)=>{
         alert('Your password has been reset, but this account is currently closed. Ask your school owner to reopen it before signing in.');
         AUTH_VIEW='login'; render(); return;
       }
-      await loadSchoolData(foundSchoolId);
+      await Promise.all([
+        loadSchoolData(foundSchoolId),
+        switchToSchoolAuthIdentity(foundSchoolId, (REGISTRY.find(r=>r.id===foundSchoolId)||{}).email)
+      ]);
       CUR = foundAcc; SCHOOL_ID = foundSchoolId;
       await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u});
       alert('Password has been reset. You are now signed in.');
@@ -5109,8 +5220,24 @@ document.addEventListener('submit', async (e)=>{
         await deletePhotoFromStorage(oldLogo); // old logo is fully replaced — free up its space
       }
       DB.info.schoolName=fd.get('schoolName'); DB.info.address=fd.get('address'); DB.info.phone=fd.get('phone');
+      const newEmail = normalizeSchoolEmail(fd.get('email'));
+      const emailChanged = newEmail && newEmail!==normalizeSchoolEmail(DB.info.email);
+      if(emailChanged && isSchoolEmailTaken(newEmail, SCHOOL_ID)){
+        alert('That email is already registered to another school. Each school needs its own email address.'); return;
+      }
       DB.info.email=fd.get('email'); DB.info.motto=fd.get('motto'); DB.info.headteacher=fd.get('headteacher');
-      await saveInfo(); render();
+      await saveInfo();
+      if(emailChanged){
+        // A legacy school (or one correcting a typo) just set/changed its email — this is
+        // also the point where their cross-device shared identity gets created for the
+        // first time (or moved to the new address), same as it does automatically for
+        // any brand-new school at registration.
+        const reg = REGISTRY.find(r=>r.id===SCHOOL_ID);
+        if(reg) reg.email = newEmail;
+        await saveRegistry();
+        await ensureSchoolAuthIdentity(SCHOOL_ID, newEmail);
+      }
+      render();
     }
     else if(type==='addClass'){
       DB.classes.push({id:uid('cls'), name:fd.get('name'), level:fd.get('level'), form: fd.get('level')!=='A'?fd.get('form'):null,
