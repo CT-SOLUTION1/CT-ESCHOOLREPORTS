@@ -3405,7 +3405,7 @@ function classAnalysisView(){
     </div>
     <div class="flex" style="margin-top:14px;">
       <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>
-      <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+      <button class="btn" onclick="printLandscape()">Print / Save as PDF</button>
     </div>
   </div>
   <div id="printArea">
@@ -4500,7 +4500,12 @@ document.addEventListener('click', async (e)=>{
       // regardless of which on-screen page the user was viewing when they clicked.
       document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
       try{
-        await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {orientation:'landscape'});
+        // Same row-paginating, always-landscape, no-column-splitting export as Class
+        // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
+        const term = DB.info.currentTerm, year = DB.info.currentYear;
+        await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
+          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`
+        });
       } finally {
         render();
       }
@@ -4510,9 +4515,10 @@ document.addEventListener('click', async (e)=>{
       const [classId, subjEnc] = (arg||'').split(':');
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
       // Same principle as dlIntegratedPdf: print the FULL student list, not just the
-      // page currently showing on screen.
+      // page currently showing on screen, and always in landscape (many subjects can
+      // mean many columns).
       document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
-      window.print();
+      printLandscape();
       render();
       break;
     }
@@ -4520,7 +4526,10 @@ document.addEventListener('click', async (e)=>{
       const [classId, termEnc, year] = (arg||'').split(':');
       const cls = DB.classes.find(c=>c.id===classId);
       const term = termEnc?decodeURIComponent(termEnc):'';
-      await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_class_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'portrait'});
+      // Class Analysis always exports landscape with every column intact — see
+      // downloadTablesAsPdf for why this uses a dedicated row-paginating export
+      // instead of the generic canvas-tiling one used by wide mark sheets.
+      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_class_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
       break;
     }
     case 'mmPage': {
@@ -4536,7 +4545,10 @@ document.addEventListener('click', async (e)=>{
       // regardless of which on-screen page the user was viewing when they clicked.
       document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
       try{
-        await downloadElementAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
+        // Dedicated adapter (handles the two-row subject/paper header and the
+        // legend/footer text) feeding the same row-paginating, no-column-splitting
+        // export core as Class Analysis and the Integrated Mark Sheet.
+        await downloadMasterMarkSheetPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
       } finally {
         render();
       }
@@ -5934,6 +5946,186 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
   }
   openOrSavePdf(pdf, filename);
 }
+/* ---------- Generic table-based PDF export core ----------
+   Renders one or more table "sections" into a PDF where every column always fits the
+   page width (never tiled/split sideways) and pages break only between whole rows —
+   a learner's row is never cut in half — repeating the header row(s) on every page a
+   section spans. This replaces the old canvas-tiling export for every sheet that's
+   fundamentally "one row per learner, several columns": Class Analysis, the
+   Integrated Mark Sheet, and the Master Mark Sheet all share this now, instead of
+   each having its own bespoke, tiling-prone export.
+   sections: [{ title, subtitle, headRows:[<tr> elements], bodyRows:[<tr> elements],
+                footerHtml (optional, raw HTML shown after the LAST chunk of this
+                section), emptyText (optional, shown if bodyRows is empty) }]
+   opts: { orientation: 'landscape'|'portrait' (default landscape) } ---------- */
+async function renderTableSectionsAsPdf(sections, filename, opts={}){
+  try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
+  const { jsPDF } = window.jspdf;
+  const orientation = opts.orientation || 'landscape';
+  const pdf = new jsPDF(orientation==='portrait'?'p':'l', 'pt', 'a4');
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 20;
+  const usableW = pageW - margin*2;
+  const usableH = pageH - margin*2;
+
+  const holder = document.createElement('div');
+  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.top='0';
+  holder.style.background='#fff';
+  document.body.appendChild(holder);
+
+  const captureScale = 2;
+  let firstPageOverall = true;
+
+  for(const section of sections){
+    const headRows = section.headRows.filter(Boolean);
+    const bodyRows = section.bodyRows;
+
+    // Measure this table at its natural (unscaled) size so we know the real width to
+    // fit to the page, and the real height of the header block and each body row —
+    // row-chunking below is based on actual rendered sizes, not guesses. A real
+    // <thead> is used (not just a first <tr>) so multi-row headers — e.g. the Master
+    // Mark Sheet's paper-number sub-header under each subject — measure and repeat
+    // correctly as a whole unit.
+    const measureTable = document.createElement('table');
+    measureTable.className = 'data-table';
+    const measureThead = document.createElement('thead');
+    headRows.forEach(r=>measureThead.appendChild(r.cloneNode(true)));
+    measureTable.appendChild(measureThead);
+    const measureTbody = document.createElement('tbody');
+    bodyRows.forEach(r=>measureTbody.appendChild(r.cloneNode(true)));
+    measureTable.appendChild(measureTbody);
+    holder.innerHTML = '';
+    holder.appendChild(measureTable);
+    const tableW = measureTable.scrollWidth || measureTable.offsetWidth || 1;
+    const headerH = measureThead.offsetHeight || 0;
+    const bodyTrs = [...measureTbody.rows];
+    const rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 22);
+
+    // The scale that will map this table's full natural width onto the full usable
+    // page width — every column always fits, since nothing is ever tiled sideways.
+    const scale = usableW / tableW;
+    const titleAllowancePx = (section.title || section.subtitle) ? 44 : 6;
+    const footerAllowancePx = section.footerHtml ? 30 : 0;
+    const maxBodyHeightPx = Math.max(headerH, (usableH/scale) - headerH - titleAllowancePx - footerAllowancePx);
+
+    // Group body rows into page-sized chunks without ever splitting a row across two
+    // chunks/pages.
+    const chunks = [];
+    let cur = [], curH = 0;
+    rowHeights.forEach((h, i)=>{
+      if(cur.length && curH + h > maxBodyHeightPx){ chunks.push(cur); cur = []; curH = 0; }
+      cur.push(bodyRows[i]); curH += h;
+    });
+    chunks.push(cur); // always at least one chunk, even if empty (shows header only)
+
+    for(let ci=0; ci<chunks.length; ci++){
+      const pageTable = document.createElement('table');
+      pageTable.className = 'data-table';
+      pageTable.style.width = tableW+'px';
+      const thead = document.createElement('thead');
+      headRows.forEach(r=>thead.appendChild(r.cloneNode(true)));
+      pageTable.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      if(chunks[ci].length){
+        chunks[ci].forEach(r=>tbody.appendChild(r.cloneNode(true)));
+      } else if(section.emptyText){
+        tbody.innerHTML = `<tr><td>${esc(section.emptyText)}</td></tr>`;
+      }
+      pageTable.appendChild(tbody);
+
+      const pageWrap = document.createElement('div');
+      pageWrap.style.width = tableW+'px';
+      pageWrap.style.padding = '10px';
+      pageWrap.style.fontFamily = 'Inter,sans-serif';
+      pageWrap.style.background = '#fff';
+      let headHtml = '';
+      if(ci===0){
+        if(section.title) headHtml += `<h3 style="margin:0 0 4px;">${esc(section.title)}</h3>`;
+        if(section.subtitle) headHtml += `<p style="margin:0 0 10px;font-size:12px;color:#5A7189;">${esc(section.subtitle)}</p>`;
+      } else if(section.title){
+        headHtml += `<h3 style="margin:0 0 10px;">${esc(section.title)} (continued)</h3>`;
+      }
+      pageWrap.innerHTML = headHtml;
+      pageWrap.appendChild(pageTable);
+      if(section.footerHtml && ci===chunks.length-1){
+        const foot = document.createElement('div');
+        foot.style.marginTop = '8px';
+        foot.innerHTML = section.footerHtml;
+        pageWrap.appendChild(foot);
+      }
+
+      holder.innerHTML = '';
+      holder.appendChild(pageWrap);
+
+      const canvas = await html2canvas(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
+      const img = canvas.toDataURL('image/jpeg', 0.95);
+      const w = usableW;
+      const h = Math.min(canvas.height*usableW/canvas.width, usableH);
+      if(!firstPageOverall) pdf.addPage();
+      firstPageOverall = false;
+      pdf.addImage(img, 'JPEG', margin, margin, w, h);
+    }
+  }
+
+  document.body.removeChild(holder);
+  openOrSavePdf(pdf, filename);
+}
+/* ---------- Class Analysis / Integrated Mark Sheet export: auto-detects each .card's
+   table inside the export area and turns it into one section (see
+   renderTableSectionsAsPdf above for the actual pagination logic). opts.title/
+   opts.subtitle are used as a fallback caption for any table whose card has no its
+   own <h3>/<p class="small"> (e.g. the Integrated Mark Sheet). ---------- */
+async function downloadTablesAsPdf(elementId, filename, opts={}){
+  const el = document.getElementById(elementId);
+  if(!el){ alert('Nothing to export yet.'); return; }
+  const sections = [...el.querySelectorAll('.card')].map(card=>{
+    const table = card.querySelector('table');
+    if(!table) return null;
+    const titleEl = card.querySelector('h3');
+    const descEl = card.querySelector('p.small');
+    const thead = table.querySelector('thead');
+    const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
+    const bodyRows = thead ? [...table.querySelectorAll('tbody tr')] : [...table.querySelectorAll('tr')].slice(1);
+    return {
+      title: (titleEl && titleEl.textContent) || opts.title || '',
+      subtitle: (descEl && descEl.textContent) || opts.subtitle || '',
+      headRows, bodyRows
+    };
+  }).filter(Boolean);
+  if(!sections.length){ alert('Nothing to export yet.'); return; }
+  await renderTableSectionsAsPdf(sections, filename, opts);
+}
+/* ---------- Master Mark Sheet export: its table isn't wrapped in a .card (it uses
+   its own .mm-page/.mm-tablewrap layout) and its header spans TWO <tr> rows in
+   "Real Scores" mode (subject name, then a sub-row of paper numbers underneath) — so
+   it's pulled out as its own small adapter rather than trying to force it through the
+   .card auto-detection above. The grading-scale legend and the generated-date/head-
+   teacher footer are carried over as a footer shown under the table on its last
+   page. ---------- */
+async function downloadMasterMarkSheetPdf(elementId, filename){
+  const el = document.getElementById(elementId);
+  if(!el){ alert('Nothing to export yet.'); return; }
+  const table = el.querySelector('table.mm-table') || el.querySelector('table');
+  if(!table){ alert('Nothing to export yet.'); return; }
+  const thead = table.querySelector('thead');
+  const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
+  const bodyRows = [...table.querySelectorAll('tbody tr')];
+  const schoolEl = el.querySelector('.mm-school');
+  const titleEl = el.querySelector('.mm-title');
+  const metaEl = el.querySelector('.mm-meta');
+  const legendEl = el.querySelector('p.small');
+  const footerEl = el.querySelector('.mm-footer');
+  let footerHtml = '';
+  if(legendEl) footerHtml += `<p style="font-size:10px;color:#5A7189;margin:0 0 4px;">${esc(legendEl.textContent)}</p>`;
+  if(footerEl) footerHtml += `<p style="font-size:9px;color:#8a97a6;margin:0;">${esc(footerEl.textContent)}</p>`;
+  await renderTableSectionsAsPdf([{
+    title: [schoolEl&&schoolEl.textContent, titleEl&&titleEl.textContent].filter(Boolean).join(' — '),
+    subtitle: metaEl ? metaEl.textContent : '',
+    headRows, bodyRows, footerHtml,
+    emptyText: 'No students in this class yet.'
+  }], filename);
+}
 // Blank mark sheet, for printing/marking on paper (separate from the CSV version,
 // which is a data-interchange file meant to be filled in and re-uploaded).
 async function downloadMarksheetPDF(assignId, paper, kind, label, max){
@@ -5945,28 +6137,23 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
     : DB.students.filter(s=>s.classId===a.classId && studentSubjects(s,cls).includes(a.subject));
   if(!students.length){ alert('No students on your list yet — select your students first.'); return; }
   const kindLbl = kind==='EOT' ? 'End of Term' : ('AOI'+(label?': '+label:''));
-  const rowsHtml = students.map(s=>`<tr><td style="border:1px solid #333;padding:6px;">${esc(s.admNo)}</td><td style="border:1px solid #333;padding:6px;text-align:left;">${esc(s.name)}</td><td style="border:1px solid #333;padding:6px;height:22px;"></td></tr>`).join('');
-  const holder = document.createElement('div');
-  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.top='0';
-  holder.style.width='700px'; holder.style.background='#fff'; holder.style.padding='20px'; holder.style.fontFamily='Georgia,serif'; holder.style.color='#132436';
-  holder.innerHTML = `
-    <h2 style="margin:0 0 4px;">${esc(DB.info.schoolName||'')}</h2>
-    <p style="margin:0 0 14px;">${esc(cls?cls.name:'')} — ${esc(a.subject)} — Paper ${esc(String(paper))} — ${esc(kindLbl)} — marked out of ${max}</p>
-    <table style="border-collapse:collapse;width:100%;font-size:13px;">
-      <tr>${['Admission No','Name','Marks'].map(h=>`<th style="border:1px solid #333;padding:6px;background:#eee;">${h}</th>`).join('')}</tr>
-      ${rowsHtml}
-    </table>`;
-  document.body.appendChild(holder);
-  try{ await loadPdfLibs(); }catch(e){ document.body.removeChild(holder); alert(e.message); return; }
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF('p','pt','a4');
-  const canvas = await html2canvas(holder, {scale:2});
-  document.body.removeChild(holder);
-  const img = canvas.toDataURL('image/jpeg',0.95);
-  const w = pdf.internal.pageSize.getWidth(); const h = canvas.height*w/canvas.width;
-  pdf.addImage(img,'JPEG',0,0,w,h);
+  // Built as real <tr> elements (not just an HTML string) so this can go through the
+  // same row-paginating export core as the other mark sheets — previously this was
+  // rendered as ONE tall, un-paginated image, so a large class simply ran off the
+  // bottom of the single portrait page it was squeezed onto.
+  const headRow = document.createElement('tr');
+  headRow.innerHTML = ['Admission No','Name','Marks'].map(h=>`<th>${esc(h)}</th>`).join('');
+  const bodyRows = students.map(s=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td><td style="height:22px;"></td>`;
+    return tr;
+  });
   const kindFile = kind==='EOT' ? 'EndOfTerm' : ('AOI_'+(label||'test')).replace(/\s+/g,'_');
-  openOrSavePdf(pdf, `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`);
+  await renderTableSectionsAsPdf([{
+    title: `${DB.info.schoolName||''}`,
+    subtitle: `${cls?cls.name:''} — ${a.subject} — Paper ${paper} — ${kindLbl} — marked out of ${max}`,
+    headRows: [headRow], bodyRows
+  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait'});
 }
 
 /* ---------- Bulk PDF ---------- */
@@ -6091,10 +6278,99 @@ function showFatal(msg){
 window.addEventListener('error', (e)=>{ showFatal(e.message); });
 window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.reason.message ? e.reason.message : e.reason); });
 
-/* ---------- PWA install support ---------- */
+/* ---------- PWA install support + auto-update ----------
+   Two layers work together so a change you deploy reaches everyone, including
+   people who already have the app open in a browser tab and never touch refresh:
+
+   1. VERSION POLLING (works even without the service worker / PWA install).
+      Every tab periodically re-fetches its OWN index.html straight from the network
+      (cache:'no-store', bypassing the browser's HTTP cache) and reads the BUILD_ID
+      baked into that fresh copy. If it doesn't match the BUILD_ID this tab is
+      currently running, a new version has been deployed — the tab reloads itself.
+      THIS IS WHAT YOU BUMP ON EVERY DEPLOY: change the BUILD_ID string below (any
+      unique value — a timestamp is easiest) right before publishing. If it isn't
+      changed, already-open tabs have nothing to detect and won't auto-update.
+
+   2. SERVICE WORKER (only matters for people who installed this as an app / are
+      using it offline-capable — see sw.js). skipWaiting()+clients.claim() there
+      means a newly deployed service worker takes over immediately instead of
+      waiting for every tab to be closed first, and we listen for controllerchange
+      below to reload once it does.
+
+   SAFETY: neither layer force-reloads while someone has an input/textarea/select
+   focused (e.g. mid-way through entering a mark) — it waits until that field loses
+   focus, so an auto-update can never wipe out marks someone is actively typing.
+------------------------------------------------------------------------------- */
+const BUILD_ID = 'BUILD-2026-08-17-1'; // <-- change this to any new value on every deploy
+
+let updatePending = false;
+function isEditingNow(){
+  const el = document.activeElement;
+  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+function showUpdateToast(msg){
+  let t = document.getElementById('updateToast');
+  if(!t){
+    t = document.createElement('div'); t.id = 'updateToast';
+    t.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--navy,#0A2A4A);color:#fff;padding:9px 18px;border-radius:20px;font-weight:700;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:10000;font-family:Inter,sans-serif;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+}
+function reloadForUpdate(){
+  showUpdateToast('A newer version is available — reloading…');
+  setTimeout(()=>location.reload(), 900);
+}
+function requestUpdateWhenSafe(){
+  if(updatePending) return;
+  updatePending = true;
+  if(isEditingNow()){
+    showUpdateToast('Update ready — will apply as soon as you finish this field.');
+  } else {
+    reloadForUpdate();
+  }
+}
+// Catches the case where someone WAS editing when the update was detected: as soon
+// as they click/tab away from that field, apply the pending reload.
+document.addEventListener('blur', ()=>{ if(updatePending && !isEditingNow()) reloadForUpdate(); }, true);
+
+async function checkForNewBuild(){
+  try{
+    const res = await fetch(location.pathname + location.search + (location.search?'&':'?') + '_v=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) return;
+    const html = await res.text();
+    const m = html.match(/BUILD_ID\s*=\s*['"]([^'"]+)['"]/);
+    if(m && m[1] && m[1] !== BUILD_ID) requestUpdateWhenSafe();
+  }catch(e){ /* offline or a network blip — just try again next interval */ }
+}
+function startUpdateWatcher(){
+  const CHECK_INTERVAL_MS = 60*1000; // poll every minute
+  setInterval(checkForNewBuild, CHECK_INTERVAL_MS);
+  // Also check the moment a backgrounded tab becomes active again, so someone
+  // switching back to a tab left open overnight gets the current version right
+  // away instead of waiting up to a minute.
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkForNewBuild(); });
+}
+startUpdateWatcher();
+
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js').catch((e)=>console.warn('Service worker not registered:', e));
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      // Actively re-check for a new service worker (not just on next full navigation)
+      // so an already-open tab notices a deploy without needing to be closed/reopened.
+      setInterval(()=>reg.update().catch(()=>{}), 60*1000);
+      document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) reg.update().catch(()=>{}); });
+    }).catch((e)=>console.warn('Service worker not registered:', e));
+  });
+  // Fires once the new service worker has actually taken control of this page
+  // (after it calls skipWaiting()+clients.claim() — see sw.js). Reload so the
+  // freshly-controlled page also picks up any cache changes the new worker makes,
+  // respecting the same "not mid-edit" safety check as the version poll above.
+  let swControllerChanged = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(swControllerChanged) return; // avoid a reload loop
+    swControllerChanged = true;
+    requestUpdateWhenSafe();
   });
 }
 
