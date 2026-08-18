@@ -6202,7 +6202,18 @@ async function pdfForStudents(students, filename, opts={}){
   const format = 'JPEG';
   const jpegQuality = 0.95;
   for(let i=0;i<students.length;i++){
-    holder.innerHTML = `<div style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
+    // html2canvas has a long-standing, well-documented bug (the CSS spec itself calls
+    // border-collapse:collapse + rowspan/colspan "undefined" behaviour) where a merged
+    // (rowspan) cell painted across rows of slightly different height comes out with its
+    // text doubled/smeared — most visible on multi-paper subjects like Mathematics, whose
+    // Final Average/Grade/Points/Descriptor cells span two paper rows. Switching those
+    // tables to border-collapse:separate for this capture-only copy of the card sidesteps
+    // the bug entirely (each cell's borders and text are then painted independently
+    // instead of being merged/shared across the rowspan boundary) — the live on-screen
+    // card and the browser Print dialog still use the normal collapsed borders, so this
+    // override is scoped to just the offscreen holder html2canvas actually screenshots.
+    holder.innerHTML = `<style>#pdfCaptureHolder table.rc-perf, #pdfCaptureHolder table.rc-info-table{border-collapse:separate;border-spacing:0;}</style>`+
+      `<div id="pdfCaptureHolder" style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
     // card with a CSS transform, and a transform never changes an element's
     // layout box — only how it's painted. html2canvas captures the *layout* box,
