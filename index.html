@@ -178,6 +178,16 @@ table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);border-top:2.4px solid var(--blue);}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
+/* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
+   export (see mergedTd() in reportCardHTML): a subject-level value (Final Average,
+   Grade, Points, Descriptor, Subject name) that spans more than one paper row is
+   rendered as two plain, un-rowspanned cells instead — real <td rowspan> across rows
+   of unequal height is what triggers html2canvas's text-doubling bug. Removing the
+   border between them and forcing a matching plain background recreates the same
+   "one merged cell" look without ever asking html2canvas to paint one cell's text
+   across two physical table rows. */
+table.rc-perf td.mrg-top{border-bottom:none;background:#fff;}
+table.rc-perf td.mrg-bot{border-top:none;background:#fff;}
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
@@ -4035,17 +4045,45 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg);
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       const paperFinalHtml = `<td>${paperFinal===null?'—':paperFinal.toFixed(1)}</td>`;
+      // Cells that apply to the WHOLE subject (Subject name, Final Average, Grade,
+      // Points, Descriptor) rather than one paper are visually merged down across every
+      // paper sub-row. On screen and in the browser Print dialog that's just a normal
+      // <td rowspan>. BUT for the copy of the card that html2canvas screenshots (embedded
+      // === true, used by both the single and bulk PDF downloads), rowspan cells that
+      // span rows of unequal height are exactly what triggers html2canvas's long-standing
+      // text-doubling/smearing bug (the CSS spec itself leaves border-collapse+rowspan
+      // undefined, and html2canvas's own row-by-row paint loop mishandles it) — switching
+      // the table to border-collapse:separate alone wasn't enough, since the bug is in how
+      // html2canvas positions the cell's TEXT across rows, not just its borders. So in
+      // embedded mode we sidestep rowspan entirely: put the value in the first paper row
+      // only, leave a plain blank cell (no rowspan) on the rows below it, and hide the
+      // seam between them with a border/background trick (see .mrg-top/.mrg-bot below) so
+      // it still reads as one merged cell — html2canvas then never has to paint a single
+      // cell's text across more than one physical row, because there no longer is one.
+      const mergedTd = (content)=>{
+        if(spanCount===1) return `<td>${content}</td>`;
+        if(!embedded) return idx===0 ? `<td rowspan="${spanCount}">${content}</td>` : '';
+        if(idx===0) return `<td class="mrg-top">${content}</td>`;
+        return `<td class="mrg-bot">&nbsp;</td>`;
+      };
       if(idx===0){
         return `<tr>`+
-          `<td rowspan="${spanCount}">${esc(r.subject)}</td>`+
+          mergedTd(esc(r.subject))+
           `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
-          `<td rowspan="${spanCount}">${r.avg===null?'-':r.avg.toFixed(1)}</td>`+
-          `<td rowspan="${spanCount}">${r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-'}</td>`+
-          `${isA?`<td rowspan="${spanCount}">${r.avg===null?0:r.pts}</td>`:''}`+
-          `<td rowspan="${spanCount}">${esc(descriptor)}</td>`+
+          mergedTd(r.avg===null?'-':r.avg.toFixed(1))+
+          mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-')+
+          (isA?mergedTd(r.avg===null?0:r.pts):'')+
+          mergedTd(esc(descriptor))+
           `<td>${initTxt}</td></tr>`;
       }
-      return `<tr class="subrow">${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}<td>${initTxt}</td></tr>`;
+      return `<tr class="subrow">`+
+        mergedTd(esc(r.subject))+
+        `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
+        mergedTd(r.avg===null?'-':r.avg.toFixed(1))+
+        mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-')+
+        (isA?mergedTd(r.avg===null?0:r.pts):'')+
+        mergedTd(esc(descriptor))+
+        `<td>${initTxt}</td></tr>`;
     }).join('');
   }).join('');
 
