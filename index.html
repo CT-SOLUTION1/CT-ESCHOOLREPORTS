@@ -723,13 +723,19 @@ function computeLookbackAdmissionYear(level, form){
   return refYear - offset;
 }
 // Full admission number format: SCHOOLINITIALS/YEAR-OF-ADMISSION/LEVEL/3-DIGIT-No
-// e.g. KH/2024/O/007. The year and level come from the STUDENT'S CLASS at the time
-// they were admitted (each class can look back and set its own admission year), and
-// the 3-digit number is a per-class running sequence starting at 001 that never
-// resets or gets reassigned — every student keeps the same admission number for as
-// long as they remain at the school, even if they're later promoted to a new class.
+// e.g. KH/2024/O/007. The year is worked out FRESH, every single time a student is
+// added — from that class's level+form and the school's CURRENT year — never read
+// from a value stored on the class itself. This matters because a class ("S.3 East")
+// is a reusable slot, not a one-off cohort: it keeps existing term after term, year
+// after year, hosting a different set of students each time as they get promoted in
+// and out. A student added into that same S.3 slot in 2026 is a different cohort
+// from one added in 2024, so their look-back year must differ too, even though
+// they're going into the class with the exact same name. The 3-digit number is a
+// per-class running sequence starting at 001 that never resets or gets reassigned —
+// every student keeps the same admission number for as long as they remain at the
+// school, even if they're later promoted to a new class.
 function nextAdmissionNumber(cls){
-  const year = cls.admissionYear || (DB.info && DB.info.currentYear) || new Date().getFullYear();
+  const year = computeLookbackAdmissionYear(cls.level, cls.form);
   cls.nextAdmSeq = (cls.nextAdmSeq||0) + 1;
   const seq = String(cls.nextAdmSeq).padStart(3,'0');
   return `${schoolInitials()}/${year}/${cls.level||'O'}/${seq}`;
@@ -739,7 +745,7 @@ function nextAdmissionNumber(cls){
 // consuming the next sequence number until the form is really submitted.
 function peekNextAdmissionNumber(cls){
   if(!cls) return '';
-  const year = cls.admissionYear || (DB.info && DB.info.currentYear) || new Date().getFullYear();
+  const year = computeLookbackAdmissionYear(cls.level, cls.form);
   const seq = String((cls.nextAdmSeq||0)+1).padStart(3,'0');
   return `${schoolInitials()}/${year}/${cls.level||'O'}/${seq}`;
 }
@@ -914,19 +920,16 @@ async function pruneOldScores(){
   KNOWN_SCORE_SHARDS[SCHOOL_ID] = known;
 }
 // One-time migration (guarded by DB.info.admSchemaMigrated) that brings an existing
-// school onto the new automatic-admission-number scheme: every class gets an
-// admissionYear (defaulting to the school's current year) and a nextAdmSeq counter,
-// and every existing student is regenerated a fresh, correctly-formatted admission
-// number, numbered 001-upwards per class in their existing (roughly enrollment) order.
+// school onto the automatic-admission-number scheme: every class gets a nextAdmSeq
+// counter, and every existing student is regenerated a fresh, correctly-formatted
+// admission number — numbered 001-upwards per class in their existing (roughly
+// enrollment) order, with the year worked out per-student from that class's
+// level+form (see computeLookbackAdmissionYear), not one flat year for everyone.
 // After this runs once, brand-new students always get their number from
 // nextAdmissionNumber() instead, so this never re-runs or re-shuffles anyone again.
 async function migrateAdmissionSystem(){
   if(!DB.info || DB.info.admSchemaMigrated) return;
-  const fallbackYear = DB.info.currentYear || new Date().getFullYear();
-  DB.classes.forEach(cls=>{
-    if(cls.admissionYear==null) cls.admissionYear = fallbackYear;
-    cls.nextAdmSeq = 0;
-  });
+  DB.classes.forEach(cls=>{ cls.nextAdmSeq = 0; });
   DB.classes.forEach(cls=>{
     DB.students.filter(s=>s.classId===cls.id).forEach(s=>{
       s.admSeq = (cls.nextAdmSeq = (cls.nextAdmSeq||0) + 1);
@@ -940,7 +943,7 @@ async function migrateAdmissionSystem(){
 // Pure formatter shared by the migration above (which already knows the sequence
 // number for each student) so the format logic lives in exactly one place.
 function nextAdmissionNumberFromSeq(cls, seq){
-  const year = cls.admissionYear || (DB.info && DB.info.currentYear) || new Date().getFullYear();
+  const year = computeLookbackAdmissionYear(cls.level, cls.form);
   return `${schoolInitials()}/${year}/${cls.level||'O'}/${String(seq).padStart(3,'0')}`;
 }
 // "Old Students" retention: a student marked as left/completed is kept, fully
@@ -2687,7 +2690,7 @@ function classesView(){
       <div class="grid3">
         <div><label>Class name</label><input name="name" placeholder="e.g. S.3 East" required></div>
         <div><label>Level</label><select name="level" id="clsLevel"><option value="O">O-Level</option><option value="A">A-Level</option><option value="P">Primary</option></select></div>
-        <div id="formWrap"><label>Form</label><select name="form" id="clsForm" onchange="autoFillAdmYear()"><option>S.1</option><option>S.2</option><option>S.3</option><option>S.4</option></select></div>
+        <div id="formWrap"><label>Form</label><select name="form" id="clsForm"><option>S.1</option><option>S.2</option><option>S.3</option><option>S.4</option></select></div>
       </div>
       <div class="grid2">
         <div><label>Stream (optional)</label><input name="stream" placeholder="e.g. East"></div>
@@ -2695,18 +2698,16 @@ function classesView(){
           ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('')}
         </select></div>
       </div>
-      <label>Year of admission for this class</label>
-      <input name="admissionYear" id="clsAdmYear" type="number" value="${computeLookbackAdmissionYear('O','S.1')}" min="2000" max="2100" required>
-      <p class="small" style="margin-top:4px;">Filled in automatically — looks back from this school's current year (${esc(String((DB.info&&DB.info.currentYear)||new Date().getFullYear()))}) based on the level and form you pick above, so an S.3 class started in 2024 rather than this year. Feeds directly into this class's students' admission numbers (…/YEAR/…). You can still type over it for an unusual case (a repeated class, a mid-year transfer-in class, etc.).</p>
+      <p class="small">There's no "year of admission" to set here anymore — it's no longer something typed in once for the whole class. Every student's admission year is now worked out individually, the moment they're added, by looking back from this school's current year (${esc(String((DB.info&&DB.info.currentYear)||new Date().getFullYear()))}) based on the level/form they're joining. That way it stays correct even if this same class name gets reused for a different intake next year.</p>
       <button class="btn" style="margin-top:12px;">Submit — add class</button>
     </form>
   </div>
   <div class="card">
-    <table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Adm. Year</th><th>Class Teacher</th><th>Students</th><th>Action</th></tr>
+    <table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Next student's look-back year</th><th>Class Teacher</th><th>Students</th><th>Action</th></tr>
     ${DB.classes.map(c=>{
       const t = DB.accounts.find(a=>a.username===c.classTeacher);
       const count = DB.students.filter(s=>s.classId===c.id && s.status!=='left').length;
-      return `<tr><td>${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${esc(String(c.admissionYear||'—'))}</td><td>${t?esc(t.name):'—'}</td><td>${count}</td>
+      return `<tr><td>${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${esc(String(computeLookbackAdmissionYear(c.level,c.form)))}</td><td>${t?esc(t.name):'—'}</td><td>${count}</td>
       <td class="flex" style="justify-content:center;"><button class="btn-outline" style="padding:6px 12px;" data-action="editClass:${c.id}">Edit</button><button class="btn-danger" data-action="delClass:${c.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="7">No classes yet.</td></tr>'}
     </table>
@@ -2731,7 +2732,7 @@ function classEditView(classId){
           <option value="A" ${cls.level==='A'?'selected':''}>A-Level</option>
           <option value="P" ${cls.level==='P'?'selected':''}>Primary</option>
         </select></div>
-        <div id="formWrap"><label>Form</label><select name="form" id="clsForm" onchange="autoFillAdmYear()">
+        <div id="formWrap"><label>Form</label><select name="form" id="clsForm">
           ${forms.map(f=>`<option ${f===cls.form?'selected':''}>${f}</option>`).join('')}
         </select></div>
       </div>
@@ -2741,9 +2742,7 @@ function classEditView(classId){
           ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}" ${t.username===cls.classTeacher?'selected':''}>${esc(t.name)}</option>`).join('')}
         </select></div>
       </div>
-      <label>Year of admission for this class</label>
-      <input name="admissionYear" id="clsAdmYear" type="number" value="${esc(String(cls.admissionYear||new Date().getFullYear()))}" min="2000" max="2100" required>
-      <p class="small" style="margin-top:4px;">Kept exactly as it already was set — changing the level or form above will offer a re-calculated suggestion, but only if you actually pick a different one. Only affects <b>new</b> students added to this class from now on — everyone already in it keeps the admission number they were already given.</p>
+      <p class="small">Admission year is no longer set on the class itself — it's calculated individually for each student the moment they're added, based on the level/form they're joining and this school's current year. A student added into this class right now would look back to <b>${esc(String(computeLookbackAdmissionYear(cls.level,cls.form)))}</b>. Students already in this class keep the admission number they were already given, unaffected by anything here.</p>
       <p class="small" style="margin-top:6px;">${count} student${count===1?'':'s'} currently in this class.</p>
       <button class="btn" style="margin-top:12px;">Submit — save class details</button>
     </form>
@@ -5037,21 +5036,6 @@ function refreshAssessmentTypeUI(form, classId){
   if(maxInput) maxInput.value = '';
 }
 
-// Re-suggests the admission-year field whenever the admin actively changes the
-// level or form dropdown on the Add Class / Edit Class forms. Deliberately wired to
-// 'change' events on those two selects only — never called on page load — so an
-// existing class's already-set year is never silently rewritten just by opening its
-// edit screen; it's only recalculated if the admin themselves picks a different
-// level/form.
-function autoFillAdmYear(){
-  const levelSel = document.getElementById('clsLevel');
-  const formSel = document.getElementById('clsForm');
-  const yearInput = document.getElementById('clsAdmYear');
-  if(!levelSel || !yearInput) return;
-  const level = levelSel.value;
-  const form = level==='A' ? (formSel ? formSel.value : 'S.5') : (formSel ? formSel.value : null);
-  yearInput.value = computeLookbackAdmissionYear(level, form);
-}
 document.addEventListener('change', (e)=>{
   if(e.target.id==='clsLevel'){
     const val = e.target.value;
@@ -5060,7 +5044,6 @@ document.addEventListener('change', (e)=>{
     const forms = FORM_SEQUENCE_BY_LEVEL[val] || ['S.1','S.2','S.3','S.4'];
     if(wrap) wrap.style.display = 'block';
     if(sel) sel.innerHTML = forms.map(f=>`<option>${f}</option>`).join('');
-    autoFillAdmYear();
   }
   if(e.target.id==='assignClassSel'){
     // Primary has no concept of papers, so the Papers field is hidden entirely (and
@@ -5553,9 +5536,8 @@ document.addEventListener('submit', async (e)=>{
       render();
     }
     else if(type==='addClass'){
-      const admissionYear = Number(fd.get('admissionYear')) || (DB.info.currentYear || new Date().getFullYear());
       DB.classes.push({id:uid('cls'), name:fd.get('name'), level:fd.get('level'), form: fd.get('form')||null,
-        stream:fd.get('stream')||'', classTeacher:fd.get('classTeacher')||null, admissionYear, nextAdmSeq:0});
+        stream:fd.get('stream')||'', classTeacher:fd.get('classTeacher')||null, nextAdmSeq:0});
       await saveClasses(); form.reset(); render();
     }
     else if(type==='updateClass'){
@@ -5568,7 +5550,6 @@ document.addEventListener('submit', async (e)=>{
       cls.form = fd.get('form')||null;
       cls.stream = fd.get('stream')||'';
       cls.classTeacher = fd.get('classTeacher')||null;
-      cls.admissionYear = Number(fd.get('admissionYear')) || cls.admissionYear || (DB.info.currentYear || new Date().getFullYear());
       await saveClasses(); showDeliveredToast('Class details saved'); VIEW = {name:'classes', params:{}}; render();
     }
     else if(type==='createAccount'){
