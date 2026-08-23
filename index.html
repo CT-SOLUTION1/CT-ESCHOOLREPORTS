@@ -718,15 +718,24 @@ const FORM_SEQUENCE_BY_LEVEL = {
 };
 function computeLookbackAdmissionYear(level, form){
   const refYear = (DB.info && DB.info.currentYear) || new Date().getFullYear();
-  const seq = FORM_SEQUENCE_BY_LEVEL[level] || [];
-  // Match tolerant of stray formatting differences in stored data (extra spaces,
-  // different case, e.g. "s.6 " vs "S.6") — a plain exact-string indexOf would
-  // silently fall back to offset 0 (no lookback at all) for any such mismatch,
-  // which is indistinguishable from a genuine S.1/S.5 entry-point student. Comparing
-  // on a normalized (trimmed, uppercased, whitespace-collapsed) form avoids that
-  // silent failure mode.
   const norm = v => String(v||'').trim().toUpperCase().replace(/\s+/g,'');
-  const offset = Math.max(0, seq.map(norm).indexOf(norm(form)));
+  const normForm = norm(form);
+  // Look the form up against EVERY level's own chain, not only the chain for the
+  // class's stored 'level' field. Each form value (P.1..P.7, S.1..S.4, S.5..S.6) is
+  // unique to exactly one chain, so this always finds the right offset — including
+  // for a class whose 'level' field is stale, blank, or was set before A-Level was
+  // split out as its own level. This is what makes S.6 correctly look back one year
+  // (to 2025 when the school's current year is 2026) even on an older class record
+  // where 'level' might not reliably say "A".
+  for(const lvl of Object.keys(FORM_SEQUENCE_BY_LEVEL)){
+    const idx = FORM_SEQUENCE_BY_LEVEL[lvl].map(norm).indexOf(normForm);
+    if(idx !== -1) return refYear - idx;
+  }
+  // Form isn't recognized at all (blank, custom text, etc.) — fall back to the
+  // passed level's own chain so behavior is at least predictable, even though this
+  // path should be rare.
+  const seq = FORM_SEQUENCE_BY_LEVEL[level] || [];
+  const offset = Math.max(0, seq.map(norm).indexOf(normForm));
   return refYear - offset;
 }
 // Full admission number format: SCHOOLINITIALS/YEAR-OF-ADMISSION/LEVEL/3-DIGIT-No
@@ -942,7 +951,7 @@ async function pruneOldScores(){
 // otherwise be permanently stuck on the old format. Once a school is caught up to
 // the current version it's a no-op again until the version next changes, and
 // brand-new students always get their number from nextAdmissionNumber() directly.
-const ADM_SCHEMA_VERSION = 3;
+const ADM_SCHEMA_VERSION = 4;
 async function migrateAdmissionSystem(){
   if(!DB.info || (DB.info.admSchemaVersion||0) >= ADM_SCHEMA_VERSION) return;
   DB.classes.forEach(cls=>{ cls.nextAdmSeq = 0; });
