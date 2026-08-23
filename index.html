@@ -3143,12 +3143,16 @@ function teacherProfileView(username){
   <div class="note">Only an Admin can edit which classes, subjects, and papers a teacher is assigned to.</div>
   <div class="card" style="margin-top:14px;">
     <h3>Basic info</h3>
+    <p class="small">Useful when a teacher leaves and a replacement is taking over their login — rename the account and set a new password rather than deleting it, so all of the outgoing teacher's existing assignments and previously entered scores carry over cleanly to the new name/username.</p>
     <form data-form="updateTeacherProfile" data-username="${esc(username)}">
       <div class="grid2">
         <div><label>Full name</label><input name="name" value="${esc(t.name)}" required></div>
-        <div><label>Username</label><input value="${esc(t.username)}" disabled></div>
+        <div><label>Username</label><input name="username" value="${esc(t.username)}" required></div>
       </div>
-      <button class="btn" style="margin-top:14px;">Submit — save name</button>
+      <label>New password (optional)</label>
+      <input name="password" placeholder="Leave blank to keep the current password" autocomplete="new-password">
+      <p class="small" style="margin-top:4px;">Changing the username or password here requires your owner code and will not sign this teacher out of any device already logged in — let them know the new details directly.</p>
+      <button class="btn" style="margin-top:14px;">Submit — save changes</button>
     </form>
   </div>
   <div class="card">
@@ -5792,13 +5796,46 @@ document.addEventListener('submit', async (e)=>{
       await saveAssignments(); form.reset(); render();
     }
     else if(type==='updateTeacherProfile'){
-      const username = form.dataset.username;
-      const t = DB.accounts.find(a=>a.username===username && a.role==='teacher');
+      const oldUsername = form.dataset.username;
+      const t = DB.accounts.find(a=>a.username===oldUsername && a.role==='teacher');
       if(!t){ alert('Teacher not found.'); return; }
       const newName = (fd.get('name')||'').trim();
       if(!newName){ alert('Please enter a name.'); return; }
+      const newUsername = (fd.get('username')||'').trim();
+      if(!newUsername){ alert('Please enter a username.'); return; }
+      const newPassword = (fd.get('password')||'').trim();
+      const usernameChanged = newUsername.toLowerCase()!==oldUsername.toLowerCase();
+      const passwordChanged = !!newPassword;
+      if(passwordChanged && newPassword.length<4){ alert('Password must be at least 4 characters.'); return; }
+      if(usernameChanged || passwordChanged){
+        const code = prompt(`Enter your private owner code to change ${t.name}'s ${usernameChanged && passwordChanged?'username and password':usernameChanged?'username':'password'}:`);
+        if(code===null) return;
+        if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+      }
+      if(usernameChanged && isUsernameTakenInSchool(newUsername, DB.accounts, oldUsername)){
+        alert('That username is already used by another account at this school. Pick a different username.'); return;
+      }
+      const effectivePassword = passwordChanged ? newPassword : t.password;
+      if(usernameChanged || passwordChanged){
+        const conflict = await checkCredentialUniqueness(newUsername, effectivePassword, {excludeSchoolId:SCHOOL_ID, excludeUsername:oldUsername});
+        if(conflict.exactMatch){ alert('That username and password combination is already used by another account elsewhere. Pick a different username or password.'); return; }
+      }
       t.name = newName;
-      await saveAccounts(); alert('Teacher profile updated.'); render();
+      if(usernameChanged){
+        t.username = newUsername;
+        // Carry the rename through to everything that references the old
+        // username, so this teacher's existing class/subject assignments
+        // and every score they've already entered stay correctly linked
+        // (e.g. a replacement teacher taking over a departing one's login).
+        const changedAssignments = DB.assignments.filter(a=>a.teacherUsername===oldUsername);
+        changedAssignments.forEach(a=>{ a.teacherUsername = newUsername; });
+        const changedScores = DB.scores.filter(sc=>sc.teacher===oldUsername).map(sc=>({...sc, teacher:newUsername}));
+        if(changedAssignments.length) await saveAssignments();
+        if(changedScores.length) await upsertScores(changedScores);
+      }
+      if(passwordChanged) t.password = newPassword;
+      await saveAccounts();
+      alert('Teacher profile updated.'); render();
     }
     else if(type==='editAssignPapers'){
       const id = form.dataset.id;
