@@ -206,6 +206,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 
 .legend-strip{display:flex;gap:9px;flex-wrap:wrap;font-size:9.5px;margin-top:10px;color:var(--muted);align-items:center;justify-content:center;}
 .legend-strip b{color:var(--ink);}
+.rc-scoring-note{text-align:center;font-size:9px;color:var(--muted);margin-top:4px;font-style:italic;}
 
 /* ---- Master Mark Sheet / Class Analysis: organized single "page" layout.
    Presents the wide table inside a bordered, letterhead-style page (school
@@ -4614,6 +4615,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <div class="legend-strip">
       <span>Fees balance: ${s.feesBalance!=null?('UGX '+Number(s.feesBalance).toLocaleString()):'—'} · Next term fees: ${s.nextTermFees!=null?('UGX '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
     </div>
+    <div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>
     </div>
   </div></div>`;
 }
