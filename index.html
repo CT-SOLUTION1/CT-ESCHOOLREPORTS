@@ -719,7 +719,14 @@ const FORM_SEQUENCE_BY_LEVEL = {
 function computeLookbackAdmissionYear(level, form){
   const refYear = (DB.info && DB.info.currentYear) || new Date().getFullYear();
   const seq = FORM_SEQUENCE_BY_LEVEL[level] || [];
-  const offset = Math.max(0, seq.indexOf(form));
+  // Match tolerant of stray formatting differences in stored data (extra spaces,
+  // different case, e.g. "s.6 " vs "S.6") — a plain exact-string indexOf would
+  // silently fall back to offset 0 (no lookback at all) for any such mismatch,
+  // which is indistinguishable from a genuine S.1/S.5 entry-point student. Comparing
+  // on a normalized (trimmed, uppercased, whitespace-collapsed) form avoids that
+  // silent failure mode.
+  const norm = v => String(v||'').trim().toUpperCase().replace(/\s+/g,'');
+  const offset = Math.max(0, seq.map(norm).indexOf(norm(form)));
   return refYear - offset;
 }
 // Full admission number format: SCHOOLINITIALS/YEAR-OF-ADMISSION/LEVEL/3-DIGIT-No
@@ -935,7 +942,7 @@ async function pruneOldScores(){
 // otherwise be permanently stuck on the old format. Once a school is caught up to
 // the current version it's a no-op again until the version next changes, and
 // brand-new students always get their number from nextAdmissionNumber() directly.
-const ADM_SCHEMA_VERSION = 2;
+const ADM_SCHEMA_VERSION = 3;
 async function migrateAdmissionSystem(){
   if(!DB.info || (DB.info.admSchemaVersion||0) >= ADM_SCHEMA_VERSION) return;
   DB.classes.forEach(cls=>{ cls.nextAdmSeq = 0; });
