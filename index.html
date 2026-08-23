@@ -919,16 +919,25 @@ async function pruneOldScores(){
   dropKeys.forEach(k=>known.delete(k));
   KNOWN_SCORE_SHARDS[SCHOOL_ID] = known;
 }
-// One-time migration (guarded by DB.info.admSchemaMigrated) that brings an existing
-// school onto the automatic-admission-number scheme: every class gets a nextAdmSeq
-// counter, and every existing student is regenerated a fresh, correctly-formatted
-// admission number — numbered 001-upwards per class in their existing (roughly
-// enrollment) order, with the year worked out per-student from that class's
-// level+form (see computeLookbackAdmissionYear), not one flat year for everyone.
-// After this runs once, brand-new students always get their number from
-// nextAdmissionNumber() instead, so this never re-runs or re-shuffles anyone again.
+// Automatic migration that brings an existing school onto the admission-number
+// scheme with look-back admission years: every class gets a nextAdmSeq counter, and
+// every existing student is regenerated a fresh, correctly-formatted admission
+// number — numbered 001-upwards per class in their existing (roughly enrollment)
+// order, with the year worked out per-student from that class's level+form (see
+// computeLookbackAdmissionYear) — e.g. an S.3 student looks back to 2024, an S.6
+// student looks back to 2025, a P.4 student looks back accordingly — never one flat
+// year for everyone.
+//
+// Guarded by a VERSION NUMBER (ADM_SCHEMA_VERSION), not a one-time boolean. This
+// makes it fully automatic and self-healing: it quietly re-applies itself, on its
+// own, the next time each school loads, whenever this constant is bumped — which
+// covers a school that already ran an earlier version of this migration and would
+// otherwise be permanently stuck on the old format. Once a school is caught up to
+// the current version it's a no-op again until the version next changes, and
+// brand-new students always get their number from nextAdmissionNumber() directly.
+const ADM_SCHEMA_VERSION = 2;
 async function migrateAdmissionSystem(){
-  if(!DB.info || DB.info.admSchemaMigrated) return;
+  if(!DB.info || (DB.info.admSchemaVersion||0) >= ADM_SCHEMA_VERSION) return;
   DB.classes.forEach(cls=>{ cls.nextAdmSeq = 0; });
   DB.classes.forEach(cls=>{
     DB.students.filter(s=>s.classId===cls.id).forEach(s=>{
@@ -937,7 +946,8 @@ async function migrateAdmissionSystem(){
       if(!s.status) s.status = 'active';
     });
   });
-  DB.info.admSchemaMigrated = true;
+  DB.info.admSchemaVersion = ADM_SCHEMA_VERSION;
+  DB.info.admSchemaMigrated = true; // kept for backward compatibility with older reads of this flag
   await Promise.all([saveInfo(), saveClasses(), saveStudents()]);
 }
 // Pure formatter shared by the migration above (which already knows the sequence
