@@ -716,6 +716,35 @@ const FORM_SEQUENCE_BY_LEVEL = {
   O: ['S.1','S.2','S.3','S.4'],
   A: ['S.5','S.6']
 };
+// Best-effort auto-detection of a class's Form from its NAME, used only to backfill
+// classes left over from before this school's classes captured a Form value at all
+// (see migrateAdmissionSystem below) — never overrides a Form that's already set.
+// Recognizes the digit written plainly ("S.6", "S6"), spelled out ("Senior Six",
+// "Primary Four"), or as "Form 6" / "Form Six" (common alternate naming for
+// secondary forms). Returns null, leaving the class for the admin to fix by hand via
+// the "Form not set" warning on the Classes list, if nothing in the name matches any
+// form valid for that class's level.
+const NUMBER_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN'];
+function inferFormFromClassName(name, level){
+  const forms = FORM_SEQUENCE_BY_LEVEL[level] || [];
+  const cleaned = ' ' + String(name||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim() + ' ';
+  for(const form of forms){
+    const digit = form.slice(-1);
+    const word = NUMBER_WORDS[Number(digit)];
+    const shortPrefix = level==='P' ? 'P' : 'S';
+    const longPrefix = level==='P' ? 'PRIMARY' : 'SENIOR';
+    const patterns = [
+      new RegExp(`[^A-Z0-9]${shortPrefix}\\s?${digit}[^A-Z0-9]`),
+      new RegExp(`[^A-Z0-9]${longPrefix}\\s+${word}[^A-Z0-9]`)
+    ];
+    if(level!=='P'){
+      patterns.push(new RegExp(`[^A-Z0-9]FORM\\s+${digit}[^A-Z0-9]`));
+      patterns.push(new RegExp(`[^A-Z0-9]FORM\\s+${word}[^A-Z0-9]`));
+    }
+    if(patterns.some(re=>re.test(cleaned))) return form;
+  }
+  return null;
+}
 function computeLookbackAdmissionYear(level, form){
   const refYear = (DB.info && DB.info.currentYear) || new Date().getFullYear();
   const norm = v => String(v||'').trim().toUpperCase().replace(/\s+/g,'');
@@ -951,9 +980,21 @@ async function pruneOldScores(){
 // otherwise be permanently stuck on the old format. Once a school is caught up to
 // the current version it's a no-op again until the version next changes, and
 // brand-new students always get their number from nextAdmissionNumber() directly.
-const ADM_SCHEMA_VERSION = 4;
+const ADM_SCHEMA_VERSION = 5;
 async function migrateAdmissionSystem(){
   if(!DB.info || (DB.info.admSchemaVersion||0) >= ADM_SCHEMA_VERSION) return;
+  // Backfill any class left with no Form value at all (see inferFormFromClassName)
+  // BEFORE generating admission numbers below, so a class like "SENIOR SIX (A-Level)"
+  // gets its Form auto-detected as S.6 and every student in it is numbered with the
+  // correct look-back year in the very same pass — never overrides a Form that's
+  // already set, and never guesses across levels (only matches against the forms
+  // valid for that class's own level).
+  DB.classes.forEach(cls=>{
+    if(!cls.form){
+      const inferred = inferFormFromClassName(cls.name, cls.level);
+      if(inferred) cls.form = inferred;
+    }
+  });
   DB.classes.forEach(cls=>{ cls.nextAdmSeq = 0; });
   DB.classes.forEach(cls=>{
     DB.students.filter(s=>s.classId===cls.id).forEach(s=>{
@@ -2733,7 +2774,14 @@ function classesView(){
     ${DB.classes.map(c=>{
       const t = DB.accounts.find(a=>a.username===c.classTeacher);
       const count = DB.students.filter(s=>s.classId===c.id && s.status!=='left').length;
-      return `<tr><td>${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${esc(String(computeLookbackAdmissionYear(c.level,c.form)))}</td><td>${t?esc(t.name):'—'}</td><td>${count}</td>
+      // A class with no Form value saved (almost always a leftover from before this
+      // school's classes went through the Form-aware add/edit form) can't be
+      // look-back-computed correctly — it silently defaults to "no lookback at all"
+      // (the current year), same as if it were a genuine entry-point class. Flagging
+      // it here means every affected class can be found and fixed from the Classes
+      // list, without having to click into Edit on each one individually to notice.
+      const missingForm = c.level!=='P' && !c.form;
+      return `<tr${missingForm?' style="background:#fff6e5;"':''}><td>${esc(c.name)}${missingForm?' <span title="No Form set on this class — its admission year cannot look back correctly until you set one in Edit." style="color:var(--danger,#c0392b);font-weight:700;">⚠ Form not set</span>':''}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${esc(String(computeLookbackAdmissionYear(c.level,c.form)))}</td><td>${t?esc(t.name):'—'}</td><td>${count}</td>
       <td class="flex" style="justify-content:center;"><button class="btn-outline" style="padding:6px 12px;" data-action="editClass:${c.id}">Edit</button><button class="btn-danger" data-action="delClass:${c.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="7">No classes yet.</td></tr>'}
     </table>
@@ -3354,15 +3402,16 @@ function reportsListView(){
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
   <div class="card">
+    ${!VIEW.params.classId ? `<p class="small">Select a class above to see its report card list.</p>` : `
     <table class="data-table"><tr><th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
-    ${sortByName(DB.students.filter(s=>!VIEW.params.classId || s.classId===VIEW.params.classId)
+    ${sortByName(DB.students.filter(s=>s.classId===VIEW.params.classId)
       .filter(s=> !isTeacher || classIds.includes(s.classId)))
       .map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
       return `<tr><td>${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">Open report card</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || '<tr><td colspan="4">No students found.</td></tr>'}
-    </table>
+    </table>`}
   </div>`;
 }
 function filterClass(v){ VIEW.params.classId=v||null; render(); }
@@ -4373,6 +4422,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
   return `
   ${periodPicker}
+  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
+  <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
   <div id="printArea"><div class="rc-card">
     ${DB.info.logo?`<img src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
@@ -4463,9 +4514,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       <span>Fees balance: ${s.feesBalance!=null?('UGX '+Number(s.feesBalance).toLocaleString()):'—'} · Next term fees: ${s.nextTermFees!=null?('UGX '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
     </div>
     </div>
-  </div></div>
-  ${embedded? '' : `<div class="flex" style="margin-top:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
-  <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}`;
+  </div></div>`;
 }
 
 // Saves one mark typed straight into an open report card (see editableNow/canEditScore
@@ -6647,7 +6696,7 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
      operations like bulk PDF export, so a 100-report bulk download can't be killed
      partway through by an update landing at the wrong moment.
 ------------------------------------------------------------------------------- */
-const BUILD_ID = 'BUILD-2026-08-23-1'; // <-- change this to any new value on every deploy
+const BUILD_ID = 'BUILD-2026-08-23-4'; // <-- change this to any new value on every deploy
 
 // Set true for the duration of any operation an update-reload must never interrupt
 // (bulk PDF export, CSV import, etc). Kept as a simple counter so nested/overlapping
