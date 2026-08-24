@@ -960,11 +960,12 @@ function termIndex(term, year){
 // Admins can look back at most this many terms from the school's current term —
 // results/report cards for the current term plus the MAX_TERMS_BEHIND terms
 // before it stay available; anything older is pruned to keep storage minimal.
-const MAX_TERMS_BEHIND = 5;
+const MAX_TERMS_BEHIND = 5; // 6 terms retained: current + 5 previous
 function termsBehindCurrent(term, year){ return termIndex(DB.info.currentTerm, DB.info.currentYear) - termIndex(term, year); }
-// Deletes any score shard older than the MAX_TERMS_BEHIND retention window. Called
-// whenever the school's current term/year is advanced (see the "setTerm" form),
-// which is the natural point at which older terms roll out of the window.
+// Retention policy: keep the current term plus the five immediately
+// preceding terms = MAXIMUM 6 terms total. Anything older is permanently
+// deleted from Firestore when the current period advances.
+// Moving the current period backward never deletes future-period data.
 async function pruneOldScores(){
   if(!SCHOOL_ID || !DB.info) return;
   const keep = [], dropKeys = new Set();
@@ -1838,11 +1839,17 @@ function rawScores(studentId, subject, term, year){
 // file, most recent first, limited to the MAX_TERMS_BEHIND retention window — used to
 // populate the "view a past term" picker on the report card.
 function availableTermYears(studentId){
-  // The report-card viewer deliberately exposes every Term 1/2/3 in every
-  // year represented in the school's score history, plus the current year.
-  // This means returning to a previous term never depends on that student
-  // having a score in that term merely to make the period selectable.
-  return allViewingPeriods();
+  const seen = new Map();
+  DB.scores.filter(s=>s.studentId===studentId).forEach(s=>{
+    if(!s.term || !s.year) return;
+    const dist = termsBehindCurrent(s.term, s.year);
+    if(dist<0 || dist>MAX_TERMS_BEHIND) return;
+    seen.set(`${s.term}||${s.year}`, {term:s.term, year:s.year});
+  });
+  const list = [...seen.values()];
+  const termOrder = {'Term 1':1,'Term 2':2,'Term 3':3};
+  list.sort((a,b)=> b.year-a.year || (termOrder[b.term]||0)-(termOrder[a.term]||0));
+  return list;
 }
 // Every test/exam is entered against whatever maximum the teacher set for it (row.max).
 // It's rescaled onto the fixed report-card scale before averaging: AOI tests scale onto
@@ -2786,19 +2793,6 @@ function adminDashboard(){
         <div><label>Term</label><select name="term"><option ${i.currentTerm==='Term 1'?'selected':''}>Term 1</option><option ${i.currentTerm==='Term 2'?'selected':''}>Term 2</option><option ${i.currentTerm==='Term 3'?'selected':''}>Term 3</option></select></div>
         <div><label>Year</label><input type="number" name="year" min="2000" max="2100" step="1" value="${esc(String(i.currentYear||new Date().getFullYear()))}"></div>
       </div>
-      <div class="card" style="margin:12px 0 0;padding:14px;background:var(--blue-light);">
-        <b>What should happen to existing scores when changing Term/Year?</b>
-        <label style="text-transform:none;font-size:14px;margin-top:10px;">
-          <input type="radio" name="periodAction" value="leave" checked style="width:auto;margin-right:8px;">
-          <b>Switch only — leave existing data in its previous Term/Year</b>
-        </label>
-        <div class="small" style="margin-left:26px;">Use this when you are returning to a previous term or simply changing the active period. Nothing is moved or deleted.</div>
-        <label style="text-transform:none;font-size:14px;margin-top:10px;">
-          <input type="radio" name="periodAction" value="move" style="width:auto;margin-right:8px;">
-          <b>Move existing scores to the new Term/Year</b>
-        </label>
-        <div class="small" style="margin-left:26px;">Use this only when teachers entered scores under the wrong Term/Year. The scores from the current period will be moved to the newly selected period.</div>
-      </div>
       <div class="grid2">
         <div><label>Term ends</label><input type="date" name="termEndDate" value="${esc(i.termEndDate||'')}"></div>
         <div><label>Next term begins</label><input type="date" name="nextTermBeginDate" value="${esc(i.nextTermBeginDate||'')}"></div>
@@ -3705,9 +3699,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
   const pg = paginateMarksheet(allStudents, page, !!forExport);
   const students = pg.pageItems;
   const cols = marksheetColumns(allStudents, subject);
-  const sel = VIEW.params || {};
-  const term = sel.imsTerm || DB.info.currentTerm;
-  const year = Number(sel.imsYear || DB.info.currentYear);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
   const colHeaders = cols.map(c=>`<th>P${esc(String(c.paper))} ${c.kind==='EOT'?'EOT':('AOI'+(c.label?': '+esc(c.label):''))}</th>`).join('');
   const rowsHtml = students.map(s=>{
     const bd = subjectBreakdown(s.id, subject, term, year);
@@ -3723,13 +3715,6 @@ function integratedMarksheetView(classId, subject, page, forExport){
   }).join('');
   return `
   <h2>Integrated Mark Sheet</h2>
-  <div class="card">
-    <label>Viewing period</label>
-    <select onchange="setIntegratedMarkSheetPeriod(this.value)">
-      ${allViewingPeriods().map(p=>`<option value="${esc(p.term)}||${p.year}" ${(p.term===term && Number(p.year)===Number(year))?'selected':''}>${p.year} — ${esc(p.term)}${(p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear))?' (current)':''}</option>`).join('')}
-    </select>
-    <div class="small" style="margin-top:6px;">Previous Term/Year scores are read from their original saved period. Changing the active school period does not erase this history.</div>
-  </div>
   <div class="card">
     <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
       <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
@@ -3748,11 +3733,6 @@ function integratedMarksheetView(classId, subject, page, forExport){
   </div>
   </div>
   ${!forExport ? marksheetPaginationBar(pg.page, pg.totalPages, pg.total, pg.size, pg.startIndex, `imsPage:${classId}:${encodeURIComponent(subject)}`) : ''}`;
-}
-function setIntegratedMarkSheetPeriod(value){
-  const parts = String(value||'').split('||');
-  VIEW.params = {...VIEW.params, imsTerm:parts[0]||DB.info.currentTerm, imsYear:Number(parts[1]||DB.info.currentYear), imsPage:1};
-  render();
 }
 function csvEscape(v){
   const s = (v===null||v===undefined)?'':String(v);
@@ -4617,12 +4597,11 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
   const periodPicker = (!embedded && periods.length>0) ? `
   <div class="card" style="margin-bottom:10px;">
-    <label style="margin-bottom:4px;display:block;">Viewing period</label>
-    <div class="small" style="margin-bottom:8px;">Choose any year, then any Term 1, Term 2 or Term 3 in that year. Previous periods remain available even after the school moves to a new term.</div>
+    <label style="margin-bottom:4px;display:block;">Viewing period (read-only)</label>
     <select onchange="viewReportPeriod('${s.id}', this.value)">
-      ${periods.map(p=>`<option value="${esc(p.term)}||${p.year}" ${(p.term===term && Number(p.year)===Number(year))?'selected':''}>${p.year} — ${esc(p.term)}${(p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear))?' (current)':''}</option>`).join('')}
+      ${periods.map(p=>`<option value="${esc(p.term)}||${p.year}" ${(p.term===term && Number(p.year)===Number(year))?'selected':''}>${esc(p.term)}, ${p.year}${(p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear))?' (current)':''}</option>`).join('')}
     </select>
-    ${!isCurrentPeriod?'<p class="small" style="color:var(--danger);margin-top:6px;">You are viewing a previous Term/Year. Its saved scores are read directly from the saved period.</p>':''}
+    ${!isCurrentPeriod?'<p class="small" style="color:var(--danger);margin-top:6px;">You are viewing an earlier term — not the current one.</p>':''}
   </div>` : '';
 
   const editNote = editableNow ? `
@@ -4736,7 +4715,8 @@ async function inlineSaveReportScore(el){
   const studentId = el.dataset.student, subject = el.dataset.subject, kind = el.dataset.kind, label = el.dataset.label||'';
   const paper = el.dataset.paper===''? null : el.dataset.paper;
   const max = Math.max(1, Number(el.dataset.max)||100);
-  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const term = (VIEW.params && (VIEW.params.viewTerm || VIEW.params.term)) || DB.info.currentTerm;
+  const year = Number((VIEW.params && (VIEW.params.viewYear || VIEW.params.year)) || DB.info.currentYear);
   const valRaw = el.value.trim();
   try{
     const existing = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && String(sc.paper)===String(paper)
@@ -5063,13 +5043,13 @@ document.addEventListener('click', async (e)=>{
     }
     case 'openMarksheet': {
       const [classId, subjEnc] = (arg||'').split(':');
-      VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage:1, imsTerm:DB.info.currentTerm, imsYear:DB.info.currentYear}};
+      VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage:1}};
       render();
       break;
     }
     case 'imsPage': {
       const [classId, subjEnc, pageNum] = (arg||'').split(':');
-      VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage: Number(pageNum)||1, imsTerm:VIEW.params.imsTerm||DB.info.currentTerm, imsYear:Number(VIEW.params.imsYear||DB.info.currentYear)}};
+      VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage: Number(pageNum)||1}};
       render();
       break;
     }
@@ -5083,7 +5063,7 @@ document.addEventListener('click', async (e)=>{
       try{
         // Same row-paginating, always-landscape, no-column-splitting export as Class
         // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
-        const term = (VIEW.params && VIEW.params.imsTerm) || DB.info.currentTerm, year = Number((VIEW.params && VIEW.params.imsYear) || DB.info.currentYear);
+        const term = DB.info.currentTerm, year = DB.info.currentYear;
         await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
           title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`
         });
@@ -5266,14 +5246,19 @@ function renderShellWithContent(innerHtml){
 }
 // Called from the "Viewing period" dropdown on a report card to switch which
 // term/year is displayed, without losing any of the data underneath it.
-function viewReportPeriod(studentId, value){
-  // READ-ONLY REPORT-CARD VIEWING: never changes the active period
-  // and never moves, copies, deletes, or writes score data.
+async function viewReportPeriod(studentId, value){
   const parts = String(value||'').split('||');
   const term = parts[0] || DB.info.currentTerm;
   const year = Number(parts[1] || DB.info.currentYear);
+
+  // Read-only historical viewing: refresh saved score shards, then keep
+  // the SAME student's report card open. No score data is written/moved.
+  await refreshScores();
+
   VIEW.params = Object.assign({}, VIEW.params, {
     studentId: studentId,
+    viewTerm: term,
+    viewYear: year,
     term: term,
     year: year
   });
@@ -5461,78 +5446,86 @@ document.addEventListener('change', (e)=>{
 
 
 /* ============================================================
-   TERM/YEAR CHANGE
-   Two deliberate choices:
-   1) SWITCH ONLY — leave all saved scores in their original period.
-   2) MOVE SCORES — deliberately move scores from the old current
-      period into the newly selected period. This is for the case
-      where teachers entered marks while the admin had forgotten
-      to change the Term/Year.
-
-   There is NO delete option here and NO Owner Code for an ordinary
-   period switch. Existing periods remain available when revisited.
+   TERM/YEAR CHANGE SAFETY
+   Admins must explicitly choose what happens to data before a
+   term/year switch that could cause automatic retention deletion.
+   "Keep" skips pruning for this switch. "Delete" requires the
+   school's private owner code.
    ============================================================ */
+
 async function moveCurrentPeriodScoresTo(prevTerm, prevYear, newTerm, newYear){
-  const oldKey = scoreShardKey(prevTerm, prevYear);
-  const newKey = scoreShardKey(newTerm, newYear);
-  if(oldKey===newKey) return {moved:0};
+  const oldKey=scoreShardKey(prevTerm,prevYear);
+  const newKey=scoreShardKey(newTerm,newYear);
+  if(oldKey===newKey) return;
+  const rows=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
+  if(!rows.length) return;
 
-  await refreshScores();
-  const sourceRows = DB.scores.filter(r =>
-    r.term===prevTerm && Number(r.year)===Number(prevYear)
-  );
-  if(!sourceRows.length) return {moved:0};
-
-  // First write the destination. Existing destination rows are preserved
-  // unless they represent the same student+subject+paper+kind+label, in
-  // which case the deliberately moved source row replaces that logical mark.
-  const movedRows = sourceRows.map(r=>({
-    ...r,
-    term:newTerm,
-    year:Number(newYear)
-  }));
-
-  await mergeScoreShard(SCHOOL_ID, newTerm, Number(newYear), fresh=>{
-    movedRows.forEach(row=>{
-      const logical = [row.studentId,row.subject,row.paper,row.kind,row.label||''].join('|');
-      const idx = fresh.findIndex(x =>
-        [x.studentId,x.subject,x.paper,x.kind,x.label||''].join('|')===logical
-      );
-      if(idx>=0) fresh[idx] = {...row, id:fresh[idx].id};
-      else fresh.push(row);
-    });
+  // Merge into destination shard, then explicitly clear the source shard.
+  // This is a MOVE, never a copy.
+  await mergeScoreShard(SCHOOL_ID,newTerm,newYear,fresh=>{
+    rows.forEach(r=>mergeRowIntoShard(fresh,{...r,term:newTerm,year:Number(newYear)}));
     return fresh;
   });
+  await setShared(`sch_${SCHOOL_ID}_scores_${oldKey}`,[]);
 
-  // Only after the destination write succeeds do we clear the source shard.
-  await setShared(`sch_${SCHOOL_ID}_scores_${oldKey}`, []);
-  DB.scores = DB.scores.filter(r=>scoreShardKey(r.term,r.year)!==oldKey);
-  KNOWN_SCORE_SHARDS[SCHOOL_ID] = KNOWN_SCORE_SHARDS[SCHOOL_ID] || new Set();
-  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(oldKey);
+  DB.scores=DB.scores
+    .filter(r=>!(r.term===prevTerm && Number(r.year)===Number(prevYear)))
+    .map(r=>r);
+  KNOWN_SCORE_SHARDS[SCHOOL_ID]=KNOWN_SCORE_SHARDS[SCHOOL_ID]||new Set();
   KNOWN_SCORE_SHARDS[SCHOOL_ID].add(newKey);
-  DB.scores = await loadAllScores(SCHOOL_ID);
-  return {moved:movedRows.length};
+  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(oldKey);
+  DB.scores=await loadAllScores(SCHOOL_ID);
 }
 
-/* Returns all years represented by saved scores plus the current school year. */
-function availableScoreYears(){
-  const years = new Set([Number(DB.info.currentYear)]);
-  DB.scores.forEach(r=>{ if(r.year) years.add(Number(r.year)); });
-  return [...years].filter(Number.isFinite).sort((a,b)=>b-a);
+async function deleteCurrentPeriodScores(term,year){
+  const key=scoreShardKey(term,year);
+  await setShared(`sch_${SCHOOL_ID}_scores_${key}`,[]);
+  DB.scores=DB.scores.filter(r=>!(r.term===term && Number(r.year)===Number(year)));
+  KNOWN_SCORE_SHARDS[SCHOOL_ID]=KNOWN_SCORE_SHARDS[SCHOOL_ID]||new Set();
+  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(key);
 }
 
-/* For report cards and mark sheets: show ALL three terms for every year
-   that has score history, even if a particular term has no scores yet. */
-function allViewingPeriods(){
-  const years = availableScoreYears();
-  const order = {'Term 1':1,'Term 2':2,'Term 3':3};
-  const out = [];
-  years.forEach(year=>{
-    ['Term 1','Term 2','Term 3'].forEach(term=>out.push({term,year}));
+function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPeriodScoreCount){
+  const termChanged = newTerm !== prevTerm;
+  const yearChanged = Number(newYear) !== Number(prevYear);
+  const aspect = termChanged && yearChanged ? 'Term / Year' : (termChanged ? 'Term' : 'Year');
+  const oldPeriod = `${prevTerm||'—'} ${prevYear||''}`.trim();
+  const newPeriod = `${newTerm} ${newYear}`.trim();
+  return new Promise(resolve=>{
+    const oldOverlay = document.getElementById('termChangeSafetyOverlay');
+    if(oldOverlay) oldOverlay.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'termChangeSafetyOverlay';
+    overlay.style.cssText = ['position:fixed','inset:0','z-index:99999','background:rgba(10,42,74,.72)','display:flex','align-items:center','justify-content:center','padding:18px'].join(';');
+    const scoreNotice = currentPeriodScoreCount
+      ? `<div style="background:#fff4f4;border:2px solid var(--danger);border-radius:8px;padding:12px;margin:12px 0;"><b style="color:var(--danger);">⚠ ${currentPeriodScoreCount} saved score record${currentPeriodScoreCount===1?'':'s'} belong to ${esc(oldPeriod)}.</b><div class="small" style="margin-top:6px;">Choose carefully. The system will not silently move or delete these scores.</div></div>`
+      : `<div style="background:#eef9f2;border:2px solid var(--good);border-radius:8px;padding:12px;margin:12px 0;"><b style="color:var(--good);">✓ No scores are currently saved under ${esc(oldPeriod)}.</b></div>`;
+    overlay.innerHTML = `<div style="background:#fff;max-width:760px;width:100%;border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.35);padding:22px;">
+      <h2 style="margin:0 0 6px;color:var(--navy);">⚠ Confirm ${esc(aspect)} Change</h2>
+      <p style="margin:0;color:var(--muted);">Current ${esc(aspect.toLowerCase())}: <b>${esc(oldPeriod)}</b><br>New ${esc(aspect.toLowerCase())}: <b>${esc(newPeriod)}</b></p>
+      ${scoreNotice}
+      <div style="background:var(--blue-light);border-radius:8px;padding:14px;margin-bottom:14px;"><b>Choose ONE option:</b>
+        <div class="small" style="margin-top:8px;line-height:1.65;">
+          <b>1. Change only ${esc(aspect.toLowerCase())} and carry/maintain data</b><br>The scores currently recorded under <b>${esc(oldPeriod)}</b> will be carried to <b>${esc(newPeriod)}</b>. Use this when teachers entered scores under the wrong ${esc(aspect.toLowerCase())} and those scores actually belong to the new ${esc(aspect.toLowerCase())}.
+          <br><br><b>2. Change to ${esc(newPeriod)} and leave data for ${esc(oldPeriod)}</b><br>The existing scores remain safely attached to <b>${esc(oldPeriod)}</b>. Nothing is moved or deleted. If you return to ${esc(oldPeriod)} later, those scores will appear again and will be used on its report cards.
+          <br><br><b>3. Change to ${esc(newPeriod)} and delete data of ${esc(oldPeriod)}</b><br>Permanently deletes the saved scores belonging to <b>${esc(oldPeriod)}</b>. <b>The school Owner Code is required before this option can proceed.</b>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;"><button type="button" id="termSafetyCarry" class="btn">1. Carry / maintain data</button><button type="button" id="termSafetyLeave" class="btn-outline">2. Change &amp; leave old data</button><button type="button" id="termSafetyDelete" class="btn-danger">3. Change &amp; delete old data</button><button type="button" id="termSafetyCancel" class="btn-outline">Cancel</button></div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const finish=value=>{ overlay.remove(); resolve(value); };
+    document.getElementById('termSafetyCancel').onclick=()=>finish('cancel');
+    document.getElementById('termSafetyCarry').onclick=()=>finish('carry');
+    document.getElementById('termSafetyLeave').onclick=()=>finish('leave');
+    document.getElementById('termSafetyDelete').onclick=()=>{
+      const code=prompt(`DATA LOSS WARNING\n\nYou selected option 3.\nThis will permanently delete score data belonging to ${oldPeriod}.\n\nEnter the school Owner Code to continue:`);
+      if(code===null) return;
+      if(code!==DB.info.ownerCode){ alert('Incorrect Owner Code. No data has been deleted and the term/year has NOT been changed.'); return; }
+      finish('delete');
+    };
   });
-  return out.sort((a,b)=>b.year-a.year || order[b.term]-order[a.term]);
 }
-
 
 document.addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -5784,36 +5777,23 @@ document.addEventListener('submit', async (e)=>{
       const newTerm = fd.get('term');
       const newYearRaw = fd.get('year');
       const newYear = Number(newYearRaw);
-      if(!newYearRaw || !Number.isInteger(newYear) || newYear<2000 || newYear>2100){
-        alert('Please enter a valid 4-digit year (e.g. 2026) before saving term settings.');
-        return;
-      }
-
+      if(!newYearRaw || !Number.isInteger(newYear) || newYear<2000 || newYear>2100){ alert('Please enter a valid 4-digit year (e.g. 2026) before saving term settings.'); return; }
       const prevTerm=DB.info.currentTerm, prevYear=DB.info.currentYear;
       const termChanged=(newTerm!==prevTerm || Number(newYear)!==Number(prevYear));
-      const periodAction = fd.get('periodAction') || 'leave';
-
-      if(termChanged) await refreshScores();
-
-      if(termChanged && periodAction==='move'){
-        const count = DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear)).length;
-        if(count){
-          const ok = confirm(
-            `MOVE ${count} SAVED SCORE RECORD${count===1?'':'S'}?\n\n`+
-            `From: ${prevTerm} ${prevYear}\nTo: ${newTerm} ${newYear}\n\n`+
-            `This is for correcting scores that were entered under the wrong Term/Year.\n`+
-            `The old period will be emptied only after the new period has been saved successfully.\n\nContinue?`
-          );
-          if(!ok) return;
-          const result = await moveCurrentPeriodScoresTo(prevTerm, prevYear, newTerm, newYear);
-          if(result.moved) alert(`${result.moved} score record${result.moved===1?'':'s'} moved successfully to ${newTerm} ${newYear}.`);
+      let termChangeDecision='leave';
+      if(termChanged){
+        const oldPeriodScores=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
+        termChangeDecision=await termChangeSafetyBanner(prevTerm,prevYear,newTerm,newYear,oldPeriodScores.length);
+        if(termChangeDecision==='cancel') return;
+        if(termChangeDecision==='carry'){
+          await moveCurrentPeriodScoresTo(prevTerm,prevYear,newTerm,newYear);
+        }
+        if(termChangeDecision==='delete'){
+          await deleteCurrentPeriodScores(prevTerm,prevYear);
         }
       }
-
-      DB.info.currentTerm=newTerm;
-      DB.info.currentYear=newYear;
-      DB.info.termEndDate=fd.get('termEndDate');
-      DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
+      DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
+      DB.info.termEndDate=fd.get('termEndDate'); DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
       const sd={...(DB.info.scoreDeadlines||{})};
       for(const kind of ['AOI','EOT']){
         const newDeadline=fd.get(kind==='AOI'?'scoreDeadlineAOI':'scoreDeadlineEOT')||null;
@@ -5822,11 +5802,9 @@ document.addEventListener('submit', async (e)=>{
       }
       DB.info.scoreDeadlines=sd;
       await saveInfo();
-
-      // Always reload the authoritative score history. This is what makes
-      // returning to an older period restore its original marks in Mark Sheets
-      // and Report Cards instead of relying on stale in-memory data.
-      await refreshScores();
+      // The three explicit choices control the previous period's scores. Do not
+      // run automatic retention pruning during a term/year switch.
+      if(termChanged) await refreshScores();
       render();
     }
     else if(type==='restoreBackup'){
