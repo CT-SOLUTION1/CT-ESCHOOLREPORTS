@@ -1843,7 +1843,14 @@ function availableTermYears(studentId){
   DB.scores.filter(s=>s.studentId===studentId).forEach(s=>{
     if(!s.term || !s.year) return;
     const dist = termsBehindCurrent(s.term, s.year);
-    if(dist<0 || dist>MAX_TERMS_BEHIND) return;
+    // Only hide a term once it's genuinely older than the retention window
+    // (dist > MAX_TERMS_BEHIND). A NEGATIVE dist means the score's term sits
+    // AHEAD of the school's current term pointer — e.g. scores were entered
+    // before the admin corrected a forgotten/wrong term setting. That data
+    // is not "old" and must stay visible here, or it looks like it vanished
+    // even though it's still safely stored (see pruneOldScores for the same
+    // rule applied to deletion).
+    if(dist>MAX_TERMS_BEHIND) return;
     seen.set(`${s.term}||${s.year}`, {term:s.term, year:s.year});
   });
   const list = [...seen.values()];
@@ -2705,7 +2712,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','reportcard']);
 function renderView(view){
   try{
     if(ADMIN_ONLY_VIEWS.has(view) && (!CUR || CUR.role!=='admin')){
@@ -2741,6 +2748,13 @@ function renderView(view){
       case 'treports': return reportsListView();
       case 'pdash': return parentDashboard();
       case 'preport': return parentReportView();
+      case 'reportcard': {
+        const sid = VIEW.params.studentId;
+        if(CUR.role==='parent' && sid!==CUR.studentId) return '<p>You can only view your own child\'s report card.</p>';
+        const stu = DB.students.find(x=>x.id===sid);
+        if(!stu || stu.status==='left') return '<p>This student is in Old Students and is not included among current report cards.</p>';
+        return reportCardHTML(sid, false, VIEW.params.viewTerm, VIEW.params.viewYear);
+      }
       default: return '<p>Not found.</p>';
     }
   }catch(e){ console.error(e); return '<p>Something went wrong rendering this page: '+esc(e.message)+'</p>'; }
@@ -4814,11 +4828,12 @@ document.addEventListener('click', async (e)=>{
     case 'viewReport': {
       if(CUR.role==='parent' && arg!==CUR.studentId){ alert("You can only view your own child's report card."); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
-      document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
+      VIEW = {name:'reportcard', params:{studentId:arg}};
+      render();
       const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
       refreshScores().then(()=>{
         if(NAV_TOKEN!==myNavToken) return; // user has since navigated elsewhere
-        document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
+        render();
         const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
       }).catch(e=>console.error(e));
       break;
@@ -4826,7 +4841,8 @@ document.addEventListener('click', async (e)=>{
     case 'printReport': {
       if(CUR.role!=='admin'){ alert('Only an Admin can print report cards.'); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
-      document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
+      VIEW = {name:'reportcard', params:{studentId:arg}};
+      render();
       const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
       setTimeout(()=>window.print(), 150);
       break;
@@ -5255,14 +5271,13 @@ async function viewReportPeriod(studentId, value){
   // the SAME student's report card open. No score data is written/moved.
   await refreshScores();
 
-  VIEW.params = Object.assign({}, VIEW.params, {
-    studentId: studentId,
-    viewTerm: term,
-    viewYear: year,
-    term: term,
-    year: year
-  });
+  // Setting VIEW.name explicitly (not just VIEW.params) matters: render() picks
+  // which page to show based on VIEW.name, so without this the report card would
+  // vanish and get replaced by whatever the sidebar's underlying list view was —
+  // looking exactly like the selected period's data had disappeared.
+  VIEW = {name:'reportcard', params:{studentId, viewTerm:term, viewYear:year}};
   render();
+  const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
 }
 
 /* ---------- Bulk students: read a Word (.docx) class list ---------- */
@@ -7092,7 +7107,7 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
      operations like bulk PDF export, so a 100-report bulk download can't be killed
      partway through by an update landing at the wrong moment.
 ------------------------------------------------------------------------------- */
-const BUILD_ID = 'BUILD-2026-08-23-4'; // <-- change this to any new value on every deploy
+const BUILD_ID = 'BUILD-2026-08-24-2'; // <-- change this to any new value on every deploy
 
 // Set true for the duration of any operation an update-reload must never interrupt
 // (bulk PDF export, CSV import, etc). Kept as a simple counter so nested/overlapping
