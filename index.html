@@ -1646,6 +1646,32 @@ function showDeliveredToast(text){
   if(_deliveredToastTimer) clearTimeout(_deliveredToastTimer);
   _deliveredToastTimer = setTimeout(()=>{ el.classList.remove('show'); }, 1600);
 }
+
+/* ---------- Universal save / action progress indicator ---------- */
+let _actionProgressTimer = null;
+function showActionProgress(message){
+  let el=document.getElementById('actionProgressToast');
+  if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+  el.innerHTML=`<span class="tick">⏳</span><span>${esc(message||'Saving…')}</span>`;
+  el.classList.add('show');
+  if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
+}
+function showActionSuccess(message){
+  let el=document.getElementById('actionProgressToast');
+  if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+  el.innerHTML=`<span class="tick">✓</span><span>${esc(message||'Saved successfully')}</span>`;
+  el.classList.add('show');
+  if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
+  _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),2200);
+}
+function showActionFailure(message){
+  let el=document.getElementById('actionProgressToast');
+  if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+  el.innerHTML=`<span class="tick">✕</span><span>${esc(message||'Action failed')}</span>`;
+  el.classList.add('show');
+  if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
+  _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),3200);
+}
 function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return d; } }
 function fmtDateTime(d){ if(!d) return '—'; try{ return new Date(d).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return d; } }
 // ---- Score submission deadline ----
@@ -2033,7 +2059,7 @@ let _rankCache = {scoresRef:null, key:'', map:null};
 function computeClassRankings(cls, term, year){
   const key = cls.id+'|'+term+'|'+year;
   if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
-  const peers = DB.students.filter(s=>s.classId===cls.id);
+  const peers = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
   const scored = peers.map(s=>({id:s.id, m:metricFor(s, cls, term, year)})).sort((a,b)=>b.m-a.m);
   const map = new Map();
   let position = scored.length;
@@ -3506,7 +3532,7 @@ function reportsListView(){
   <div class="card">
     ${!VIEW.params.classId ? `<p class="small">Select a class above to see its report card list.</p>` : `
     <table class="data-table"><tr><th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
-    ${sortByName(DB.students.filter(s=>s.classId===VIEW.params.classId)
+    ${sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===VIEW.params.classId)
       .filter(s=> !isTeacher || classIds.includes(s.classId)))
       .map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
@@ -3583,8 +3609,8 @@ function marksheetRoster(classId, subject){
   let anyRosterSet = false;
   asns.forEach(a=>{ if(Array.isArray(a.studentIds)){ anyRosterSet=true; a.studentIds.forEach(id=>rosterIds.add(id)); } });
   const students = sortByName(anyRosterSet
-    ? DB.students.filter(s=>s.classId===classId && (rosterIds.has(s.id) || studentSubjects(s,cls).includes(subject)))
-    : DB.students.filter(s=>s.classId===classId && studentSubjects(s,cls).includes(subject)));
+    ? DB.students.filter(s=>s.status!=='left' && s.classId===classId && (rosterIds.has(s.id) || studentSubjects(s,cls).includes(subject)))
+    : DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
   return {cls, students};
 }
 function marksheetColumns(students, subject){
@@ -3708,7 +3734,7 @@ function downloadMarksheetCSV(assignId, paper, kind, label, max){
   if(!a){ alert('Assignment not found.'); return; }
   const cls = DB.classes.find(c=>c.id===a.classId);
   const students = sortByName(Array.isArray(a.studentIds)
-    ? DB.students.filter(s=>a.studentIds.includes(s.id))
+    ? DB.students.filter(s=>s.status!=='left' && a.studentIds.includes(s.id))
     : DB.students.filter(s=>s.classId===a.classId && studentSubjects(s,cls).includes(a.subject)));
   if(!students.length){ alert('No students on your list yet — select your students first.'); return; }
   const rows = [['Admission No','Name','Marks (out of '+max+')']];
@@ -3733,11 +3759,11 @@ function downloadMarksheetCSV(assignId, paper, kind, label, max){
 function classSubjectsFor(cls){
   // Union of every subject any student currently in the class is taking.
   const set = new Set();
-  DB.students.filter(s=>s.classId===cls.id).forEach(s=> studentSubjects(s, cls).forEach(su=>set.add(su)));
+  DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).forEach(s=> studentSubjects(s, cls).forEach(su=>set.add(su)));
   return [...set];
 }
 function subjectClassStats(cls, subject, term, year){
-  const students = DB.students.filter(s=>s.classId===cls.id && studentSubjects(s,cls).includes(subject));
+  const students = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id && studentSubjects(s,cls).includes(subject));
   const scored = students.map(s=>({student:s, avg: subjectAverage(s.id, subject, term, year)})).filter(x=>x.avg!==null);
   const grades = {A:0,B:0,C:0,D:0,E:0,O:0,F:0};
   let sum=0, max=null, min=null;
@@ -3752,7 +3778,7 @@ function subjectClassStats(cls, subject, term, year){
   return {enrolled: students.length, sat: scored.length, avg, max, min, grades};
 }
 function classStudentStats(cls, term, year){
-  const students = DB.students.filter(s=>s.classId===cls.id);
+  const students = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
   const isA = cls.level==='A';
   return students.map(s=>{
     const {rows, totalPoints, avgPct} = computeSubjectRows(s, cls, term, year);
@@ -3867,7 +3893,7 @@ function masterMarkSheetView(forExport){
     return {subject:subj, papers, multi, colspan};
   });
 
-  const allStudents = DB.students.filter(s=>s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const allStudents = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const pg = paginateMarksheet(allStudents, sel.mmPage, !!forExport);
   const students = pg.pageItems;
 
@@ -4045,7 +4071,7 @@ function scoresEntryView(mine){
     // Every student already in the class is available to a subject teacher to tick —
     // admin registration never decides who takes a subject, so eligibility here is
     // simply "in this class", not "already recorded as taking this subject".
-    const eligible = sortByName(DB.students.filter(s=>s.classId===a.classId));
+    const eligible = sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===a.classId));
     const rosterSet = Array.isArray(a.studentIds);
     const labelBit = encodeURIComponent(sel.label||'');
     if(!rosterSet || sel.editRoster){
@@ -4092,7 +4118,7 @@ function scoresEntryView(mine){
         <p class="small">Not on the class list at all yet? New students must be registered by an Admin first (name, admission number, sex, class). Once the Admin has added them to ${esc(cls.name)}, they'll appear in the "Select your students" list above for you to tick into your marking list — you don't need to create them yourself.</p>`}
       </div>`;
     } else {
-      const students = DB.students.filter(s=>a.studentIds.includes(s.id));
+      const students = DB.students.filter(s=>s.status!=='left' && a.studentIds.includes(s.id));
       const newCount = eligible.filter(s=>!a.studentIds.includes(s.id)).length;
       const term = DB.info.currentTerm, year = DB.info.currentYear;
       // Every other test/exam already on record this term for this subject, so the
@@ -4686,6 +4712,8 @@ document.addEventListener('click', async (e)=>{
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
+  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot']);
+  if(MUTATING_ACTIONS.has(action)) showActionProgress('Processing…');
   switch(action){
     case 'gotoCreateSchool': AUTH_VIEW='createSchool'; render(); break;
     case 'gotoTeacherSignup': AUTH_VIEW='signupTeacher'; render(); break;
@@ -4725,6 +4753,7 @@ document.addEventListener('click', async (e)=>{
     case 'editClass': VIEW = {name:'classedit', params:{classId:arg}}; render(); break;
     case 'viewReport': {
       if(CUR.role==='parent' && arg!==CUR.studentId){ alert("You can only view your own child's report card."); break; }
+      if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
       const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
       refreshScores().then(()=>{
@@ -4736,6 +4765,7 @@ document.addEventListener('click', async (e)=>{
     }
     case 'printReport': {
       if(CUR.role!=='admin'){ alert('Only an Admin can print report cards.'); break; }
+      if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(arg,false));
       const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
       setTimeout(()=>window.print(), 150);
@@ -4751,11 +4781,11 @@ document.addEventListener('click', async (e)=>{
       finally{ el.disabled = false; el.innerHTML = _origLbl; }
       break;
     }
-    case 'delClass': DB.classes = DB.classes.filter(c=>c.id!==arg); await saveClasses(); render(); break;
+    case 'delClass': DB.classes = DB.classes.filter(c=>c.id!==arg); await saveClasses(); showActionSuccess('Deleted successfully'); render(); break;
     case 'delStudent': {
       const s = DB.students.find(x=>x.id===arg);
       DB.students = DB.students.filter(x=>x.id!==arg);
-      await saveStudents();
+      await saveStudents(); showActionSuccess('Deleted successfully');
       if(s && s.photo) await deletePhotoFromStorage(s.photo); // remove their stored photo too — nothing left behind
       render(); break;
     }
@@ -4766,14 +4796,14 @@ document.addEventListener('click', async (e)=>{
       s.status = 'left';
       s.leftTerm = DB.info.currentTerm;
       s.leftYear = DB.info.currentYear;
-      await saveStudents(); render(); break;
+      await saveStudents(); showActionSuccess('Moved to Old Students'); render(); break;
     }
     case 'restoreStudent': {
       const s = DB.students.find(x=>x.id===arg);
       if(!s){ break; }
       s.status = 'active';
       delete s.leftTerm; delete s.leftYear;
-      await saveStudents(); render(); break;
+      await saveStudents(); showActionSuccess('Student restored successfully'); render(); break;
     }
     case 'delOldStudentNow': {
       const s = DB.students.find(x=>x.id===arg);
@@ -4782,7 +4812,7 @@ document.addEventListener('click', async (e)=>{
       DB.students = DB.students.filter(x=>x.id!==arg);
       DB.scores = DB.scores.filter(sc=>sc.studentId!==arg);
       DB.accounts.forEach(a=>{ if(a.role==='parent' && a.studentId===arg) a.studentId=null; });
-      await Promise.all([saveStudents(), saveScores(), saveAccounts()]);
+      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess('Old student deleted successfully');
       if(s.photo) await deletePhotoFromStorage(s.photo);
       render(); break;
     }
@@ -5327,7 +5357,7 @@ document.addEventListener('submit', async (e)=>{
   const form = e.target;
   const type = form.dataset.form;
   const fd = new FormData(form);
-  showDeliveredToast();
+  showActionProgress('Saving your changes…');
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
@@ -6251,7 +6281,8 @@ document.addEventListener('submit', async (e)=>{
         alert('Some scores could not be saved — check your internet connection and try submitting again.');
       });
     }
-  }catch(err){ console.error(err); alert('Something went wrong. Please try again.'); }
+  }catch(err){ console.error(err); showActionFailure('Could not complete the action. Please try again.'); alert('Something went wrong. Please try again.'); return; }
+  showActionSuccess('Saved successfully');
 });
 
 /* ---------- Lazy-loaded libraries ----------
@@ -6653,7 +6684,7 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
   if(!a){ alert('Assignment not found.'); return; }
   const cls = DB.classes.find(c=>c.id===a.classId);
   const students = sortByName(Array.isArray(a.studentIds)
-    ? DB.students.filter(s=>a.studentIds.includes(s.id))
+    ? DB.students.filter(s=>s.status!=='left' && a.studentIds.includes(s.id))
     : DB.students.filter(s=>s.classId===a.classId && studentSubjects(s,cls).includes(a.subject)));
   if(!students.length){ alert('No students on your list yet — select your students first.'); return; }
   const kindLbl = kind==='EOT' ? 'End of Term' : ('AOI'+(label?': '+label:''));
@@ -6777,7 +6808,7 @@ async function pdfForStudents(students, filename, opts={}){
 const BULK_BATCH_SIZE = 25;
 async function bulkPdf(classId, onProgress){
   await refreshScores(); // make sure every teacher's latest marks are in this export
-  const students = DB.students.filter(s=>!classId || s.classId===classId);
+  const students = DB.students.filter(s=>s.status!=='left' && (!classId || s.classId===classId));
   const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_reports`;
   if(students.length <= BULK_BATCH_SIZE){
     await pdfForStudents(students, `${baseName}.pdf`, {onProgress});
