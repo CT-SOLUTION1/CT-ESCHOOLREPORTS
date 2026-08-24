@@ -56,6 +56,9 @@ input,select,textarea{padding:9px 10px;border:1px solid #b9c9da;border-radius:5p
 input.missing-mark::placeholder{color:var(--danger);font-weight:800;opacity:.85;}
 label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;}
 .card{background:#fff;border-radius:10px;padding:22px;box-shadow:0 2px 10px rgba(10,42,74,.08);margin-bottom:18px;}
+/* Performance: allow off-screen content to defer expensive layout/paint until needed. */
+@supports (content-visibility:auto){ .card{content-visibility:auto;contain-intrinsic-size:auto 180px;} }
+img{max-width:100%;height:auto;}
 .topbar{background:var(--navy);color:#fff;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
 .topbar .brand{font-family:Georgia,serif;font-weight:800;font-size:22px;letter-spacing:.02em;}
 .topbar .brand span{color:var(--gold);}
@@ -300,7 +303,7 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
      naturally removes this — no extra code needed to dismiss it. -->
 <div id="app">
   <div class="boot-splash">
-    <img src="icon-192.png" alt="" class="boot-splash-icon">
+    <img loading="lazy" decoding="async" src="icon-192.png" alt="" class="boot-splash-icon">
     <div class="boot-splash-brand">CT-E <span>SOLUTIONS</span></div>
     <div class="boot-splash-sub" style="margin-bottom:2px;">Tel: 0757132542 / 0786814513</div>
     <div class="boot-splash-sub">Loading…</div>
@@ -2235,11 +2238,15 @@ function render(){
   // does, but the two must never be shown the same way: offering "claim founder
   // account" here would let anyone who catches the platform mid-outage register
   // themselves as founder. Show a plain "can't connect" notice instead.
-  if(SYSTEM_OWNER===null && DATA_LOAD_FAILED){ app.innerHTML = banner + renderConnectionTrouble(); return; }
-  if(SYSTEM_OWNER===null){ app.innerHTML = banner + renderFounderSetup(); return; }
-  if(CUR && CUR.role==='founder'){ app.innerHTML = banner + renderFounderShell(); return; }
-  if(SCHOOL_ID && CUR){ app.innerHTML = banner + renderShell(); return; }
-  app.innerHTML = banner + renderPlatformAuth();
+  let nextHtml;
+  if(SYSTEM_OWNER===null && DATA_LOAD_FAILED) nextHtml = banner + renderConnectionTrouble();
+  else if(SYSTEM_OWNER===null) nextHtml = banner + renderFounderSetup();
+  else if(CUR && CUR.role==='founder') nextHtml = banner + renderFounderShell();
+  else if(SCHOOL_ID && CUR) nextHtml = banner + renderShell();
+  else nextHtml = banner + renderPlatformAuth();
+  // Avoid destroying and rebuilding an unchanged screen. This preserves browser work
+  // and makes repeated state notifications cheaper, while real data/view changes still render normally.
+  if(app.innerHTML !== nextHtml) app.innerHTML = nextHtml;
 }
 
 /* ============================================================
@@ -2647,7 +2654,7 @@ function renderShell(){
       <div>CT-E <span>SOLUTIONS</span></div>
       <div class="small" style="color:#cfe0f2;font-weight:400;font-family:'Inter',system-ui,sans-serif;letter-spacing:0;">${esc(FOUNDER_CONTACT)}</div>
       <div class="small" style="color:#cfe0f2;font-weight:700;font-family:'Inter',system-ui,sans-serif;letter-spacing:0;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px;">
-        ${esc(DB.info.schoolName)}${DB.info.logo?`<img src="${DB.info.logo}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;">`:''}
+        ${esc(DB.info.schoolName)}${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;">`:''}
       </div>
     </div>
     <div class="flex"><span class="badge-role">${CUR.role}</span><span>${esc(CUR.name)}</span>
@@ -2729,7 +2736,7 @@ function adminDashboard(){
   const i = DB.info;
   return `
   <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
-    ${i.logo?`<img src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
+    ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
     <div>
       <div class="school-name-big" style="font-size:20px;line-height:1.2;">${esc(i.schoolName||'')}</div>
       <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)}</h2>
@@ -2877,7 +2884,7 @@ function schoolInfoView(){
   <div class="card">
     <form data-form="schoolInfo">
       <div class="flex">
-        ${i.logo?`<img src="${i.logo}" class="photo-thumb" style="width:80px;height:80px;">`:''}
+        ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" class="photo-thumb" style="width:80px;height:80px;">`:''}
         <div><label>Upload / change school logo</label><input type="file" name="logo" accept="image/*"></div>
       </div>
       <label>School name</label><input name="schoolName" value="${esc(i.schoolName)}" required>
@@ -3106,7 +3113,7 @@ function renderStudentsTableHtml(){
   return `<table class="data-table"><tr><th>Photo</th><th>Name</th><th>Adm No</th><th>Class</th><th>Combination / Subjects</th><th>Action</th></tr>
     ${list.map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${s.photo?`<img src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
+      return `<tr><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
       <td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td class="flex"><button class="btn-outline" data-action="editStudentProfile:${s.id}"><b>Edit profile</b></button> <button class="btn-outline" data-action="markStudentLeft:${s.id}">Mark as left</button> <button class="btn-danger" data-action="delStudent:${s.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">No students match.</td></tr>'}
@@ -3349,7 +3356,7 @@ function studentProfileView(studentId){
     <form data-form="updateStudentProfile" data-id="${s.id}">
       <div class="flex">
         <div><label>Photo</label><input type="file" name="photo" accept="image/*"></div>
-        ${s.photo?`<img src="${s.photo}" class="photo-thumb">`:''}
+        ${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:''}
       </div>
       <div class="grid3">
         <div><label>Full name</label><input name="name" value="${esc(s.name)}" required></div>
@@ -4012,7 +4019,7 @@ function masterMarkSheetView(forExport){
   <div id="printArea">
   <div class="mm-page">
     <div class="mm-header">
-      ${DB.info.logo?`<img src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
+      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
       <div class="mm-title">Master Mark Sheet — ${mode==='scores'?'Real Scores':'Letter Grades'}</div>
       <div class="mm-meta">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
     </div>
@@ -4072,7 +4079,7 @@ function teacherDashboard(){
   const i = DB.info;
   return `
   <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
-    ${i.logo?`<img src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
+    ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
     <div>
       <div class="school-name-big" style="font-size:20px;line-height:1.2;">${esc(i.schoolName||'')}</div>
       <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)}</h2>
@@ -4286,7 +4293,7 @@ function parentDashboard(){
   return `<h2>${esc(st.name)}</h2>
   ${featureTilesHTML('parent','pdash')}
   <div class="card flex">
-    ${st.photo?`<img src="${st.photo}" class="photo-thumb" style="width:90px;height:90px;">`:''}
+    ${st.photo?`<img loading="lazy" decoding="async" src="${st.photo}" class="photo-thumb" style="width:90px;height:90px;">`:''}
     <div><div><b>Class:</b> ${cls?esc(cls.name):'—'}</div><div><b>Subjects:</b> ${esc(comboLabel(st,cls))}</div><div><b>Admission No:</b> ${esc(st.admNo)}${st.feesCode?` &nbsp;|&nbsp; <b>Fees Code:</b> ${esc(st.feesCode)}`:''}</div></div>
   </div>
   <button class="btn-outline" data-action="viewReport:${st.id}">Open latest report card</button>`;
@@ -4579,12 +4586,12 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
   <div id="printArea"><div class="rc-card">
-    ${DB.info.logo?`<img src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
+    ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
     <div class="rc-topline"><span>${s.feesCode?`FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
 
     <div class="rc-title-block">
-      ${DB.info.logo?`<img src="${DB.info.logo}" class="rc-logo">`:''}
+      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
       <div class="rc-header-text">
         <div class="school">${esc(DB.info.schoolName)}</div>
         <div class="subtitle">Student Academic Report Card — ${isA?'A Level':(isP?'Primary':'O Level')}</div>
@@ -4597,7 +4604,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       <tr>
         <td class="lbl">Name</td><td class="val">${esc(s.name)}</td>
         <td class="lbl">Class</td><td class="val">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}</td>
-        ${s.photo?`<td class="photo-cell" rowspan="3"><img src="${s.photo}" class="rc-bio-photo"></td>`:''}
+        ${s.photo?`<td class="photo-cell" rowspan="3"><img loading="lazy" decoding="async" src="${s.photo}" class="rc-bio-photo"></td>`:''}
       </tr>
       <tr>
         <td class="lbl">Term</td><td class="val">${termLbl}, ${yearLbl}</td>
