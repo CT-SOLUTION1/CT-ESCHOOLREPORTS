@@ -5438,78 +5438,45 @@ document.addEventListener('change', (e)=>{
    "Keep" skips pruning for this switch. "Delete" requires the
    school's private owner code.
    ============================================================ */
-function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, shardsToDrop, studentsToDrop, movingBackward){
-  const hasLoss = shardsToDrop.size > 0 || studentsToDrop > 0;
+function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPeriodScoreCount){
+  const termChanged = newTerm !== prevTerm;
+  const yearChanged = Number(newYear) !== Number(prevYear);
+  const aspect = termChanged && yearChanged ? 'Term / Year' : (termChanged ? 'Term' : 'Year');
+  const oldPeriod = `${prevTerm||'—'} ${prevYear||''}`.trim();
+  const newPeriod = `${newTerm} ${newYear}`.trim();
   return new Promise(resolve=>{
     const oldOverlay = document.getElementById('termChangeSafetyOverlay');
     if(oldOverlay) oldOverlay.remove();
-
     const overlay = document.createElement('div');
     overlay.id = 'termChangeSafetyOverlay';
-    overlay.style.cssText = [
-      'position:fixed','inset:0','z-index:99999','background:rgba(10,42,74,.72)',
-      'display:flex','align-items:center','justify-content:center','padding:18px'
-    ].join(';');
-
-    const lossText = hasLoss
-      ? `<div style="background:#fff4f4;border:2px solid var(--danger);border-radius:8px;padding:12px;margin:12px 0;">
-           <b style="color:var(--danger);">⚠ DATA WILL BE PERMANENTLY DELETED IF YOU CHOOSE DELETE</b>
-           <ul style="margin:8px 0 0 20px;">
-             ${shardsToDrop.size ? `<li>${shardsToDrop.size} score period${shardsToDrop.size===1?'':'s'} will be deleted because they fall outside the ${MAX_TERMS_BEHIND}-term retention window.</li>` : ''}
-             ${studentsToDrop ? `<li>${studentsToDrop} Old Student record${studentsToDrop===1?'':'s'} will be permanently deleted because the retention window has passed.</li>` : ''}
-           </ul>
-         </div>`
-      : `<div style="background:#eef9f2;border:2px solid var(--good);border-radius:8px;padding:12px;margin:12px 0;">
-           <b style="color:var(--good);">✓ No data is scheduled for deletion by this change.</b>
-         </div>`;
-
-    overlay.innerHTML = `
-      <div style="background:#fff;max-width:620px;width:100%;border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.35);padding:22px;">
-        <h2 style="margin:0 0 6px;color:var(--navy);">⚠ Confirm Term / Year Change</h2>
-        <p style="margin:0;color:var(--muted);">
-          You are changing the school's active period from
-          <b>${esc(prevTerm||'—')} ${esc(String(prevYear||''))}</b> to
-          <b>${esc(newTerm)} ${esc(String(newYear))}</b>.
-        </p>
-        ${movingBackward ? `<div class="note" style="margin-top:12px;"><b>Important:</b> This moves the active period backward. Existing future-period data will NOT be deleted.</div>` : ''}
-        ${lossText}
-        <div style="background:var(--blue-light);border-radius:8px;padding:12px;margin-bottom:14px;">
-          <b>Choose what you want the system to do:</b>
-          <div class="small" style="margin-top:5px;">
-            <b>Keep current data</b> — change the active term/year but do not delete any data during this switch.
-            <br><b>Delete and proceed</b> — remove only the data listed above. This cannot be undone and requires the private owner code.
-          </div>
+    overlay.style.cssText = ['position:fixed','inset:0','z-index:99999','background:rgba(10,42,74,.72)','display:flex','align-items:center','justify-content:center','padding:18px'].join(';');
+    const scoreNotice = currentPeriodScoreCount
+      ? `<div style="background:#fff4f4;border:2px solid var(--danger);border-radius:8px;padding:12px;margin:12px 0;"><b style="color:var(--danger);">⚠ ${currentPeriodScoreCount} saved score record${currentPeriodScoreCount===1?'':'s'} belong to ${esc(oldPeriod)}.</b><div class="small" style="margin-top:6px;">Choose carefully. The system will not silently move or delete these scores.</div></div>`
+      : `<div style="background:#eef9f2;border:2px solid var(--good);border-radius:8px;padding:12px;margin:12px 0;"><b style="color:var(--good);">✓ No scores are currently saved under ${esc(oldPeriod)}.</b></div>`;
+    overlay.innerHTML = `<div style="background:#fff;max-width:760px;width:100%;border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.35);padding:22px;">
+      <h2 style="margin:0 0 6px;color:var(--navy);">⚠ Confirm ${esc(aspect)} Change</h2>
+      <p style="margin:0;color:var(--muted);">Current ${esc(aspect.toLowerCase())}: <b>${esc(oldPeriod)}</b><br>New ${esc(aspect.toLowerCase())}: <b>${esc(newPeriod)}</b></p>
+      ${scoreNotice}
+      <div style="background:var(--blue-light);border-radius:8px;padding:14px;margin-bottom:14px;"><b>Choose ONE option:</b>
+        <div class="small" style="margin-top:8px;line-height:1.65;">
+          <b>1. Change only ${esc(aspect.toLowerCase())} and carry/maintain data</b><br>The scores currently recorded under <b>${esc(oldPeriod)}</b> will be carried to <b>${esc(newPeriod)}</b>. Use this when teachers entered scores under the wrong ${esc(aspect.toLowerCase())} and those scores actually belong to the new ${esc(aspect.toLowerCase())}.
+          <br><br><b>2. Change to ${esc(newPeriod)} and leave data for ${esc(oldPeriod)}</b><br>The existing scores remain safely attached to <b>${esc(oldPeriod)}</b>. Nothing is moved or deleted. If you return to ${esc(oldPeriod)} later, those scores will appear again and will be used on its report cards.
+          <br><br><b>3. Change to ${esc(newPeriod)} and delete data of ${esc(oldPeriod)}</b><br>Permanently deletes the saved scores belonging to <b>${esc(oldPeriod)}</b>. <b>The school Owner Code is required before this option can proceed.</b>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          <button type="button" id="termSafetyCancel" class="btn-outline">Cancel</button>
-          <button type="button" id="termSafetyKeep" class="btn">Keep current data &amp; proceed</button>
-          ${hasLoss ? `<button type="button" id="termSafetyDelete" class="btn-danger">Delete affected data &amp; proceed</button>` : ''}
-        </div>
-      </div>`;
-
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;"><button type="button" id="termSafetyCarry" class="btn">1. Carry / maintain data</button><button type="button" id="termSafetyLeave" class="btn-outline">2. Change &amp; leave old data</button><button type="button" id="termSafetyDelete" class="btn-danger">3. Change &amp; delete old data</button><button type="button" id="termSafetyCancel" class="btn-outline">Cancel</button></div>
+    </div>`;
     document.body.appendChild(overlay);
-
-    const finish = value => {
-      overlay.remove();
-      resolve(value);
+    const finish=value=>{ overlay.remove(); resolve(value); };
+    document.getElementById('termSafetyCancel').onclick=()=>finish('cancel');
+    document.getElementById('termSafetyCarry').onclick=()=>finish('carry');
+    document.getElementById('termSafetyLeave').onclick=()=>finish('leave');
+    document.getElementById('termSafetyDelete').onclick=()=>{
+      const code=prompt(`DATA LOSS WARNING\n\nYou selected option 3.\nThis will permanently delete score data belonging to ${oldPeriod}.\n\nEnter the school Owner Code to continue:`);
+      if(code===null) return;
+      if(code!==DB.info.ownerCode){ alert('Incorrect Owner Code. No data has been deleted and the term/year has NOT been changed.'); return; }
+      finish('delete');
     };
-    document.getElementById('termSafetyCancel').onclick = ()=>finish('cancel');
-    document.getElementById('termSafetyKeep').onclick = ()=>finish('keep');
-
-    const del = document.getElementById('termSafetyDelete');
-    if(del){
-      del.onclick = ()=>{
-        const code = prompt(
-          'DATA LOSS WARNING\\n\\nEnter the school owner code to permanently delete the affected data and proceed with this term/year change:'
-        );
-        if(code===null) return;
-        if(code!==DB.info.ownerCode){
-          alert('Incorrect owner code. No data has been deleted and the term/year has NOT been changed.');
-          return;
-        }
-        finish('delete');
-      };
-    }
   });
 }
 
@@ -5763,77 +5730,38 @@ document.addEventListener('submit', async (e)=>{
       const newTerm = fd.get('term');
       const newYearRaw = fd.get('year');
       const newYear = Number(newYearRaw);
-
-      // Reject anything that isn't a sane 4-digit year before touching DB.info.
-      if(!newYearRaw || !Number.isInteger(newYear) || newYear<2000 || newYear>2100){
-        alert('Please enter a valid 4-digit year (e.g. 2026) before saving term settings.');
-        return;
-      }
-
-      const prevTerm = DB.info.currentTerm, prevYear = DB.info.currentYear;
-      const termChanged = (newTerm!==prevTerm || Number(newYear)!==Number(prevYear));
-      let termChangeDecision = 'keep';
-
+      if(!newYearRaw || !Number.isInteger(newYear) || newYear<2000 || newYear>2100){ alert('Please enter a valid 4-digit year (e.g. 2026) before saving term settings.'); return; }
+      const prevTerm=DB.info.currentTerm, prevYear=DB.info.currentYear;
+      const termChanged=(newTerm!==prevTerm || Number(newYear)!==Number(prevYear));
+      let termChangeDecision='leave';
       if(termChanged){
-        // Preview exactly what the retention routines would delete if the new
-        // period became active. Nothing is mutated while this preview runs.
-        const newIndex = termIndex(newTerm, newYear);
-        const shardsToDrop = new Set();
-
-        DB.scores.forEach(r=>{
-          const dist = newIndex - termIndex(r.term, r.year);
-          if(dist>MAX_TERMS_BEHIND) shardsToDrop.add(scoreShardKey(r.term, r.year));
-        });
-
-        const studentsToDrop = DB.students.filter(s =>
-          s.status==='left' &&
-          (newIndex - termIndex(s.leftTerm, s.leftYear))>=OLD_STUDENT_RETENTION_TERMS
-        ).length;
-
-        const movingBackward = newIndex < termIndex(prevTerm, prevYear);
-        const hasPotentialDataLoss = shardsToDrop.size > 0 || studentsToDrop > 0;
-
-        // Every active-period switch gets a clear choice. If data would be lost,
-        // DELETE requires the private owner code. KEEP never calls the prune
-        // functions, so this switch cannot silently destroy records.
-        termChangeDecision = await termChangeSafetyBanner(
-          prevTerm, prevYear, newTerm, newYear,
-          shardsToDrop, studentsToDrop, movingBackward
-        );
-
+        const oldPeriodScores=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
+        termChangeDecision=await termChangeSafetyBanner(prevTerm,prevYear,newTerm,newYear,oldPeriodScores.length);
         if(termChangeDecision==='cancel') return;
-
-        if(hasPotentialDataLoss && termChangeDecision==='delete'){
-          // The owner code was verified inside the safety banner.
+        if(termChangeDecision==='carry'){
+          oldPeriodScores.forEach(r=>{ r.term=newTerm; r.year=newYear; });
+          await saveScoresShardedFor(SCHOOL_ID,DB.scores);
+          DB.scores=await loadAllScores(SCHOOL_ID);
+        }
+        if(termChangeDecision==='delete'){
+          DB.scores=DB.scores.filter(r=>!(r.term===prevTerm && Number(r.year)===Number(prevYear)));
+          await saveScoresShardedFor(SCHOOL_ID,DB.scores);
+          DB.scores=await loadAllScores(SCHOOL_ID);
         }
       }
-
-      DB.info.currentTerm=newTerm;
-      DB.info.currentYear=newYear;
-      DB.info.termEndDate=fd.get('termEndDate');
-      DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
-
-      const sd = {...(DB.info.scoreDeadlines||{})};
+      DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
+      DB.info.termEndDate=fd.get('termEndDate'); DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
+      const sd={...(DB.info.scoreDeadlines||{})};
       for(const kind of ['AOI','EOT']){
-        const newDeadline = fd.get(kind==='AOI'?'scoreDeadlineAOI':'scoreDeadlineEOT') || null;
-        const prev = sd[kind] || {deadline:null, reopenedFor:[]};
-        sd[kind] = {
-          deadline: newDeadline,
-          reopenedFor: (newDeadline!==prev.deadline) ? [] : (prev.reopenedFor||[])
-        };
+        const newDeadline=fd.get(kind==='AOI'?'scoreDeadlineAOI':'scoreDeadlineEOT')||null;
+        const prev=sd[kind]||{deadline:null,reopenedFor:[]};
+        sd[kind]={deadline:newDeadline,reopenedFor:(newDeadline!==prev.deadline)?[]:(prev.reopenedFor||[])};
       }
-      DB.info.scoreDeadlines = sd;
-
+      DB.info.scoreDeadlines=sd;
       await saveInfo();
-
-      // CRITICAL SAFETY RULE:
-      // "keep" changes the active term/year but does NOT prune anything.
-      // "delete" is the only path allowed to invoke automatic deletion.
-      if(termChanged && termChangeDecision==='delete'){
-        await pruneOldScores();
-        await pruneOldStudents();
-      }
-
+      // The three explicit choices control the previous period's scores. Do not
+      // run automatic retention pruning during a term/year switch.
+      if(termChanged) await refreshScores();
       render();
     }
     else if(type==='restoreBackup'){
