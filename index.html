@@ -116,6 +116,13 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 #deliveredToast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 #deliveredToast .tick{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.25);font-size:12px;line-height:1;}
 
+/* ---- Universal action banner: shown close to the button the user pressed ---- */
+#actionProgressToast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.98);max-width:min(92vw,420px);background:var(--blue);color:#fff;
+  padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;box-shadow:0 8px 24px rgba(10,42,74,.28);
+  display:flex;align-items:center;justify-content:center;gap:9px;opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:10000;text-align:center;}
+#actionProgressToast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+#actionProgressToast .tick{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.18);font-size:13px;line-height:1;flex:none;}
+
 /* ---- Score sync status: persistent (not auto-dismissing) confirmation that a
    mark-sheet submit has actually reached and been saved on the server, shown
    right on the mark-entry card next to the Submit button. ---- */
@@ -1649,25 +1656,43 @@ function showDeliveredToast(text){
 
 /* ---------- Universal save / action progress indicator ---------- */
 let _actionProgressTimer = null;
-function showActionProgress(message){
+let _lastActionButton = null;
+function placeActionBannerNear(button){
+  const el=document.getElementById('actionProgressToast');
+  if(!el || !button || !button.getBoundingClientRect) return;
+  const r=button.getBoundingClientRect();
+  const w=Math.min(window.innerWidth*.92,420), h=52;
+  let left=r.left+r.width/2, top=r.top-18;
+  if(top<h/2+12) top=r.bottom+18;
+  left=Math.max(w/2+12,Math.min(window.innerWidth-w/2-12,left));
+  top=Math.max(h/2+12,Math.min(window.innerHeight-h/2-12,top));
+  el.style.left=left+'px'; el.style.top=top+'px';
+}
+function showActionProgress(message, button){
   let el=document.getElementById('actionProgressToast');
   if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+  if(button) _lastActionButton=button;
   el.innerHTML=`<span class="tick">⏳</span><span>${esc(message||'Saving…')}</span>`;
+  placeActionBannerNear(_lastActionButton);
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
 }
-function showActionSuccess(message){
+function showActionSuccess(message, button){
   let el=document.getElementById('actionProgressToast');
   if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+  if(button) _lastActionButton=button;
   el.innerHTML=`<span class="tick">✓</span><span>${esc(message||'Saved successfully')}</span>`;
+  placeActionBannerNear(_lastActionButton);
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
   _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),2200);
 }
-function showActionFailure(message){
+function showActionFailure(message, button){
   let el=document.getElementById('actionProgressToast');
   if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+  if(button) _lastActionButton=button;
   el.innerHTML=`<span class="tick">✕</span><span>${esc(message||'Action failed')}</span>`;
+  placeActionBannerNear(_lastActionButton);
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
   _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),3200);
@@ -5357,7 +5382,8 @@ document.addEventListener('submit', async (e)=>{
   const form = e.target;
   const type = form.dataset.form;
   const fd = new FormData(form);
-  showActionProgress('Saving your changes…');
+  const actionButton = e.submitter || document.activeElement;
+  showActionProgress('Saving your changes…', actionButton);
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
@@ -6281,8 +6307,8 @@ document.addEventListener('submit', async (e)=>{
         alert('Some scores could not be saved — check your internet connection and try submitting again.');
       });
     }
-  }catch(err){ console.error(err); showActionFailure('Could not complete the action. Please try again.'); alert('Something went wrong. Please try again.'); return; }
-  showActionSuccess('Saved successfully');
+  }catch(err){ console.error(err); showActionFailure('Could not complete the action. Please try again.', actionButton); alert('Something went wrong. Please try again.'); return; }
+  showActionSuccess('Saved successfully', actionButton);
 });
 
 /* ---------- Lazy-loaded libraries ----------
