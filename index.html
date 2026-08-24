@@ -4204,11 +4204,10 @@ function scoresEntryView(mine){
       <div class="card">
         <h3>Student new to the school / class</h3>
         ${CUR.role==='admin' ? `
-        <p class="small">Not on the class list at all yet? Add them here with just their name, admission number and sex — they'll be created in ${esc(cls.name)} and included in your marking list for ${esc(a.subject)} right away. You'll still need to tick them into any other subject you'd like them included in.</p>
+        <p class="small">Not on the class list at all yet? Add them here with just their name and sex — they'll be created in ${esc(cls.name)} with an admission number assigned automatically, included in your marking list for ${esc(a.subject)} right away, and will appear normally for any other subject teacher too. You'll still need to tick them into any other subject you'd like them included in.</p>
         <form data-form="quickAddStudent" data-assign="${a.id}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
-          <div class="grid3">
+          <div class="grid2">
             <div><label>Full name</label><input name="name" required></div>
-            <div><label>Admission number</label><input name="admNo" required></div>
             <div><label>Gender</label><select name="gender"><option>Male</option><option>Female</option></select></div>
           </div>
           <button class="btn" style="margin-top:10px;">Submit — add student & include in my list</button>
@@ -6350,17 +6349,20 @@ document.addEventListener('submit', async (e)=>{
       if(!a){ alert('Assignment not found.'); return; }
       const cls = DB.classes.find(c=>c.id===a.classId);
       if(!cls){ alert('Class not found.'); return; }
-      const name = (fd.get('name')||'').trim(), admNo = (fd.get('admNo')||'').trim();
-      if(!name || !admNo){ alert('Please fill in the student\'s name and admission number.'); return; }
-      if(DB.students.some(s=>s.admNo===admNo)){ alert('That admission number is already used by another student.'); return; }
+      const name = (fd.get('name')||'').trim();
+      if(!name){ alert('Please fill in the student\'s name.'); return; }
       // Registration only ever records bio-data — name, admission number, sex, class.
       // Subjects are never set here; ticking this student straight into the current
-      // roster below is what makes them count as taking this subject.
-      const newStudent = {id:uid('std'), name, admNo, classId:cls.id, photo:null, gender:fd.get('gender')||null, feesBalance:null, nextTermFees:null};
+      // roster below is what makes them count as taking this subject. The admission
+      // number is always auto-assigned (same as the Admin's own "Add student" and
+      // bulk-upload flows) — never typed in here — so it can't collide or drift out
+      // of the class's running sequence.
+      const admNo = nextAdmissionNumber(cls); // consumes this class's next 001-upward sequence number
+      const newStudent = {id:uid('std'), name, admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo:null, gender:fd.get('gender')||null, feesBalance:null, nextTermFees:null, status:'active'};
       DB.students.push(newStudent);
       a.studentIds = Array.isArray(a.studentIds) ? [...new Set([...a.studentIds, newStudent.id])] : [newStudent.id];
-      await Promise.all([saveStudents(), saveAssignments()]);
-      alert(`${name} was added to ${cls.name} and included in your marking list for ${a.subject}. Other subject teachers will need to tick them into their own lists too.`);
+      await Promise.all([saveStudents(), saveAssignments(), saveClasses()]);
+      alert(`${name} (${admNo}) was added to ${cls.name} and included in your marking list for ${a.subject}. Other subject teachers will need to tick them into their own lists too.`);
       VIEW = {name:VIEW.name, params:{assignId, paper:form.dataset.paper, kind:form.dataset.kind, label:form.dataset.label||'', maxScore:Number(form.dataset.max)||100, editRoster:true}};
       render();
     }
