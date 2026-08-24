@@ -1858,6 +1858,31 @@ function availableTermYears(studentId){
   list.sort((a,b)=> b.year-a.year || (termOrder[b.term]||0)-(termOrder[a.term]||0));
   return list;
 }
+// Builds the full "Viewing period" dropdown for a report card: every term (1, 2, 3)
+// of the current year, plus every term of any other year this student has at least
+// one score in — so an admin/teacher/parent can pick ANY term of a relevant year,
+// not just the ones that happen to already have marks entered. Selecting a term with
+// no data yet is expected and safe: the report card below simply renders every field
+// blank/"—" for that term (see computeSubjectRows/subjectAverage), nothing errors.
+// Still capped by MAX_TERMS_BEHIND so it doesn't offer terms outside the retention
+// window. This is deliberately separate from availableTermYears() above — that one
+// must keep meaning "has real data", since the Primary previous-position lookup
+// relies on it to avoid showing a fabricated position for an empty term.
+function reportCardPeriods(studentId){
+  const years = new Set(availableTermYears(studentId).map(p=>Number(p.year)));
+  years.add(Number(DB.info.currentYear));
+  const hasScore = new Set(DB.scores.filter(sc=>sc.studentId===studentId).map(sc=>`${sc.term}||${sc.year}`));
+  const termOrder = ['Term 1','Term 2','Term 3'];
+  const list = [];
+  years.forEach(y=>{
+    termOrder.forEach(t=>{
+      if(termsBehindCurrent(t, y) > MAX_TERMS_BEHIND) return; // outside retention window
+      list.push({term:t, year:y, hasData:hasScore.has(`${t}||${y}`)});
+    });
+  });
+  list.sort((a,b)=> b.year-a.year || (termOrder.indexOf(b.term)-termOrder.indexOf(a.term)));
+  return list;
+}
 // Every test/exam is entered against whatever maximum the teacher set for it (row.max).
 // It's rescaled onto the fixed report-card scale before averaging: AOI tests scale onto
 // /20, and End of Term papers scale onto /80. Older score rows saved before this feature
@@ -4357,6 +4382,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const year = viewYear || DB.info.currentYear;
   const isCurrentPeriod = term===DB.info.currentTerm && Number(year)===Number(DB.info.currentYear);
   const periods = availableTermYears(studentId);
+  const pickerPeriods = reportCardPeriods(studentId);
   const { rows, totalPoints, avgPct } = computeSubjectRows(s, cls, term, year);
   const { position, size } = classPosition(s, cls, term, year);
   const isA = cls.level==='A';
@@ -4609,11 +4635,16 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const yearLbl = esc(String(year||''));
   const termLbl = esc(term||'—');
 
-  const periodPicker = (!embedded && periods.length>0) ? `
+  const periodPicker = (!embedded && pickerPeriods.length>0) ? `
   <div class="card" style="margin-bottom:10px;">
     <label style="margin-bottom:4px;display:block;">Viewing period (read-only)</label>
     <select onchange="viewReportPeriod('${s.id}', this.value)">
-      ${periods.map(p=>`<option value="${esc(p.term)}||${p.year}" ${(p.term===term && Number(p.year)===Number(year))?'selected':''}>${esc(p.term)}, ${p.year}${(p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear))?' (current)':''}</option>`).join('')}
+      ${pickerPeriods.map(p=>{
+        const isSel = p.term===term && Number(p.year)===Number(year);
+        const isCur = p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear);
+        const tag = isCur ? ' (current)' : (p.hasData ? '' : ' (no scores yet)');
+        return `<option value="${esc(p.term)}||${p.year}" ${isSel?'selected':''}>${esc(p.term)}, ${p.year}${tag}</option>`;
+      }).join('')}
     </select>
     ${!isCurrentPeriod?'<p class="small" style="color:var(--danger);margin-top:6px;">You are viewing an earlier term — not the current one.</p>':''}
   </div>` : '';
@@ -7107,7 +7138,7 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
      operations like bulk PDF export, so a 100-report bulk download can't be killed
      partway through by an update landing at the wrong moment.
 ------------------------------------------------------------------------------- */
-const BUILD_ID = 'BUILD-2026-08-24-2'; // <-- change this to any new value on every deploy
+const BUILD_ID = 'BUILD-2026-08-24-3'; // <-- change this to any new value on every deploy
 
 // Set true for the duration of any operation an update-reload must never interrupt
 // (bulk PDF export, CSV import, etc). Kept as a simple counter so nested/overlapping
