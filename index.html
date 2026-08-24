@@ -4596,7 +4596,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
   const periodPicker = (!embedded && periods.length>0) ? `
   <div class="card" style="margin-bottom:10px;">
-    <label style="margin-bottom:4px;display:block;">Viewing period</label>
+    <label style="margin-bottom:4px;display:block;">Viewing period (read-only)</label>
     <select onchange="viewReportPeriod('${s.id}', this.value)">
       ${periods.map(p=>`<option value="${esc(p.term)}||${p.year}" ${(p.term===term && Number(p.year)===Number(year))?'selected':''}>${esc(p.term)}, ${p.year}${(p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear))?' (current)':''}</option>`).join('')}
     </select>
@@ -5245,10 +5245,17 @@ function renderShellWithContent(innerHtml){
 // Called from the "Viewing period" dropdown on a report card to switch which
 // term/year is displayed, without losing any of the data underneath it.
 function viewReportPeriod(studentId, value){
-  if(CUR.role==='parent' && studentId!==CUR.studentId){ alert("You can only view your own child's report card."); return; }
-  const [term, yearStr] = value.split('||');
-  document.getElementById('app').innerHTML = renderShellWithContent(reportCardHTML(studentId, false, term, Number(yearStr)));
-  const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
+  // READ-ONLY REPORT-CARD VIEWING: never changes the active period
+  // and never moves, copies, deletes, or writes score data.
+  const parts = String(value||'').split('||');
+  const term = parts[0] || DB.info.currentTerm;
+  const year = Number(parts[1] || DB.info.currentYear);
+  VIEW.params = Object.assign({}, VIEW.params, {
+    studentId: studentId,
+    term: term,
+    year: year
+  });
+  render();
 }
 
 /* ---------- Bulk students: read a Word (.docx) class list ---------- */
@@ -5438,6 +5445,39 @@ document.addEventListener('change', (e)=>{
    "Keep" skips pruning for this switch. "Delete" requires the
    school's private owner code.
    ============================================================ */
+
+async function moveCurrentPeriodScoresTo(prevTerm, prevYear, newTerm, newYear){
+  const oldKey=scoreShardKey(prevTerm,prevYear);
+  const newKey=scoreShardKey(newTerm,newYear);
+  if(oldKey===newKey) return;
+  const rows=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
+  if(!rows.length) return;
+
+  // Merge into destination shard, then explicitly clear the source shard.
+  // This is a MOVE, never a copy.
+  await mergeScoreShard(SCHOOL_ID,newTerm,newYear,fresh=>{
+    rows.forEach(r=>mergeRowIntoShard(fresh,{...r,term:newTerm,year:Number(newYear)}));
+    return fresh;
+  });
+  await setShared(`sch_${SCHOOL_ID}_scores_${oldKey}`,[]);
+
+  DB.scores=DB.scores
+    .filter(r=>!(r.term===prevTerm && Number(r.year)===Number(prevYear)))
+    .map(r=>r);
+  KNOWN_SCORE_SHARDS[SCHOOL_ID]=KNOWN_SCORE_SHARDS[SCHOOL_ID]||new Set();
+  KNOWN_SCORE_SHARDS[SCHOOL_ID].add(newKey);
+  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(oldKey);
+  DB.scores=await loadAllScores(SCHOOL_ID);
+}
+
+async function deleteCurrentPeriodScores(term,year){
+  const key=scoreShardKey(term,year);
+  await setShared(`sch_${SCHOOL_ID}_scores_${key}`,[]);
+  DB.scores=DB.scores.filter(r=>!(r.term===term && Number(r.year)===Number(year)));
+  KNOWN_SCORE_SHARDS[SCHOOL_ID]=KNOWN_SCORE_SHARDS[SCHOOL_ID]||new Set();
+  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(key);
+}
+
 function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPeriodScoreCount){
   const termChanged = newTerm !== prevTerm;
   const yearChanged = Number(newYear) !== Number(prevYear);
@@ -5739,14 +5779,10 @@ document.addEventListener('submit', async (e)=>{
         termChangeDecision=await termChangeSafetyBanner(prevTerm,prevYear,newTerm,newYear,oldPeriodScores.length);
         if(termChangeDecision==='cancel') return;
         if(termChangeDecision==='carry'){
-          oldPeriodScores.forEach(r=>{ r.term=newTerm; r.year=newYear; });
-          await saveScoresShardedFor(SCHOOL_ID,DB.scores);
-          DB.scores=await loadAllScores(SCHOOL_ID);
+          await moveCurrentPeriodScoresTo(prevTerm,prevYear,newTerm,newYear);
         }
         if(termChangeDecision==='delete'){
-          DB.scores=DB.scores.filter(r=>!(r.term===prevTerm && Number(r.year)===Number(prevYear)));
-          await saveScoresShardedFor(SCHOOL_ID,DB.scores);
-          DB.scores=await loadAllScores(SCHOOL_ID);
+          await deleteCurrentPeriodScores(prevTerm,prevYear);
         }
       }
       DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
