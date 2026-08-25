@@ -2033,23 +2033,38 @@ function cwTestScore(studentId, subject, testName, paper, term, year){
   return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.kind==='AOI' && sc.label===testName
     && sc.term===term && sc.year===year && (paper==null || String(sc.paper)===String(paper)));
 }
+// Picks a grade by minimum-threshold only (not max) — a score qualifies for the
+// highest-ranked band whose minimum it meets or exceeds. This is deliberate: the
+// bands admins enter are integers (e.g. F 0–34, E 35–44), but averages are often
+// decimals (e.g. 34.7). Requiring avg<=max AND avg>=min leaves a real gap between
+// 34 and 35 that no decimal score can land in. Using min-only thresholds closes
+// that gap completely — a band's "max" in the admin UI is really just "one below
+// the next band's min" and is for display/editing only, not used for lookup here.
+function pickGradeByThreshold(bands, order, fallback){
+  return (avg)=>{
+    let best = null;
+    for(const g of order){
+      if(!bands[g]) continue;
+      const min = bands[g][0];
+      if(avg>=min && (best===null || min>bands[best][0])) best = g;
+    }
+    return best!==null ? best : fallback;
+  };
+}
 function gradeFor(subject, avg, level){
   if(level==='O'){
     const b = DB.obands || DEFAULT_O_BANDS;
-    for(const g of ['A','B','C','D','E']) if(b[g] && avg>=b[g][0] && avg<=b[g][1]) return g;
-    return 'E';
+    return pickGradeByThreshold(b, ['A','B','C','D','E'], 'E')(avg);
   }
   if(level==='P'){
     const b = DB.pbands || DEFAULT_P_BANDS;
-    for(const g of PLE_GRADES) if(b[g] && avg>=b[g][0] && avg<=b[g][1]) return g;
-    return 'F9';
+    return pickGradeByThreshold(b, PLE_GRADES, 'F9')(avg);
   }
   // General Paper now follows the SAME pass/fail condition as the subsidiaries:
   // O (1 point) if the average is 50% and above, F (0 points) below 50%.
   if(subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject)) return avg>=PASS_MARK_SUBSIDIARY ? 'O':'F';
   const b = DB.bands || DEFAULT_A_BANDS;
-  for(const g of ['A','B','C','D','E','O','F']) if(b[g] && avg>=b[g][0] && avg<=b[g][1]) return g;
-  return 'F';
+  return pickGradeByThreshold(b, ['A','B','C','D','E','O','F'], 'F')(avg);
 }
 // A-Level subsidiaries (General Paper + Subsidiary Maths/Computer) are graded pass/fail
 // internally as 'O'/'F' (so GRADE_POINTS, sorting, etc. still work unchanged), but on the
@@ -3516,8 +3531,18 @@ function gradingView(gcClassId){
   <div class="card">
     <h3>Course Work Tests</h3>
     <p class="small">Define the individual tests that make up ${esc(examConfig().cwLabel)} — e.g. Test 1, Test 2, BOT — each with its own maximum. Once you add tests here, teachers pick from this list (instead of typing a label) when entering scores, and each test gets its own column on mark sheets and report cards, alongside the overall ${esc(examConfig().cwLabel)} average used for grading.</p>
-    <table class="data-table"><tr><th>Test name</th><th>Max score</th><th>Remove</th></tr>
-    ${examConfig().cwTests.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(String(t.max))}</td><td><button class="btn-danger" data-action="delCwTest:${t.id}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">No tests set up yet — teachers will use a free-text label until you add some here.</td></tr>`}
+    <table class="data-table"><tr><th>Test name</th><th>Max score</th><th>Actions</th></tr>
+    ${(()=>{
+      const editTestId = VIEW.params && VIEW.params.editCwTestId;
+      return examConfig().cwTests.map(t=> t.id===editTestId ? `<tr><td colspan="3">
+        <form data-form="editCwTest" data-test="${t.id}" class="flex" style="gap:8px;align-items:center;flex-wrap:wrap;">
+          <input name="name" value="${esc(t.name)}" placeholder="Test name" required style="flex:1;min-width:120px;">
+          <input name="max" type="number" min="1" step="1" value="${esc(String(t.max))}" required style="width:90px;">
+          <button class="btn" type="submit">Save</button>
+          <button class="btn-outline" type="button" data-action="cancelEditCwTest">Cancel</button>
+        </form>
+      </td></tr>` : `<tr><td>${esc(t.name)}</td><td>${esc(String(t.max))}</td><td><button class="btn-outline" data-action="editCwTestStart:${t.id}">Edit</button> <button class="btn-danger" data-action="delCwTest:${t.id}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">No tests set up yet — teachers will use a free-text label until you add some here.</td></tr>`;
+    })()}
     </table>
     <form data-form="addCwTest" style="margin-top:12px;">
       <div class="grid2">
@@ -3542,6 +3567,7 @@ function gradingView(gcClassId){
       const cc = gcls.examConfig || {};
       const ccfg = examConfig(gcClassId); // resolved values (custom if on, otherwise the school default) — used to prefill the form either way
       const classCwTests = Array.isArray(cc.cwTests) ? cc.cwTests : [];
+      const editClassTestId = VIEW.params && VIEW.params.editClassTestId;
       return `
       <div class="card" style="margin-top:14px;background:var(--blue-light);">
         <p class="small" style="margin:0 0 10px;">${esc(gcls.name)} is currently using: <b>${cc.useCustom ? `its own custom assessment type` : `the school-wide default above`}</b></p>
@@ -3566,8 +3592,15 @@ function gradingView(gcClassId){
       <div class="card" style="margin-top:14px;">
         <h4 style="margin-top:0;">${esc(gcls.name)}'s own Course Work Tests</h4>
         <p class="small">Only used while the custom assessment type above is switched on for this class — separate from, and in addition to, the school-wide tests list.</p>
-        <table class="data-table"><tr><th>Test name</th><th>Max score</th><th>Remove</th></tr>
-        ${classCwTests.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(String(t.max))}</td><td><button class="btn-danger" data-action="delClassCwTest:${gcls.id}:${t.id}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">No class-specific tests set up yet.</td></tr>`}
+        <table class="data-table"><tr><th>Test name</th><th>Max score</th><th>Actions</th></tr>
+        ${classCwTests.map(t=> t.id===editClassTestId ? `<tr><td colspan="3">
+          <form data-form="editClassCwTest" data-class="${gcls.id}" data-test="${t.id}" class="flex" style="gap:8px;align-items:center;flex-wrap:wrap;">
+            <input name="name" value="${esc(t.name)}" placeholder="Test name" required style="flex:1;min-width:120px;">
+            <input name="max" type="number" min="1" step="1" value="${esc(String(t.max))}" required style="width:90px;">
+            <button class="btn" type="submit">Save</button>
+            <button class="btn-outline" type="button" data-action="cancelEditClassCwTest">Cancel</button>
+          </form>
+        </td></tr>` : `<tr><td>${esc(t.name)}</td><td>${esc(String(t.max))}</td><td><button class="btn-outline" data-action="editClassCwTestStart:${gcls.id}:${t.id}">Edit</button> <button class="btn-danger" data-action="delClassCwTest:${gcls.id}:${t.id}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">No class-specific tests set up yet.</td></tr>`}
         </table>
         <form data-form="addClassCwTest" data-class="${gcls.id}" style="margin-top:12px;">
           <div class="grid2">
@@ -4811,7 +4844,7 @@ document.addEventListener('click', async (e)=>{
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
-    'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','delClassCwTest','delAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
+    'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow']);
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
@@ -4975,6 +5008,12 @@ document.addEventListener('click', async (e)=>{
       DB.info.examConfig = cfg;
       await saveInfo(); render(); break;
     }
+    case 'editCwTestStart': {
+      VIEW.params = {...VIEW.params, editCwTestId: arg}; render(); break;
+    }
+    case 'cancelEditCwTest': {
+      VIEW.params = {...VIEW.params, editCwTestId: null}; render(); break;
+    }
     case 'delClassCwTest': {
       const [classId, testId] = arg.split(':');
       const cls = DB.classes.find(c=>c.id===classId);
@@ -4985,6 +5024,13 @@ document.addEventListener('click', async (e)=>{
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==testId);
       cls.examConfig = cfg;
       await saveClasses(); render(); break;
+    }
+    case 'editClassCwTestStart': {
+      const [, testId] = arg.split(':');
+      VIEW.params = {...VIEW.params, editClassTestId: testId}; render(); break;
+    }
+    case 'cancelEditClassCwTest': {
+      VIEW.params = {...VIEW.params, editClassTestId: null}; render(); break;
     }
     case 'deleteScore': {
       const row = DB.scores.find(x=>x.id===arg);
@@ -5582,7 +5628,7 @@ document.addEventListener('submit', async (e)=>{
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
-    'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','saveClassExamConfig','addClassCwTest','schoolInfo','setTerm','restoreBackup','promote','quickAddStudent',
+    'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','quickAddStudent',
     'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
   if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
@@ -6279,6 +6325,19 @@ document.addEventListener('submit', async (e)=>{
       DB.info.examConfig = cfg;
       await saveInfo(); showDeliveredToast('Test added'); render();
     }
+    else if(type==='editCwTest'){
+      const testId = form.dataset.test;
+      const name = (fd.get('name')||'').trim();
+      const max = Math.max(1, Number(fd.get('max'))||20);
+      if(!name){ alert('Enter a test name.'); return; }
+      const cfg = {...(DB.info.examConfig||{})};
+      const tests = Array.isArray(cfg.cwTests) ? [...cfg.cwTests] : [];
+      if(tests.some(t=>t.id!==testId && t.name.toLowerCase()===name.toLowerCase())){ alert('A test with that name already exists.'); return; }
+      cfg.cwTests = tests.map(t=> t.id===testId ? {...t, name, max} : t);
+      DB.info.examConfig = cfg;
+      VIEW.params = {...VIEW.params, editCwTestId: null};
+      await saveInfo(); showDeliveredToast('Test updated'); render();
+    }
     else if(type==='saveClassExamConfig'){
       const classId = form.dataset.class;
       const cls = DB.classes.find(c=>c.id===classId);
@@ -6310,6 +6369,22 @@ document.addEventListener('submit', async (e)=>{
       cfg.cwTests = tests;
       cls.examConfig = cfg;
       await saveClasses(); showDeliveredToast('Test added'); render();
+    }
+    else if(type==='editClassCwTest'){
+      const classId = form.dataset.class;
+      const testId = form.dataset.test;
+      const cls = DB.classes.find(c=>c.id===classId);
+      if(!cls){ alert('Class not found.'); return; }
+      const name = (fd.get('name')||'').trim();
+      const max = Math.max(1, Number(fd.get('max'))||20);
+      if(!name){ alert('Enter a test name.'); return; }
+      const cfg = {...(cls.examConfig||{})};
+      const tests = Array.isArray(cfg.cwTests) ? [...cfg.cwTests] : [];
+      if(tests.some(t=>t.id!==testId && t.name.toLowerCase()===name.toLowerCase())){ alert('A test with that name already exists for this class.'); return; }
+      cfg.cwTests = tests.map(t=> t.id===testId ? {...t, name, max} : t);
+      cls.examConfig = cfg;
+      VIEW.params = {...VIEW.params, editClassTestId: null};
+      await saveClasses(); showDeliveredToast('Test updated'); render();
     }
     else if(type==='promote'){
       const from=fd.get('fromClass'), to=fd.get('toClass');
