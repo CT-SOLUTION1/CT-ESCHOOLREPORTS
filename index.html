@@ -223,6 +223,12 @@ table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding
    across two physical table rows. */
 table.rc-perf td.mrg-top{border-bottom:none;background:#fff;}
 table.rc-perf td.mrg-bot{border-top:none;background:#fff;}
+/* Header equivalent of the td.mrg-top/mrg-bot seam trick above, used by headTh()/
+   headThBottom() to avoid a real rowspan on the perf table's OWN header cells in
+   embedded/html2canvas capture mode (see headTh() comment) — same background as
+   every other header cell (var(--blue-light)) so the hidden seam is invisible. */
+table.rc-perf th.mrg-top{border-bottom:none;}
+table.rc-perf th.mrg-bot{border-top:none;}
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
@@ -4710,6 +4716,21 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const editNote = editableNow ? `
   <div class="note" style="margin-bottom:10px;">✏️ You can type marks straight into the table below — they save as soon as you tab or click out of the box. Leave a box blank and save to mark that student absent (X); an absent student is still averaged normally on their other subjects.</div>` : '';
 
+  // Same html2canvas rowspan bug described above (see mergedTd) also hits the
+  // Academic Performance Analysis table's OWN header once Course Work test
+  // columns turn it into a two-row header (Subjects/Papers/Paper Avg/Final
+  // Average/Grade/Points/Descriptor/Teacher Initials all rowspan="2" across
+  // both header rows). In embedded/html2canvas capture mode that showed up as
+  // those header labels being smeared/blanked out — exactly the rowspan text
+  // bug, just in the header instead of the body. headTh() sidesteps it the
+  // same way mergedTd() does: no real rowspan when embedded, instead a full
+  // cell in row 1 and a seam-hidden blank cell in row 2 (see th.mrg-top/
+  // th.mrg-bot below), so on-screen/print keeps the normal rowspan="2".
+  const headTh = (cls, content) => embedded
+    ? `<th class="${cls} mrg-top">${content}</th>`
+    : `<th rowspan="2" class="${cls}">${content}</th>`;
+  const headThBottom = (cls) => embedded ? `<th class="${cls} mrg-bot">&nbsp;</th>` : '';
+
   return `
   ${periodPicker}
   ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
@@ -4751,13 +4772,19 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <table class="rc-perf">
       ${useCwTestCols ? `
       <tr>
-        <th rowspan="2" class="rc-th-subj">Subjects</th>${isP?'':'<th rowspan="2" class="rc-th-papers">Papers</th>'}
+        ${headTh('rc-th-subj','Subjects')}${isP?'':headTh('rc-th-papers','Papers')}
         <th colspan="${cwTests.length+1}" class="rc-th-cw">${esc(cfg.cwLabel)}</th>
-        ${showEOT?`<th rowspan="2" class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
-        <th rowspan="2" class="rc-th-pavg">Paper Avg (%)</th>
-        <th rowspan="2" class="rc-th-final">Final Average (%)</th><th rowspan="2" class="rc-th-grade">Grade</th>${isA?'<th rowspan="2" class="rc-th-points">Points</th>':''}<th rowspan="2" class="rc-th-desc">Descriptor</th><th rowspan="2" class="rc-th-init">Teacher Initials</th>
+        ${showEOT?headTh('rc-th-eot', `${esc(cfg.eotLabel)} (/${cfg.eotPercent})`):''}
+        ${headTh('rc-th-pavg','Paper Avg (%)')}
+        ${headTh('rc-th-final','Final Average (%)')}${headTh('rc-th-grade','Grade')}${isA?headTh('rc-th-points','Points'):''}${headTh('rc-th-desc','Descriptor')}${headTh('rc-th-init','Teacher Initials')}
       </tr>
-      <tr>${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th></tr>` : `
+      <tr>
+        ${headThBottom('rc-th-subj')}${isP?'':headThBottom('rc-th-papers')}
+        ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
+        ${showEOT?headThBottom('rc-th-eot'):''}
+        ${headThBottom('rc-th-pavg')}
+        ${headThBottom('rc-th-final')}${headThBottom('rc-th-grade')}${isA?headThBottom('rc-th-points'):''}${headThBottom('rc-th-desc')}${headThBottom('rc-th-init')}
+      </tr>` : `
       <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">Papers</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
