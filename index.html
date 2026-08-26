@@ -135,12 +135,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .sync-status.sync-error{background:#fdeaea;color:#7a1f1f;border:1px solid #f3b9b9;}
 
 /* ---- Report card (Sample School official layout) ---- */
-.rc-card{background:#fff;padding:26px 34px 22px;border:1px solid #cfd9e3;width:100%;max-width:1100px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);position:relative;overflow:hidden;}
-/* Report card is allowed to grow to nearly the full width of its container (.main
-   caps out at 1150px) instead of being frozen at a fixed 800px — that old fixed cap is
-   what made the whole card look "shrunk" with lots of unused white space on wider
-   screens. Every inner table below is width:100%, so widening this wrapper widens all
-   of them together and they stay aligned on the same left/right edges. */
+.rc-card{background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);position:relative;overflow:hidden;}
 /* Faint background watermark of the school logo — purely decorative, sits behind every
    other element on the card via z-index. Centered and oversized (60% of the card width)
    at very low opacity so it never competes with the actual text/tables for legibility,
@@ -152,19 +147,16 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.06;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
-.rc-title-block{display:flex;align-items:center;gap:16px;text-align:left;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;min-height:100px;}
-/* School name/address/contacts sit on the LEFT (rc-header-text, rendered first in the
-   markup) and take up whatever width they need; the logo comes right after them and
-   fills the REST of the header's available width/height — see rc-logo below — so it
-   is never a tiny fixed-size thumbnail, it scales with the header block itself, and it
-   stays visually attached to (not detached from) the header instead of floating off on
-   its own. object-fit:contain keeps the source image's own proportions (no stretching/
-   distortion) no matter how much space it ends up filling. This is a display-only
-   change — the underlying base64 image data is untouched, so it adds no extra network
-   request and no re-encoding cost, meaning resolution and download/render speed are
-   unaffected. */
-.rc-title-block .rc-header-text{flex:1 1 auto;min-width:0;text-align:left;}
-.rc-title-block .rc-logo{flex:0 1 auto;height:100%;max-height:100px;width:auto;max-width:170px;object-fit:contain;border-radius:6px;align-self:stretch;}
+.rc-title-block{display:flex;align-items:stretch;gap:12px;text-align:center;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;}
+/* Logo is sized to match the header text block's own height (via align-items:stretch
+   + height:100% + aspect-ratio) instead of a fixed px value, so it always looks
+   proportionate to the school name/subtitle/meta stack next to it. This is a
+   display-only change — the underlying base64 image data is untouched, so it adds
+   no extra network request and no re-encoding cost, meaning resolution and
+   download/render speed are unaffected. object-fit:cover still crops any source
+   image cleanly into that box. */
+.rc-title-block .rc-logo{height:100%;width:auto;aspect-ratio:1/1;max-width:90px;object-fit:cover;border-radius:6px;flex-shrink:0;}
+.rc-title-block .rc-header-text{flex:1;min-width:0;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
    below), so a hairline text-stroke is layered on top of font-weight:900 here to push
@@ -180,11 +172,11 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    no longer affects the table's outer edges, so all tables now line up on
    identical left/right edges. */
 .rc-bio-photo{width:64px;height:64px;object-fit:cover;border:1px solid var(--blue);border-radius:4px;}
-table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
-table.rc-info-table td{border:1.4px solid var(--blue);padding:9px 14px;font-size:clamp(12px,1.35vw,15px);}
-table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:clamp(10px,1.05vw,12px);letter-spacing:.03em;color:var(--navy);width:16%;}
+table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size:12px;}
+table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--navy);}
 table.rc-info-table td.val{font-weight:700;}
-table.rc-info-table td.photo-cell{width:80px;padding:6px;text-align:center;vertical-align:middle;background:#fff;}
+table.rc-info-table td.photo-cell{width:74px;padding:5px;text-align:center;vertical-align:middle;background:#fff;}
 
 .rc-section-title{font-size:12.5px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--navy);border-bottom:2px solid var(--navy);padding-bottom:4px;margin:16px 0 8px;}
 
@@ -196,15 +188,8 @@ table.rc-info-table td.photo-cell{width:80px;padding:6px;text-align:center;verti
    this wrapper just scrolls horizontally, same approach as .mm-tablewrap. */
 .rc-perf-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 
-/* Base font-size for this table is set on the <table> element itself (inline style,
-   computed in JS from the actual number of columns AND subject rows on THIS card — see
-   perfFontSize() in reportCardHTML) rather than a single fixed px value here. th/td
-   below are sized in em off that one base, so every cell in the table scales together:
-   a card with few Course Work columns and few subjects renders with noticeably larger,
-   easier-to-read text, while a card with many test columns/subjects shrinks just enough
-   to keep every column readable instead of overflowing or wrapping unpredictably. */
-table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:auto;font-size:12.5px;}
-table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:.55em .6em;font-size:.86em;font-weight:900;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.25;vertical-align:middle;}
+table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:auto;}
+table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:6px 8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
 /* Fixed core columns (Subjects, Paper Avg, Final Average, Grade, Descriptor, Teacher
    Initials) always get a guaranteed minimum width so their headers stay on one or two
    clean lines and never get squeezed/overlapped when Course Work test columns are
@@ -222,11 +207,11 @@ table.rc-perf th.rc-th-eot{min-width:80px;}
    flex/shrink first when many named tests are configured, since the wrapper below
    scrolls horizontally rather than letting anything get squeezed unreadable. */
 table.rc-perf th.rc-th-cw, table.rc-perf th.rc-th-cwsub{min-width:52px;}
-table.rc-perf td{border:1.4px solid var(--blue);padding:.5em .6em;font-size:1em;text-align:center;}
+table.rc-perf td{border:1.4px solid var(--blue);padding:6px 8px;font-size:12px;text-align:center;}
 table.rc-perf td:first-child{text-align:left;font-weight:900;}
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);border-top:2.4px solid var(--blue);}
-table.rc-perf tr.subrow td{font-size:.92em;color:var(--muted);background:#FBFDFF;}
+table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
    export (see mergedTd() in reportCardHTML): a subject-level value (Final Average,
@@ -238,21 +223,28 @@ table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding
    across two physical table rows. */
 table.rc-perf td.mrg-top{border-bottom:none;background:#fff;}
 table.rc-perf td.mrg-bot{border-top:none;background:#fff;}
-/* Header equivalent of the td.mrg-top/mrg-bot seam trick above, used by headTh()/
-   headThBottom() to avoid a real rowspan on the perf table's OWN header cells in
-   embedded/html2canvas capture mode (see headTh() comment) — same background as
-   every other header cell (var(--blue-light)) so the hidden seam is invisible. */
+/* Same merged-look trick as td.mrg-top/mrg-bot above, applied to the Academic
+   Performance Analysis HEADER whenever Course Work test columns are configured.
+   That header used real <th rowspan="2"> for every column outside the Course
+   Work group so its label would span both header rows — but real rowspan cells
+   sitting next to a two-row colspan group are exactly the border-collapse +
+   rowspan combination flagged above as unreliable, and here it was hiding the
+   label in every non-Course-Work column instead of just doubling it. Splitting
+   each of those into two plain stacked <th> cells (label on top, blank below,
+   border removed between, same background continued down) reproduces the
+   merged one-cell appearance without ever asking the browser to paint one
+   header cell across two physical rows. */
 table.rc-perf th.mrg-top{border-bottom:none;}
-table.rc-perf th.mrg-bot{border-top:none;}
+table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 
-table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;table-layout:fixed;}
-table.rc-summary-table td{border:1.4px solid var(--blue);padding:10px 12px;font-size:clamp(12px,1.35vw,15px);text-align:center;}
-table.rc-summary-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:clamp(10px,1.05vw,12px);letter-spacing:.02em;color:var(--navy);}
+table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
+table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
+table.rc-summary-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.02em;color:var(--navy);}
 table.rc-summary-table td.val{font-weight:800;}
 
-table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
-table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:8px 12px;font-size:clamp(10px,1.05vw,12px);font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
-table.rc-comments-table td{border:1.4px solid var(--blue);padding:12px 14px;font-size:clamp(12px,1.25vw,14.5px);line-height:1.45;vertical-align:top;width:50%;}
+table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
+table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;}
 
 .rc-sign-row{display:flex;justify-content:space-between;font-size:11px;margin:18px 0 10px;flex-wrap:wrap;gap:14px 10px;font-weight:700;}
 .rc-sign-row span{border-bottom:1px solid var(--ink);padding-bottom:3px;min-width:120px;display:inline-block;}
@@ -4731,51 +4723,6 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const editNote = editableNow ? `
   <div class="note" style="margin-bottom:10px;">✏️ You can type marks straight into the table below — they save as soon as you tab or click out of the box. Leave a box blank and save to mark that student absent (X); an absent student is still averaged normally on their other subjects.</div>` : '';
 
-  // Same html2canvas rowspan bug described above (see mergedTd) also hits the
-  // Academic Performance Analysis table's OWN header once Course Work test
-  // columns turn it into a two-row header (Subjects/Papers/Paper Avg/Final
-  // Average/Grade/Points/Descriptor/Teacher Initials all rowspan="2" across
-  // both header rows). In embedded/html2canvas capture mode that showed up as
-  // those header labels being smeared/blanked out — exactly the rowspan text
-  // bug, just in the header instead of the body. headTop()/headBottom()
-  // sidestep it the same way mergedTd() does: no real rowspan when embedded.
-  // The label itself goes in ROW 2 (headBottom), not row 1: row 1 is only as
-  // tall as "COURSE WORK" (one short line), while row 2 is however tall the
-  // wrapped Course Work test names need to be, so a label placed in row 1
-  // alone renders vertically centered in that short strip — floating well
-  // above the middle of the merged-looking block instead of sitting level
-  // with it. Row 2 is the taller row and the one the Course Work sub-headers
-  // themselves live in, so putting the label there keeps every header on one
-  // shared visual baseline; row 1 just gets an invisible spacer cell (see
-  // th.mrg-top/th.mrg-bot below). On-screen/print is untouched — it still
-  // gets one real rowspan="2" cell, vertically centered across its full
-  // actual height by the browser.
-  const headTop = (cls, content) => embedded
-    ? `<th class="${cls} mrg-top">&nbsp;</th>`
-    : `<th rowspan="2" class="${cls}">${content}</th>`;
-  const headBottom = (cls, content) => embedded
-    ? `<th class="${cls} mrg-bot">${content}</th>`
-    : '';
-
-  // Academic Performance Analysis font size: computed from THIS card's own column count
-  // (Subjects/Papers/Course Work test columns/End of Term/Paper Avg/Final Average/
-  // Grade/Points/Descriptor/Teacher Initials) and its subject-row count, instead of one
-  // fixed px value for every card. A card with fewer columns and fewer subjects gets
-  // noticeably larger, easier-to-read text; a wide card (many named Course Work tests)
-  // or a long one (many subjects) shrinks just enough to keep every column and row
-  // legible on one printed page instead of overflowing or forcing a horizontal scroll.
-  const perfColCount = (isP?0:1) + 1
-    + (showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0)
-    + (showEOT?1:0) + 1 + 1 + 1 + (isA?1:0) + 1 + 1;
-  const perfRowCount = rows.length;
-  let perfFontSize = 13;
-  if(perfColCount>=14) perfFontSize = 10;
-  else if(perfColCount>=12) perfFontSize = 10.5;
-  else if(perfColCount>=10) perfFontSize = 11.5;
-  else if(perfColCount>=8) perfFontSize = 12.5;
-  if(perfRowCount>16) perfFontSize = Math.min(perfFontSize, 10);
-  else if(perfRowCount>11) perfFontSize = Math.min(perfFontSize, 11);
-
   return `
   ${periodPicker}
   ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
@@ -4787,13 +4734,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <div class="rc-topline"><span>${s.feesCode?`FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
 
     <div class="rc-title-block">
+      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
       <div class="rc-header-text">
         <div class="school">${esc(DB.info.schoolName)}</div>
         <div class="subtitle">Student Academic Report Card — ${isA?'A Level':(isP?'Primary':'O Level')}</div>
         <div class="meta">Academic Year: ${yearLbl}${DB.info.address?' &nbsp;|&nbsp; '+esc(DB.info.address):''}</div>
         ${(DB.info.phone||DB.info.email)?`<div class="meta">${[DB.info.phone?'Tel: '+esc(DB.info.phone):'', DB.info.email?'Email: '+esc(DB.info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
       </div>
-      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
     </div>
 
     <table class="rc-info-table">
@@ -4814,23 +4761,23 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
     <div class="rc-section-title">Academic Performance Analysis</div>
     <div class="rc-perf-wrap">
-    <table class="rc-perf" style="font-size:${perfFontSize}px;">
+    <table class="rc-perf">
       ${useCwTestCols ? `
       <tr>
-        ${headTop('rc-th-subj','Subjects')}${isP?'':headTop('rc-th-papers','Papers')}
+        <th class="rc-th-subj mrg-top"></th>${isP?'':'<th class="rc-th-papers mrg-top"></th>'}
         <th colspan="${cwTests.length+1}" class="rc-th-cw">${esc(cfg.cwLabel)}</th>
-        ${showEOT?headTop('rc-th-eot', `${esc(cfg.eotLabel)}<br>(/${cfg.eotPercent})`):''}
-        ${headTop('rc-th-pavg','Paper Avg<br>(%)')}
-        ${headTop('rc-th-final','Final Average<br>(%)')}${headTop('rc-th-grade','Grade')}${isA?headTop('rc-th-points','Points'):''}${headTop('rc-th-desc','Descriptor')}${headTop('rc-th-init','Teacher<br>Initials')}
+        ${showEOT?`<th class="rc-th-eot mrg-top"></th>`:''}
+        <th class="rc-th-pavg mrg-top"></th>
+        <th class="rc-th-final mrg-top"></th><th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th><th class="rc-th-init mrg-top"></th>
       </tr>
       <tr>
-        ${headBottom('rc-th-subj','Subjects')}${isP?'':headBottom('rc-th-papers','Papers')}
-        ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)}<br>(/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg<br>(/${cfg.cwPercent})</th>
-        ${showEOT?headBottom('rc-th-eot', `${esc(cfg.eotLabel)}<br>(/${cfg.eotPercent})`):''}
-        ${headBottom('rc-th-pavg','Paper Avg<br>(%)')}
-        ${headBottom('rc-th-final','Final Average<br>(%)')}${headBottom('rc-th-grade','Grade')}${isA?headBottom('rc-th-points','Points'):''}${headBottom('rc-th-desc','Descriptor')}${headBottom('rc-th-init','Teacher<br>Initials')}
+        <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">Papers</th>'}
+        ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
+        ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
+        <th class="rc-th-pavg mrg-bot">Paper Avg (%)</th>
+        <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">Descriptor</th><th class="rc-th-init mrg-bot">Teacher Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">Papers</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)}<br>(/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)}<br>(/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg<br>(%)</th><th class="rc-th-final">Final Average<br>(%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher<br>Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">Papers</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
@@ -7121,33 +7068,6 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
   }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait'});
 }
 
-// The offscreen capture holder used below is positioned at left:-9999px so it never
-// steals layout space or flashes on screen — but that also means it never intersects
-// the viewport, and any <img loading="lazy"> inside it (the school logo, a student's
-// bio photo) is exactly the kind of image a browser's native lazy-loading only ever
-// fetches once it scrolls near the viewport. Off at -9999px, that trigger never
-// fires, so those images silently never load in time for html2canvas to capture them
-// — on a wide A-Level card (the widest of the three levels, thanks to its extra
-// Points column and, often, several named Course Work test columns) this was the
-// difference between a normal-looking card and one whose header/photo area came out
-// blank. Forcing eager loading and explicitly waiting for every image already in the
-// DOM to finish loading (or fail) — with a timeout so one broken image link can never
-// hang the whole export — makes sure html2canvas only ever captures once everything
-// it needs to draw is actually ready.
-function waitForImages(container, timeoutMs){
-  const imgs = Array.from(container.querySelectorAll('img'));
-  if(!imgs.length) return Promise.resolve();
-  const perImage = imgs.map(img=>{
-    img.removeAttribute('loading'); // force eager: lazy-loading never triggers off-screen
-    if(img.complete) return Promise.resolve();
-    return new Promise(resolve=>{
-      img.addEventListener('load', resolve, {once:true});
-      img.addEventListener('error', resolve, {once:true}); // don't let one bad image hang the export
-    });
-  });
-  const timeout = new Promise(resolve=>setTimeout(resolve, timeoutMs||3000));
-  return Promise.race([Promise.all(perImage), timeout]);
-}
 /* ---------- Bulk PDF ---------- */
 async function pdfForStudents(students, filename, opts={}){
   if(!students.length){ alert('No students to export.'); return; }
@@ -7162,31 +7082,20 @@ async function pdfForStudents(students, filename, opts={}){
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const holder = document.createElement('div');
-  // width is 'max-content' rather than a fixed px value so the holder always
-  // grows to fit whatever the card's natural width ends up being — including
-  // the Academic Performance Analysis table once extra Course Work test
-  // columns make it wider than a normal card (see the overflow/max-width
-  // overrides in the <style> below). A fixed width here would clip/scroll
-  // those extra columns right out of what html2canvas actually captures.
-  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='max-content'; holder.style.background='#fff';
+  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='780px'; holder.style.background='#fff';
   document.body.appendChild(holder);
-  // Render RESOLUTION is what determines print sharpness, and it used to be a
-  // blind fixed scale:3 for every card. Since the final image is always fit to
-  // one A4 page (see fitScale below), a fixed capture scale means the actual
-  // print DPI silently swings with however wide/tall a particular card happens
-  // to be — a short, few-subject Primary card was captured at a needlessly
-  // high DPI (bloating its file size for zero visible benefit, since a printer/
-  // screen can't show detail beyond a few hundred DPI), while an unusually
-  // large card could in principle come out softer. Instead we target a fixed,
-  // known-crisp print DPI directly and back-solve for whatever capture scale
-  // hits it for THIS card's own natural size — every card ends up at the same,
-  // genuinely sharp resolution, and none of them are over-captured into extra
-  // megabytes that buy no visible quality.
-  const TARGET_DPI = 220; // comfortably sharp for printed text/tables — well past the ~150dpi where print text starts looking soft, well short of the 300dpi+ "photo quality" that mainly just adds file size here
-  const MARGIN = 16; // pt — small, consistent margin on every side
-  const AVAIL_W = pageW - MARGIN*2, AVAIL_H = pageH - MARGIN*2;
+  // Render RESOLUTION (the scale factor) is what determines print sharpness.
+  // Both single and bulk render at scale 3 and encode to JPEG — identical
+  // resolution and print sharpness either way. Quality is now 0.95 for BOTH
+  // paths too (bulk used to sit at 0.8, which visibly dulled colours and
+  // softened table borders/text compared to a single download — the same
+  // report card shouldn't look worse just because it was exported alongside
+  // classmates). This only affects the JPEG *encoding* step, not the
+  // in-memory canvas itself, so it doesn't reopen the old PNG memory problem —
+  // each page still just comes out a little larger/crisper, not heavier to render.
+  const scale = 3;
   const format = 'JPEG';
-  const jpegQuality = 0.95; // kept high for fidelity — file size is controlled by the DPI-targeted capture scale above instead, so this doesn't need to be traded down
+  const jpegQuality = 0.95;
   for(let i=0;i<students.length;i++){
     // html2canvas has a long-standing, well-documented bug (the CSS spec itself calls
     // border-collapse:collapse + rowspan/colspan "undefined" behaviour) where a merged
@@ -7198,23 +7107,8 @@ async function pdfForStudents(students, filename, opts={}){
     // instead of being merged/shared across the rowspan boundary) — the live on-screen
     // card and the browser Print dialog still use the normal collapsed borders, so this
     // override is scoped to just the offscreen holder html2canvas actually screenshots.
-    // "border-collapse:separate" (rowspan bug workaround, described above) plus
-    // three more capture-only overrides so a wide Course Work table is never
-    // clipped: .rc-card's normal 800px cap is lifted, .rc-perf-wrap's normal
-    // horizontal scrollbar (fine on-screen, invisible to html2canvas) is
-    // turned into plain overflow:visible, and the mobile-only "min-width:640px"
-    // shrink-to-scroll rule on table.rc-perf is neutralized — all scoped by the
-    // #pdfCaptureHolder id so they only ever apply to this offscreen capture
-    // copy, never to the live on-screen card or the browser Print dialog.
-    holder.innerHTML = `<style>#pdfCaptureHolder table.rc-perf, #pdfCaptureHolder table.rc-info-table{border-collapse:separate;border-spacing:0;}
-      #pdfCaptureHolder .rc-card{max-width:none;}
-      #pdfCaptureHolder .rc-perf-wrap{overflow:visible;}
-      #pdfCaptureHolder table.rc-perf{min-width:0;}</style>`+
+    holder.innerHTML = `<style>#pdfCaptureHolder table.rc-perf, #pdfCaptureHolder table.rc-info-table{border-collapse:separate;border-spacing:0;}</style>`+
       `<div id="pdfCaptureHolder" style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
-    // Make sure the logo/photo <img> tags above have actually finished loading before
-    // anything is measured or captured — see waitForImages() for why this matters for
-    // an offscreen, off-viewport holder like this one.
-    await waitForImages(holder);
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
     // card with a CSS transform, and a transform never changes an element's
     // layout box — only how it's painted. html2canvas captures the *layout* box,
@@ -7224,65 +7118,34 @@ async function pdfForStudents(students, filename, opts={}){
     // every card at its natural, un-transformed size and fit the resulting image
     // onto the page mathematically below — that can never crop anything, no
     // matter how long or short the card is.
-    // Measure the card's natural, un-transformed CSS pixel size first (cheap —
-    // no rasterizing yet), then work out how it would be fit onto the page: the
-    // scale factor a plain 1x capture would need to land inside the printable
-    // area, preserving aspect ratio, on whichever axis (width or height) is
-    // tighter. Back-solving capture scale from THAT (rather than guessing a
-    // fixed number) is what lets every card — short or tall, few subjects or
-    // many — come out at the same true TARGET_DPI, no more, no less.
-    const cardEl = holder.querySelector('.rc-card');
-    if(i>0) pdf.addPage();
-    // Everything from here on can, in principle, throw for one particular student
-    // (a pathologically wide card, a browser canvas limit, a transient html2canvas
-    // failure, etc.) — previously that exception simply propagated up and aborted
-    // the ENTIRE export, silently, with whatever pages had already been captured
-    // just discarded (no PDF ever got produced, which is one way a "download" could
-    // end up looking blank/empty). Catching it per-student means one problem card
-    // can never take down the rest of the batch: the page is still added, with a
-    // clear on-page message instead of nothing, and the real error is logged to the
-    // console for follow-up.
-    try{
-      if(!cardEl) throw new Error('Report card did not render for this student.');
-      const naturalW = Math.max(cardEl.scrollWidth, cardEl.offsetWidth) || 1;
-      const naturalH = Math.max(cardEl.scrollHeight, cardEl.offsetHeight) || 1;
-      const naturalFitScale = Math.min(AVAIL_W / naturalW, AVAIL_H / naturalH); // pt of printed size per CSS px
-      let captureScale = TARGET_DPI * naturalFitScale / 72; // 72pt = 1in, so this is exactly the px/CSS-px needed for TARGET_DPI at print size
-      captureScale = Math.max(1.2, Math.min(captureScale, 3)); // floor keeps very short/wide cards legible, ceiling guards against a pathologically tiny card demanding an absurd capture size
-      // Hard safety cap: some browsers (mobile Safari in particular) silently fail
-      // and hand back a blank canvas once either side crosses roughly 4000px — a
-      // wide A-Level card with many course-work columns was hitting exactly this
-      // wall and coming out as an empty PDF page. Same cap used for the Master
-      // Mark Sheet export elsewhere in this file. If the natural size alone would
-      // already exceed it, captureScale is pulled down further here — legibility
-      // takes a back seat to the export actually succeeding.
-      const MAX_CANVAS_SIDE = 4000;
-      captureScale = Math.min(captureScale, MAX_CANVAS_SIDE / naturalW, MAX_CANVAS_SIDE / naturalH);
-      captureScale = Math.max(captureScale, 0.3); // never collapse to zero/negative on a pathologically huge sheet
-      let canvas = await html2canvas(holder, {scale:captureScale, backgroundColor:'#ffffff', letterRendering:true});
-      if(!canvas || !canvas.width || !canvas.height) throw new Error('Capture came back empty.');
-      let img = canvas.toDataURL('image/jpeg', jpegQuality);
-      // Fill the ENTIRE printable area on all four sides — no centered image with
-      // blank space around it. The report card's own generator already varies row
-      // height, column width, and font size with subject/paper count (see
-      // perfFontSize etc. in reportCardHTML) specifically so the content reads
-      // well at whatever size it ends up being — the page itself should always be
-      // fully used, not left partly blank because a particular student happens to
-      // have fewer subjects than another.
-      const w = AVAIL_W, h = AVAIL_H, x = MARGIN, y = MARGIN;
-      pdf.addImage(img,format,x,y,w,h);
-      canvas.width = 0; canvas.height = 0; canvas = null; img = null;
-    }catch(cardErr){
-      console.error(`Report card export failed for ${students[i].name||students[i].id}:`, cardErr);
-      pdf.setFontSize(13); pdf.setTextColor(150,20,20);
-      pdf.text(`Could not generate this report card (${students[i].name||'student'}).`, MARGIN, MARGIN+20);
-      pdf.setFontSize(10); pdf.setTextColor(100);
-      pdf.text('Please try downloading it again, or contact support if this repeats.', MARGIN, MARGIN+40);
+    let canvas = await html2canvas(holder, {scale, backgroundColor:'#ffffff', letterRendering:true});
+    let img = canvas.toDataURL('image/jpeg', jpegQuality);
+    // Fit the whole, uncropped card onto one A4 page — and make sure it actually
+    // fills that page, in both directions, rather than landing at natural size
+    // and leaving the rest blank:
+    //  - If the card is TALLER than one page at full width, shrink it (preserving
+    //    its own aspect ratio, letterboxed/centered) so nothing is ever cropped
+    //    or pushed onto a second page.
+    //  - If the card is SHORTER than one page at full width (a light card — few
+    //    subjects, common on Primary), stretch it to fill the remaining height
+    //    too. Every pixel of the original, uncropped card is still fully there;
+    //    it's just spread out a little further down the page instead of leaving
+    //    blank space beneath it.
+    let w = pageW, h = canvas.height*pageW/canvas.width, x = 0, y = 0;
+    if(h > pageH){
+      h = pageH;
+      w = canvas.width*pageH/canvas.height;
+      x = (pageW-w)/2;
+    } else {
+      w = pageW; h = pageH; x = 0; y = 0;
     }
-    // Drop this student's rendered markup before starting the next one (the canvas
-    // itself is already cleared above, inside the try block), and yield a tick so the
-    // browser can actually run garbage collection and repaint — without this, a long
-    // bulk run never gets a chance to reclaim memory between students and visibly stalls.
+    if(i>0) pdf.addPage();
+    pdf.addImage(img,format,x,y,w,h);
+    // Drop every reference to this student's rendered canvas/markup before
+    // starting the next one, and yield a tick so the browser can actually run
+    // garbage collection and repaint — without this, a long bulk run never gets
+    // a chance to reclaim memory between students and visibly stalls.
+    canvas.width = 0; canvas.height = 0; canvas = null; img = null;
     holder.innerHTML = '';
     if(opts.onProgress) opts.onProgress(i+1, students.length);
     await new Promise(r=>setTimeout(r, 0));
