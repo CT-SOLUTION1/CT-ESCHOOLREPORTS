@@ -161,9 +161,10 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    at 900 (the same weight now used by subject names, table titles, and column titles
    below), so a hairline text-stroke is layered on top of font-weight:900 here to push
    the school name visibly heavier than everything else without reducing their weight. */
-.rc-title-block .school{font-size:20px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.1;margin:2px 0;white-space:nowrap;}
-.rc-title-block .subtitle{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-top:3px;}
-.rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);margin-top:4px;font-weight:700;}
+.rc-title-block .school{font-size:22px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 4px;white-space:nowrap;}
+/* Slightly increased header spacing makes the text stack reach the logo height without enlarging the overall report-card layout. */
+.rc-title-block .subtitle{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:4px;}
+.rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:5px;font-weight:700;}
 
 /* The bio photo now lives INSIDE rc-info-table (as a rowspan cell) instead of
    sitting beside it in a flex row — that old layout shrank the table's own
