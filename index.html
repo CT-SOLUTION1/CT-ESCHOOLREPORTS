@@ -180,8 +180,33 @@ table.rc-info-table td.photo-cell{width:74px;padding:5px;text-align:center;verti
 
 .rc-section-title{font-size:12.5px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--navy);border-bottom:2px solid var(--navy);padding-bottom:4px;margin:16px 0 8px;}
 
-table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;}
-table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:6px 8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;}
+/* Keep the Academic Performance Analysis table's key headers (Subjects, Paper Avg,
+   Final Average, Grade, Descriptor, Teacher Initials — see the rc-th-* min-widths
+   above) always legible: instead of letting the browser squeeze every column to fit
+   a fixed page width (which is what caused headers to wrap/overlap once Course Work
+   test columns were added), the table is allowed to grow to its natural width and
+   this wrapper just scrolls horizontally, same approach as .mm-tablewrap. */
+.rc-perf-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:auto;}
+table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:6px 8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
+/* Fixed core columns (Subjects, Paper Avg, Final Average, Grade, Descriptor, Teacher
+   Initials) always get a guaranteed minimum width so their headers stay on one or two
+   clean lines and never get squeezed/overlapped when Course Work test columns are
+   added (see rc-th-cw below) — those are the ones allowed to shrink instead. */
+table.rc-perf th.rc-th-subj{min-width:112px;text-align:left;}
+table.rc-perf th.rc-th-papers{min-width:56px;}
+table.rc-perf th.rc-th-pavg{min-width:72px;}
+table.rc-perf th.rc-th-final{min-width:80px;}
+table.rc-perf th.rc-th-grade{min-width:48px;}
+table.rc-perf th.rc-th-points{min-width:56px;}
+table.rc-perf th.rc-th-desc{min-width:92px;}
+table.rc-perf th.rc-th-init{min-width:82px;}
+table.rc-perf th.rc-th-eot{min-width:80px;}
+/* Course Work group + its individual test-name/Avg sub-columns are the ones that
+   flex/shrink first when many named tests are configured, since the wrapper below
+   scrolls horizontally rather than letting anything get squeezed unreadable. */
+table.rc-perf th.rc-th-cw, table.rc-perf th.rc-th-cwsub{min-width:52px;}
 table.rc-perf td{border:1.4px solid var(--blue);padding:6px 8px;font-size:12px;text-align:center;}
 table.rc-perf td:first-child{text-align:left;font-weight:900;}
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
@@ -272,8 +297,9 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
      a subject's paper rows and Course Work test columns — forcing its rows to
      display:table (like the other tables above) would break that merging, so instead
      it keeps native table layout and scrolls horizontally via its wrapper div (see
-     .rc-perf-wrap) with a minimum width so columns don't get squeezed unreadably. */
-  .rc-perf-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--blue); }
+     the always-on .rc-perf-wrap rule above) with a minimum width so columns don't
+     get squeezed unreadably. */
+  .rc-perf-wrap{ border:1px solid var(--blue); }
   table.rc-perf{ min-width:640px; border:none; }
   .card{padding:16px;}
   .auth-box{padding:26px;}
@@ -4725,14 +4751,14 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <table class="rc-perf">
       ${useCwTestCols ? `
       <tr>
-        <th rowspan="2">Subjects</th>${isP?'':'<th rowspan="2">Papers</th>'}
-        <th colspan="${cwTests.length+1}">${esc(cfg.cwLabel)}</th>
-        ${showEOT?`<th rowspan="2">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
-        <th rowspan="2">Paper Avg (%)</th>
-        <th rowspan="2">Final Average (%)</th><th rowspan="2">Grade</th>${isA?'<th rowspan="2">Points</th>':''}<th rowspan="2">Descriptor</th><th rowspan="2">Teacher Initials</th>
+        <th rowspan="2" class="rc-th-subj">Subjects</th>${isP?'':'<th rowspan="2" class="rc-th-papers">Papers</th>'}
+        <th colspan="${cwTests.length+1}" class="rc-th-cw">${esc(cfg.cwLabel)}</th>
+        ${showEOT?`<th rowspan="2" class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
+        <th rowspan="2" class="rc-th-pavg">Paper Avg (%)</th>
+        <th rowspan="2" class="rc-th-final">Final Average (%)</th><th rowspan="2" class="rc-th-grade">Grade</th>${isA?'<th rowspan="2" class="rc-th-points">Points</th>':''}<th rowspan="2" class="rc-th-desc">Descriptor</th><th rowspan="2" class="rc-th-init">Teacher Initials</th>
       </tr>
-      <tr>${cwTests.map(t=>`<th>${esc(t.name)} (/${t.max})</th>`).join('')}<th>Avg (/${cfg.cwPercent})</th></tr>` : `
-      <tr><th>Subjects</th>${isP?'':'<th>Papers</th>'}${showCW?`<th>${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th>${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th>Paper Avg (%)</th><th>Final Average (%)</th><th>Grade</th>${isA?'<th>Points</th>':''}<th>Descriptor</th><th>Teacher Initials</th></tr>`}
+      <tr>${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th></tr>` : `
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">Papers</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
