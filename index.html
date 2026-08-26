@@ -155,7 +155,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    no extra network request and no re-encoding cost, meaning resolution and
    download/render speed are unaffected. object-fit:cover still crops any source
    image cleanly into that box. */
-.rc-title-block .rc-logo{height:100%;width:auto;aspect-ratio:1/1;max-width:90px;object-fit:cover;border-radius:6px;flex-shrink:0;}
+.rc-title-block .rc-logo{height:100%;width:auto;aspect-ratio:auto;max-width:120px;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
 .rc-title-block .rc-header-text{flex:1;min-width:0;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
@@ -194,13 +194,15 @@ table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px sol
    Initials) always get a guaranteed minimum width so their headers stay on one or two
    clean lines and never get squeezed/overlapped when Course Work test columns are
    added (see rc-th-cw below) — those are the ones allowed to shrink instead. */
+.pavg-main{font-size:8.5px;font-weight:900;line-height:1.0;}
+.pavg-scale{font-size:6.5px;font-weight:700;line-height:1.0;}
 table.rc-perf th.rc-th-subj{min-width:125px;width:125px;text-align:left;white-space:normal;overflow-wrap:normal;word-break:normal;}
 table.rc-perf th.rc-th-papers{min-width:32px;width:32px;padding-left:3px;padding-right:3px;font-size:8.5px;}
 table.rc-perf th.rc-th-pavg{min-width:58px;width:58px;padding-left:3px;padding-right:3px;font-size:8.5px;}
 table.rc-perf th.rc-th-final{min-width:80px;}
-table.rc-perf th.rc-th-grade{min-width:48px;}
-table.rc-perf th.rc-th-points{min-width:56px;}
-table.rc-perf th.rc-th-desc{min-width:92px;}
+table.rc-perf th.rc-th-grade{min-width:38px;width:38px;padding-left:2px;padding-right:2px;font-size:8.5px;}
+table.rc-perf th.rc-th-points{min-width:42px;width:42px;padding-left:2px;padding-right:2px;font-size:8.5px;}
+table.rc-perf th.rc-th-desc{min-width:105px;width:105px;white-space:nowrap;}
 table.rc-perf th.rc-th-init{min-width:82px;}
 table.rc-perf th.rc-th-eot{min-width:80px;}
 /* Course Work group + its individual test-name/Avg sub-columns are the ones that
@@ -249,6 +251,11 @@ table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf td:first-child{width:125px !important;white-space:normal !important;overflow-wrap:normal !important;word-break:normal !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-papers{width:32px !important;padding-left:2px !important;padding-right:2px !important;font-size:8px !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg{width:58px !important;padding-left:2px !important;padding-right:2px !important;font-size:8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg .pavg-main{font-size:7.5px !important;line-height:1 !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg .pavg-scale{font-size:5.5px !important;line-height:1 !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade{width:38px !important;padding-left:2px !important;padding-right:2px !important;font-size:8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points{width:42px !important;padding-left:2px !important;padding-right:2px !important;font-size:8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc{width:105px !important;white-space:nowrap !important;font-size:8px !important;}
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
@@ -278,7 +285,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
    everything around it now frames it as a single organized page. */
 .mm-page{background:#fff;border:1px solid #cfd9e3;padding:22px 26px 20px;width:100%;max-width:1500px;margin:0 auto;box-shadow:0 2px 10px rgba(10,42,74,.08);}
 .mm-header{text-align:center;border-bottom:2px solid var(--navy);padding-bottom:12px;margin-bottom:14px;}
-.mm-header .mm-logo{width:50px;height:50px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:10px;}
+.mm-header .mm-logo{width:70px;height:70px;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;vertical-align:middle;margin-right:10px;}
 .mm-header .mm-school{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:.03em;color:var(--navy);vertical-align:middle;}
 .mm-header .mm-title{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);margin-top:5px;}
 .mm-header .mm-meta{font-size:12px;color:var(--muted);margin-top:4px;}
@@ -3969,7 +3976,7 @@ function classStudentStats(cls, term, year){
     const maxP = isA ? maxPointsFor(s, cls) : 100;
     const metric = isA ? totalPoints : avgPct;
     const overallGrade = overallGradeFor(cls, avgPct);
-    return {student:s, metric, maxP, position, size, overallGrade, sat: rows.filter(r=>r.avg!==null).length, total: rows.length};
+    return {student:s, metric, maxP, position, size, overallGrade, sat: rows.filter(r=>r.avg!=null).length, total: rows.length};
   }).sort((a,b)=>a.position-b.position);
 }
 function classAnalysisView(){
@@ -3996,7 +4003,7 @@ function classAnalysisView(){
   const gradeCols = gradeColsFor(cls.level);
   const subjectRowsHtml = subjectStats.map(r=>{
     const gradeCells = gradeCols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
-    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg===null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
+    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
   }).join('');
 
   return `
@@ -4498,7 +4505,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   // would be misleading.
   let weakSubjects = null;
   if(!isP){
-    const graded = rows.filter(r=>r.avg!==null);
+    const graded = rows.filter(r=>r.avg!=null);
     if(graded.length){
       const minAvg = Math.min(...graded.map(r=>r.avg));
       weakSubjects = graded.filter(r=>Math.abs(r.avg-minAvg)<0.05).map(r=>r.subject);
@@ -4595,7 +4602,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const rowsHtml = rows.map((r,i)=>{
     r_subject = r.subject;
     const bd = breakdowns[i];
-    const descriptor = r.avg===null ? '—' : (commentMap[r.grade] || '—');
+    const descriptor = r.avg==null ? '—' : (commentMap[r.grade] || '—');
     // Multi-paper subject (e.g. Paper 1 & Paper 2 of the same subject): show a row per
     // paper, but only for papers that actually have a score entered so far — a paper
     // with nothing on record yet simply doesn't get a row at all. The subject name,
@@ -4669,18 +4676,18 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         return `<tr>`+
           mergedTd(esc(r.subject))+
           `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
-          mergedTd(r.avg===null?'-':r.avg.toFixed(1))+
+          mergedTd(r.avg==null?'-':r.avg.toFixed(1))+
           mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-')+
-          (isA?mergedTd(r.avg===null?0:r.pts):'')+
+          (isA?mergedTd(r.avg==null?0:r.pts):'')+
           mergedTd(esc(descriptor))+
           `<td>${initTxt}</td></tr>`;
       }
       return `<tr class="subrow">`+
         mergedTd(esc(r.subject))+
         `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
-        mergedTd(r.avg===null?'-':r.avg.toFixed(1))+
+        mergedTd(r.avg==null?'-':r.avg.toFixed(1))+
         mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-')+
-        (isA?mergedTd(r.avg===null?0:r.pts):'')+
+        (isA?mergedTd(r.avg==null?0:r.pts):'')+
         mergedTd(esc(descriptor))+
         `<td>${initTxt}</td></tr>`;
     }).join('');
@@ -4805,10 +4812,10 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
-        <th class="rc-th-pavg mrg-bot">Paper Avg (%)</th>
+        <th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>
         <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">Descriptor</th><th class="rc-th-init mrg-bot">Teacher Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
