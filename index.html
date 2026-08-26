@@ -194,9 +194,9 @@ table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px sol
    Initials) always get a guaranteed minimum width so their headers stay on one or two
    clean lines and never get squeezed/overlapped when Course Work test columns are
    added (see rc-th-cw below) — those are the ones allowed to shrink instead. */
-table.rc-perf th.rc-th-subj{min-width:112px;text-align:left;}
-table.rc-perf th.rc-th-papers{min-width:56px;}
-table.rc-perf th.rc-th-pavg{min-width:72px;}
+table.rc-perf th.rc-th-subj{min-width:125px;width:125px;text-align:left;white-space:normal;overflow-wrap:normal;word-break:normal;}
+table.rc-perf th.rc-th-papers{min-width:32px;width:32px;padding-left:3px;padding-right:3px;font-size:8.5px;}
+table.rc-perf th.rc-th-pavg{min-width:58px;width:58px;padding-left:3px;padding-right:3px;font-size:8.5px;}
 table.rc-perf th.rc-th-final{min-width:80px;}
 table.rc-perf th.rc-th-grade{min-width:48px;}
 table.rc-perf th.rc-th-points{min-width:56px;}
@@ -208,7 +208,7 @@ table.rc-perf th.rc-th-eot{min-width:80px;}
    scrolls horizontally rather than letting anything get squeezed unreadable. */
 table.rc-perf th.rc-th-cw, table.rc-perf th.rc-th-cwsub{min-width:52px;}
 table.rc-perf td{border:1.4px solid var(--blue);padding:6px 8px;font-size:12px;text-align:center;}
-table.rc-perf td:first-child{text-align:left;font-weight:900;}
+table.rc-perf td:first-child{text-align:left;font-weight:900;white-space:normal;overflow-wrap:normal;word-break:normal;}
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);border-top:2.4px solid var(--blue);}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
@@ -246,6 +246,9 @@ table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 #pdfCaptureHolder .pdf-report-card table.rc-perf td{font-size:var(--pdf-table-body-size,9px) !important;line-height:1.12 !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf tr.subrow td{font-size:var(--pdf-table-sub-size,8px) !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-papers,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-final,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-init,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-eot,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cw,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cwsub{min-width:0 !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf td:first-child{width:125px !important;white-space:normal !important;overflow-wrap:normal !important;word-break:normal !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-papers{width:32px !important;padding-left:2px !important;padding-right:2px !important;font-size:8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg{width:58px !important;padding-left:2px !important;padding-right:2px !important;font-size:8px !important;}
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
@@ -4799,13 +4802,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         <th class="rc-th-final mrg-top"></th><th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th><th class="rc-th-init mrg-top"></th>
       </tr>
       <tr>
-        <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">Papers</th>'}
+        <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
         <th class="rc-th-pavg mrg-bot">Paper Avg (%)</th>
         <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">Descriptor</th><th class="rc-th-init mrg-bot">Teacher Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">Papers</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
