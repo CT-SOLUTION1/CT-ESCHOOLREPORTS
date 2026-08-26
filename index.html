@@ -152,16 +152,19 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.06;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
-.rc-title-block{display:flex;align-items:stretch;gap:12px;text-align:center;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;}
-/* Logo is sized to match the header text block's own height (via align-items:stretch
-   + height:100% + aspect-ratio) instead of a fixed px value, so it always looks
-   proportionate to the school name/subtitle/meta stack next to it. This is a
-   display-only change — the underlying base64 image data is untouched, so it adds
-   no extra network request and no re-encoding cost, meaning resolution and
-   download/render speed are unaffected. object-fit:cover still crops any source
-   image cleanly into that box. */
-.rc-title-block .rc-logo{height:100%;width:auto;max-width:90px;object-fit:contain;border-radius:6px;flex-shrink:0;}
-.rc-title-block .rc-header-text{flex:1;min-width:0;}
+.rc-title-block{display:flex;align-items:center;gap:16px;text-align:left;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;min-height:100px;}
+/* School name/address/contacts sit on the LEFT (rc-header-text, rendered first in the
+   markup) and take up whatever width they need; the logo comes right after them and
+   fills the REST of the header's available width/height — see rc-logo below — so it
+   is never a tiny fixed-size thumbnail, it scales with the header block itself, and it
+   stays visually attached to (not detached from) the header instead of floating off on
+   its own. object-fit:contain keeps the source image's own proportions (no stretching/
+   distortion) no matter how much space it ends up filling. This is a display-only
+   change — the underlying base64 image data is untouched, so it adds no extra network
+   request and no re-encoding cost, meaning resolution and download/render speed are
+   unaffected. */
+.rc-title-block .rc-header-text{flex:1 1 auto;min-width:0;text-align:left;}
+.rc-title-block .rc-logo{flex:0 1 auto;height:100%;max-height:100px;width:auto;max-width:170px;object-fit:contain;border-radius:6px;align-self:stretch;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
    below), so a hairline text-stroke is layered on top of font-weight:900 here to push
@@ -4784,13 +4787,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <div class="rc-topline"><span>${s.feesCode?`FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
 
     <div class="rc-title-block">
-      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
       <div class="rc-header-text">
         <div class="school">${esc(DB.info.schoolName)}</div>
         <div class="subtitle">Student Academic Report Card — ${isA?'A Level':(isP?'Primary':'O Level')}</div>
         <div class="meta">Academic Year: ${yearLbl}${DB.info.address?' &nbsp;|&nbsp; '+esc(DB.info.address):''}</div>
         ${(DB.info.phone||DB.info.email)?`<div class="meta">${[DB.info.phone?'Tel: '+esc(DB.info.phone):'', DB.info.email?'Email: '+esc(DB.info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
       </div>
+      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
     </div>
 
     <table class="rc-info-table">
@@ -7118,6 +7121,33 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
   }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait'});
 }
 
+// The offscreen capture holder used below is positioned at left:-9999px so it never
+// steals layout space or flashes on screen — but that also means it never intersects
+// the viewport, and any <img loading="lazy"> inside it (the school logo, a student's
+// bio photo) is exactly the kind of image a browser's native lazy-loading only ever
+// fetches once it scrolls near the viewport. Off at -9999px, that trigger never
+// fires, so those images silently never load in time for html2canvas to capture them
+// — on a wide A-Level card (the widest of the three levels, thanks to its extra
+// Points column and, often, several named Course Work test columns) this was the
+// difference between a normal-looking card and one whose header/photo area came out
+// blank. Forcing eager loading and explicitly waiting for every image already in the
+// DOM to finish loading (or fail) — with a timeout so one broken image link can never
+// hang the whole export — makes sure html2canvas only ever captures once everything
+// it needs to draw is actually ready.
+function waitForImages(container, timeoutMs){
+  const imgs = Array.from(container.querySelectorAll('img'));
+  if(!imgs.length) return Promise.resolve();
+  const perImage = imgs.map(img=>{
+    img.removeAttribute('loading'); // force eager: lazy-loading never triggers off-screen
+    if(img.complete) return Promise.resolve();
+    return new Promise(resolve=>{
+      img.addEventListener('load', resolve, {once:true});
+      img.addEventListener('error', resolve, {once:true}); // don't let one bad image hang the export
+    });
+  });
+  const timeout = new Promise(resolve=>setTimeout(resolve, timeoutMs||3000));
+  return Promise.race([Promise.all(perImage), timeout]);
+}
 /* ---------- Bulk PDF ---------- */
 async function pdfForStudents(students, filename, opts={}){
   if(!students.length){ alert('No students to export.'); return; }
@@ -7181,6 +7211,10 @@ async function pdfForStudents(students, filename, opts={}){
       #pdfCaptureHolder .rc-perf-wrap{overflow:visible;}
       #pdfCaptureHolder table.rc-perf{min-width:0;}</style>`+
       `<div id="pdfCaptureHolder" style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
+    // Make sure the logo/photo <img> tags above have actually finished loading before
+    // anything is measured or captured — see waitForImages() for why this matters for
+    // an offscreen, off-viewport holder like this one.
+    await waitForImages(holder);
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
     // card with a CSS transform, and a transform never changes an element's
     // layout box — only how it's painted. html2canvas captures the *layout* box,
@@ -7198,38 +7232,57 @@ async function pdfForStudents(students, filename, opts={}){
     // fixed number) is what lets every card — short or tall, few subjects or
     // many — come out at the same true TARGET_DPI, no more, no less.
     const cardEl = holder.querySelector('.rc-card');
-    const naturalW = Math.max(cardEl.scrollWidth, cardEl.offsetWidth) || 1;
-    const naturalH = Math.max(cardEl.scrollHeight, cardEl.offsetHeight) || 1;
-    const naturalFitScale = Math.min(AVAIL_W / naturalW, AVAIL_H / naturalH); // pt of printed size per CSS px
-    let captureScale = TARGET_DPI * naturalFitScale / 72; // 72pt = 1in, so this is exactly the px/CSS-px needed for TARGET_DPI at print size
-    captureScale = Math.max(1.2, Math.min(captureScale, 3)); // floor keeps very short/wide cards legible, ceiling guards against a pathologically tiny card demanding an absurd capture size
-    // Hard safety cap: some browsers (mobile Safari in particular) silently fail
-    // and hand back a blank canvas once either side crosses roughly 4000px — a
-    // wide A-Level card with many course-work columns was hitting exactly this
-    // wall and coming out as an empty PDF page. Same cap used for the Master
-    // Mark Sheet export elsewhere in this file. If the natural size alone would
-    // already exceed it, captureScale is pulled down further here — legibility
-    // takes a back seat to the export actually succeeding.
-    const MAX_CANVAS_SIDE = 4000;
-    captureScale = Math.min(captureScale, MAX_CANVAS_SIDE / naturalW, MAX_CANVAS_SIDE / naturalH);
-    captureScale = Math.max(captureScale, 0.3); // never collapse to zero/negative on a pathologically huge sheet
-    let canvas = await html2canvas(holder, {scale:captureScale, backgroundColor:'#ffffff', letterRendering:true});
-    let img = canvas.toDataURL('image/jpeg', jpegQuality);
-    // Fill the ENTIRE printable area on all four sides — no centered image with
-    // blank space around it. The report card's own generator already varies row
-    // height, column width, and font size with subject/paper count (see
-    // perfFontSize etc. in reportCardHTML) specifically so the content reads
-    // well at whatever size it ends up being — the page itself should always be
-    // fully used, not left partly blank because a particular student happens to
-    // have fewer subjects than another.
-    const w = AVAIL_W, h = AVAIL_H, x = MARGIN, y = MARGIN;
     if(i>0) pdf.addPage();
-    pdf.addImage(img,format,x,y,w,h);
-    // Drop every reference to this student's rendered canvas/markup before
-    // starting the next one, and yield a tick so the browser can actually run
-    // garbage collection and repaint — without this, a long bulk run never gets
-    // a chance to reclaim memory between students and visibly stalls.
-    canvas.width = 0; canvas.height = 0; canvas = null; img = null;
+    // Everything from here on can, in principle, throw for one particular student
+    // (a pathologically wide card, a browser canvas limit, a transient html2canvas
+    // failure, etc.) — previously that exception simply propagated up and aborted
+    // the ENTIRE export, silently, with whatever pages had already been captured
+    // just discarded (no PDF ever got produced, which is one way a "download" could
+    // end up looking blank/empty). Catching it per-student means one problem card
+    // can never take down the rest of the batch: the page is still added, with a
+    // clear on-page message instead of nothing, and the real error is logged to the
+    // console for follow-up.
+    try{
+      if(!cardEl) throw new Error('Report card did not render for this student.');
+      const naturalW = Math.max(cardEl.scrollWidth, cardEl.offsetWidth) || 1;
+      const naturalH = Math.max(cardEl.scrollHeight, cardEl.offsetHeight) || 1;
+      const naturalFitScale = Math.min(AVAIL_W / naturalW, AVAIL_H / naturalH); // pt of printed size per CSS px
+      let captureScale = TARGET_DPI * naturalFitScale / 72; // 72pt = 1in, so this is exactly the px/CSS-px needed for TARGET_DPI at print size
+      captureScale = Math.max(1.2, Math.min(captureScale, 3)); // floor keeps very short/wide cards legible, ceiling guards against a pathologically tiny card demanding an absurd capture size
+      // Hard safety cap: some browsers (mobile Safari in particular) silently fail
+      // and hand back a blank canvas once either side crosses roughly 4000px — a
+      // wide A-Level card with many course-work columns was hitting exactly this
+      // wall and coming out as an empty PDF page. Same cap used for the Master
+      // Mark Sheet export elsewhere in this file. If the natural size alone would
+      // already exceed it, captureScale is pulled down further here — legibility
+      // takes a back seat to the export actually succeeding.
+      const MAX_CANVAS_SIDE = 4000;
+      captureScale = Math.min(captureScale, MAX_CANVAS_SIDE / naturalW, MAX_CANVAS_SIDE / naturalH);
+      captureScale = Math.max(captureScale, 0.3); // never collapse to zero/negative on a pathologically huge sheet
+      let canvas = await html2canvas(holder, {scale:captureScale, backgroundColor:'#ffffff', letterRendering:true});
+      if(!canvas || !canvas.width || !canvas.height) throw new Error('Capture came back empty.');
+      let img = canvas.toDataURL('image/jpeg', jpegQuality);
+      // Fill the ENTIRE printable area on all four sides — no centered image with
+      // blank space around it. The report card's own generator already varies row
+      // height, column width, and font size with subject/paper count (see
+      // perfFontSize etc. in reportCardHTML) specifically so the content reads
+      // well at whatever size it ends up being — the page itself should always be
+      // fully used, not left partly blank because a particular student happens to
+      // have fewer subjects than another.
+      const w = AVAIL_W, h = AVAIL_H, x = MARGIN, y = MARGIN;
+      pdf.addImage(img,format,x,y,w,h);
+      canvas.width = 0; canvas.height = 0; canvas = null; img = null;
+    }catch(cardErr){
+      console.error(`Report card export failed for ${students[i].name||students[i].id}:`, cardErr);
+      pdf.setFontSize(13); pdf.setTextColor(150,20,20);
+      pdf.text(`Could not generate this report card (${students[i].name||'student'}).`, MARGIN, MARGIN+20);
+      pdf.setFontSize(10); pdf.setTextColor(100);
+      pdf.text('Please try downloading it again, or contact support if this repeats.', MARGIN, MARGIN+40);
+    }
+    // Drop this student's rendered markup before starting the next one (the canvas
+    // itself is already cleared above, inside the try block), and yield a tick so the
+    // browser can actually run garbage collection and repaint — without this, a long
+    // bulk run never gets a chance to reclaim memory between students and visibly stalls.
     holder.innerHTML = '';
     if(opts.onProgress) opts.onProgress(i+1, students.length);
     await new Promise(r=>setTimeout(r, 0));
