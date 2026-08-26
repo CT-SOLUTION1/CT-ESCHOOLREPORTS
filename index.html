@@ -196,21 +196,21 @@ table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px sol
    added (see rc-th-cw below) — those are the ones allowed to shrink instead. */
 .pavg-main{font-size:8.5px;font-weight:900;line-height:1.0;}
 .pavg-scale{font-size:6.5px;font-weight:700;line-height:1.0;}
-table.rc-perf th.rc-th-subj{min-width:135px;max-width:220px;width:auto;text-align:left;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:normal;word-break:normal;}
-table.rc-perf th.rc-th-papers{min-width:24px;width:auto;padding-left:3px;padding-right:3px;font-size:8px;}
-table.rc-perf th.rc-th-pavg{min-width:48px;width:auto;padding-left:3px;padding-right:3px;font-size:8.2px;}
-table.rc-perf th.rc-th-final{min-width:62px;width:auto;padding-left:3px;padding-right:3px;}
-table.rc-perf th.rc-th-grade{min-width:32px;width:auto;padding-left:3px;padding-right:3px;font-size:8px;}
-table.rc-perf th.rc-th-points{min-width:36px;width:auto;padding-left:3px;padding-right:3px;font-size:8px;}
-table.rc-perf th.rc-th-desc{min-width:78px;max-width:130px;width:auto;white-space:normal;padding-left:3px;padding-right:3px;}
-table.rc-perf th.rc-th-init{min-width:70px;max-width:120px;width:auto;}
-table.rc-perf th.rc-th-eot{min-width:58px;max-width:115px;width:auto;}
+table.rc-perf th.rc-th-subj{min-width:145px;width:145px;text-align:left;white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.15;}
+table.rc-perf th.rc-th-papers{min-width:27px;width:27px;padding-left:2px;padding-right:2px;font-size:8px;}
+table.rc-perf th.rc-th-pavg{min-width:52px;width:52px;padding-left:2px;padding-right:2px;font-size:8.2px;}
+table.rc-perf th.rc-th-final{min-width:72px;width:72px;padding-left:2px;padding-right:2px;}
+table.rc-perf th.rc-th-grade{min-width:34px;width:34px;padding-left:2px;padding-right:2px;font-size:8px;}
+table.rc-perf th.rc-th-points{min-width:38px;width:38px;padding-left:2px;padding-right:2px;font-size:8px;}
+table.rc-perf th.rc-th-desc{min-width:92px;width:92px;white-space:nowrap;padding-left:2px;padding-right:2px;}
+table.rc-perf th.rc-th-init{min-width:82px;}
+table.rc-perf th.rc-th-eot{min-width:80px;}
 /* Course Work group + its individual test-name/Avg sub-columns are the ones that
    flex/shrink first when many named tests are configured, since the wrapper below
    scrolls horizontally rather than letting anything get squeezed unreadable. */
-table.rc-perf th.rc-th-cw, table.rc-perf th.rc-th-cwsub{min-width:var(--cw-col-min,58px);width:var(--cw-col-width,auto);}
+table.rc-perf th.rc-th-cw, table.rc-perf th.rc-th-cwsub{min-width:52px;}
 table.rc-perf td{border:1.4px solid var(--blue);padding:6px 8px;font-size:12px;text-align:center;}
-table.rc-perf td:first-child{text-align:left;font-weight:900;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:normal;word-break:normal;min-width:135px;max-width:220px;}
+table.rc-perf td:first-child{text-align:left;font-weight:900;white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.15;font-size:12px;}
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);border-top:2.4px solid var(--blue);}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
@@ -248,14 +248,14 @@ table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 #pdfCaptureHolder .pdf-report-card table.rc-perf td{font-size:var(--pdf-table-body-size,9px) !important;line-height:1.12 !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf tr.subrow td{font-size:var(--pdf-table-sub-size,8px) !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-papers,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-final,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-init,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-eot,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cw,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cwsub{min-width:0 !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf td:first-child{width:auto !important;min-width:110px !important;max-width:190px !important;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;overflow-wrap:normal !important;word-break:normal !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf td:first-child{width:145px !important;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;overflow-wrap:break-word !important;word-break:normal !important;line-height:1.15 !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-papers{width:27px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.5px !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg{width:auto !important;min-width:44px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg{width:52px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg .pavg-main{font-size:7.5px !important;line-height:1 !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg .pavg-scale{font-size:5.5px !important;line-height:1 !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade{width:auto !important;min-width:30px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points{width:auto !important;min-width:34px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc{width:auto !important;min-width:70px !important;max-width:120px !important;white-space:normal !important;font-size:8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade{width:34px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points{width:38px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc{width:92px !important;white-space:nowrap !important;font-size:8px !important;}
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
@@ -354,6 +354,12 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
 .boot-splash-brand{font-family:Georgia,'Playfair Display',serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:.02em;}
 .boot-splash-brand span{color:var(--gold);}
 .boot-splash-sub{font-size:13px;color:#cfe0f2;letter-spacing:.04em;}
+
+/* Keep long subject names inside the SUBJECTS column: wrap to two lines where possible,
+   then reduce the text slightly for exceptionally long names instead of crossing into PPs. */
+.rc-perf td:first-child{max-width:145px;}
+.rc-perf td:first-child.rc-subject-long{font-size:10px;}
+.rc-perf td:first-child.rc-subject-very-long{font-size:9px;}
 </style>
 <style id="cte-watermark-style">
 html,body{position:relative;min-height:100%;}
@@ -4799,7 +4805,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
     <div class="rc-section-title">Academic Performance Analysis</div>
     <div class="rc-perf-wrap">
-    <table class="rc-perf" style="--cw-col-min:${useCwTestCols?(cwTests.length>=6?42:(cwTests.length>=4?48:58)):58}px;--cw-col-width:auto;--pdf-subject-width:${useCwTestCols?(cwTests.length>=6?110:(cwTests.length>=4?125:145)):145}px;">
+    <table class="rc-perf">
       ${useCwTestCols ? `
       <tr>
         <th class="rc-th-subj mrg-top"></th>${isP?'':'<th class="rc-th-papers mrg-top"></th>'}
@@ -4809,13 +4815,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         <th class="rc-th-final mrg-top"></th><th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th><th class="rc-th-init mrg-top"></th>
       </tr>
       <tr>
-        <th class="rc-th-subj mrg-bot">Subject</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
+        <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
         <th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>
         <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">Descriptor</th><th class="rc-th-init mrg-bot">Teacher Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subject</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
