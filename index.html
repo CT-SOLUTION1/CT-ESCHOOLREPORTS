@@ -4747,10 +4747,12 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   // th.mrg-top/th.mrg-bot below). On-screen/print is untouched — it still
   // gets one real rowspan="2" cell, vertically centered across its full
   // actual height by the browser.
-  const headTop = (cls) => embedded ? `<th class="${cls} mrg-top">&nbsp;</th>` : '';
+  const headTop = (cls, content) => embedded
+    ? `<th class="${cls} mrg-top">&nbsp;</th>`
+    : `<th rowspan="2" class="${cls}">${content}</th>`;
   const headBottom = (cls, content) => embedded
     ? `<th class="${cls} mrg-bot">${content}</th>`
-    : `<th rowspan="2" class="${cls}">${content}</th>`;
+    : '';
 
   // Academic Performance Analysis font size: computed from THIS card's own column count
   // (Subjects/Papers/Course Work test columns/End of Term/Paper Avg/Final Average/
@@ -4812,11 +4814,11 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <table class="rc-perf" style="font-size:${perfFontSize}px;">
       ${useCwTestCols ? `
       <tr>
-        ${headTop('rc-th-subj')}${isP?'':headTop('rc-th-papers')}
+        ${headTop('rc-th-subj','Subjects')}${isP?'':headTop('rc-th-papers','Papers')}
         <th colspan="${cwTests.length+1}" class="rc-th-cw">${esc(cfg.cwLabel)}</th>
-        ${showEOT?headTop('rc-th-eot'):''}
-        ${headTop('rc-th-pavg')}
-        ${headTop('rc-th-final')}${headTop('rc-th-grade')}${isA?headTop('rc-th-points'):''}${headTop('rc-th-desc')}${headTop('rc-th-init')}
+        ${showEOT?headTop('rc-th-eot', `${esc(cfg.eotLabel)}<br>(/${cfg.eotPercent})`):''}
+        ${headTop('rc-th-pavg','Paper Avg<br>(%)')}
+        ${headTop('rc-th-final','Final Average<br>(%)')}${headTop('rc-th-grade','Grade')}${isA?headTop('rc-th-points','Points'):''}${headTop('rc-th-desc','Descriptor')}${headTop('rc-th-init','Teacher<br>Initials')}
       </tr>
       <tr>
         ${headBottom('rc-th-subj','Subjects')}${isP?'':headBottom('rc-th-papers','Papers')}
@@ -7201,22 +7203,26 @@ async function pdfForStudents(students, filename, opts={}){
     const naturalFitScale = Math.min(AVAIL_W / naturalW, AVAIL_H / naturalH); // pt of printed size per CSS px
     let captureScale = TARGET_DPI * naturalFitScale / 72; // 72pt = 1in, so this is exactly the px/CSS-px needed for TARGET_DPI at print size
     captureScale = Math.max(1.2, Math.min(captureScale, 3)); // floor keeps very short/wide cards legible, ceiling guards against a pathologically tiny card demanding an absurd capture size
+    // Hard safety cap: some browsers (mobile Safari in particular) silently fail
+    // and hand back a blank canvas once either side crosses roughly 4000px — a
+    // wide A-Level card with many course-work columns was hitting exactly this
+    // wall and coming out as an empty PDF page. Same cap used for the Master
+    // Mark Sheet export elsewhere in this file. If the natural size alone would
+    // already exceed it, captureScale is pulled down further here — legibility
+    // takes a back seat to the export actually succeeding.
+    const MAX_CANVAS_SIDE = 4000;
+    captureScale = Math.min(captureScale, MAX_CANVAS_SIDE / naturalW, MAX_CANVAS_SIDE / naturalH);
+    captureScale = Math.max(captureScale, 0.3); // never collapse to zero/negative on a pathologically huge sheet
     let canvas = await html2canvas(holder, {scale:captureScale, backgroundColor:'#ffffff', letterRendering:true});
     let img = canvas.toDataURL('image/jpeg', jpegQuality);
-    // Fit the whole, uncropped card onto one A4 page with a small, consistent
-    // margin on ALL FOUR sides — left/right no matter how many Course Work
-    // test/exam columns are configured, top/bottom no matter how many
-    // subjects a particular student has — and every column stays visible.
-    // Scaled by ONE factor (not width/height independently) so the card's own
-    // aspect ratio is preserved — stretching each dimension separately to fill
-    // the box would visibly squash/shrink the header (school name, logo,
-    // address, contacts) whenever the card's shape didn't match the page's.
-    // Using the smaller of the two fit-ratios guarantees it fits inside the
-    // box on both axes without distortion, then it's centered in whatever
-    // slack space is left on the other axis.
-    const fitScale = Math.min(AVAIL_W / canvas.width, AVAIL_H / canvas.height);
-    const w = canvas.width * fitScale, h = canvas.height * fitScale;
-    const x = MARGIN + (AVAIL_W - w) / 2, y = MARGIN + (AVAIL_H - h) / 2;
+    // Fill the ENTIRE printable area on all four sides — no centered image with
+    // blank space around it. The report card's own generator already varies row
+    // height, column width, and font size with subject/paper count (see
+    // perfFontSize etc. in reportCardHTML) specifically so the content reads
+    // well at whatever size it ends up being — the page itself should always be
+    // fully used, not left partly blank because a particular student happens to
+    // have fewer subjects than another.
+    const w = AVAIL_W, h = AVAIL_H, x = MARGIN, y = MARGIN;
     if(i>0) pdf.addPage();
     pdf.addImage(img,format,x,y,w,h);
     // Drop every reference to this student's rendered canvas/markup before
