@@ -4722,14 +4722,23 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   // Average/Grade/Points/Descriptor/Teacher Initials all rowspan="2" across
   // both header rows). In embedded/html2canvas capture mode that showed up as
   // those header labels being smeared/blanked out — exactly the rowspan text
-  // bug, just in the header instead of the body. headTh() sidesteps it the
-  // same way mergedTd() does: no real rowspan when embedded, instead a full
-  // cell in row 1 and a seam-hidden blank cell in row 2 (see th.mrg-top/
-  // th.mrg-bot below), so on-screen/print keeps the normal rowspan="2".
-  const headTh = (cls, content) => embedded
-    ? `<th class="${cls} mrg-top">${content}</th>`
+  // bug, just in the header instead of the body. headTop()/headBottom()
+  // sidestep it the same way mergedTd() does: no real rowspan when embedded.
+  // The label itself goes in ROW 2 (headBottom), not row 1: row 1 is only as
+  // tall as "COURSE WORK" (one short line), while row 2 is however tall the
+  // wrapped Course Work test names need to be, so a label placed in row 1
+  // alone renders vertically centered in that short strip — floating well
+  // above the middle of the merged-looking block instead of sitting level
+  // with it. Row 2 is the taller row and the one the Course Work sub-headers
+  // themselves live in, so putting the label there keeps every header on one
+  // shared visual baseline; row 1 just gets an invisible spacer cell (see
+  // th.mrg-top/th.mrg-bot below). On-screen/print is untouched — it still
+  // gets one real rowspan="2" cell, vertically centered across its full
+  // actual height by the browser.
+  const headTop = (cls) => embedded ? `<th class="${cls} mrg-top">&nbsp;</th>` : '';
+  const headBottom = (cls, content) => embedded
+    ? `<th class="${cls} mrg-bot">${content}</th>`
     : `<th rowspan="2" class="${cls}">${content}</th>`;
-  const headThBottom = (cls) => embedded ? `<th class="${cls} mrg-bot">&nbsp;</th>` : '';
 
   return `
   ${periodPicker}
@@ -4772,18 +4781,18 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     <table class="rc-perf">
       ${useCwTestCols ? `
       <tr>
-        ${headTh('rc-th-subj','Subjects')}${isP?'':headTh('rc-th-papers','Papers')}
+        ${headTop('rc-th-subj')}${isP?'':headTop('rc-th-papers')}
         <th colspan="${cwTests.length+1}" class="rc-th-cw">${esc(cfg.cwLabel)}</th>
-        ${showEOT?headTh('rc-th-eot', `${esc(cfg.eotLabel)} (/${cfg.eotPercent})`):''}
-        ${headTh('rc-th-pavg','Paper Avg (%)')}
-        ${headTh('rc-th-final','Final Average (%)')}${headTh('rc-th-grade','Grade')}${isA?headTh('rc-th-points','Points'):''}${headTh('rc-th-desc','Descriptor')}${headTh('rc-th-init','Teacher Initials')}
+        ${showEOT?headTop('rc-th-eot'):''}
+        ${headTop('rc-th-pavg')}
+        ${headTop('rc-th-final')}${headTop('rc-th-grade')}${isA?headTop('rc-th-points'):''}${headTop('rc-th-desc')}${headTop('rc-th-init')}
       </tr>
       <tr>
-        ${headThBottom('rc-th-subj')}${isP?'':headThBottom('rc-th-papers')}
+        ${headBottom('rc-th-subj','Subjects')}${isP?'':headBottom('rc-th-papers','Papers')}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
-        ${showEOT?headThBottom('rc-th-eot'):''}
-        ${headThBottom('rc-th-pavg')}
-        ${headThBottom('rc-th-final')}${headThBottom('rc-th-grade')}${isA?headThBottom('rc-th-points'):''}${headThBottom('rc-th-desc')}${headThBottom('rc-th-init')}
+        ${showEOT?headBottom('rc-th-eot', `${esc(cfg.eotLabel)} (/${cfg.eotPercent})`):''}
+        ${headBottom('rc-th-pavg','Paper Avg (%)')}
+        ${headBottom('rc-th-final','Final Average (%)')}${headBottom('rc-th-grade','Grade')}${isA?headBottom('rc-th-points','Points'):''}${headBottom('rc-th-desc','Descriptor')}${headBottom('rc-th-init','Teacher Initials')}
       </tr>` : `
       <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">Papers</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg">Paper Avg (%)</th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher Initials</th></tr>`}
       ${rowsHtml}
@@ -7090,7 +7099,13 @@ async function pdfForStudents(students, filename, opts={}){
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const holder = document.createElement('div');
-  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='780px'; holder.style.background='#fff';
+  // width is 'max-content' rather than a fixed px value so the holder always
+  // grows to fit whatever the card's natural width ends up being — including
+  // the Academic Performance Analysis table once extra Course Work test
+  // columns make it wider than a normal card (see the overflow/max-width
+  // overrides in the <style> below). A fixed width here would clip/scroll
+  // those extra columns right out of what html2canvas actually captures.
+  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='max-content'; holder.style.background='#fff';
   document.body.appendChild(holder);
   // Render RESOLUTION (the scale factor) is what determines print sharpness.
   // Both single and bulk render at scale 3 and encode to JPEG — identical
@@ -7115,7 +7130,18 @@ async function pdfForStudents(students, filename, opts={}){
     // instead of being merged/shared across the rowspan boundary) — the live on-screen
     // card and the browser Print dialog still use the normal collapsed borders, so this
     // override is scoped to just the offscreen holder html2canvas actually screenshots.
-    holder.innerHTML = `<style>#pdfCaptureHolder table.rc-perf, #pdfCaptureHolder table.rc-info-table{border-collapse:separate;border-spacing:0;}</style>`+
+    // "border-collapse:separate" (rowspan bug workaround, described above) plus
+    // three more capture-only overrides so a wide Course Work table is never
+    // clipped: .rc-card's normal 800px cap is lifted, .rc-perf-wrap's normal
+    // horizontal scrollbar (fine on-screen, invisible to html2canvas) is
+    // turned into plain overflow:visible, and the mobile-only "min-width:640px"
+    // shrink-to-scroll rule on table.rc-perf is neutralized — all scoped by the
+    // #pdfCaptureHolder id so they only ever apply to this offscreen capture
+    // copy, never to the live on-screen card or the browser Print dialog.
+    holder.innerHTML = `<style>#pdfCaptureHolder table.rc-perf, #pdfCaptureHolder table.rc-info-table{border-collapse:separate;border-spacing:0;}
+      #pdfCaptureHolder .rc-card{max-width:none;}
+      #pdfCaptureHolder .rc-perf-wrap{overflow:visible;}
+      #pdfCaptureHolder table.rc-perf{min-width:0;}</style>`+
       `<div id="pdfCaptureHolder" style="padding:14px;font-family:Inter,sans-serif;">${reportCardHTML(students[i].id, true)}</div>`;
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
     // card with a CSS transform, and a transform never changes an element's
@@ -7128,25 +7154,20 @@ async function pdfForStudents(students, filename, opts={}){
     // matter how long or short the card is.
     let canvas = await html2canvas(holder, {scale, backgroundColor:'#ffffff', letterRendering:true});
     let img = canvas.toDataURL('image/jpeg', jpegQuality);
-    // Fit the whole, uncropped card onto one A4 page — and make sure it actually
-    // fills that page, in both directions, rather than landing at natural size
-    // and leaving the rest blank:
-    //  - If the card is TALLER than one page at full width, shrink it (preserving
-    //    its own aspect ratio, letterboxed/centered) so nothing is ever cropped
-    //    or pushed onto a second page.
-    //  - If the card is SHORTER than one page at full width (a light card — few
-    //    subjects, common on Primary), stretch it to fill the remaining height
-    //    too. Every pixel of the original, uncropped card is still fully there;
-    //    it's just spread out a little further down the page instead of leaving
-    //    blank space beneath it.
-    let w = pageW, h = canvas.height*pageW/canvas.width, x = 0, y = 0;
-    if(h > pageH){
-      h = pageH;
-      w = canvas.width*pageH/canvas.height;
-      x = (pageW-w)/2;
-    } else {
-      w = pageW; h = pageH; x = 0; y = 0;
-    }
+    // Fit the whole, uncropped card onto one A4 page with a small, consistent
+    // margin on ALL FOUR sides — left/right no matter how many Course Work
+    // test/exam columns are configured, top/bottom no matter how many
+    // subjects a particular student has — and every column stays visible:
+    // width and height are each scaled independently to exactly fill the
+    // printable area (page size minus margin), rather than scaled together
+    // at the card's own aspect ratio. Since the capture step above already
+    // grabs the card at its full natural width (nothing clipped, however
+    // many test columns it has), this just maps that complete, uncropped
+    // image onto the page — it's never missing a column, only ever scaled a
+    // little differently horizontally vs. vertically depending on how wide
+    // vs. tall that particular card's content happens to be.
+    const margin = 16; // pt — small, consistent margin on every side
+    let w = pageW - margin*2, h = pageH - margin*2, x = margin, y = margin;
     if(i>0) pdf.addPage();
     pdf.addImage(img,format,x,y,w,h);
     // Drop every reference to this student's rendered canvas/markup before
