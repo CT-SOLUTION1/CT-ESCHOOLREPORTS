@@ -96,7 +96,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .ok-banner{background:#0f5c33;color:#fff;text-align:center;padding:6px 14px;font-size:12px;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
-.school-name-big{font-size:28px;font-weight:800;font-family:Georgia,serif;color:var(--navy);}
+.school-name-big{font-size:20px;font-weight:900;font-family:'Times New Roman',Times,serif;color:var(--navy);white-space:nowrap;}
 .photo-thumb{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--blue);}
 .small{font-size:12px;color:var(--muted);}
 .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
@@ -135,7 +135,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .sync-status.sync-error{background:#fdeaea;color:#7a1f1f;border:1px solid #f3b9b9;}
 
 /* ---- Report card (Sample School official layout) ---- */
-.rc-card{background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);position:relative;overflow:hidden;}
+.rc-card{background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:'Times New Roman',Times,serif;color:var(--ink);position:relative;overflow:hidden;}
 /* Faint background watermark of the school logo — purely decorative, sits behind every
    other element on the card via z-index. Centered and oversized (60% of the card width)
    at very low opacity so it never competes with the actual text/tables for legibility,
@@ -200,10 +200,10 @@ table.rc-perf th.rc-th-subj{min-width:145px;width:145px;text-align:left;white-sp
 table.rc-perf th.rc-th-papers{min-width:27px;width:27px;padding-left:2px;padding-right:2px;font-size:8px;}
 table.rc-perf th.rc-th-pavg{min-width:52px;width:52px;padding-left:2px;padding-right:2px;font-size:8.2px;}
 table.rc-perf th.rc-th-final{min-width:72px;width:72px;padding-left:2px;padding-right:2px;}
-table.rc-perf th.rc-th-grade{min-width:34px;width:34px;padding-left:2px;padding-right:2px;font-size:8px;}
+table.rc-perf th.rc-th-grade{min-width:46px;width:46px;padding-left:2px;padding-right:2px;font-size:8px;}
 table.rc-perf th.rc-th-points{min-width:38px;width:38px;padding-left:2px;padding-right:2px;font-size:8px;}
-table.rc-perf th.rc-th-desc{min-width:92px;width:92px;white-space:nowrap;padding-left:2px;padding-right:2px;}
-table.rc-perf th.rc-th-init{min-width:82px;}
+table.rc-perf th.rc-th-desc{min-width:82px;width:82px;white-space:nowrap;padding-left:2px;padding-right:2px;}
+table.rc-perf th.rc-th-init{min-width:62px;width:62px;padding-left:2px;padding-right:2px;}
 table.rc-perf th.rc-th-eot{min-width:80px;}
 /* Course Work group + its individual test-name/Avg sub-columns are the ones that
    flex/shrink first when many named tests are configured, since the wrapper below
@@ -253,9 +253,9 @@ table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg{width:52px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg .pavg-main{font-size:7.5px !important;line-height:1 !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg .pavg-scale{font-size:5.5px !important;line-height:1 !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade{width:34px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade{width:46px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points{width:38px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc{width:92px !important;white-space:nowrap !important;font-size:8px !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc{width:82px !important;white-space:nowrap !important;font-size:8px !important;}
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
@@ -360,6 +360,20 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
 .rc-perf td:first-child{max-width:145px;}
 .rc-perf td:first-child.rc-subject-long{font-size:10px;}
 .rc-perf td:first-child.rc-subject-very-long{font-size:9px;}
+
+/* Final report-card fitting adjustments */
+.rc-card,.rc-card *{font-family:'Times New Roman',Times,serif !important;}
+table.rc-perf th.rc-th-grade{min-width:46px !important;width:46px !important;}
+table.rc-perf th.rc-th-init{min-width:62px !important;width:62px !important;padding-left:2px !important;padding-right:2px !important;}
+table.rc-perf th.rc-th-desc{min-width:82px !important;width:82px !important;}
+table.rc-perf td:nth-last-child(1){white-space:nowrap;text-align:center;}
+.rc-title-block{gap:0 !important;margin-bottom:8px !important;padding-bottom:7px !important;}
+.rc-title-block .rc-logo{width:100% !important;max-width:none !important;object-fit:contain !important;display:block;margin:0 auto;}
+.rc-title-block > *{min-width:0;}
+.rc-info-table{margin-top:6px !important;}
+
+/* Final report-card school name: 20px, very bold, always one line */
+.rc-title-block .school-name-big,.rc-school-name,.rc-school{font-family:'Times New Roman',Times,serif;font-size:20px!important;font-weight:900!important;white-space:nowrap!important;}
 </style>
 <style id="cte-watermark-style">
 html,body{position:relative;min-height:100%;}
@@ -2480,7 +2494,7 @@ function renderStorageEstimateCard(){
     <button class="btn-outline" data-action="foundRecalcStorage">Recalculate now</button>
     <details style="margin-top:10px;"><summary class="small" style="cursor:pointer;">Per-school breakdown</summary>
       <table class="data-table" style="margin-top:8px;"><tr><th>School</th><th>Students</th><th>Estimated size</th></tr>
-      ${perSchool.slice().sort((a,b)=>b.bytes-a.bytes).map(s=>`<tr><td>${esc(s.name)}</td><td>${s.studentCount}</td><td>${formatBytes(s.bytes)}</td></tr>`).join('')}
+      ${perSchool.slice().sort((a,b)=>b.bytes-a.bytes).map(s=>`<tr><td>${formatReportSubjectName(s.name)}</td><td>${s.studentCount}</td><td>${formatBytes(s.bytes)}</td></tr>`).join('')}
       </table>
     </details>
   </div>`;
@@ -3000,7 +3014,7 @@ function restoreItemsView(){
       <h3>Students (${d.students.length})</h3>
       ${d.students.map(s=>{
         const cls = d.classes.find(c=>c.id===s.classId);
-        return `<label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="students" value="${esc(s.id)}" style="width:auto;"><span>${esc(s.name)} — ${esc(s.admNo||'—')}${cls?` (${esc(cls.name)})`:''} ${flag(!curStudentIds.has(s.id))}</span></label>`;
+        return `<label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="students" value="${esc(s.id)}" style="width:auto;"><span>${formatReportSubjectName(s.name)} — ${esc(s.admNo||'—')}${cls?` (${esc(cls.name)})`:''} ${flag(!curStudentIds.has(s.id))}</span></label>`;
       }).join('') || '<p class="small">No students in this backup.</p>'}
       ${d.students.length ? `<label class="flex" style="gap:8px;margin-top:8px;"><input type="checkbox" name="includeScores" value="1" checked style="width:auto;"><span>Also restore recorded scores for any students ticked above</span></label>` : ''}
     </div>
@@ -3146,7 +3160,7 @@ function accountsView(){
       </div>
       <div id="parentLinkWrap"><label>Link to student (for parents)</label>
         <select name="studentId"><option value="">-- select student --</option>
-        ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+        ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${formatReportSubjectName(s.name)}</option>`).join('')}</select>
       </div>
       <div id="teacherRecoveryWrap"><label>Recovery code (optional)</label><input name="recovery">
         <p class="small">Lets this teacher reset their own password later without going through you.</p>
@@ -3259,7 +3273,7 @@ function renderStudentsTableHtml(){
   return `<table class="data-table"><tr><th>Photo</th><th>Name</th><th>Adm No</th><th>Class</th><th>Combination / Subjects</th><th>Action</th></tr>
     ${list.map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
+      return `<tr><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${formatReportSubjectName(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
       <td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td class="flex"><button class="btn-outline" data-action="editStudentProfile:${s.id}"><b>Edit profile</b></button> <button class="btn-outline" data-action="markStudentLeft:${s.id}">Mark as left</button> <button class="btn-danger" data-action="delStudent:${s.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">No students match.</td></tr>'}
@@ -3300,7 +3314,7 @@ function oldStudentsView(){
       const cls = DB.classes.find(c=>c.id===s.classId);
       const behind = termsBehindCurrent(s.leftTerm, s.leftYear);
       const remaining = Math.max(0, OLD_STUDENT_RETENTION_TERMS - behind);
-      return `<tr><td>${esc(s.name)}</td><td>${esc(s.admNo)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(s.leftTerm||'—')}, ${esc(String(s.leftYear||''))}</td><td>${remaining}</td>
+      return `<tr><td>${formatReportSubjectName(s.name)}</td><td>${esc(s.admNo)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(s.leftTerm||'—')}, ${esc(String(s.leftYear||''))}</td><td>${remaining}</td>
       <td class="flex"><button class="btn-outline" data-action="restoreStudent:${s.id}">Restore to active</button> <button class="btn-danger" data-action="delOldStudentNow:${s.id}">Delete now</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">No old students on record.</td></tr>'}
     </table>
@@ -3505,7 +3519,7 @@ function studentProfileView(studentId){
         ${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:''}
       </div>
       <div class="grid3">
-        <div><label>Full name</label><input name="name" value="${esc(s.name)}" required></div>
+        <div><label>Full name</label><input name="name" value="${formatReportSubjectName(s.name)}" required></div>
         <div><label>Admission number</label><input value="${esc(s.admNo)}" disabled style="background:#eef2f6;"></div>
         <div><label>Sex</label><select name="gender">
           <option value="Male" ${s.gender==='Male'?'selected':''}>Male</option>
@@ -3732,7 +3746,7 @@ function reportsListView(){
       .filter(s=> !isTeacher || classIds.includes(s.classId)))
       .map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
+      return `<tr><td>${formatReportSubjectName(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">Open report card</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || '<tr><td colspan="4">No students found.</td></tr>'}
     </table>`}
@@ -3848,7 +3862,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
       const delBtn = canDelete ? ` <a href="#" style="color:var(--danger);text-decoration:none;font-weight:800;" data-action="deleteScore:${row.id}" title="Delete this score">✕</a>` : '';
       return `<td>${esc(row.marks)}/${esc(row.max)}${delBtn}</td>`;
     }).join('');
-    return `<tr><td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${cells}<td>${bd.aoiAvg===null?'—':bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?'—':bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?'—':bd.final.toFixed(1)}</td><td>${grade}</td></tr>`;
+    return `<tr><td style="text-align:left;">${formatReportSubjectName(s.name)}</td><td>${esc(s.admNo)}</td>${cells}<td>${bd.aoiAvg===null?'—':bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?'—':bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?'—':bd.final.toFixed(1)}</td><td>${grade}</td></tr>`;
   }).join('');
   return `
   <h2>Integrated Mark Sheet</h2>
@@ -4293,7 +4307,7 @@ function scoresEntryView(mine){
           <div style="max-height:360px;overflow:auto;border:1px solid #cfd9e3;border-radius:6px;padding:10px;">
           ${eligible.map(s=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-weight:400;text-transform:none;">
             <input type="checkbox" name="students" value="${s.id}" style="width:auto;" ${chosen.has(s.id)?'checked':''}>
-            ${esc(s.name)} ${rosterSet && !knownIds.has(s.id) ? '<span class="pill" style="background:var(--gold);color:#3a2c00;">NEW</span>' : ''}
+            ${formatReportSubjectName(s.name)} ${rosterSet && !knownIds.has(s.id) ? '<span class="pill" style="background:var(--gold);color:#3a2c00;">NEW</span>' : ''}
           </label>`).join('') || '<p class="small">No students in this class yet — ask the admin to upload the class list first.</p>'}
           </div>
           <button class="btn" style="margin-top:14px;">Submit — save my student list</button>
@@ -4366,7 +4380,7 @@ function scoresEntryView(mine){
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;">${esc(s.name)}${conflictBadge}</td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">Remove from list</button></td></tr>`;
+            return `<tr><td style="text-align:left;">${formatReportSubjectName(s.name)}${conflictBadge}</td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${formatReportSubjectName(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">Remove from list</button></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length+3}">No students on your list yet. Use "Edit my student list" above.</td></tr>`}
           </table>
           <p class="small">"Delete score" removes just this test's saved mark for a student (it disappears from the mark sheet and their report card immediately) without taking them off your marking list. "Remove from list" takes them off your list entirely but keeps any scores already saved.</p>
@@ -4470,6 +4484,12 @@ function parentReportView(){
 /* ============================================================
    10. REPORT CARD (fits one page)
    ============================================================ */
+function formatReportSubjectName(name){
+  const n=String(name||'');
+  if(n.toUpperCase()==='PHYSICAL EDUCATION') return 'PHYSICAL<br>EDUCATION';
+  return esc(n);
+}
+
 function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const s = DB.students.find(x=>x.id===studentId);
   if(!s) return '<p>Student not found.</p>';
@@ -4789,7 +4809,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
     <table class="rc-info-table">
       <tr>
-        <td class="lbl">Name</td><td class="val">${esc(s.name)}</td>
+        <td class="lbl">Name</td><td class="val">${formatReportSubjectName(s.name)}</td>
         <td class="lbl">Class</td><td class="val">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}</td>
         ${s.photo?`<td class="photo-cell" rowspan="3"><img loading="lazy" decoding="async" src="${s.photo}" class="rc-bio-photo"></td>`:''}
       </tr>
@@ -7101,7 +7121,7 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
   headRow.innerHTML = ['Admission No','Name','Marks'].map(h=>`<th>${esc(h)}</th>`).join('');
   const bodyRows = students.map(s=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td><td style="height:22px;"></td>`;
+    tr.innerHTML = `<td>${esc(s.admNo)}</td><td style="text-align:left;">${formatReportSubjectName(s.name)}</td><td style="height:22px;"></td>`;
     return tr;
   });
   const kindFile = kind==='EOT' ? 'EndOfTerm' : ('AOI_'+(label||'test')).replace(/\s+/g,'_');
