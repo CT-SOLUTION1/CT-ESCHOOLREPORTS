@@ -136,6 +136,8 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 
 /* ---- Report card (Sample School official layout) ---- */
 .rc-card{font-family:'Times New Roman',Times,serif;background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);position:relative;overflow:hidden;}
+/* Thick decorative boundary stays inside the existing report-card margins. It is an overlay, so it consumes no layout space and cannot change table widths, A4 fit, or content positioning. */
+.rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
 /* Faint background watermark of the school logo — purely decorative, sits behind every
    other element on the card via z-index. Centered and oversized (60% of the card width)
    at very low opacity so it never competes with the actual text/tables for legibility,
@@ -267,8 +269,12 @@ table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
 table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
 table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;}
 
-.rc-sign-row{display:flex;justify-content:space-between;font-size:11px;margin:18px 0 10px;flex-wrap:wrap;gap:14px 10px;font-weight:700;}
-.rc-sign-row span{border-bottom:1px solid var(--ink);padding-bottom:3px;min-width:120px;display:inline-block;}
+.rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:start;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
+.rc-sign-block{min-width:0;text-align:center;}
+.rc-sign-block .rc-person{display:block;border-bottom:1px solid var(--ink);padding-bottom:3px;min-height:17px;}
+.rc-sign-block .rc-action{display:block;border-bottom:1px solid var(--ink);padding:5px 4px 3px;min-height:20px;font-weight:700;}
+.rc-term-middle{text-align:center;font-size:11.5px;font-weight:700;line-height:1.45;padding:0 4px;}
+.rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
 .rc-motto{text-align:center;font-style:italic;font-size:12.5px;color:var(--navy);margin-top:8px;}
@@ -982,6 +988,7 @@ let loginRole = 'admin';
 // inspecting on the "View logins" screen. Loaded on demand (not part of
 // the founder's own session) and cleared when they navigate away.
 let FOUNDER_LOGINS = null;
+let FOUNDER_SNAPSHOTS = [];
 
 /* ============================================================
    4. STORAGE LAYER
@@ -1495,6 +1502,52 @@ async function openFounderLogins(schoolId){
 // Founder-only: download a full backup of any school's data, in the same
 // format the school's own Admin can export/restore — so the founder can
 // keep (or hand back) a copy if a school ever loses their data.
+async function downloadFounderSystemBackup(){
+  const schools = [];
+  for(const reg of REGISTRY){
+    const [info, accounts, classes, students, assignments, scores, bands, obands, pbands] = await Promise.all([
+      getShared(`sch_${reg.id}_info`, null), getShared(`sch_${reg.id}_accounts`, []),
+      getShared(`sch_${reg.id}_classes`, []), getShared(`sch_${reg.id}_students`, []),
+      getShared(`sch_${reg.id}_assignments`, []), loadAllScores(reg.id),
+      getShared(`sch_${reg.id}_bands`, DEFAULT_A_BANDS), getShared(`sch_${reg.id}_obands`, DEFAULT_O_BANDS),
+      getShared(`sch_${reg.id}_pbands`, DEFAULT_P_BANDS)
+    ]);
+    schools.push({schoolId:reg.id, registry:{...reg}, data:{info,accounts,classes,students,assignments,scores,bands,obands,pbands}});
+  }
+  const payload={app:'CT-E SOLUTIONS complete system backup',schemaVersion:BACKUP_SCHEMA_VERSION,exportedAt:new Date().toISOString(),exportedBy:'founder',registry:REGISTRY.map(r=>({...r})),schools};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const dateStr=new Date().toISOString().slice(0,10);
+  triggerBlobDownload(blob,`CT-E_SOLUTIONS_ENTIRE_SYSTEM_BACKUP_${dateStr}.json`);
+}
+async function loadFounderSnapshots(){
+  FOUNDER_SNAPSHOTS=[];
+  for(const reg of REGISTRY){
+    const index=await getShared(`sch_${reg.id}_autosnaps_index`,[]);
+    for(const item of (Array.isArray(index)?index:[])) FOUNDER_SNAPSHOTS.push({schoolId:reg.id,schoolName:reg.name,ts:item.ts,takenAt:item.takenAt});
+  }
+  FOUNDER_SNAPSHOTS.sort((a,b)=>b.ts-a.ts);
+}
+async function downloadFounderSnapshot(schoolId,ts){
+  const code=prompt('Enter your founder code to download this snapshot:'); if(code===null)return;
+  if(code!==SYSTEM_OWNER.code){alert('Incorrect founder code.');return;}
+  const raw=await getShared(`sch_${schoolId}_autosnap_${ts}`,null);
+  if(!raw){alert('That snapshot could not be found — it may have already been cleaned up.');return;}
+  const name=((REGISTRY.find(r=>r.id===schoolId)||{}).name||schoolId).replace(/[^a-z0-9]+/gi,'_');
+  triggerBlobDownload(new Blob([JSON.stringify(raw,null,2)],{type:'application/json'}),`${name}_snapshot_${new Date(ts).toISOString().slice(0,10)}.json`);
+}
+async function restoreFounderSnapshot(schoolId,ts){
+  const code=prompt('Enter your founder code to restore this snapshot:'); if(code===null)return;
+  if(code!==SYSTEM_OWNER.code){alert('Incorrect founder code.');return;}
+  const raw=await getShared(`sch_${schoolId}_autosnap_${ts}`,null);
+  if(!raw){alert('That snapshot could not be found — it may have already been cleaned up.');return;}
+  const data=migrateBackupData(raw);
+  const reg=REGISTRY.find(r=>r.id===schoolId);
+  if(!confirm(`This will REPLACE ALL current data for "${reg?reg.name:schoolId}" with the selected snapshot.\n\nSnapshot students: ${data.students.length}\n\nThis cannot be undone. Continue?`)) return;
+  await founderRestoreSchoolBackup(schoolId,data);
+  alert('Snapshot restored successfully.');
+  await loadFounderSnapshots(); render();
+}
+
 async function downloadFounderSchoolBackup(schoolId){
   const [info, accounts, classes, students, assignments, scores, bands, obands, pbands] = await Promise.all([
     getShared(`sch_${schoolId}_info`, null),
@@ -2457,7 +2510,7 @@ function renderFounderSetup(){
 }
 
 function renderFounderShell(){
-  const nav = [['fdash','Dashboard'],['fpending','Pending School Approvals'],['fschools','All Schools'],['fpassword','Change Password']];
+  const nav = [['fdash','Dashboard'],['fpending','Pending School Approvals'],['fschools','All Schools'],['fsnapshots','System Backups & Snapshots'],['fpassword','Change Password']];
   const extraViews = ['fschoollogins'];
   const view = (VIEW.name==='boot'||!(nav.some(n=>n[0]===VIEW.name)||extraViews.includes(VIEW.name))) ? 'fdash' : VIEW.name;
   return `
@@ -2534,6 +2587,12 @@ function renderFounderView(view){
       <div class="card"><div class="small">PENDING APPROVAL</div><h1 style="margin:4px 0;color:var(--danger);">${pending.length}</h1></div>
       <div class="card"><div class="small">ACTIVE SCHOOLS</div><h1 style="margin:4px 0;color:var(--good);">${REGISTRY.filter(r=>r.status==='active').length}</h1></div>
     </div>
+    <div class="card" style="margin-top:16px;border-left:4px solid var(--gold);">
+      <h3>System Backups & Snapshots</h3>
+      <p class="small">Founder-only access to the entire platform backup and all automatic school snapshots.</p>
+      <button class="btn-outline" data-action="foundBackupSystem">Download entire system backup (.json)</button>
+      <button class="btn-outline" data-action="foundOpenSnapshots" style="margin-left:8px;">Access snapshots</button>
+    </div>
     ${renderStorageEstimateCard()}`;
   }
   if(view==='fpending'){
@@ -2608,6 +2667,19 @@ function renderFounderView(view){
       </form>
     </div>
     <p style="margin-top:14px;"><a href="#" data-action="nav:fschools">Back to All Schools</a></p>`;
+  }
+  if(view==='fsnapshots'){
+    return `<h2>System Backups & Snapshots</h2>
+    <div class="note">Founder-only area. The complete system backup contains all registered schools and their current application data. Automatic snapshots remain stored separately for each school. Use the founder code before downloading or restoring a snapshot.</div>
+    <div class="card" style="margin-top:14px;">
+      <h3>Entire System Backup</h3>
+      <p class="small">Downloads one JSON file containing the current data for every registered school. Founder credentials/session tokens are not included.</p>
+      <button class="btn" data-action="foundBackupSystem">Download entire system backup (.json)</button>
+    </div>
+    <div class="card" style="margin-top:14px;overflow:auto;">
+      <h3>Automatic Snapshots — All Schools</h3>
+      ${FOUNDER_SNAPSHOTS.length ? `<table class="data-table"><tr><th>School</th><th>Snapshot taken</th><th>Action</th></tr>${FOUNDER_SNAPSHOTS.map(x=>`<tr><td>${esc(x.schoolName)}</td><td>${fmtDateTime(x.takenAt)}</td><td class="flex"><button class="btn-outline" data-action="foundDownloadSnapshot:${x.schoolId}:${x.ts}">Download</button><button class="btn-danger" data-action="foundRestoreSnapshot:${x.schoolId}:${x.ts}">Restore</button></td></tr>`).join('')}</table>` : '<p class="small">No automatic snapshots are currently available.</p>'}
+    </div>`;
   }
   if(view==='fpassword'){
     return `<h2>Change Founder Password / Code</h2>
@@ -4902,13 +4974,21 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     </table>
 
     <div class="rc-sign-row">
-      <span>Class Teacher: ${esc(ctName)}</span>
-      <span>Signature:</span>
-      <span>Head Teacher: ${esc(htName)}</span>
-      <span>School Stamp:</span>
-    </div>
+      <div class="rc-sign-block">
+        <span class="rc-person">Class Teacher: ${esc(ctName)}</span>
+        <span class="rc-action">Signature:</span>
+      </div>
 
-    <div class="rc-termdates">Term ended on: ${fmtDate(DB.info.termEndDate)} &nbsp;|&nbsp; Next term begins on: ${fmtDate(DB.info.nextTermBeginDate)}</div>
+      <div class="rc-term-middle">
+        <div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDate(DB.info.termEndDate)}</div>
+        <div>Next term begins on ${fmtDate(DB.info.nextTermBeginDate)}</div>
+      </div>
+
+      <div class="rc-sign-block">
+        <span class="rc-person">Head Teacher: ${esc(htName)}</span>
+        <span class="rc-action">School Stamp:</span>
+      </div>
+    </div>
 
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
 
@@ -5440,6 +5520,10 @@ Continue?`);
     case 'foundBackupSchool': { const code=prompt('Enter your founder code to download a backup of this school\'s data:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       await downloadFounderSchoolBackup(arg); break; }
+    case 'foundBackupSystem': { const code=prompt('Enter your founder code to download the complete system backup:'); if(code===null) break; if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; } await downloadFounderSystemBackup(); break; }
+    case 'foundOpenSnapshots': { const code=prompt('Enter your founder code to access system snapshots:'); if(code===null) break; if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; } await loadFounderSnapshots(); VIEW={name:'fsnapshots'}; render(); break; }
+    case 'foundDownloadSnapshot': { const parts=arg.split(':'); await downloadFounderSnapshot(parts[0],Number(parts[1])); break; }
+    case 'foundRestoreSnapshot': { const parts=arg.split(':'); await restoreFounderSnapshot(parts[0],Number(parts[1])); break; }
     case 'foundRecalcStorage': { const code=prompt('Enter your founder code to recalculate the storage estimate (this reads every school\'s data, so it may take a moment):'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       const btn = document.querySelector('[data-action="foundRecalcStorage"]');
