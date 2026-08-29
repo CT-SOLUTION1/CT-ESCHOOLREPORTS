@@ -175,11 +175,23 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    no longer affects the table's outer edges, so all tables now line up on
    identical left/right edges. */
 .rc-bio-photo{width:64px;height:64px;object-fit:cover;border:1px solid var(--blue);border-radius:4px;}
-table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
-table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size:12px;}
+/* table-layout:fixed + an explicit <colgroup> (see reportCardHTML) means every column's
+   width is set directly instead of being computed from cell content — this is what
+   guarantees the table always fills 100% of the card, identically on screen, in the
+   browser Print dialog, and in the PDF. It also sidesteps a long-standing html2canvas
+   bug where a rowspan cell (the photo, below) combined with border-collapse:collapse
+   confuses its column-width measurement and leaves blank space down the right edge of
+   the captured table — the same bug already worked around for the Academic Performance
+   table (see table.rc-perf below). */
+table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
+table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size:12px;overflow-wrap:break-word;word-break:break-word;}
 table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--navy);}
 table.rc-info-table td.val{font-weight:700;}
-table.rc-info-table td.photo-cell{width:74px;padding:5px;text-align:center;vertical-align:middle;background:#fff;}
+table.rc-info-table td.photo-cell{padding:5px;text-align:center;vertical-align:middle;background:#fff;}
+/* PDF capture only: swap to separate borders, which is what actually avoids the
+   html2canvas rowspan-painting bug mentioned above (collapse vs separate makes no
+   visible difference at this border weight once rendered into the final PDF image). */
+#pdfCaptureHolder .pdf-report-card table.rc-info-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
 .rc-section-title{font-size:12.5px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--navy);border-bottom:2px solid var(--navy);padding-bottom:4px;margin:16px 0 8px;}
 
@@ -271,14 +283,16 @@ table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points{width:38px !important;padding-left:1px !important;padding-right:1px !important;font-size:7.8px !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc{width:92px !important;white-space:nowrap !important;font-size:8px !important;}
 
-table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;}
-table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;}
+table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;table-layout:fixed;}
+table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;overflow-wrap:break-word;word-break:break-word;}
 table.rc-summary-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.02em;color:var(--navy);}
 table.rc-summary-table td.val{font-weight:800;}
+#pdfCaptureHolder .pdf-report-card table.rc-summary-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
-table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
 table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
-table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;}
+table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
+#pdfCaptureHolder .pdf-report-card table.rc-comments-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
 .rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:start;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
 .rc-sign-block{min-width:0;text-align:center;}
@@ -327,19 +341,9 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
 @media print{
   body *{visibility:hidden;}
   #printArea, #printArea *{visibility:visible;}
-  #printArea{position:absolute;top:0;left:0;width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;}
-  #printArea .rc-card{width:100% !important;max-width:none !important;margin:0 !important;box-sizing:border-box;overflow:visible !important;}
-  #printArea .rc-content{width:100% !important;max-width:none !important;box-sizing:border-box;}
-  #printArea table.rc-info-table,#printArea table.rc-perf,#printArea table.rc-summary-table,#printArea table.rc-comments-table,#printArea table.rc-grading-scale-table{
-    width:100% !important;max-width:100% !important;min-width:0 !important;box-sizing:border-box;table-layout:fixed;
-  }
-  #printArea .rc-perf-wrap{overflow:visible !important;width:100% !important;max-width:100% !important;box-sizing:border-box;}
-  #printArea table.rc-info-table td,#printArea table.rc-summary-table td,#printArea table.rc-comments-table th,#printArea table.rc-comments-table td{
-    box-sizing:border-box;min-width:0;max-width:none;overflow-wrap:anywhere;word-break:break-word;
-  }
-  #printArea table.rc-perf th,#printArea table.rc-perf td{min-width:0;max-width:none;overflow-wrap:anywhere;word-break:break-word;}
-  #printArea table{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @page{ size:A4 portrait; margin:10mm; }
+  #printArea{position:absolute;top:0;left:0;width:100%;}
+  table{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  @page{ size:A4; margin:10mm; }
 }
 @media (max-width:760px){
   .layout{flex-direction:column;}
@@ -348,12 +352,20 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
   .sidebar a.active{border-bottom:3px solid var(--gold);}
   .grid2,.grid3{grid-template-columns:1fr;}
   .main{padding:14px;}
-  table.data-table, table.report-table, table.rc-info-table, table.rc-summary-table, table.rc-comments-table{
+  table.data-table, table.report-table{
     display:block; overflow-x:auto; -webkit-overflow-scrolling:touch;
     white-space:nowrap; border:1px solid var(--blue);
   }
   table.data-table thead, table.data-table tbody, table.data-table tr,
   table.report-table thead, table.report-table tbody, table.report-table tr{ display:table; width:100%; table-layout:auto; }
+  /* rc-info-table (Bio Data), rc-summary-table (Performance Summary) and
+     rc-comments-table (Comments) are deliberately left OUT of the block/nowrap/scroll
+     treatment above. Forcing them into that pattern was what clipped their content on
+     phones: the visible box only shows what fits before the horizontal scroll, and the
+     PDF export's html2canvas capture only ever sees that same clipped box, never the
+     scrolled-off remainder. These three already use table-layout:fixed with an explicit
+     colgroup (see reportCardHTML), so they render at their correct full width — on
+     screen, in print, and in the exported PDF — without ever needing to scroll. */
   /* rc-perf (Academic Performance Analysis) uses rowspan/colspan to merge cells across
      a subject's paper rows and Course Work test columns — forcing its rows to
      display:table (like the other tables above) would break that merging, so instead
@@ -5001,6 +5013,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     </div>
 
     <table class="rc-info-table">
+      <colgroup>${s.photo
+        ? '<col style="width:18%"><col style="width:27%"><col style="width:18%"><col style="width:27%"><col style="width:10%">'
+        : '<col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%">'}</colgroup>
       <tr>
         <td class="lbl">Name</td><td class="val">${esc(s.name)}</td>
         <td class="lbl">Class</td><td class="val">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}</td>
@@ -5042,6 +5057,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
     <div class="rc-section-title">Performance Summary</div>
     <table class="rc-summary-table">
+      <colgroup><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.665%"></colgroup>
       <tr>
         <td class="lbl">Total Subjects</td><td class="val">${rows.length}</td>
         <td class="lbl">${isA?'Total Points':'Total Final Average'}</td><td class="val">${isA?`${totalPoints}/${maxP}`:avgPct.toFixed(0)+'%'}</td>
@@ -5074,6 +5090,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
 
     <div class="rc-section-title">Comments</div>
     <table class="rc-comments-table">
+      <colgroup><col style="width:50%"><col style="width:50%"></colgroup>
       <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
       <tr>
         <td>${isP ? esc(primaryRemark(pDivision,'class')) : esc(overallRemark(pct,'class'))}</td>
@@ -5245,9 +5262,7 @@ document.addEventListener('click', async (e)=>{
       // firing a second, overlapping render while the first PDF is still being built).
       if(el.disabled) break;
       const _origLbl = el.innerHTML; el.disabled = true; el.innerHTML = '<b>Preparing…</b>';
-      let _pdfPreviewWindow = null;
-      try{ _pdfPreviewWindow = window.open('about:blank','_blank'); }catch(e){}
-      try{ await singleStudentPdf(arg, _pdfPreviewWindow); }
+      try{ await singleStudentPdf(arg); }
       finally{ el.disabled = false; el.innerHTML = _origLbl; }
       break;
     }
@@ -7025,20 +7040,13 @@ function loadPdfLibs(){
 // a new tab where Share ▸ Save to Files works. Either way, one tap is all it
 // takes, and we surface our own confirmation via the toast instead of relying on
 // "did a new tab visibly appear" as the signal.
-function openOrSavePdf(pdf, filename, previewWindow=null){
+function openOrSavePdf(pdf, filename){
   try{
     const blob = pdf.output('blob');
     const url = URL.createObjectURL(blob);
-    // A blank tab may be opened synchronously from the original button tap.
-    // Once the async PDF render finishes, navigate that already-authorised tab
-    // to the finished PDF while still triggering a real download below. This
-    // gives browsers a reliable preview without sacrificing the downloaded file.
-    if(previewWindow && !previewWindow.closed){
-      try{ previewWindow.location.href = url; }catch(e){}
-    } else {
-      // Best-effort fallback for browsers that allow a delayed popup.
-      try{ window.open(url, '_blank', 'noopener'); }catch(e){}
-    }
+    // 1) Reliably deliver the file first via a real <a download> click. As the note
+    //    above explains, this doesn't need a fresh user gesture, so it still works
+    //    even after a multi-second html2canvas render.
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -7046,8 +7054,14 @@ function openOrSavePdf(pdf, filename, previewWindow=null){
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 120000);
-    showDeliveredToast(`PDF downloaded and opened — ${filename}`);
+    // 2) Also open the same PDF in a new browser tab so it can be previewed right
+    //    away without leaving this app running in its own tab. This is best-effort:
+    //    a browser that has already used up its "fresh gesture" allowance for this
+    //    click (e.g. after a long bulk export) may silently block the new tab —
+    //    that's fine, since the file was already safely saved by step 1 either way.
+    try{ window.open(url, '_blank', 'noopener'); }catch(e){}
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    showDeliveredToast(`Ready — ${filename}`);
   }catch(e){
     try{ pdf.save(filename); showDeliveredToast(`Ready — ${filename}`); }
     catch(e2){ alert('Could not create the PDF file: ' + (e2.message||e2)); }
@@ -7453,7 +7467,7 @@ async function pdfForStudents(students, filename, opts={}){
     // instead of being merged/shared across the rowspan boundary) — the live on-screen
     // card and the browser Print dialog still use the normal collapsed borders, so this
     // override is scoped to just the offscreen holder html2canvas actually screenshots.
-    holder.innerHTML = `<style>#pdfCaptureHolder{width:820px;box-sizing:border-box;background:#fff;}#pdfCaptureHolder .rc-card{box-sizing:border-box;width:100%;max-width:none;margin:0;}#pdfCaptureHolder .rc-content{width:100%;max-width:none;box-sizing:border-box;}#pdfCaptureHolder table.rc-perf,#pdfCaptureHolder table.rc-info-table,#pdfCaptureHolder table.rc-summary-table,#pdfCaptureHolder table.rc-comments-table{width:100% !important;max-width:100% !important;min-width:0 !important;table-layout:fixed !important;box-sizing:border-box;border-collapse:separate;border-spacing:0;}#pdfCaptureHolder table.rc-info-table td,#pdfCaptureHolder table.rc-summary-table td,#pdfCaptureHolder table.rc-comments-table th,#pdfCaptureHolder table.rc-comments-table td{box-sizing:border-box;min-width:0 !important;max-width:none !important;overflow-wrap:anywhere;word-break:break-word;}#pdfCaptureHolder .rc-perf-wrap{overflow:visible !important;width:100% !important;max-width:100% !important;box-sizing:border-box;}</style>`+
+    holder.innerHTML = `<style>#pdfCaptureHolder{width:820px;box-sizing:border-box;background:#fff;}#pdfCaptureHolder .rc-card{box-sizing:border-box;width:100%;max-width:none;margin:0;}#pdfCaptureHolder table.rc-perf{table-layout:fixed !important;width:100% !important;min-width:0 !important;}#pdfCaptureHolder .rc-perf-wrap{overflow:visible !important;width:100% !important;}#pdfCaptureHolder table.rc-perf,#pdfCaptureHolder table.rc-info-table,#pdfCaptureHolder table.rc-summary-table,#pdfCaptureHolder table.rc-comments-table{border-collapse:separate;border-spacing:0;}</style>`+
       `<div id="pdfCaptureHolder" style="padding:10px 0;font-family:Inter,sans-serif;width:100%;box-sizing:border-box;">${reportCardHTML(students[i].id, true)}</div>`;
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
     // card with a CSS transform, and a transform never changes an element's
@@ -7529,7 +7543,7 @@ async function bulkPdf(classId, onProgress){
     if(b<batches.length-1) await new Promise(r=>setTimeout(r, 400));
   }
 }
-async function singleStudentPdf(studentId, previewWindow=null){
+async function singleStudentPdf(studentId){
   try{
     await refreshScores();
   }catch(e){
@@ -7537,7 +7551,7 @@ async function singleStudentPdf(studentId, previewWindow=null){
   }
   const s = DB.students.find(x=>x.id===studentId);
   if(!s){ alert('Student not found.'); return; }
-  await pdfForStudents([s], `${(s.name||'student').replace(/[^a-z0-9]+/gi,'_')}_report.pdf`, {previewWindow});
+  await pdfForStudents([s], `${(s.name||'student').replace(/[^a-z0-9]+/gi,'_')}_report.pdf`);
 }
 
 /* ---------- Error visibility ----------
