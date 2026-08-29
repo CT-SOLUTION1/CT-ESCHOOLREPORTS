@@ -1111,6 +1111,16 @@ function termIndex(term, year){
 // before it stay available; anything older is pruned to keep storage minimal.
 const MAX_TERMS_BEHIND = 5; // 6 terms retained: current + 5 previous
 function termsBehindCurrent(term, year){ return termIndex(DB.info.currentTerm, DB.info.currentYear) - termIndex(term, year); }
+// Promotion is only allowed once the admin has genuinely advanced the academic year
+// here from the Dashboard's "Term settings" (see the setTerm handler, which is the only
+// place DB.info.previousYear ever gets set). Until that's happened at least once,
+// previousYear is undefined and promotion stays locked — this stops students being
+// promoted into a class that's still meant to host the same cohort for the current year.
+function promotionEligible(){
+  const cy = Number(DB.info.currentYear);
+  const py = DB.info.previousYear==null ? null : Number(DB.info.previousYear);
+  return py!=null && Number.isFinite(cy) && cy > py;
+}
 // Retention policy: keep the current term plus the five immediately
 // preceding terms = MAXIMUM 6 terms total. Anything older is permanently
 // deleted from Firestore when the current period advances.
@@ -1982,23 +1992,6 @@ function principalsFor(st, cls){
   const opts = new Set(aOptionalList());
   return rosterSubjectsFor(st, cls).filter(s=>opts.has(s));
 }
-// STUDENT ENROLLMENT HISTORY
-function periodIndex(term, year){ const n={'Term 1':1,'Term 2':2,'Term 3':3}[term]||0; return (Number(year)||0)*3+n; }
-function studentInClassAtPeriod(st,classId,term,year){
-  if(!st || st.status==='left' || !classId) return false;
-  const target=periodIndex(term||DB.info.currentTerm,year||DB.info.currentYear);
-  const hist=Array.isArray(st.classHistory)?st.classHistory:[];
-  if(hist.some(h=>h && h.classId===classId && periodIndex(h.startTerm||'Term 1',h.startYear||0)<=target && (!h.endTerm || periodIndex(h.endTerm,h.endYear)>target))) return true;
-  return st.classId===classId && !hist.some(h=>h&&h.classId===classId);
-}
-function recordStudentPromotion(st,fromClass,toClass,term,year){
-  const hist=Array.isArray(st.classHistory)?[...st.classHistory]:[]; let closed=false;
-  for(let i=hist.length-1;i>=0;i--){ const h=hist[i]; if(h&&h.classId===fromClass&&!h.endTerm){ hist[i]={...h,endTerm:term,endYear:Number(year)}; closed=true; break; } }
-  if(!closed&&!hist.some(h=>h&&h.classId===fromClass)) hist.push({classId:fromClass,startTerm:null,startYear:null,endTerm:term,endYear:Number(year)});
-  if(!hist.some(h=>h&&h.classId===toClass&&h.startTerm===term&&Number(h.startYear)===Number(year)&&!h.endTerm)) hist.push({classId:toClass,startTerm:term,startYear:Number(year),endTerm:null,endYear:null});
-  st.classHistory=hist;
-}
-
 function studentSubjects(st, cls){
   if(!cls) return [];
   if(cls.level==='O'){
@@ -2996,7 +2989,7 @@ function renderShell(){
 // or grading configuration are admin-only. This guard is a hard backstop — the sidebar
 // already hides these links from non-admins, but this makes it impossible to reach them
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
-const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','accounts','students','oldstudents','assignsubjects','olevel','grading','promote','historicalscores','teacherprofile','studentprofile','restoreitems']);
+const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','accounts','students','oldstudents','assignsubjects','olevel','grading','promote','teacherprofile','studentprofile','restoreitems']);
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
@@ -3029,7 +3022,6 @@ function renderView(view){
       case 'restoreitems': return restoreItemsView();
       case 'grading': return gradingView(VIEW.params.gcClassId);
       case 'promote': return promoteView();
-      case 'historicalscores': return historicalScoreEntryView();
       case 'reports': return reportsListView();
       case 'password': return passwordView();
       case 'ascores': return CUR.role==='admin' ? scoresEntryView(liveAssignments(DB.assignments)) : '<p>You don\'t have permission to view this page.</p>';
@@ -3885,16 +3877,29 @@ function gradingView(gcClassId){
 }
 
 /* ---------- Admin: Promote ---------- */
-function historicalScoreEntryView(){
-  if(CUR.role!=='admin') return `<p>You don't have permission to view this page.</p>`;
-  const sel=VIEW.params||{}, term=sel.term||DB.info.currentTerm, year=Number(sel.year||DB.info.currentYear), classId=sel.classId||'';
-  const cls=DB.classes.find(c=>c.id===classId), assignments=cls?DB.assignments.filter(a=>a.classId===classId):[];
-  return `<h2>Historical Score Entry</h2><div class="note"><b>Admin only.</b> Enter or correct scores for previous terms and academic years here. Subject teachers cannot access this screen.</div><div class="card"><form data-form="historicalPicker"><div class="grid3"><div><label>Academic year</label><input name="year" type="number" min="2000" max="2100" value="${esc(String(year))}" required></div><div><label>Term</label><select name="term"><option ${term==='Term 1'?'selected':''}>Term 1</option><option ${term==='Term 2'?'selected':''}>Term 2</option><option ${term==='Term 3'?'selected':''}>Term 3</option></select></div><div><label>Class</label><select name="classId" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}" ${c.id===classId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div></div>${cls?`<label>Subject / teacher assignment</label><select name="assignId" required><option value="">-- select --</option>${assignments.map(a=>`<option value="${a.id}" ${a.id===sel.assignId?'selected':''}>${esc(a.subject)} — ${esc((DB.accounts.find(x=>x.username===a.teacherUsername)||{}).name||a.teacherUsername||'Unassigned')}</option>`).join('')}</select>`:''}<button class="btn" style="margin-top:12px;">Load historical score entry</button></form></div>${sel.assignId?`<div class="card"><p><b>Selected period:</b> ${esc(term)}, ${esc(String(year))}. The student list will use recorded class history for that period.</p><button type="button" class="btn" data-action="openHistoricalAssignment:${sel.assignId}">Open score entry</button></div>`:''}`;
-}
-
 function promoteView(){
-  const yearReady=Number(DB.info.promotionYearReady)===Number(DB.info.currentYear);
-  return `<h2>Promote Students</h2><div class="note" style="border-color:${yearReady?'var(--good)':'var(--danger)'};color:${yearReady?'var(--good)':'var(--danger)'};margin-bottom:14px;">${yearReady?`<b>✓ Promotion unlocked for Academic Year ${esc(String(DB.info.currentYear))}.</b> Students moved now will leave their old class for teacher score entry; their historical class record is preserved.`:`<b>Promotion is locked.</b> First change the <b>Academic Year</b> on the Admin Dashboard → Term settings.`}</div><div class="card"><form data-form="promote"><label>From class</label><select name="fromClass" required ${yearReady?'':'disabled'}><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><label>Promote to class</label><select name="toClass" required ${yearReady?'':'disabled'}><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><p class="small">Promotion takes effect from <b>${esc(DB.info.currentTerm)} ${esc(String(DB.info.currentYear))}</b>. Previous scores remain tied to their original term/year.</p><button class="btn" style="margin-top:10px;" ${yearReady?'':'disabled'}>Submit — promote class</button></form></div>`;
+  const i = DB.info;
+  const eligible = promotionEligible();
+  const previousYearLabel = i.previousYear==null ? '— not set yet —' : esc(String(i.previousYear));
+  return `
+  <h2>Promote Students</h2>
+  <div class="grid2">
+    <div class="card"><div class="small">PREVIOUS ACADEMIC YEAR</div><h1 style="margin:4px 0;">${previousYearLabel}</h1></div>
+    <div class="card"><div class="small">CURRENT ACADEMIC YEAR (set on Dashboard)</div><h1 style="margin:4px 0;">${esc(String(i.currentYear||'—'))}</h1></div>
+  </div>
+  ${!eligible ? `
+  <div class="note" style="border-color:var(--danger);color:var(--danger);">
+    <b>Promotion is locked.</b> It only unlocks once you've moved the school into a new academic year from the Dashboard's "Term settings" — that's what sets the Previous Year shown above. ${i.previousYear==null ? `Go to Dashboard → Term settings and save the new academic Year to unlock promotion.` : `The Current Year on the Dashboard (${esc(String(i.currentYear))}) needs to be later than the Previous Year (${esc(String(i.previousYear))}) shown above.`}
+  </div>` : `
+  <div class="ok-banner" style="border-radius:6px;">Unlocked — the Dashboard's academic year has moved from ${esc(String(i.previousYear))} to ${esc(String(i.currentYear))}, so promoting classes into ${esc(String(i.currentYear))} is allowed.</div>`}
+  <div class="card">
+    <form data-form="promote">
+      <label>From class</label><select name="fromClass" required ${eligible?'':'disabled'}><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <label>Promote to class</label><select name="toClass" required ${eligible?'':'disabled'}><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <p class="small">Moves every student in "From class" into "Promote to class". Score history is kept, tagged to the term/year it was entered in. Once moved, these students immediately stop appearing on "From class"'s roster for any subject teacher — they can no longer receive new scores in the class or term they've left.</p>
+      <button class="btn" style="margin-top:10px;" ${eligible?'':'disabled title="Promotion is locked — see above"'}>Submit — promote class</button>
+    </form>
+  </div>`;
 }
 
 /* ---------- Reports list (admin & teacher) ---------- */
@@ -4531,8 +4536,24 @@ function teacherDashboard(){
   </table></div>`;
 }
 
+// Admin-only: lets scoresEntryView load/save a term & year OTHER than the school's
+// current one, so an Admin can enter or correct scores for a past period without
+// disturbing DB.info.currentTerm/currentYear (which everything else — teachers,
+// report cards, mark sheets — still reads as the live "now"). Picking a period here
+// resets any in-progress subject/paper pick below it, since which test is being
+// marked is independent of which period it's being marked for.
+function setScorePeriodParam(key, value){
+  VIEW.params = {...VIEW.params, [key]:value, assignId:null, paper:null, kind:null, label:null, maxScore:null, editRoster:false};
+  render();
+}
 function scoresEntryView(mine){
   const sel = VIEW.params;
+  const isAdmin = CUR.role==='admin';
+  // Only an Admin ever sees the period picker (below), so a Teacher's sel.pTerm/pYear
+  // are always unset and they stay locked to the live current period, exactly as before.
+  const periodTerm = (isAdmin && sel.pTerm) ? sel.pTerm : DB.info.currentTerm;
+  const periodYear = (isAdmin && sel.pYear) ? Number(sel.pYear) : DB.info.currentYear;
+  const isPastPeriod = isAdmin && (periodTerm!==DB.info.currentTerm || Number(periodYear)!==Number(DB.info.currentYear));
   let studentRows = '';
   if(sel.assignId && sel.paper && sel.kind){
     const a = mine.find(x=>x.id===sel.assignId);
@@ -4545,8 +4566,7 @@ function scoresEntryView(mine){
     // Every student already in the class is available to a subject teacher to tick —
     // admin registration never decides who takes a subject, so eligibility here is
     // simply "in this class", not "already recorded as taking this subject".
-    const entryTerm = sel.term || DB.info.currentTerm, entryYear = Number(sel.year || DB.info.currentYear);
-    const eligible = sortByName(DB.students.filter(s=>studentInClassAtPeriod(s,a.classId,entryTerm,entryYear)));
+    const eligible = sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===a.classId));
     const rosterSet = Array.isArray(a.studentIds);
     const labelBit = encodeURIComponent(sel.label||'');
     if(!rosterSet || sel.editRoster){
@@ -4592,9 +4612,26 @@ function scoresEntryView(mine){
         <p class="small">Not on the class list at all yet? New students must be registered by an Admin first (name, admission number, sex, class). Once the Admin has added them to ${esc(cls.name)}, they'll appear in the "Select your students" list above for you to tick into your marking list — you don't need to create them yourself.</p>`}
       </div>`;
     } else {
-      const term = entryTerm, year = entryYear;
-      const students = DB.students.filter(s=>studentInClassAtPeriod(s,a.classId,term,year) && a.studentIds.includes(s.id));
+      // FIX: a student who's been promoted to a different class stays on this
+      // teacher's saved roster (a.studentIds) forever unless explicitly removed — that
+      // roster is just "who I've ever ticked in", not "who's currently in my class". The
+      // classId check below is what actually stops a promoted-away student showing up
+      // for scoring here. For a PAST period, also allow back in anyone who has since
+      // left the school entirely (status 'left') but was in this class at the time —
+      // useful for completing a historical record for a student who's since graduated
+      // or transferred out. A student who was instead PROMOTED to a different class
+      // that still exists isn't covered by this class-based lookup (their classId has
+      // moved on) — for that case use "Add a student who isn't listed above" below.
+      let students = DB.students.filter(s=>a.studentIds.includes(s.id) && (
+        (s.classId===a.classId && s.status!=='left') ||
+        (isPastPeriod && s.status==='left' && s.classId===a.classId)
+      ));
+      if(isPastPeriod && Array.isArray(sel.extraIds) && sel.extraIds.length){
+        const extraOnes = DB.students.filter(s=>sel.extraIds.includes(s.id) && !students.some(x=>x.id===s.id));
+        students = sortByName([...students, ...extraOnes]);
+      }
       const newCount = eligible.filter(s=>!a.studentIds.includes(s.id)).length;
+      const term = periodTerm, year = periodYear;
       // Every other test/exam already on record this term for this subject, so the
       // teacher can see the full picture for each learner (not just the one column
       // they're currently filling in) — reuses the same column logic as the
@@ -4626,7 +4663,7 @@ function scoresEntryView(mine){
           <a href="#" class="small" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit my student list</a>
         </div>
         <p class="small">You're entering <b>${currentColLabel}</b>, marked out of <b>${sel.maxScore||100}</b> — that's the highlighted column below. ${otherCols.length?`For context, every other ${esc(a.subject)} test or exam already recorded this term is also shown alongside it, so you can see each learner's full record so far before entering this one. <b>Click any of those column headings to switch straight into editing that test's scores instead.</b>`:''} The report card will automatically convert this test to ${sel.kind==='AOI'?`${esc(cfgHere.cwLabel)}'s /${cfgHere.cwPercent} scale`:`${esc(cfgHere.eotLabel)}'s /${cfgHere.eotPercent} scale`}. Click a box and type marks, then hit Submit below to save &amp; send. <b>You can leave a box empty for a student who was absent or missing</b> — it will simply be skipped, and everyone else's marks will still be saved. Already-submitted marks for the highlighted test are pre-filled below too, so editing and resubmitting a score is as simple as changing the number and hitting Submit again.</p>
-        <form data-form="saveScores" data-term="${esc(String(term))}" data-year="${esc(String(year))}" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
+        <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
           <table class="data-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '', existingRow = null;
@@ -4653,6 +4690,21 @@ function scoresEntryView(mine){
           ${syncStatusBanner(scoreSyncKey(a.id, sel.paper, sel.kind, sel.label||''))}
         </form>
       </div>
+      ${isPastPeriod ? `
+      <div class="card">
+        <h3>Add a student who isn't listed above</h3>
+        <p class="small">Useful for a student who has since been promoted into a different class, or moved to Old Students — they won't show automatically for a past period unless added here. They'll be added to this mark sheet only, for ${esc(term)}, ${esc(String(year))}, and this won't change which class they're currently in.</p>
+        <div class="flex" style="align-items:center;">
+          <select id="extraStudentSel_${a.id}" style="flex:1;min-width:220px;">
+            <option value="">-- choose a student --</option>
+            ${sortByName(DB.students.filter(s=>!students.some(x=>x.id===s.id))).map(s=>{
+              const c = DB.classes.find(cc=>cc.id===s.classId);
+              return `<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}${c?' — '+esc(c.name):''}${s.status==='left'?' (Old Student)':''}</option>`;
+            }).join('')}
+          </select>
+          <button type="button" class="btn-outline" data-action="addExtraScoreStudent" data-select="extraStudentSel_${a.id}">Add to sheet</button>
+        </div>
+      </div>` : ''}
       <div class="card">
         <h3>Mark sheet tools</h3>
         <p class="small">Prefer marking on paper? Download a blank mark sheet as a <b>PDF</b> to print. Prefer a spreadsheet? Download the CSV version, fill in the Marks column, and upload it back here — the CSV is only used for that fill-in-and-re-upload step. You can also view every test/exam recorded for this subject in one table.</p>
@@ -4662,7 +4714,7 @@ function scoresEntryView(mine){
           <button class="btn-outline" data-action="openMarksheet:${a.classId}:${encodeURIComponent(a.subject)}">View integrated mark sheet (all tests)</button>
         </div>
         <hr style="margin:16px 0;border:none;border-top:1px solid var(--line);">
-        <form data-form="uploadMarksheet" data-term="${esc(String(term))}" data-year="${esc(String(year))}" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${esc(a.subject)}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
+        <form data-form="uploadMarksheet" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${esc(a.subject)}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           <label>Upload a filled mark sheet (CSV)</label>
           <input type="file" name="marksheetFile" accept=".csv,text/csv" required>
           <p class="small">Keep the Admission No column unchanged; only the Marks column needs filling in. Rows that don't match a student on your list, or are left blank, are skipped.</p>
@@ -4700,7 +4752,6 @@ function scoresEntryView(mine){
     return `
   <div class="card" style="margin-top:14px;">
     <form data-form="pickPaper">
-      ${CUR.role==='admin' ? `<div class="grid2" style="margin-bottom:10px;"><div><label>Academic year</label><input name="year" type="number" min="2000" max="2100" value="${esc(String(sel.year||DB.info.currentYear))}"></div><div><label>Term</label><select name="term"><option ${((sel.term||DB.info.currentTerm)==='Term 1')?'selected':''}>Term 1</option><option ${((sel.term||DB.info.currentTerm)==='Term 2')?'selected':''}>Term 2</option><option ${((sel.term||DB.info.currentTerm)==='Term 3')?'selected':''}>Term 3</option></select></div></div>` : ''}
       <div class="grid2">
         <div><label>Subject / class assignment</label>
           <select name="assignId" id="assignSel" required>
@@ -4734,9 +4785,23 @@ function scoresEntryView(mine){
     </form>
   </div>`;
   })();
+  const periodPickerCard = isAdmin ? `
+  <div class="card" style="margin-top:14px;${isPastPeriod?'background:#fff8e6;border:1px solid #e8d38a;':''}">
+    <h3 style="margin-top:0;">Scoring period</h3>
+    <p class="small">Defaults to the school's current Term/Year set on the Dashboard. Only change this to enter or correct scores for a <b>past</b> term/year — teachers never see this option, and always enter scores for the current period only.</p>
+    <div class="grid2">
+      <div><label>Term</label><select onchange="setScorePeriodParam('pTerm', this.value)">
+        ${['Term 1','Term 2','Term 3'].map(t=>`<option value="${t}" ${periodTerm===t?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label>Year</label><input type="number" min="2000" max="2100" step="1" value="${esc(String(periodYear||''))}" onchange="setScorePeriodParam('pYear', this.value)"></div>
+    </div>
+  </div>` : '';
+  const pastPeriodBanner = isPastPeriod ? `
+  <div class="note" style="border-color:var(--danger);color:var(--danger);margin-top:14px;">⚠ You're entering/editing scores for <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the school's current period (${esc(DB.info.currentTerm)}, ${esc(String(DB.info.currentYear))}). Use this only to complete or correct a historical record.</div>` : '';
   return `
   <h2>${CUR.role==='admin'?'Enter / Download Scores':'Enter Scores'}</h2>
   <div class="note">${CUR.role==='admin'?'As Admin, you can select <b>any</b> subject/class assignment below — for any teacher — and enter or edit scores directly on their behalf. The dropdown shows the teacher\'s name next to each assignment. ':''}Step 1: choose the subject/class ${CUR.role==='admin'?'and teacher':'you\'re assigned'}, the paper, and whether this is an AOI test or the End of Term score. Step 2: click below to load the students and type marks. Step 3: click <b>Save &amp; send</b>.</div>
+  ${periodPickerCard}${pastPeriodBanner}
   ${pickerCard}${pickerSummaryBar}
   ${studentRows}`;
 }
@@ -5273,7 +5338,7 @@ document.addEventListener('click', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
-    'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers']);
+    'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent']);
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
@@ -5296,12 +5361,6 @@ document.addEventListener('click', async (e)=>{
       // session (or someone who copied it out of localStorage) is kicked out too.
       if(wasFounder && SYSTEM_OWNER){ SYSTEM_OWNER.sessionToken = genSessionToken(); await saveSystemOwner(); }
       render(); break;
-    }
-    case 'openHistoricalAssignment': {
-      if(CUR.role!=='admin'){ alert('Only an Admin can enter historical scores.'); break; }
-      const a=DB.assignments.find(x=>x.id===arg), p=VIEW.params||{};
-      if(!a){ alert('Assignment not found.'); break; }
-      VIEW={name:'ascores',params:{assignId:a.id,paper:(a.papers&&a.papers[0])||'1',kind:'EOT',label:'',maxScore:100,term:p.term||DB.info.currentTerm,year:Number(p.year||DB.info.currentYear)}}; render(); break;
     }
     case 'nav': {
       VIEW = {name:arg, params:{}};
@@ -5568,6 +5627,15 @@ Continue?`);
       // can fix an earlier mark without hunting for it via the paper/kind picker.
       const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
       VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false}};
+      render();
+      break;
+    }
+    case 'addExtraScoreStudent': {
+      const selEl = document.getElementById(el.dataset.select);
+      const studentId = selEl && selEl.value;
+      if(!studentId){ alert('Choose a student from the dropdown first.'); break; }
+      const extraIds = Array.isArray(VIEW.params.extraIds) ? VIEW.params.extraIds : [];
+      if(!extraIds.includes(studentId)) VIEW.params = {...VIEW.params, extraIds:[...extraIds, studentId]};
       render();
       break;
     }
@@ -6114,7 +6182,7 @@ document.addEventListener('submit', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','quickAddStudent',
-    'historicalPicker','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
+    'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
   if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
@@ -6356,20 +6424,26 @@ document.addEventListener('submit', async (e)=>{
       if(!newYearRaw || !Number.isInteger(newYear) || newYear<2000 || newYear>2100){ alert('Please enter a valid 4-digit year (e.g. 2026) before saving term settings.'); return; }
       const prevTerm=DB.info.currentTerm, prevYear=DB.info.currentYear;
       const termChanged=(newTerm!==prevTerm || Number(newYear)!==Number(prevYear));
+      const yearChanged=(Number(newYear)!==Number(prevYear));
       let termChangeDecision='leave';
       if(termChanged){
         const oldPeriodScores=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
         termChangeDecision=await termChangeSafetyBanner(prevTerm,prevYear,newTerm,newYear,oldPeriodScores.length);
         if(termChangeDecision==='cancel') return;
         if(termChangeDecision==='carry'){
-          alert('Scores will remain attached to their original term/year. No score data is carried into the new period.');
+          await moveCurrentPeriodScoresTo(prevTerm,prevYear,newTerm,newYear);
         }
         if(termChangeDecision==='delete'){
           await deleteCurrentPeriodScores(prevTerm,prevYear);
         }
       }
+      // Record the academic year we're moving FROM the moment the admin actually
+      // advances it here on the Dashboard. Promotion (see promoteView/promotionEligible)
+      // only unlocks once currentYear is genuinely ahead of previousYear — i.e. only
+      // after this exact step has happened — so a class can't be promoted before the
+      // admin has moved the school into a new academic year on this screen.
+      if(yearChanged){ DB.info.previousYear = prevYear; }
       DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
-      if(Number(newYear)!==Number(prevYear)) DB.info.promotionYearReady=newYear;
       DB.info.termEndDate=fd.get('termEndDate'); DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
       const sd={...(DB.info.scoreDeadlines||{})};
       for(const kind of ['AOI','EOT']){
@@ -6872,19 +6946,16 @@ document.addEventListener('submit', async (e)=>{
       VIEW.params = {...VIEW.params, editClassTestId: null};
       await saveClasses(); showDeliveredToast('Test updated'); render();
     }
-    else if(type==='historicalPicker'){
-      const y=Number(fd.get('year')),t=fd.get('term'),c=fd.get('classId'),a=fd.get('assignId');
-      if(!Number.isInteger(y)||y<2000||y>2100||!t||!c||!a){ alert('Choose a valid year, term, class and assignment.'); return; }
-      if(!DB.assignments.some(x=>x.id===a&&x.classId===c)){ alert('That assignment does not belong to the selected class.'); return; }
-      VIEW={name:'historicalscores',params:{year:y,term:t,classId:c,assignId:a}}; render();
-    }
     else if(type==='promote'){
-      if(Number(DB.info.promotionYearReady)!==Number(DB.info.currentYear)){ alert('Promotion is locked. Change the Academic Year on the Admin Dashboard first.'); return; }
+      // Backstop for the disabled form above — promotion is only allowed once the
+      // admin has actually advanced the academic year from the Dashboard.
+      if(!promotionEligible()){
+        alert('Promotion is locked until you advance the academic year from the Dashboard\'s Term settings.');
+        render(); return;
+      }
       const from=fd.get('fromClass'), to=fd.get('toClass');
-      if(!from||!to||from===to){ alert('Choose two different classes.'); return; }
-      const moved=DB.students.filter(s=>s.classId===from&&s.status!=='left');
-      moved.forEach(s=>{ recordStudentPromotion(s,from,to,DB.info.currentTerm,DB.info.currentYear); s.classId=to; });
-      await saveStudents(); alert(`${moved.length} student${moved.length===1?'':'s'} promoted successfully. Class history recorded.`); render();
+      DB.students.forEach(s=>{ if(s.classId===from && s.status!=='left') s.classId=to; });
+      await saveStudents(); alert('Students promoted successfully.'); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
@@ -6904,7 +6975,7 @@ document.addEventListener('submit', async (e)=>{
         alert('Please enter the maximum mark this test/exam was marked out of before continuing.');
         return;
       }
-      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:fd.get('label')||'', maxScore, term:fd.get('term')||DB.info.currentTerm, year:Number(fd.get('year')||DB.info.currentYear)}}; render();
+      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
     }
     else if(type==='saveRoster'){
       const assignId = form.dataset.assign;
@@ -6971,11 +7042,11 @@ document.addEventListener('submit', async (e)=>{
         // be if typed straight into the on-screen mark sheet.
         if(marks<0 || marks>max){ outOfRange++; continue; }
         if(kind==='EOT'){
-          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===entryTerm && sc.year===entryYear);
-          importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'EOT', label:'', term:entryTerm, year:entryYear, marks, max, teacher:CUR.username});
+          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
+          importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'EOT', label:'', term:DB.info.currentTerm, year:DB.info.currentYear, marks, max, teacher:CUR.username});
         } else {
-          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===entryTerm && sc.year===entryYear);
-          importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'AOI', label, term:entryTerm, year:entryYear, marks, max, teacher:CUR.username});
+          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
+          importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'AOI', label, term:DB.info.currentTerm, year:DB.info.currentYear, marks, max, teacher:CUR.username});
         }
         imported++;
       }
@@ -6988,6 +7059,17 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='saveScores'){
       const assignId=form.dataset.assign, paper=form.dataset.paper, subject=form.dataset.subject, kind=form.dataset.kind, label=form.dataset.label;
+      // Defaults to the live current period. Only the Admin-only "Scoring period" picker
+      // in scoresEntryView ever tags this form with a different term/year — but this is
+      // re-checked here too, not just trusted from the form, since a Teacher must never
+      // be able to write scores into a period they've left.
+      const targetTerm = form.dataset.term || DB.info.currentTerm;
+      const targetYear = form.dataset.year ? Number(form.dataset.year) : DB.info.currentYear;
+      const isBackdated = (targetTerm!==DB.info.currentTerm || Number(targetYear)!==Number(DB.info.currentYear));
+      if(isBackdated && CUR.role!=='admin'){
+        alert('Only an Admin can enter or edit scores for a past term/year.');
+        return;
+      }
       if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, kind)){
         alert(`The score submission deadline (${fmtDateTime(scoreDeadlineFor(kind).deadline)}) has passed, so this can't be saved. Ask your admin to reopen score entry for you if you need to submit or correct marks.`);
         return;
@@ -7022,9 +7104,9 @@ document.addEventListener('submit', async (e)=>{
         const studentId = key.slice(2);
         let existingRow;
         if(kind==='EOT'){
-          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===entryTerm && sc.year===entryYear);
+          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===targetTerm && sc.year===targetYear);
         } else {
-          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===entryTerm && sc.year===entryYear);
+          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===targetTerm && sc.year===targetYear);
         }
         if(!existingRow) missSetNow.add(studentId);
       }
@@ -7052,11 +7134,11 @@ document.addEventListener('submit', async (e)=>{
           }
         }
         if(kind==='EOT'){
-          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===entryTerm && sc.year===entryYear);
-          submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'EOT', label:'', term:entryTerm, year:entryYear, marks:Number(val), max, teacher:CUR.username});
+          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===targetTerm && sc.year===targetYear);
+          submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'EOT', label:'', term:targetTerm, year:targetYear, marks:Number(val), max, teacher:CUR.username});
         } else {
-          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===entryTerm && sc.year===entryYear);
-          submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'AOI', label, term:entryTerm, year:entryYear, marks:Number(val), max, teacher:CUR.username});
+          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===targetTerm && sc.year===targetYear);
+          submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'AOI', label, term:targetTerm, year:targetYear, marks:Number(val), max, teacher:CUR.username});
         }
       }
       if(conflictExcluded.length){
