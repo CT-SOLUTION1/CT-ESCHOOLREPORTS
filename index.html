@@ -1111,16 +1111,42 @@ function termIndex(term, year){
 // before it stay available; anything older is pruned to keep storage minimal.
 const MAX_TERMS_BEHIND = 5; // 6 terms retained: current + 5 previous
 function termsBehindCurrent(term, year){ return termIndex(DB.info.currentTerm, DB.info.currentYear) - termIndex(term, year); }
-// Promotion is only allowed once the admin has genuinely advanced the academic year
-// here from the Dashboard's "Term settings" (see the setTerm handler, which is the only
-// place DB.info.previousYear ever gets set). Until that's happened at least once,
-// previousYear is undefined and promotion stays locked — this stops students being
-// promoted into a class that's still meant to host the same cohort for the current year.
-function promotionEligible(){
-  const cy = Number(DB.info.currentYear);
-  const py = DB.info.previousYear==null ? null : Number(DB.info.previousYear);
-  return py!=null && Number.isFinite(cy) && cy > py;
+// ------------------------------------------------------------------------------
+// Class placement history — lets the Students list show who was in a given class
+// during a PAST term/year, not just who's there right now. Every time a student's
+// classId is actually set (registration, a manual class edit, or a promotion),
+// noteClassPlacement() appends {term, year, classId} to s.classHistory, tagged
+// with the term/year that placement took effect. historicalClassFor() then answers
+// "what class was this student in as of term X, year Y?" by finding the latest
+// history entry at or before that period. Students that existed before this
+// history was introduced simply have no entries yet, so their current class is
+// assumed to be where they've always been — accurate for anyone whose class has
+// never changed since, but not a guarantee for older manual class edits made
+// before this tracking existed.
+function noteClassPlacement(s, classId, term, year){
+  if(!Array.isArray(s.classHistory)) s.classHistory = [];
+  const last = s.classHistory[s.classHistory.length-1];
+  if(last && last.classId===classId && last.term===term && Number(last.year)===Number(year)) return;
+  s.classHistory.push({term, year, classId});
 }
+function historicalClassFor(s, term, year){
+  const reqIdx = termIndex(term, year);
+  const hist = Array.isArray(s.classHistory) ? s.classHistory : [];
+  let best = null;
+  for(const h of hist){
+    if(termIndex(h.term, h.year) <= reqIdx && (!best || termIndex(h.term,h.year) > termIndex(best.term,best.year))) best = h;
+  }
+  if(best) return best.classId;
+  if(hist.length) return null; // only ever tracked in later periods — unknown that far back
+  return s.classId; // never tracked (predates this feature) — assume unchanged all along
+}
+// Promote Students asks the admin to pick a class, type the Current Year, and pick the
+// next class for each promotion action (see promoteView) — nothing here is locked to
+// Dashboard state (DB.info.currentYear), and there's no "previous year" to match
+// against. That's deliberate: a class that was missed during an earlier year-change,
+// or promoted out of order, can always be promoted later just by picking it and
+// submitting — and promoting one class never touches the year or class of any other
+// class/student that wasn't included in that submission.
 // Retention policy: keep the current term plus the five immediately
 // preceding terms = MAXIMUM 6 terms total. Anything older is permanently
 // deleted from Firestore when the current period advances.
@@ -2940,7 +2966,7 @@ const NAV_BY_ROLE = {
   admin: [
     ['dashboard','Dashboard','🏠'],['schoolinfo','School Info & Logo','🏫'],['classes','Classes','📚'],
     ['accounts','Staff & Parent Accounts','👥'],['students','Students','🎓'],['oldstudents','Old Students','🎒'],['assignsubjects','Assign Subjects','📌'],
-    ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Promote Students','⬆️'],
+    ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Year, Term & Promotion','⬆️'],
     ['ascores','Enter / Download Scores','✍️'],['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
     ['reports','Report Cards','📄'],['mastermarksheet','Master Mark Sheet','🗂️'],['password','Change Password','🔒']
   ],
@@ -3086,51 +3112,10 @@ function adminDashboard(){
     </table>` : '<p class="small">No classes yet — add a class first.</p>'}
   </div>
   <div class="card">
-    <h3>Term settings</h3>
-    <p class="small">These show automatically on every report card.</p>
-    <form data-form="setTerm">
-      <div class="grid2">
-        <div><label>Term</label><select name="term"><option ${i.currentTerm==='Term 1'?'selected':''}>Term 1</option><option ${i.currentTerm==='Term 2'?'selected':''}>Term 2</option><option ${i.currentTerm==='Term 3'?'selected':''}>Term 3</option></select></div>
-        <div><label>Year</label><input type="number" name="year" min="2000" max="2100" step="1" value="${esc(String(i.currentYear||new Date().getFullYear()))}"></div>
-      </div>
-      <div class="grid2">
-        <div><label>Term ends</label><input type="date" name="termEndDate" value="${esc(i.termEndDate||'')}"></div>
-        <div><label>Next term begins</label><input type="date" name="nextTermBeginDate" value="${esc(i.nextTermBeginDate||'')}"></div>
-      </div>
-      <p class="small" style="margin-top:14px;margin-bottom:0;"><b>Score submission deadlines (optional, one for each exam type)</b> — leave either blank for no deadline, or clear a date that's already set any time you like just by emptying the field and submitting. Once a deadline passes, teachers can no longer submit, edit, or delete scores of that type — you can still reopen it for one or all teachers below. Changing a deadline's date resets who's been reopened for it, since it's a new cutoff.</p>
-      <div class="grid2" style="margin-top:8px;">
-        <div><label>${esc(examConfig().cwLabel)} deadline</label><input type="datetime-local" name="scoreDeadlineAOI" value="${esc(scoreDeadlineFor('AOI').deadline||'')}"></div>
-        <div><label>${esc(examConfig().eotLabel)} deadline</label><input type="datetime-local" name="scoreDeadlineEOT" value="${esc(scoreDeadlineFor('EOT').deadline||'')}"></div>
-      </div>
-      <button class="btn" style="margin-top:14px;">Submit — save term settings</button>
-    </form>
+    <h3>Year, Term & Promotion</h3>
+    <p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b>. Term/Year settings, score deadlines, and promoting students to their next class have been combined into one place.</p>
+    <button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button>
   </div>
-  ${['AOI','EOT'].map(kind=>{
-    const dl = scoreDeadlineFor(kind);
-    if(!dl.deadline) return '';
-    const label = kind==='AOI' ? examConfig().cwLabel : examConfig().eotLabel;
-    const passed = scoreDeadlinePassed(kind);
-    const teachers = DB.accounts.filter(a=>a.role==='teacher');
-    const allReopened = teachers.length>0 && teachers.every(t=>(dl.reopenedFor||[]).includes(t.username));
-    return `
-    <div class="card">
-      <h3>${esc(label)} Submission Deadline — Reopen Access</h3>
-      <p class="small">${passed
-        ? `The ${esc(label)} deadline (<b>${fmtDateTime(dl.deadline)}</b>) has passed. Teachers below are locked out of submitting, editing, or deleting ${esc(label)} scores unless reopened.`
-        : `The ${esc(label)} deadline (<b>${fmtDateTime(dl.deadline)}</b>) hasn't passed yet — every teacher can still submit and edit ${esc(label)} scores normally. Reopen access only matters once it has.`}</p>
-      ${passed ? `<button class="${allReopened?'btn-outline':'btn'}" style="margin-bottom:10px;" data-action="reopenAllScoreDeadline:${kind}">${allReopened?`All teachers already reopened for ${esc(label)}`:`Reopen ${esc(label)} for ALL teachers at once`}</button>` : ''}
-      <table class="data-table"><tr><th>Teacher</th><th>Status</th><th>Action</th></tr>
-      ${teachers.map(t=>{
-        const reopened = (dl.reopenedFor||[]).includes(t.username);
-        const status = !passed ? 'Not locked (deadline not reached)' : (reopened ? 'Reopened — can submit' : 'Locked out');
-        const action = !passed ? '—' : (reopened
-          ? `<button class="btn-outline" style="padding:4px 10px;" data-action="lockScoreDeadline:${kind}:${t.username}">Lock again</button>`
-          : `<button class="btn" style="padding:4px 10px;" data-action="reopenScoreDeadline:${kind}:${t.username}">Reopen for this teacher</button>`);
-        return `<tr><td>${esc(t.name)}</td><td>${status}</td><td>${action}</td></tr>`;
-      }).join('') || '<tr><td colspan="3">No teacher accounts yet.</td></tr>'}
-      </table>
-    </div>`;
-  }).join('')}
   <div class="card">
     <h3>Backup & Restore</h3>
     <p class="small">Your data lives in a shared online database, not in this browser — but it's still smart to keep your own copy. Download a full backup file regularly (e.g. weekly, or right after entering a big batch of scores) and keep it somewhere safe, like email-to-self, Google Drive, or a USB stick.</p>
@@ -3426,6 +3411,19 @@ function studentsView(){
         <input type="text" id="stuSearchInput" value="${esc(VIEW.params.stuSearch||'')}" placeholder="Start typing a student's name…" oninput="filterStudentsBySearch(this.value)">
       </div>
     </div>
+    <div class="grid2" style="margin-top:8px;">
+      <div><label>Term</label>
+        <select onchange="filterStudentsByTerm(this.value)">
+          <option ${(VIEW.params.stuTerm||DB.info.currentTerm)==='Term 1'?'selected':''}>Term 1</option>
+          <option ${(VIEW.params.stuTerm||DB.info.currentTerm)==='Term 2'?'selected':''}>Term 2</option>
+          <option ${(VIEW.params.stuTerm||DB.info.currentTerm)==='Term 3'?'selected':''}>Term 3</option>
+        </select>
+      </div>
+      <div><label>Year</label>
+        <input type="number" min="2000" max="2100" step="1" value="${esc(String(VIEW.params.stuYear||DB.info.currentYear))}" onchange="filterStudentsByYear(this.value)">
+      </div>
+    </div>
+    <p class="small" style="margin-top:6px;">Defaults to the current term/year and shows the live class list. Pick a past term/year to see the class list as it stood back then instead — this relies on class changes made using Promote Students, so it's most reliable going forward from when that history started being tracked.</p>
   </div>
   <div class="card">
     <div id="studentsTableWrap">${renderStudentsTableHtml()}</div>
@@ -3433,26 +3431,44 @@ function studentsView(){
 }
 function renderStudentsTableHtml(){
   const classId = VIEW.params.stuClassFilter||'';
-  const term = (VIEW.params.stuSearch||'').trim().toLowerCase();
-  if(!classId && !term){
+  const searchTerm = (VIEW.params.stuSearch||'').trim().toLowerCase();
+  const periodTerm = VIEW.params.stuTerm || DB.info.currentTerm;
+  const periodYear = Number(VIEW.params.stuYear || DB.info.currentYear);
+  const isPast = periodTerm!==DB.info.currentTerm || periodYear!==Number(DB.info.currentYear);
+  if(!classId && !searchTerm){
     return `<p class="small">Select a class above, or start typing a name in the search box, to see students here.</p>`;
   }
-  let list = DB.students.filter(s=>s.status!=='left'); // students who've left live under Old Students instead
-  if(classId) list = list.filter(s=>s.classId===classId);
-  if(term) list = list.filter(s=>(s.name||'').toLowerCase().includes(term));
+  let list;
+  if(!isPast){
+    list = DB.students.filter(s=>s.status!=='left'); // students who've left live under Old Students instead
+    if(classId) list = list.filter(s=>s.classId===classId);
+  }else{
+    // Reconstruct the roster as it stood in this past term/year from each student's
+    // tracked class-placement history, not their live (possibly since-promoted) classId.
+    list = DB.students.filter(s=>{
+      if(s.status==='left' && s.leftTerm && s.leftYear!=null && termIndex(s.leftTerm,s.leftYear)<=termIndex(periodTerm,periodYear)) return false; // had already left by then
+      const histClassId = historicalClassFor(s, periodTerm, periodYear);
+      if(histClassId===null) return false; // not enrolled yet, or too far back to know
+      if(classId && histClassId!==classId) return false;
+      return true;
+    });
+  }
+  if(searchTerm) list = list.filter(s=>(s.name||'').toLowerCase().includes(searchTerm));
   list = sortByName(list);
-  return `<table class="data-table"><tr><th>Photo</th><th>Name</th><th>Adm No</th><th>Class</th><th>Combination / Subjects</th><th>Action</th></tr>
+  const banner = isPast ? `<div class="note" style="margin-bottom:10px;">Showing the class list as it stood in <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the current class list. The actions below (edit, mark as left, remove) still act on the student's current record.</div>` : '';
+  return banner + `<table class="data-table"><tr><th>Photo</th><th>Name</th><th>Adm No</th><th>Class</th><th>Combination / Subjects</th><th>Action</th></tr>
     ${list.map(s=>{
-      const cls = DB.classes.find(c=>c.id===s.classId);
+      const clsId = isPast ? historicalClassFor(s, periodTerm, periodYear) : s.classId;
+      const cls = DB.classes.find(c=>c.id===clsId);
       return `<tr><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
-      <td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
+      <td>${cls?esc(cls.name):'—'}${isPast && cls && cls.id!==s.classId ? ' <span class="small" style="color:var(--muted);">(since promoted)</span>' : ''}</td><td>${esc(comboLabel(s,cls))}</td>
       <td class="flex"><button class="btn-outline" data-action="editStudentProfile:${s.id}"><b>Edit profile</b></button> <button class="btn-outline" data-action="markStudentLeft:${s.id}">Mark as left</button> <button class="btn-danger" data-action="delStudent:${s.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">No students match.</td></tr>'}
     </table>`;
 }
-// The class-filter select and the search box each re-render only the table div
-// (not the whole view via render()) so the search input never loses focus/cursor
-// position while the admin is typing, and both filters combine (AND) together.
+// The class-filter select, search box, and term/year pickers each re-render only the
+// table div (not the whole view via render()) so the search input never loses
+// focus/cursor position while the admin is typing, and all filters combine (AND) together.
 function filterStudentsByClass(v){
   VIEW.params.stuClassFilter = v||'';
   const wrap = document.getElementById('studentsTableWrap');
@@ -3460,6 +3476,16 @@ function filterStudentsByClass(v){
 }
 function filterStudentsBySearch(v){
   VIEW.params.stuSearch = v;
+  const wrap = document.getElementById('studentsTableWrap');
+  if(wrap) wrap.innerHTML = renderStudentsTableHtml();
+}
+function filterStudentsByTerm(v){
+  VIEW.params.stuTerm = v||null;
+  const wrap = document.getElementById('studentsTableWrap');
+  if(wrap) wrap.innerHTML = renderStudentsTableHtml();
+}
+function filterStudentsByYear(v){
+  VIEW.params.stuYear = v?Number(v):null;
   const wrap = document.getElementById('studentsTableWrap');
   if(wrap) wrap.innerHTML = renderStudentsTableHtml();
 }
@@ -3876,28 +3902,97 @@ function gradingView(gcClassId){
   </div>`;
 }
 
-/* ---------- Admin: Promote ---------- */
+function termSettingsCardHTML(){
+  const i = DB.info;
+  return `
+  <div class="card">
+    <h3>Term settings</h3>
+    <p class="small">These show automatically on every report card. Saving this never moves any student — it only changes the school's current term/year label and deadlines.</p>
+    <form data-form="setTerm">
+      <div class="grid2">
+        <div><label>Term</label><select name="term"><option ${i.currentTerm==='Term 1'?'selected':''}>Term 1</option><option ${i.currentTerm==='Term 2'?'selected':''}>Term 2</option><option ${i.currentTerm==='Term 3'?'selected':''}>Term 3</option></select></div>
+        <div><label>Year</label><input type="number" name="year" min="2000" max="2100" step="1" value="${esc(String(i.currentYear||new Date().getFullYear()))}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Term ends</label><input type="date" name="termEndDate" value="${esc(i.termEndDate||'')}"></div>
+        <div><label>Next term begins</label><input type="date" name="nextTermBeginDate" value="${esc(i.nextTermBeginDate||'')}"></div>
+      </div>
+      <p class="small" style="margin-top:14px;margin-bottom:0;"><b>Score submission deadlines (optional, one for each exam type)</b> — leave either blank for no deadline, or clear a date that's already set any time you like just by emptying the field and submitting. Once a deadline passes, teachers can no longer submit, edit, or delete scores of that type — you can still reopen it for one or all teachers below. Changing a deadline's date resets who's been reopened for it, since it's a new cutoff.</p>
+      <div class="grid2" style="margin-top:8px;">
+        <div><label>${esc(examConfig().cwLabel)} deadline</label><input type="datetime-local" name="scoreDeadlineAOI" value="${esc(scoreDeadlineFor('AOI').deadline||'')}"></div>
+        <div><label>${esc(examConfig().eotLabel)} deadline</label><input type="datetime-local" name="scoreDeadlineEOT" value="${esc(scoreDeadlineFor('EOT').deadline||'')}"></div>
+      </div>
+      <button class="btn" style="margin-top:14px;">Submit — save term settings</button>
+    </form>
+  </div>`;
+}
+function scoreDeadlineCardsHTML(){
+  return ['AOI','EOT'].map(kind=>{
+    const dl = scoreDeadlineFor(kind);
+    if(!dl.deadline) return '';
+    const label = kind==='AOI' ? examConfig().cwLabel : examConfig().eotLabel;
+    const passed = scoreDeadlinePassed(kind);
+    const teachers = DB.accounts.filter(a=>a.role==='teacher');
+    const allReopened = teachers.length>0 && teachers.every(t=>(dl.reopenedFor||[]).includes(t.username));
+    return `
+    <div class="card">
+      <h3>${esc(label)} Submission Deadline — Reopen Access</h3>
+      <p class="small">${passed
+        ? `The ${esc(label)} deadline (<b>${fmtDateTime(dl.deadline)}</b>) has passed. Teachers below are locked out of submitting, editing, or deleting ${esc(label)} scores unless reopened.`
+        : `The ${esc(label)} deadline (<b>${fmtDateTime(dl.deadline)}</b>) hasn't passed yet — every teacher can still submit and edit ${esc(label)} scores normally. Reopen access only matters once it has.`}</p>
+      ${passed ? `<button class="${allReopened?'btn-outline':'btn'}" style="margin-bottom:10px;" data-action="reopenAllScoreDeadline:${kind}">${allReopened?`All teachers already reopened for ${esc(label)}`:`Reopen ${esc(label)} for ALL teachers at once`}</button>` : ''}
+      <table class="data-table"><tr><th>Teacher</th><th>Status</th><th>Action</th></tr>
+      ${teachers.map(t=>{
+        const reopened = (dl.reopenedFor||[]).includes(t.username);
+        const status = !passed ? 'Not locked (deadline not reached)' : (reopened ? 'Reopened — can submit' : 'Locked out');
+        const action = !passed ? '—' : (reopened
+          ? `<button class="btn-outline" style="padding:4px 10px;" data-action="lockScoreDeadline:${kind}:${t.username}">Lock again</button>`
+          : `<button class="btn" style="padding:4px 10px;" data-action="reopenScoreDeadline:${kind}:${t.username}">Reopen for this teacher</button>`);
+        return `<tr><td>${esc(t.name)}</td><td>${status}</td><td>${action}</td></tr>`;
+      }).join('') || '<tr><td colspan="3">No teacher accounts yet.</td></tr>'}
+      </table>
+    </div>`;
+  }).join('');
+}
+/* ---------- Admin: Year, Term & Promotion ---------- */
+// This view combines what used to be two separate places on the Dashboard — Term/Year
+// settings and Promote Students — into one tile, since they're both "start of a new
+// academic period" tasks an admin tends to do together. They remain functionally
+// independent, though: each is its own <form> with its own submit button, so saving
+// Term settings never moves a single student, and promoting a class never touches
+// DB.info.currentYear. A class/student that isn't included in a promotion submission
+// simply isn't touched — its class and year stay exactly as they were, no matter how
+// many times Term settings are changed on this same page.
 function promoteView(){
   const i = DB.info;
-  const eligible = promotionEligible();
-  const previousYearLabel = i.previousYear==null ? '— not set yet —' : esc(String(i.previousYear));
+  const defaultCurr = i.currentYear || new Date().getFullYear();
   return `
-  <h2>Promote Students</h2>
-  <div class="grid2">
-    <div class="card"><div class="small">PREVIOUS ACADEMIC YEAR</div><h1 style="margin:4px 0;">${previousYearLabel}</h1></div>
-    <div class="card"><div class="small">CURRENT ACADEMIC YEAR (set on Dashboard)</div><h1 style="margin:4px 0;">${esc(String(i.currentYear||'—'))}</h1></div>
-  </div>
-  ${!eligible ? `
-  <div class="note" style="border-color:var(--danger);color:var(--danger);">
-    <b>Promotion is locked.</b> It only unlocks once you've moved the school into a new academic year from the Dashboard's "Term settings" — that's what sets the Previous Year shown above. ${i.previousYear==null ? `Go to Dashboard → Term settings and save the new academic Year to unlock promotion.` : `The Current Year on the Dashboard (${esc(String(i.currentYear))}) needs to be later than the Previous Year (${esc(String(i.previousYear))}) shown above.`}
-  </div>` : `
-  <div class="ok-banner" style="border-radius:6px;">Unlocked — the Dashboard's academic year has moved from ${esc(String(i.previousYear))} to ${esc(String(i.currentYear))}, so promoting classes into ${esc(String(i.currentYear))} is allowed.</div>`}
+  <h2>Year, Term & Promotion</h2>
+  ${termSettingsCardHTML()}
+  ${scoreDeadlineCardsHTML()}
   <div class="card">
+    <h3>Promote Students</h3>
+    <p class="small">Pick the class, type the Current Year this promotion belongs to, then pick the class those students are moving into. There's no "previous year" to fill in — that field was dropped because it caused confusion whenever a class was missed during an earlier round. Just pick the class and submit; a class can be promoted (or re-promoted) at any time, independently of every other class and of the Term settings above.</p>
     <form data-form="promote">
-      <label>From class</label><select name="fromClass" required ${eligible?'':'disabled'}><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
-      <label>Promote to class</label><select name="toClass" required ${eligible?'':'disabled'}><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
-      <p class="small">Moves every student in "From class" into "Promote to class". Score history is kept, tagged to the term/year it was entered in. Once moved, these students immediately stop appearing on "From class"'s roster for any subject teacher — they can no longer receive new scores in the class or term they've left.</p>
-      <button class="btn" style="margin-top:10px;" ${eligible?'':'disabled title="Promotion is locked — see above"'}>Submit — promote class</button>
+      <label>Class</label><select name="fromClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required>
+      <label>Next class</label><select name="toClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
+      <p class="small">Moves every student currently in "Class" into "Next class". Choosing "Old Students" instead moves them out of active classes into Old Students — same as marking them left, but for a whole class at once. Score history is kept, tagged to the term/year it was entered in. Once moved, these students immediately stop appearing on their old class's roster for any subject teacher — they can no longer receive new scores in the class or term they've left.</p>
+      <button class="btn" style="margin-top:10px;">Submit — promote class</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Promote All Classes</h3>
+    <p class="small">Promote every class in one go. Type the Current Year once, then choose a next class for each class you want to move — leave any class set to "-- don't promote --" to skip it (nothing happens to that class or its students). Choose "Old Students" for a class whose students are graduating/leaving instead of moving up. Only the classes you assign a destination to are touched.</p>
+    <form data-form="promoteAll">
+      <label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required>
+      <table class="data-table" style="margin-top:8px;">
+        <tr><th>Class</th><th>Promote to</th></tr>
+        ${DB.classes.map(c=>`<tr><td>${esc(c.name)}</td><td>
+          <select name="to__${c.id}"><option value="">-- don't promote --</option>${DB.classes.filter(o=>o.id!==c.id).map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
+        </td></tr>`).join('') || `<tr><td colspan="2">No classes yet — add a class first.</td></tr>`}
+      </table>
+      <button class="btn" style="margin-top:10px;">Submit — promote all classes</button>
     </form>
   </div>`;
 }
@@ -6181,7 +6276,7 @@ document.addEventListener('submit', async (e)=>{
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
-    'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','quickAddStudent',
+    'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
   if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
@@ -6424,7 +6519,6 @@ document.addEventListener('submit', async (e)=>{
       if(!newYearRaw || !Number.isInteger(newYear) || newYear<2000 || newYear>2100){ alert('Please enter a valid 4-digit year (e.g. 2026) before saving term settings.'); return; }
       const prevTerm=DB.info.currentTerm, prevYear=DB.info.currentYear;
       const termChanged=(newTerm!==prevTerm || Number(newYear)!==Number(prevYear));
-      const yearChanged=(Number(newYear)!==Number(prevYear));
       let termChangeDecision='leave';
       if(termChanged){
         const oldPeriodScores=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
@@ -6437,12 +6531,10 @@ document.addEventListener('submit', async (e)=>{
           await deleteCurrentPeriodScores(prevTerm,prevYear);
         }
       }
-      // Record the academic year we're moving FROM the moment the admin actually
-      // advances it here on the Dashboard. Promotion (see promoteView/promotionEligible)
-      // only unlocks once currentYear is genuinely ahead of previousYear — i.e. only
-      // after this exact step has happened — so a class can't be promoted before the
-      // admin has moved the school into a new academic year on this screen.
-      if(yearChanged){ DB.info.previousYear = prevYear; }
+      // Note: advancing the year here NEVER touches any student's class. Promotion
+      // (see promoteView) is a fully separate, manual action per class — a class or
+      // student that hasn't been promoted keeps its current class no matter how many
+      // times the year is changed on this form.
       DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
       DB.info.termEndDate=fd.get('termEndDate'); DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
       const sd={...(DB.info.scoreDeadlines||{})};
@@ -6740,7 +6832,9 @@ document.addEventListener('submit', async (e)=>{
       const admNo = nextAdmissionNumber(cls); // consumes this class's next 001-upward sequence number
       // Bio-data only — name, admission number, sex, class. No subjects are set here;
       // each subject teacher ticks this student into their own class list separately.
-      DB.students.push({id:uid('std'), name:fd.get('name'), admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo, gender:fd.get('gender')||null, feesBalance, nextTermFees, feesCode, status:'active'});
+      const newStu = {id:uid('std'), name:fd.get('name'), admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo, gender:fd.get('gender')||null, feesBalance, nextTermFees, feesCode, status:'active'};
+      noteClassPlacement(newStu, cls.id, DB.info.currentTerm, DB.info.currentYear);
+      DB.students.push(newStu);
       await Promise.all([saveStudents(), saveClasses()]); form.reset(); render();
     }
     else if(type==='bulkAddStudents'){
@@ -6763,7 +6857,9 @@ document.addEventListener('submit', async (e)=>{
         // subject teacher's own roster tick, never from this upload. Admission
         // number is always auto-assigned, never taken from the pasted list.
         const admNo = nextAdmissionNumber(cls);
-        DB.students.push({id:uid('std'), name, admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo:null, gender, feesBalance:null, nextTermFees:null, status:'active'});
+        const bulkStu = {id:uid('std'), name, admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo:null, gender, feesBalance:null, nextTermFees:null, status:'active'};
+        noteClassPlacement(bulkStu, cls.id, DB.info.currentTerm, DB.info.currentYear);
+        DB.students.push(bulkStu);
         added++;
       }
       await Promise.all([saveStudents(), saveClasses()]); form.reset(); render();
@@ -6841,6 +6937,7 @@ document.addEventListener('submit', async (e)=>{
         await deletePhotoFromStorage(oldPhoto); // old photo is fully replaced — free up its space
       }
       s.name = fd.get('name'); s.gender = fd.get('gender')||null; s.classId = cls.id; // admNo is permanent — never edited here
+      noteClassPlacement(s, cls.id, DB.info.currentTerm, DB.info.currentYear);
       s.feesBalance = fd.get('feesBalance')!==''? Number(fd.get('feesBalance')) : null;
       s.nextTermFees = fd.get('nextTermFees')!==''? Number(fd.get('nextTermFees')) : null;
       s.feesCode = (fd.get('feesCode')||'').trim() || null;
@@ -6947,15 +7044,55 @@ document.addEventListener('submit', async (e)=>{
       await saveClasses(); showDeliveredToast('Test updated'); render();
     }
     else if(type==='promote'){
-      // Backstop for the disabled form above — promotion is only allowed once the
-      // admin has actually advanced the academic year from the Dashboard.
-      if(!promotionEligible()){
-        alert('Promotion is locked until you advance the academic year from the Dashboard\'s Term settings.');
-        render(); return;
+      const currYearRaw = fd.get('currYear');
+      const currYearVal = Number(currYearRaw);
+      if(!currYearRaw || !Number.isInteger(currYearVal) || currYearVal<2000 || currYearVal>2100){
+        alert('Please enter a valid 4-digit Current Year before promoting.'); return;
       }
       const from=fd.get('fromClass'), to=fd.get('toClass');
-      DB.students.forEach(s=>{ if(s.classId===from && s.status!=='left') s.classId=to; });
-      await saveStudents(); alert('Students promoted successfully.'); render();
+      if(!from || !to){ alert('Please choose both a class and a next class.'); return; }
+      if(from===to){ alert('Next class must be different from the class being promoted.'); return; }
+      // Only students currently in "from" are touched. Every other class/student is left
+      // exactly as-is — this action never changes DB.info.currentYear or anyone else's class.
+      const moved = DB.students.filter(s=>s.classId===from && s.status!=='left');
+      if(to==='__OLD__'){
+        // Graduate/leave this whole class into Old Students instead of moving classId —
+        // their classId stays as-is so Old Students can still show which class they left
+        // from, exactly like marking a single student left.
+        moved.forEach(s=>{ s.status='left'; s.leftTerm=DB.info.currentTerm; s.leftYear=currYearVal; });
+      }else{
+        // Record the class-history entry BEFORE moving classId forward, so a Students
+        // list lookup for a past term/year can still find them in "from" up to this
+        // point, then correctly in "to" from this point on.
+        moved.forEach(s=>{ noteClassPlacement(s, to, DB.info.currentTerm, currYearVal); s.classId=to; });
+      }
+      await saveStudents(); alert(`${moved.length} student(s) promoted successfully.`); render();
+    }
+    else if(type==='promoteAll'){
+      const currYearRaw = fd.get('currYear');
+      const currYearVal = Number(currYearRaw);
+      if(!currYearRaw || !Number.isInteger(currYearVal) || currYearVal<2000 || currYearVal>2100){
+        alert('Please enter a valid 4-digit Current Year before promoting.'); return;
+      }
+      // Build the from->to map from only the classes the admin actually assigned a
+      // destination to (a next class, or Old Students). Any class left on
+      // "-- don't promote --" is skipped entirely, so its students keep their current
+      // class untouched.
+      const moves = DB.classes
+        .map(c=>({from:c.id, to:fd.get('to__'+c.id)}))
+        .filter(m=>m.to);
+      if(!moves.length){ alert('Choose a destination for at least one class before submitting.'); return; }
+      let totalMoved = 0;
+      moves.forEach(({from,to})=>{
+        const moved = DB.students.filter(s=>s.classId===from && s.status!=='left');
+        if(to==='__OLD__'){
+          moved.forEach(s=>{ s.status='left'; s.leftTerm=DB.info.currentTerm; s.leftYear=currYearVal; });
+        }else{
+          moved.forEach(s=>{ noteClassPlacement(s, to, DB.info.currentTerm, currYearVal); s.classId=to; });
+        }
+        totalMoved += moved.length;
+      });
+      await saveStudents(); alert(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
@@ -7000,6 +7137,7 @@ document.addEventListener('submit', async (e)=>{
       // of the class's running sequence.
       const admNo = nextAdmissionNumber(cls); // consumes this class's next 001-upward sequence number
       const newStudent = {id:uid('std'), name, admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo:null, gender:fd.get('gender')||null, feesBalance:null, nextTermFees:null, status:'active'};
+      noteClassPlacement(newStudent, cls.id, DB.info.currentTerm, DB.info.currentYear);
       DB.students.push(newStudent);
       a.studentIds = Array.isArray(a.studentIds) ? [...new Set([...a.studentIds, newStudent.id])] : [newStudent.id];
       await Promise.all([saveStudents(), saveAssignments(), saveClasses()]);
