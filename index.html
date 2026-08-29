@@ -220,13 +220,15 @@ table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
 /* Primary-only grading scale shown immediately below the Performance Summary. */
 table.rc-grading-scale-table{width:100%;border-collapse:collapse;margin:8px 0 10px;table-layout:fixed;}
-table.rc-grading-scale-table th,table.rc-grading-scale-table td{border:1.4px solid var(--blue);padding:5px 8px;text-align:center;font-size:10px;line-height:1.2;}
+table.rc-grading-scale-table th,table.rc-grading-scale-table td{border:1.4px solid var(--blue);padding:5px 6px;text-align:center;font-size:10px;line-height:1.2;}
 table.rc-grading-scale-table th{background:var(--blue-light);color:var(--navy);font-weight:900;text-transform:uppercase;letter-spacing:.02em;}
-table.rc-grading-scale-table th:first-child,table.rc-grading-scale-table td:first-child{width:70%;}
-table.rc-grading-scale-table th:last-child,table.rc-grading-scale-table td:last-child{width:30%;}
+/* Primary report-card grading scale: exactly two rows, with each grading band in its own column. */
+table.rc-grading-scale-table tr:first-child th:first-child{width:22%;}
+table.rc-grading-scale-table tr:first-child th:not(:first-child),
+table.rc-grading-scale-table tr:nth-child(2) td:not(:first-child){width:auto;}
 .primary-report-card table.rc-grading-scale-table{font-size:10px;}
 #pdfCaptureHolder .primary-report-card table.rc-grading-scale-table{width:100% !important;table-layout:fixed !important;margin:8px 0 10px;}
-#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table th,#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table td{font-size:var(--pdf-table-body-size,9px) !important;padding:3px 5px !important;}
+#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table th,#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table td{font-size:var(--pdf-table-body-size,9px) !important;padding:3px 4px !important;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
    export (see mergedTd() in reportCardHTML): a subject-level value (Final Average,
    Grade, Points, Descriptor, Subject name) that spans more than one paper row is
@@ -5047,11 +5049,17 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     ${isP ? `
     <div class="rc-section-title">Grading Scale</div>
     <table class="rc-grading-scale-table">
-      <tr><th>Range of Marks (%)</th><th>Grade</th></tr>
-      ${PLE_GRADES.map(g=>{
-        const band=(DB.pbands||DEFAULT_P_BANDS)[g] || DEFAULT_P_BANDS[g];
-        return `<tr><td>${band[0]}–${band[1]}</td><td><b>${g}</b></td></tr>`;
-      }).join('')}
+      <tr>
+        <th>Range of Marks (%)</th>
+        ${PLE_GRADES.map(g=>{
+          const band=(DB.pbands||DEFAULT_P_BANDS)[g] || DEFAULT_P_BANDS[g];
+          return `<th>${band[0]}–${band[1]}</th>`;
+        }).join('')}
+      </tr>
+      <tr>
+        <th>Grade</th>
+        ${PLE_GRADES.map(g=>`<td><b>${g}</b></td>`).join('')}
+      </tr>
     </table>` : ''}
 
     <div class="rc-section-title">Comments</div>
