@@ -2128,14 +2128,6 @@ function subjectAverage(studentId, subject, term, year){
 // whoever the class/subject is assigned to. The report card grades the SUBJECT as one
 // whole — off the combined average of every paper's marks — never a single paper alone.
 // This just looks up which papers exist for a subject in a class.
-// Primary classes have one implicit paper only. Keep this helper defensive so older
-// assignment records that predate the Primary paper handling (and therefore have no
-// `papers` array) can never crash score entry, dashboards, or report-card helpers.
-function assignmentPapers(a, cls){
-  if(cls && cls.level==='P') return ['1'];
-  return Array.isArray(a && a.papers) ? a.papers : [];
-}
-
 function subjectPapersFor(subject, cls){
   if(!cls) return [];
   // Several teachers can each hold their own assignment row for the same subject+class
@@ -2145,7 +2137,7 @@ function subjectPapersFor(subject, cls){
   const asns = DB.assignments.filter(x=>x.subject===subject && x.classId===cls.id);
   const papers = [];
   asns.forEach(a=>{
-    assignmentPapers(a, cls).forEach(p=>{ if(!papers.some(x=>String(x)===String(p))) papers.push(p); });
+    if(Array.isArray(a.papers)) a.papers.forEach(p=>{ if(!papers.some(x=>String(x)===String(p))) papers.push(p); });
   });
   papers.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
   return papers;
@@ -2962,13 +2954,13 @@ function renderView(view){
       case 'promote': return promoteView();
       case 'reports': return reportsListView();
       case 'password': return passwordView();
-      case 'ascores': return CUR.role==='admin' ? scoresEntryView(DB.assignments) : '<p>You don\'t have permission to view this page.</p>';
+      case 'ascores': return CUR.role==='admin' ? scoresEntryView(liveAssignments(DB.assignments)) : '<p>You don\'t have permission to view this page.</p>';
       case 'marksheets': return marksheetsListView();
       case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
       case 'classanalysis': return classAnalysisView();
       case 'mastermarksheet': return masterMarkSheetView();
       case 'tdash': return teacherDashboard();
-      case 'tscores': return scoresEntryView(DB.assignments.filter(a=>a.teacherUsername===CUR.username));
+      case 'tscores': return scoresEntryView(liveAssignments(DB.assignments.filter(a=>a.teacherUsername===CUR.username)));
       case 'treports': return reportsListView();
       case 'pdash': return parentDashboard();
       case 'preport': return parentReportView();
@@ -3548,7 +3540,7 @@ function assignSubjectsView(){
     ${DB.assignments.map(a=>{
       const t = DB.accounts.find(x=>x.username===a.teacherUsername); const c = DB.classes.find(x=>x.id===a.classId);
       const isP = c && c.level==='P';
-      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(assignmentPapers(a, c).join(', '))}</td>
+      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(a.papers.join(', '))}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="5">No assignments yet.</td></tr>'}
     </table>
@@ -3602,7 +3594,7 @@ function teacherProfileView(username){
       const isP = c && c.level==='P';
       return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td>
       <td>${isP ? '—' : `<form data-form="editAssignPapers" data-id="${a.id}" style="display:flex;gap:6px;align-items:center;margin:0;">
-        <input name="papers" value="${esc(assignmentPapers(a, c).join(', '))}" style="width:110px;">
+        <input name="papers" value="${esc(a.papers.join(', '))}" style="width:110px;">
         <button class="btn-outline" type="submit" style="padding:6px 10px;">Save</button>
       </form>`}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
@@ -4367,8 +4359,14 @@ function passwordView(){
 }
 
 /* ---------- Teacher ---------- */
+// Assignments whose class still exists. An assignment can be orphaned if its class was
+// later deleted (delClass only removes the class itself, not assignments that pointed to
+// it) — filtering these out here stops a dead assignment from ever being offered for
+// picking/marking, which is what previously crashed the Enter Scores page with
+// "Cannot read properties of undefined (reading 'level')" when its class lookup failed.
+function liveAssignments(list){ return list.filter(a=>DB.classes.some(c=>c.id===a.classId)); }
 function teacherDashboard(){
-  const mine = DB.assignments.filter(a=>a.teacherUsername===CUR.username);
+  const mine = liveAssignments(DB.assignments.filter(a=>a.teacherUsername===CUR.username));
   const i = DB.info;
   return `
   <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
@@ -4382,18 +4380,21 @@ function teacherDashboard(){
   ${featureTilesHTML('teacher','tdash')}
   <div class="card"><h3>Your subject assignments</h3>
   <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Papers</th></tr>
-  ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId); return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(assignmentPapers(a, c).join(', '))}</td></tr>`; }).join('') || '<tr><td colspan="3">No assignments yet.</td></tr>'}
+  ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId); return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(a.papers.join(', '))}</td></tr>`; }).join('') || '<tr><td colspan="3">No assignments yet.</td></tr>'}
   </table></div>`;
 }
 
 function scoresEntryView(mine){
   const sel = VIEW.params;
   let studentRows = '';
-  if(sel.assignId && (sel.paper || (DB.classes.find(c=>c.id===(DB.assignments.find(a=>a.id===sel.assignId)||{}).classId)||{}).level==='P') && sel.kind){
+  if(sel.assignId && sel.paper && sel.kind){
     const a = mine.find(x=>x.id===sel.assignId);
     if(!a) return `<p>That assignment is not available to you.</p><button class="btn-outline" data-action="nav:${VIEW.name}">Back to subject/class picker</button>`;
     const cls = DB.classes.find(c=>c.id===a.classId);
-    if(cls && cls.level==='P' && !sel.paper) sel.paper='1';
+    // Defensive: the class this assignment points to may have been deleted (e.g. removed
+    // and recreated under a new id) while the assignment record itself was never cleaned
+    // up. Without this guard every cls.* read below throws and takes down the whole page.
+    if(!cls) return `<p>This assignment's class no longer exists (it may have been deleted). Please ask an Admin to remove this assignment under "Assign Subjects" and re-assign it to the current class.</p><button class="btn-outline" data-action="nav:${VIEW.name}">Back to subject/class picker</button>`;
     // Every student already in the class is available to a subject teacher to tick —
     // admin registration never decides who takes a subject, so eligibility here is
     // simply "in this class", not "already recorded as taking this subject".
@@ -4536,7 +4537,19 @@ function scoresEntryView(mine){
     <div><b>${pickedAssign?esc(pickedAssign.subject):''}</b>${pickedCls?' — '+esc(pickedCls.name):''}${pickedCls&&pickedCls.level!=='P'?' — Paper '+esc(String(sel.paper)):''} — ${sel.kind==='AOI'?esc(sel.label||examConfig(pickedAssign?pickedAssign.classId:null).cwLabel):esc(examConfig(pickedAssign?pickedAssign.classId:null).eotLabel)} <span class="small" style="color:var(--muted);">(out of ${sel.maxScore})</span></div>
     <button type="button" class="btn-outline" data-action="nav:${VIEW.name}">Change subject / paper / test</button>
   </div>` : '';
-  const pickerCard = pickerSubmitted ? '' : `
+  const pickerCard = pickerSubmitted ? '' : (()=>{
+    // Guess the initial Paper-field visibility from the first assignment in the list —
+    // same convention used on Assign Subjects for the equivalent field. This only
+    // affects the very first render, before the teacher/admin has actually picked a
+    // subject/class; the change-handler below (on #assignSel) always recalculates and
+    // overrides this the instant a real selection is made. Its purpose is simply to
+    // stop the Paper dropdown from flashing up for a teacher whose very first (or only)
+    // assignment is Primary, since Primary has no concept of papers at all.
+    const firstA = mine[0];
+    const firstCls = firstA ? DB.classes.find(c=>c.id===firstA.classId) : null;
+    const firstIsPrimary = !!(firstCls && firstCls.level==='P');
+    const firstPaperOptions = firstA ? firstA.papers.map(p=>`<option value="${esc(String(p))}">Paper ${esc(String(p))}</option>`).join('') : '';
+    return `
   <div class="card" style="margin-top:14px;">
     <form data-form="pickPaper">
       <div class="grid2">
@@ -4548,7 +4561,7 @@ function scoresEntryView(mine){
               return `<option value="${a.id}">${esc(a.subject)} — ${c?esc(c.name):''}${teacherBit}</option>`; }).join('') || '<option value="">-- no subject assignments yet --</option>'}
           </select>
         </div>
-        <div id="paperFieldWrap"><label>Paper</label><select name="paper" required id="paperSelect"></select></div>
+        <div id="paperFieldWrap" style="${firstIsPrimary?'display:none;':''}"><label>Paper</label><select name="paper" ${firstIsPrimary?'':'required'} id="paperSelect">${firstPaperOptions}</select></div>
       </div>
       <div class="grid2">
         <div><label>Assessment type</label><select name="kind" id="kindSel">
@@ -4571,6 +4584,7 @@ function scoresEntryView(mine){
       <button class="btn" style="margin-top:14px;">Submit — load student list</button>
     </form>
   </div>`;
+  })();
   return `
   <h2>${CUR.role==='admin'?'Enter / Download Scores':'Enter Scores'}</h2>
   <div class="note">${CUR.role==='admin'?'As Admin, you can select <b>any</b> subject/class assignment below — for any teacher — and enter or edit scores directly on their behalf. The dropdown shows the teacher\'s name next to each assignment. ':''}Step 1: choose the subject/class ${CUR.role==='admin'?'and teacher':'you\'re assigned'}, the paper, and whether this is an AOI test or the End of Term score. Step 2: click below to load the students and type marks. Step 3: click <b>Save &amp; send</b>.</div>
@@ -4698,7 +4712,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     const asns = DB.assignments.filter(a=>a.subject===subject && a.classId===cls.id);
     if(!asns.length) return null;
     if(paper==null) return asns[0];
-    return asns.find(a=>assignmentPapers(a, cls).some(p=>String(p)===String(paper))) || asns[0];
+    return asns.find(a=>Array.isArray(a.papers) && a.papers.some(p=>String(p)===String(paper))) || asns[0];
   }
   function canEditScore(subject, paper, kind){
     if(!editableNow) return false;
@@ -5192,7 +5206,17 @@ Continue?`);
       render();
       break;
     }
-    case 'delClass': DB.classes = DB.classes.filter(c=>c.id!==arg); await saveClasses(); showActionSuccess('Deleted successfully'); render(); break;
+    case 'delClass': {
+      // Deleting a class used to leave behind any subject/teacher assignments that
+      // pointed at it — those orphaned assignments had no matching class on lookup,
+      // which crashed the Enter Scores page ("Cannot read properties of undefined
+      // (reading 'level')") the moment anyone tried to pick them. Cascade the
+      // assignments out along with the class so nothing dangling is left behind.
+      DB.classes = DB.classes.filter(c=>c.id!==arg);
+      DB.assignments = DB.assignments.filter(a=>a.classId!==arg);
+      await Promise.all([saveClasses(), saveAssignments()]);
+      showActionSuccess('Deleted successfully'); render(); break;
+    }
     case 'delStudent': {
       const s = DB.students.find(x=>x.id===arg);
       DB.students = DB.students.filter(x=>x.id!==arg);
@@ -5785,12 +5809,12 @@ document.addEventListener('change', (e)=>{
     const form = e.target.closest('form');
     const mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(a=>a.teacherUsername===CUR.username);
     const a = mine.find(x=>x.id===e.target.value);
-    const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
     const paperSel = form.querySelector('#paperSelect');
-    if(a && paperSel){ paperSel.innerHTML = assignmentPapers(a, assignedCls).map(p=>`<option value="${p}">Paper ${p}</option>`).join(''); }
+    if(a && paperSel){ paperSel.innerHTML = a.papers.map(p=>`<option value="${p}">Paper ${p}</option>`).join(''); }
     // Primary has no concept of papers (always a single implicit paper), so the Paper
     // field is hidden entirely on the score-entry form once a Primary class/subject
     // assignment is chosen — nothing for the teacher to pick.
+    const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
     const isPrimaryAssign = !!(assignedCls && assignedCls.level==='P');
     const paperFieldWrap = form.querySelector('#paperFieldWrap');
     if(paperFieldWrap) paperFieldWrap.style.display = isPrimaryAssign ? 'none' : 'block';
@@ -6399,7 +6423,7 @@ document.addEventListener('submit', async (e)=>{
         if(!acctOk) return;
         const existingA = DB.assignments.find(a=>a.teacherUsername.toLowerCase()===pa.teacherUsername.toLowerCase() && a.classId===pa.classId && a.subject===pa.subject);
         if(existingA){
-          const merged = [...new Set([...assignmentPapers(existingA, DB.classes.find(c=>c.id===existingA.classId)), ...(Array.isArray(pa.papers)?pa.papers:[])])];
+          const merged = [...new Set([...existingA.papers, ...pa.papers])];
           if(merged.length!==existingA.papers.length){ existingA.papers = merged; assignsMerged++; }
         } else {
           DB.assignments.push({id:uid('asn'), teacherUsername:pa.teacherUsername, classId:pa.classId, subject:pa.subject, papers:pa.papers});
@@ -6500,8 +6524,7 @@ document.addEventListener('submit', async (e)=>{
       // Primary has no papers concept — regardless of what the (possibly hidden) Papers
       // field contains, a Primary-class assignment always gets a single implicit paper.
       const assignCls = DB.classes.find(c=>c.id===fd.get('classId'));
-      const rawPapers = fd.get('papers') || '';
-       const papers = (assignCls && assignCls.level==='P') ? ['1'] : rawPapers.split(',').map(p=>p.trim()).filter(Boolean);
+      const papers = (assignCls && assignCls.level==='P') ? ['1'] : fd.get('papers').split(',').map(p=>p.trim()).filter(Boolean);
       DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
       await saveAssignments(); form.reset(); render();
     }
@@ -6697,11 +6720,7 @@ document.addEventListener('submit', async (e)=>{
         alert('Please enter the maximum mark this test/exam was marked out of before continuing.');
         return;
       }
-      const pickedAssign = DB.assignments.find(a=>a.id===fd.get('assignId'));
-      const pickedCls = pickedAssign ? DB.classes.find(c=>c.id===pickedAssign.classId) : null;
-      const pickedPaper = pickedCls && pickedCls.level==='P' ? '1' : fd.get('paper');
-      if(!pickedPaper){ alert('Please select a paper before continuing.'); return; }
-      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:pickedPaper, kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
+      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
     }
     else if(type==='saveRoster'){
       const assignId = form.dataset.assign;
@@ -6784,10 +6803,7 @@ document.addEventListener('submit', async (e)=>{
       render();
     }
     else if(type==='saveScores'){
-      const assignId=form.dataset.assign, subject=form.dataset.subject, kind=form.dataset.kind, label=form.dataset.label;
-       const saveAssign = DB.assignments.find(x=>x.id===assignId);
-       const saveCls = saveAssign ? DB.classes.find(c=>c.id===saveAssign.classId) : null;
-       const paper = (saveCls && saveCls.level==='P') ? '1' : form.dataset.paper;
+      const assignId=form.dataset.assign, paper=form.dataset.paper, subject=form.dataset.subject, kind=form.dataset.kind, label=form.dataset.label;
       if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, kind)){
         alert(`The score submission deadline (${fmtDateTime(scoreDeadlineFor(kind).deadline)}) has passed, so this can't be saved. Ask your admin to reopen score entry for you if you need to submit or correct marks.`);
         return;
@@ -7514,7 +7530,7 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
      operations like bulk PDF export, so a 100-report bulk download can't be killed
      partway through by an update landing at the wrong moment.
 ------------------------------------------------------------------------------- */
-const BUILD_ID = '2026-08-29-primary-score-fix-1'; // <-- change this to any new value on every deploy
+const BUILD_ID = 'BUILD-2026-08-24-3'; // <-- change this to any new value on every deploy
 
 // Set true for the duration of any operation an update-reload must never interrupt
 // (bulk PDF export, CSV import, etc). Kept as a simple counter so nested/overlapping
