@@ -327,9 +327,19 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
 @media print{
   body *{visibility:hidden;}
   #printArea, #printArea *{visibility:visible;}
-  #printArea{position:absolute;top:0;left:0;width:100%;}
-  table{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @page{ size:A4; margin:10mm; }
+  #printArea{position:absolute;top:0;left:0;width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;}
+  #printArea .rc-card{width:100% !important;max-width:none !important;margin:0 !important;box-sizing:border-box;overflow:visible !important;}
+  #printArea .rc-content{width:100% !important;max-width:none !important;box-sizing:border-box;}
+  #printArea table.rc-info-table,#printArea table.rc-perf,#printArea table.rc-summary-table,#printArea table.rc-comments-table,#printArea table.rc-grading-scale-table{
+    width:100% !important;max-width:100% !important;min-width:0 !important;box-sizing:border-box;table-layout:fixed;
+  }
+  #printArea .rc-perf-wrap{overflow:visible !important;width:100% !important;max-width:100% !important;box-sizing:border-box;}
+  #printArea table.rc-info-table td,#printArea table.rc-summary-table td,#printArea table.rc-comments-table th,#printArea table.rc-comments-table td{
+    box-sizing:border-box;min-width:0;max-width:none;overflow-wrap:anywhere;word-break:break-word;
+  }
+  #printArea table.rc-perf th,#printArea table.rc-perf td{min-width:0;max-width:none;overflow-wrap:anywhere;word-break:break-word;}
+  #printArea table{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  @page{ size:A4 portrait; margin:10mm; }
 }
 @media (max-width:760px){
   .layout{flex-direction:column;}
@@ -5235,7 +5245,9 @@ document.addEventListener('click', async (e)=>{
       // firing a second, overlapping render while the first PDF is still being built).
       if(el.disabled) break;
       const _origLbl = el.innerHTML; el.disabled = true; el.innerHTML = '<b>Preparing…</b>';
-      try{ await singleStudentPdf(arg); }
+      let _pdfPreviewWindow = null;
+      try{ _pdfPreviewWindow = window.open('about:blank','_blank'); }catch(e){}
+      try{ await singleStudentPdf(arg, _pdfPreviewWindow); }
       finally{ el.disabled = false; el.innerHTML = _origLbl; }
       break;
     }
@@ -7013,20 +7025,29 @@ function loadPdfLibs(){
 // a new tab where Share ▸ Save to Files works. Either way, one tap is all it
 // takes, and we surface our own confirmation via the toast instead of relying on
 // "did a new tab visibly appear" as the signal.
-function openOrSavePdf(pdf, filename){
+function openOrSavePdf(pdf, filename, previewWindow=null){
   try{
     const blob = pdf.output('blob');
     const url = URL.createObjectURL(blob);
+    // A blank tab may be opened synchronously from the original button tap.
+    // Once the async PDF render finishes, navigate that already-authorised tab
+    // to the finished PDF while still triggering a real download below. This
+    // gives browsers a reliable preview without sacrificing the downloaded file.
+    if(previewWindow && !previewWindow.closed){
+      try{ previewWindow.location.href = url; }catch(e){}
+    } else {
+      // Best-effort fallback for browsers that allow a delayed popup.
+      try{ window.open(url, '_blank', 'noopener'); }catch(e){}
+    }
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
-    a.target = '_blank';
     a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 60000);
-    showDeliveredToast(`Ready — ${filename}`);
+    setTimeout(()=>URL.revokeObjectURL(url), 120000);
+    showDeliveredToast(`PDF downloaded and opened — ${filename}`);
   }catch(e){
     try{ pdf.save(filename); showDeliveredToast(`Ready — ${filename}`); }
     catch(e2){ alert('Could not create the PDF file: ' + (e2.message||e2)); }
@@ -7432,7 +7453,7 @@ async function pdfForStudents(students, filename, opts={}){
     // instead of being merged/shared across the rowspan boundary) — the live on-screen
     // card and the browser Print dialog still use the normal collapsed borders, so this
     // override is scoped to just the offscreen holder html2canvas actually screenshots.
-    holder.innerHTML = `<style>#pdfCaptureHolder{width:820px;box-sizing:border-box;background:#fff;}#pdfCaptureHolder .rc-card{box-sizing:border-box;width:100%;max-width:none;margin:0;}#pdfCaptureHolder table.rc-perf{table-layout:fixed !important;width:100% !important;min-width:0 !important;}#pdfCaptureHolder .rc-perf-wrap{overflow:visible !important;width:100% !important;}#pdfCaptureHolder table.rc-perf,#pdfCaptureHolder table.rc-info-table{border-collapse:separate;border-spacing:0;}</style>`+
+    holder.innerHTML = `<style>#pdfCaptureHolder{width:820px;box-sizing:border-box;background:#fff;}#pdfCaptureHolder .rc-card{box-sizing:border-box;width:100%;max-width:none;margin:0;}#pdfCaptureHolder .rc-content{width:100%;max-width:none;box-sizing:border-box;}#pdfCaptureHolder table.rc-perf,#pdfCaptureHolder table.rc-info-table,#pdfCaptureHolder table.rc-summary-table,#pdfCaptureHolder table.rc-comments-table{width:100% !important;max-width:100% !important;min-width:0 !important;table-layout:fixed !important;box-sizing:border-box;border-collapse:separate;border-spacing:0;}#pdfCaptureHolder table.rc-info-table td,#pdfCaptureHolder table.rc-summary-table td,#pdfCaptureHolder table.rc-comments-table th,#pdfCaptureHolder table.rc-comments-table td{box-sizing:border-box;min-width:0 !important;max-width:none !important;overflow-wrap:anywhere;word-break:break-word;}#pdfCaptureHolder .rc-perf-wrap{overflow:visible !important;width:100% !important;max-width:100% !important;box-sizing:border-box;}</style>`+
       `<div id="pdfCaptureHolder" style="padding:10px 0;font-family:Inter,sans-serif;width:100%;box-sizing:border-box;">${reportCardHTML(students[i].id, true)}</div>`;
     // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
     // card with a CSS transform, and a transform never changes an element's
@@ -7508,7 +7529,7 @@ async function bulkPdf(classId, onProgress){
     if(b<batches.length-1) await new Promise(r=>setTimeout(r, 400));
   }
 }
-async function singleStudentPdf(studentId){
+async function singleStudentPdf(studentId, previewWindow=null){
   try{
     await refreshScores();
   }catch(e){
@@ -7516,7 +7537,7 @@ async function singleStudentPdf(studentId){
   }
   const s = DB.students.find(x=>x.id===studentId);
   if(!s){ alert('Student not found.'); return; }
-  await pdfForStudents([s], `${(s.name||'student').replace(/[^a-z0-9]+/gi,'_')}_report.pdf`);
+  await pdfForStudents([s], `${(s.name||'student').replace(/[^a-z0-9]+/gi,'_')}_report.pdf`, {previewWindow});
 }
 
 /* ---------- Error visibility ----------
