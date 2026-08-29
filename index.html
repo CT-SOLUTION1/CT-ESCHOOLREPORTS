@@ -218,6 +218,15 @@ table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);border-top:2.4px solid var(--blue);}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
+/* Primary-only grading scale shown immediately below the Performance Summary. */
+table.rc-grading-scale-table{width:100%;border-collapse:collapse;margin:8px 0 10px;table-layout:fixed;}
+table.rc-grading-scale-table th,table.rc-grading-scale-table td{border:1.4px solid var(--blue);padding:5px 8px;text-align:center;font-size:10px;line-height:1.2;}
+table.rc-grading-scale-table th{background:var(--blue-light);color:var(--navy);font-weight:900;text-transform:uppercase;letter-spacing:.02em;}
+table.rc-grading-scale-table th:first-child,table.rc-grading-scale-table td:first-child{width:70%;}
+table.rc-grading-scale-table th:last-child,table.rc-grading-scale-table td:last-child{width:30%;}
+.primary-report-card table.rc-grading-scale-table{font-size:10px;}
+#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table{width:100% !important;table-layout:fixed !important;margin:8px 0 10px;}
+#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table th,#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table td{font-size:var(--pdf-table-body-size,9px) !important;padding:3px 5px !important;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
    export (see mergedTd() in reportCardHTML): a subject-level value (Final Average,
    Grade, Points, Descriptor, Subject name) that spans more than one paper row is
@@ -367,6 +376,24 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
 .rc-perf td:first-child{max-width:145px;}
 .rc-perf td:first-child.rc-subject-long{font-size:10px;}
 .rc-perf td:first-child.rc-subject-very-long{font-size:9px;}
+
+/* Primary report cards: no Paper Average column (Primary uses one assessment paper per subject).
+   Rebalance the remaining columns so the Grade column has enough room for D1/D2/C3-C6/P7/P8/F9
+   and the table remains clean on A4. These rules are deliberately scoped to Primary only. */
+table.rc-perf.primary-report-card, .primary-report-card table.rc-perf{table-layout:fixed;}
+.primary-report-card table.rc-perf th.rc-th-subj{width:145px;min-width:145px;}
+.primary-report-card table.rc-perf th.rc-th-final{width:78px;min-width:78px;}
+.primary-report-card table.rc-perf th.rc-th-grade{width:62px;min-width:62px;font-size:8.5px;}
+.primary-report-card table.rc-perf th.rc-th-desc{width:105px;min-width:105px;white-space:normal;}
+.primary-report-card table.rc-perf th.rc-th-init{width:68px;min-width:68px;}
+.primary-report-card table.rc-perf th.rc-th-eot{width:82px;min-width:82px;}
+.primary-report-card table.rc-perf th.rc-th-cw{white-space:normal;}
+#pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-subj{width:145px !important;}
+#pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-final{width:78px !important;}
+#pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-grade{width:62px !important;font-size:8.2px !important;}
+#pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-desc{width:105px !important;white-space:normal !important;}
+#pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-init{width:68px !important;}
+#pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-eot{width:82px !important;}
 
 /* Report card clarity: keep Teacher Initials on exactly two lines and strengthen headings. */
 .report-card th, .report-card thead th, .rc-perf th, table.report-table th{font-weight:900!important;}
@@ -754,10 +781,19 @@ function subjectsForLevel(level){
 // levels is hidden, since assigning them here would almost always be a mistake.
 function teachersForLevel(level){
   const allTeachers = DB.accounts.filter(a=>a.role==='teacher');
+  // O-Level and A-Level are taught within the same secondary school, so their
+  // teachers share one assignment pool. Primary remains completely separate.
+  if(level==='P'){
+    return allTeachers.filter(t=>{
+      const myAssigns = DB.assignments.filter(a=>a.teacherUsername===t.username);
+      if(!myAssigns.length) return true;
+      return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && c.level==='P'; });
+    });
+  }
   return allTeachers.filter(t=>{
     const myAssigns = DB.assignments.filter(a=>a.teacherUsername===t.username);
     if(!myAssigns.length) return true;
-    return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && c.level===level; });
+    return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && (c.level==='O' || c.level==='A'); });
   });
 }
 function subjectCompulsoryFor(cls){ return cls.level==='P' ? pCompulsoryList() : oCompulsoryFor(cls.form); }
@@ -3510,26 +3546,30 @@ function oLevelSubjectsView(){
 
 /* ---------- Admin: Assign subjects ---------- */
 function assignSubjectsView(){
-  const firstCls = DB.classes[0];
-  const firstIsPrimary = !!(firstCls && firstCls.level==='P');
-  const firstLevel = firstCls ? firstCls.level : 'O';
-  const subs = subjectsForLevel(firstLevel);
-  const levelTeachers = teachersForLevel(firstLevel);
+  // The assignment workflow deliberately starts with Class. Teacher and Subject are
+  // populated only after a class is selected, so the class determines the correct
+  // level first (Primary vs O/A-Level).
+  const firstCls = null;
+  const firstIsPrimary = false;
+  const firstLevel = null;
+  const subs = [];
+  const levelTeachers = [];
   return `
   <h2>Assign Subjects to Teachers</h2>
   <div class="note">A teacher can be assigned many subjects, many papers, and many classes. The Teacher and Subject lists below narrow down to whichever level the selected Class belongs to.</div>
   <div class="card" style="margin-top:14px;">
     <form data-form="assignSubject">
       <div class="grid2">
-        <div><label>Teacher</label><select name="teacherUsername" id="assignTeacherSel" required>
-          ${levelTeachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- add a teacher account first --</option>'}
+        <div><label>Class <span class="small">(select first)</span></label><select name="classId" id="assignClassSel" required>
+          <option value="">-- select class first --</option>
+          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('')}
         </select></div>
-        <div><label>Class</label><select name="classId" id="assignClassSel" required>
-          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
+        <div><label>Teacher</label><select name="teacherUsername" id="assignTeacherSel" required disabled>
+          <option value="">-- select a class first --</option>
         </select></div>
       </div>
       <div class="grid2">
-        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
         <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
       </div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
@@ -4842,7 +4882,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       if(idx===0){
         return `<tr>`+
           mergedTd(esc(r.subject))+
-          `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
+          `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
           mergedTd(r.avg==null?'-':r.avg.toFixed(1))+
           mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-')+
           (isA?mergedTd(r.avg==null?0:r.pts):'')+
@@ -4851,7 +4891,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
       }
       return `<tr class="subrow">`+
         mergedTd(esc(r.subject))+
-        `${papersTd}${cwHtml}${eotHtml}${paperFinalHtml}`+
+        `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
         mergedTd(r.avg==null?'-':r.avg.toFixed(1))+
         mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-')+
         (isA?mergedTd(r.avg==null?0:r.pts):'')+
@@ -4870,7 +4910,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const eotVals = breakdowns.map(b=>b.eotAvg).filter(v=>v!==null);
   const cwTotalTxt = cwVals.length ? (cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1) : '—';
   const eotTotalTxt = eotVals.length ? (eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1) : '—';
-  // Paper Avg column, TOTAL row: the average of every Paper Avg value shown above it
+  // Paper Avg column, TOTAL row (O/A-Level only; Primary does not render this column): the average of every Paper Avg value shown above it
   // on the card — the same underlying figures that each subject's own Final Average
   // is built from — so this cell is a real, traceable number rather than a dash, and
   // so "Paper Avg" here means exactly what "Paper Avg" means in every row above it.
@@ -4901,7 +4941,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const pdfTablePadX = cwCount===0 ? 5.0 : Math.max(1.5, 5.0 - Math.min(cwCount,16)*0.22);
   const pdfColgroup = embedded && cwCount>0 ? (()=>{
     const n=cwCount, cwShare=Math.min(58,22+n*2.6), coreShare=100-cwShare;
-    const coreWeights=isP ? [18,10,11,12,7,14,9] : (isA ? [18,4,8,8,5,7,11,8,5] : (showEOT ? [18,4,8,8,6,8,12,5] : [18,4,9,8,8,12,5]));
+    const coreWeights=isP ? [21,12,15,10,17,12] : (isA ? [18,4,8,8,5,7,11,8,5] : (showEOT ? [18,4,8,8,6,8,12,5] : [18,4,9,8,8,12,5]));
     const sum=coreWeights.reduce((a,b)=>a+b,0), core=coreWeights.map(w=>coreShare*w/sum), cwEach=cwShare/(n+1);
     const widths=[], k0={v:0}; let k=0;
     widths.push(core[k++]); if(!isP) widths.push(core[k++]);
@@ -4933,7 +4973,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
-  <div id="printArea"><div class="rc-card${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
+  <div id="printArea"><div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
     ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
     <div class="rc-topline"><span>${s.feesCode?`FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
@@ -4972,19 +5012,19 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         <th class="rc-th-subj mrg-top"></th>${isP?'':'<th class="rc-th-papers mrg-top"></th>'}
         <th colspan="${cwTests.length+1}" class="rc-th-cw">${esc(cfg.cwLabel)}</th>
         ${showEOT?`<th class="rc-th-eot mrg-top"></th>`:''}
-        <th class="rc-th-pavg mrg-top"></th>
+        ${isP?'':'<th class="rc-th-pavg mrg-top"></th>'}
         <th class="rc-th-final mrg-top"></th><th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th><th class="rc-th-init mrg-top"></th>
       </tr>
       <tr>
         <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
-        <th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>
+        ${isP?'':'<th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>'}
         <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init">Teacher<br>Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}${isP?'':'<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>'}<th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init">Teacher<br>Initials</th></tr>`}
       ${rowsHtml}
-      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
+      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${isP?'':`<td>${totalPaperAvgTxt}</td>`}<td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
     </div>
 
@@ -5003,6 +5043,16 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
           : `<td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.join(', ')):'—'}</td>`}
       </tr>
     </table>
+
+    ${isP ? `
+    <div class="rc-section-title">Grading Scale</div>
+    <table class="rc-grading-scale-table">
+      <tr><th>Range of Marks (%)</th><th>Grade</th></tr>
+      ${PLE_GRADES.map(g=>{
+        const band=(DB.pbands||DEFAULT_P_BANDS)[g] || DEFAULT_P_BANDS[g];
+        return `<tr><td>${band[0]}–${band[1]}</td><td><b>${g}</b></td></tr>`;
+      }).join('')}
+    </table>` : ''}
 
     <div class="rc-section-title">Comments</div>
     <table class="rc-comments-table">
@@ -5774,17 +5824,15 @@ document.addEventListener('change', (e)=>{
       const form = e.target.closest('form');
       const subjSel = form ? form.querySelector('#assignSubjectSel') : null;
       if(subjSel){
-        const prevSubj = subjSel.value;
         const subs = subjectsForLevel(level);
-        subjSel.innerHTML = subs.map(s=>`<option value="${s}">${s}</option>`).join('');
-        if(subs.includes(prevSubj)) subjSel.value = prevSubj;
+        subjSel.innerHTML = subs.map(s=>`<option value="${s}">${s}</option>`).join('') || '<option value="">-- no subjects available --</option>';
+        subjSel.disabled = subs.length === 0;
       }
       const teachSel = form ? form.querySelector('#assignTeacherSel') : null;
       if(teachSel){
-        const prevTeacher = teachSel.value;
         const teachers = teachersForLevel(level);
         teachSel.innerHTML = teachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- no matching teacher yet --</option>';
-        if(teachers.some(t=>t.username===prevTeacher)) teachSel.value = prevTeacher;
+        teachSel.disabled = teachers.length === 0;
       }
     }
   }
