@@ -3905,19 +3905,85 @@ function reportsListView(){
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
   <div class="card">
-    ${!VIEW.params.classId ? `<p class="small">Select a class above to see its report card list.</p>` : `
-    <table class="data-table"><tr><th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
-    ${sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===VIEW.params.classId)
-      .filter(s=> !isTeacher || classIds.includes(s.classId)))
-      .map(s=>{
+    ${!VIEW.params.classId ? `<p class="small">Select a class above to see its report card list.</p>` : (()=>{
+      const listStudents = sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===VIEW.params.classId)
+        .filter(s=> !isTeacher || classIds.includes(s.classId)));
+      const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
+      const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
+      return `
+    ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the bulk button above still exports the whole class.</p>
+    <div class="flex" style="margin-bottom:10px;align-items:center;flex-wrap:wrap;gap:10px;">
+      <span class="small" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span>
+      <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button>
+      <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
+      ${selectedCount ? `<button class="btn-outline" onclick="clearReportSelection()">Clear selection</button>` : ''}
+    </div>` : ''}
+    <table class="data-table"><tr>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
+    ${listStudents.map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
+      return `<tr>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td>${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">Open report card</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
-    }).join('') || '<tr><td colspan="4">No students found.</td></tr>'}
-    </table>`}
+    }).join('') || `<tr><td colspan="${isAdmin?5:4}">No students found.</td></tr>`}
+    </table>`;
+    })()}
   </div>`;
 }
 function filterClass(v){ VIEW.params.classId=v||null; render(); }
+
+/* ---------- Tick-to-select report cards (print/download a subset, not the whole class) ----------
+   Kept separate from the "Download class as PDF (bulk)" button above, which always exports
+   every current student in the selected class regardless of any ticks here. */
+const SELECTED_REPORTS = new Set();
+function toggleReportSelect(studentId){
+  if(SELECTED_REPORTS.has(studentId)) SELECTED_REPORTS.delete(studentId);
+  else SELECTED_REPORTS.add(studentId);
+  render();
+}
+function toggleReportSelectAll(classId, checked){
+  DB.students.filter(s=>s.status!=='left' && s.classId===classId).forEach(s=>{
+    if(checked) SELECTED_REPORTS.add(s.id); else SELECTED_REPORTS.delete(s.id);
+  });
+  render();
+}
+function clearReportSelection(){ SELECTED_REPORTS.clear(); render(); }
+async function downloadSelectedReportsPdf(){
+  if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); return; }
+  const students = DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && s.status!=='left');
+  if(!students.length){ alert('Tick at least one student first.'); return; }
+  try{ await refreshScores(); }
+  catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
+  const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_selected_reports`;
+  await pdfForStudents(students, `${baseName}.pdf`);
+}
+async function runDownloadSelectedReportsPdf(btn){
+  if(btn.disabled) return;
+  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
+  try{ await downloadSelectedReportsPdf(); }
+  finally{ btn.disabled = false; btn.innerHTML = orig; }
+}
+// Prints exactly the ticked report cards in one go, each on its own page, without
+// leaving the Report Cards list — builds a temporary #printArea (the same element
+// id the single report-card page uses to isolate what the browser Print dialog
+// shows) out of the ticked students only, prints it, then removes it again.
+async function printSelectedReports(){
+  if(CUR.role!=='admin'){ alert('Only an Admin can print report cards.'); return; }
+  const students = DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && s.status!=='left');
+  if(!students.length){ alert('Tick at least one student first.'); return; }
+  try{ await refreshScores(); }
+  catch(e){ console.warn('Score refresh failed; printing from current local data.', e); }
+  const old = document.getElementById('multiPrintHolder');
+  if(old) old.remove();
+  const holder = document.createElement('div');
+  holder.id = 'multiPrintHolder';
+  holder.innerHTML = `<div id="printArea">${students.map((s,i)=>
+    `<div${i<students.length-1?' style="page-break-after:always;"':''}>${reportCardHTML(s.id, true, null, null, true)}</div>`
+  ).join('')}</div>`;
+  document.body.appendChild(holder);
+  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(cleanup, 15000); // fallback in case a browser never fires afterprint
+  setTimeout(()=>window.print(), 150);
+}
 
 /* ---------- Mark Sheets (blank download / integrated view) ---------- */
 function marksheetGroups(pool){
@@ -4678,7 +4744,7 @@ function parentReportView(){
 /* ============================================================
    10. REPORT CARD (fits one page)
    ============================================================ */
-function reportCardHTML(studentId, embedded, viewTerm, viewYear){
+function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const s = DB.students.find(x=>x.id===studentId);
   if(!s) return '<p>Student not found.</p>';
   const cls = DB.classes.find(c=>c.id===s.classId);
@@ -4997,7 +5063,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
-  <div id="printArea"><div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
+  ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
     ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
     <div class="rc-topline"><span>${s.feesCode?`FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
@@ -5122,7 +5188,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     </div>
     <div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>
     </div>
-  </div></div>`;
+  </div>${bareCard ? '' : '</div>'}`;
 }
 
 // Saves one mark typed straight into an open report card (see editableNow/canEditScore
@@ -7040,7 +7106,11 @@ function loadPdfLibs(){
 // a new tab where Share ▸ Save to Files works. Either way, one tap is all it
 // takes, and we surface our own confirmation via the toast instead of relying on
 // "did a new tab visibly appear" as the signal.
-function openOrSavePdf(pdf, filename){
+function openOrSavePdf(pdf, filename, opts={}){
+  // opts.openPreviewTab (default true) controls step 2 below — report-card exports
+  // pass false so the file just downloads and the person stays on the report card
+  // page they were already looking at, instead of a second tab popping open.
+  const openPreviewTab = opts.openPreviewTab !== false;
   try{
     const blob = pdf.output('blob');
     const url = URL.createObjectURL(blob);
@@ -7059,7 +7129,7 @@ function openOrSavePdf(pdf, filename){
     //    a browser that has already used up its "fresh gesture" allowance for this
     //    click (e.g. after a long bulk export) may silently block the new tab —
     //    that's fine, since the file was already safely saved by step 1 either way.
-    try{ window.open(url, '_blank', 'noopener'); }catch(e){}
+    if(openPreviewTab){ try{ window.open(url, '_blank', 'noopener'); }catch(e){} }
     setTimeout(()=>URL.revokeObjectURL(url), 60000);
     showDeliveredToast(`Ready — ${filename}`);
   }catch(e){
@@ -7508,7 +7578,9 @@ async function pdfForStudents(students, filename, opts={}){
     await new Promise(r=>setTimeout(r, 0));
   }
   document.body.removeChild(holder);
-  openOrSavePdf(pdf, filename);
+  // openPreviewTab:false — report cards should download and leave the person right
+  // where they were in the app, not pop the PDF open in a separate browser tab.
+  openOrSavePdf(pdf, filename, {openPreviewTab:false});
   } finally { setAppBusy(false); }
 }
 // Classes at 100+ students used to come out as a single PDF holding 100+
