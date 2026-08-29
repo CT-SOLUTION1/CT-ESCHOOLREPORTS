@@ -4646,6 +4646,23 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   // final average; Primary → Division off the aggregate of the 4 PLE-core subjects.
   const overallGrade = gradeFor('', avgPct, cls.level);
   const commentMap = isP ? PLE_GRADE_COMMENT : GRADE_COMMENT;
+  // Primary report cards use a percentage-based Remarks scale instead of Descriptor.
+  // The wording is based directly on the student's Final Average percentage.
+  function primaryFinalRemark(pct){
+    if(pct==null || !Number.isFinite(Number(pct))) return '—';
+    // Normalize only for floating-point noise; the bands themselves are continuous.
+    // There are deliberately no gaps: every numeric Final Average belongs to exactly
+    // one band. For example, 59.5 is below 60 and therefore is Satisfactory.
+    const n=Number(Number(pct).toFixed(10));
+    if(n < 30) return 'Very weak';
+    if(n < 40) return 'Weak';
+    if(n < 50) return 'Improve';
+    if(n < 60) return 'Satisfactory';
+    if(n < 70) return 'Good';
+    if(n < 80) return 'Very good';
+    if(n < 90) return 'Excellent';
+    return 'Outstanding';
+  }
   const overallDesc = commentMap[overallGrade] || '—';
   const pAggregate = isP ? primaryAggregate(s, cls, term, year) : null;
   const pDivision = isP ? primaryDivisionFor(pAggregate) : null;
@@ -4729,7 +4746,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   const rowsHtml = rows.map((r,i)=>{
     r_subject = r.subject;
     const bd = breakdowns[i];
-    const descriptor = r.avg==null ? '—' : (commentMap[r.grade] || '—');
+    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : (commentMap[r.grade] || '—'));
     // Multi-paper subject (e.g. Paper 1 & Paper 2 of the same subject): show a row per
     // paper, but only for papers that actually have a score entered so far — a paper
     // with nothing on record yet simply doesn't get a row at all. The subject name,
@@ -4836,7 +4853,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
   // so "Paper Avg" here means exactly what "Paper Avg" means in every row above it.
   const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '—';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
-  const totalDescriptor = rows.length ? (commentMap[totalGrade] || '—') : '—';
+  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
   // Final Average column, TOTAL row: this column is a percentage (see header "Final
   // Average (%)"), same as every subject row above it (r.avg.toFixed(1)) — it must NOT
   // repeat the Points total for A-Level, since Points already gets its own column right
@@ -4940,9 +4957,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
         <th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>
-        <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">Descriptor</th><th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
+        <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">Descriptor</th><th class="rc-th-init">Teacher<br>Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th><th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init">Teacher<br>Initials</th></tr>`}
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}<td>${totalPaperAvgTxt}</td><td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
