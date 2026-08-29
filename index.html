@@ -2128,6 +2128,14 @@ function subjectAverage(studentId, subject, term, year){
 // whoever the class/subject is assigned to. The report card grades the SUBJECT as one
 // whole — off the combined average of every paper's marks — never a single paper alone.
 // This just looks up which papers exist for a subject in a class.
+// Primary classes have one implicit paper only. Keep this helper defensive so older
+// assignment records that predate the Primary paper handling (and therefore have no
+// `papers` array) can never crash score entry, dashboards, or report-card helpers.
+function assignmentPapers(a, cls){
+  if(cls && cls.level==='P') return ['1'];
+  return Array.isArray(a && a.papers) ? a.papers : [];
+}
+
 function subjectPapersFor(subject, cls){
   if(!cls) return [];
   // Several teachers can each hold their own assignment row for the same subject+class
@@ -2137,7 +2145,7 @@ function subjectPapersFor(subject, cls){
   const asns = DB.assignments.filter(x=>x.subject===subject && x.classId===cls.id);
   const papers = [];
   asns.forEach(a=>{
-    if(Array.isArray(a.papers)) a.papers.forEach(p=>{ if(!papers.some(x=>String(x)===String(p))) papers.push(p); });
+    assignmentPapers(a, cls).forEach(p=>{ if(!papers.some(x=>String(x)===String(p))) papers.push(p); });
   });
   papers.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
   return papers;
@@ -3540,7 +3548,7 @@ function assignSubjectsView(){
     ${DB.assignments.map(a=>{
       const t = DB.accounts.find(x=>x.username===a.teacherUsername); const c = DB.classes.find(x=>x.id===a.classId);
       const isP = c && c.level==='P';
-      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(a.papers.join(', '))}</td>
+      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(assignmentPapers(a, c).join(', '))}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="5">No assignments yet.</td></tr>'}
     </table>
@@ -3594,7 +3602,7 @@ function teacherProfileView(username){
       const isP = c && c.level==='P';
       return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td>
       <td>${isP ? '—' : `<form data-form="editAssignPapers" data-id="${a.id}" style="display:flex;gap:6px;align-items:center;margin:0;">
-        <input name="papers" value="${esc(a.papers.join(', '))}" style="width:110px;">
+        <input name="papers" value="${esc(assignmentPapers(a, c).join(', '))}" style="width:110px;">
         <button class="btn-outline" type="submit" style="padding:6px 10px;">Save</button>
       </form>`}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
@@ -4374,17 +4382,18 @@ function teacherDashboard(){
   ${featureTilesHTML('teacher','tdash')}
   <div class="card"><h3>Your subject assignments</h3>
   <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Papers</th></tr>
-  ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId); return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(a.papers.join(', '))}</td></tr>`; }).join('') || '<tr><td colspan="3">No assignments yet.</td></tr>'}
+  ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId); return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(assignmentPapers(a, c).join(', '))}</td></tr>`; }).join('') || '<tr><td colspan="3">No assignments yet.</td></tr>'}
   </table></div>`;
 }
 
 function scoresEntryView(mine){
   const sel = VIEW.params;
   let studentRows = '';
-  if(sel.assignId && sel.paper && sel.kind){
+  if(sel.assignId && (sel.paper || (DB.classes.find(c=>c.id===(DB.assignments.find(a=>a.id===sel.assignId)||{}).classId)||{}).level==='P') && sel.kind){
     const a = mine.find(x=>x.id===sel.assignId);
     if(!a) return `<p>That assignment is not available to you.</p><button class="btn-outline" data-action="nav:${VIEW.name}">Back to subject/class picker</button>`;
     const cls = DB.classes.find(c=>c.id===a.classId);
+    if(cls && cls.level==='P' && !sel.paper) sel.paper='1';
     // Every student already in the class is available to a subject teacher to tick —
     // admin registration never decides who takes a subject, so eligibility here is
     // simply "in this class", not "already recorded as taking this subject".
@@ -4689,7 +4698,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear){
     const asns = DB.assignments.filter(a=>a.subject===subject && a.classId===cls.id);
     if(!asns.length) return null;
     if(paper==null) return asns[0];
-    return asns.find(a=>Array.isArray(a.papers) && a.papers.some(p=>String(p)===String(paper))) || asns[0];
+    return asns.find(a=>assignmentPapers(a, cls).some(p=>String(p)===String(paper))) || asns[0];
   }
   function canEditScore(subject, paper, kind){
     if(!editableNow) return false;
@@ -5776,12 +5785,12 @@ document.addEventListener('change', (e)=>{
     const form = e.target.closest('form');
     const mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(a=>a.teacherUsername===CUR.username);
     const a = mine.find(x=>x.id===e.target.value);
+    const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
     const paperSel = form.querySelector('#paperSelect');
-    if(a && paperSel){ paperSel.innerHTML = a.papers.map(p=>`<option value="${p}">Paper ${p}</option>`).join(''); }
+    if(a && paperSel){ paperSel.innerHTML = assignmentPapers(a, assignedCls).map(p=>`<option value="${p}">Paper ${p}</option>`).join(''); }
     // Primary has no concept of papers (always a single implicit paper), so the Paper
     // field is hidden entirely on the score-entry form once a Primary class/subject
     // assignment is chosen — nothing for the teacher to pick.
-    const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
     const isPrimaryAssign = !!(assignedCls && assignedCls.level==='P');
     const paperFieldWrap = form.querySelector('#paperFieldWrap');
     if(paperFieldWrap) paperFieldWrap.style.display = isPrimaryAssign ? 'none' : 'block';
@@ -6390,7 +6399,7 @@ document.addEventListener('submit', async (e)=>{
         if(!acctOk) return;
         const existingA = DB.assignments.find(a=>a.teacherUsername.toLowerCase()===pa.teacherUsername.toLowerCase() && a.classId===pa.classId && a.subject===pa.subject);
         if(existingA){
-          const merged = [...new Set([...existingA.papers, ...pa.papers])];
+          const merged = [...new Set([...assignmentPapers(existingA, DB.classes.find(c=>c.id===existingA.classId)), ...(Array.isArray(pa.papers)?pa.papers:[])])];
           if(merged.length!==existingA.papers.length){ existingA.papers = merged; assignsMerged++; }
         } else {
           DB.assignments.push({id:uid('asn'), teacherUsername:pa.teacherUsername, classId:pa.classId, subject:pa.subject, papers:pa.papers});
@@ -6491,7 +6500,8 @@ document.addEventListener('submit', async (e)=>{
       // Primary has no papers concept — regardless of what the (possibly hidden) Papers
       // field contains, a Primary-class assignment always gets a single implicit paper.
       const assignCls = DB.classes.find(c=>c.id===fd.get('classId'));
-      const papers = (assignCls && assignCls.level==='P') ? ['1'] : fd.get('papers').split(',').map(p=>p.trim()).filter(Boolean);
+      const rawPapers = fd.get('papers') || '';
+       const papers = (assignCls && assignCls.level==='P') ? ['1'] : rawPapers.split(',').map(p=>p.trim()).filter(Boolean);
       DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
       await saveAssignments(); form.reset(); render();
     }
@@ -6687,7 +6697,11 @@ document.addEventListener('submit', async (e)=>{
         alert('Please enter the maximum mark this test/exam was marked out of before continuing.');
         return;
       }
-      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
+      const pickedAssign = DB.assignments.find(a=>a.id===fd.get('assignId'));
+      const pickedCls = pickedAssign ? DB.classes.find(c=>c.id===pickedAssign.classId) : null;
+      const pickedPaper = pickedCls && pickedCls.level==='P' ? '1' : fd.get('paper');
+      if(!pickedPaper){ alert('Please select a paper before continuing.'); return; }
+      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:pickedPaper, kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
     }
     else if(type==='saveRoster'){
       const assignId = form.dataset.assign;
@@ -6770,7 +6784,10 @@ document.addEventListener('submit', async (e)=>{
       render();
     }
     else if(type==='saveScores'){
-      const assignId=form.dataset.assign, paper=form.dataset.paper, subject=form.dataset.subject, kind=form.dataset.kind, label=form.dataset.label;
+      const assignId=form.dataset.assign, subject=form.dataset.subject, kind=form.dataset.kind, label=form.dataset.label;
+       const saveAssign = DB.assignments.find(x=>x.id===assignId);
+       const saveCls = saveAssign ? DB.classes.find(c=>c.id===saveAssign.classId) : null;
+       const paper = (saveCls && saveCls.level==='P') ? '1' : form.dataset.paper;
       if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, kind)){
         alert(`The score submission deadline (${fmtDateTime(scoreDeadlineFor(kind).deadline)}) has passed, so this can't be saved. Ask your admin to reopen score entry for you if you need to submit or correct marks.`);
         return;
@@ -7497,7 +7514,7 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
      operations like bulk PDF export, so a 100-report bulk download can't be killed
      partway through by an update landing at the wrong moment.
 ------------------------------------------------------------------------------- */
-const BUILD_ID = 'BUILD-2026-08-24-3'; // <-- change this to any new value on every deploy
+const BUILD_ID = '2026-08-29-primary-score-fix-1'; // <-- change this to any new value on every deploy
 
 // Set true for the duration of any operation an update-reload must never interrupt
 // (bulk PDF export, CSV import, etc). Kept as a simple counter so nested/overlapping
