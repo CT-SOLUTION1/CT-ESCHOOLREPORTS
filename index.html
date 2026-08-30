@@ -5332,7 +5332,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       if(canEditScore(r_subject, paper, 'AOI')){
         return `<td>${scoreInputHtml(r_subject, paper, 'AOI', t.name, t.max, row?row.marks:null)}</td>`;
       }
-      return `<td>${row? esc(row.marks) : '—'}</td>`;
+      // Display the mark converted onto the column header's own scale (t.max), not
+      // the raw figure as typed by the teacher — a teacher may have entered the mark
+      // against a different maximum than the one shown in "(/${t.max})" above (e.g.
+      // typed it out of 30 for a column configured as /20), so the raw number alone
+      // would be misleading. scaleRow() does the same conversion already used for
+      // averaging, keeping this cell consistent with the Avg column beside it.
+      return `<td>${row? scaleRow(row, t.max).toFixed(1) : '—'}</td>`;
     }).join('');
     return testTds + `<td>${avgTxt}</td>`;
   }
@@ -5767,7 +5773,10 @@ function buildReportCardData(studentId, viewTerm, viewYear){
         if(useCwTestCols){
           cwTestVals = cwTests.map(t=>{
             const row = cwTestScore(s.id, r.subject, t.name, paperForLookup, term, year);
-            return row ? String(row.marks) : '—';
+            // Same conversion as the on-screen report card: show the mark scaled onto
+            // this column's configured maximum (t.max), not the raw teacher-entered
+            // figure, in case it was recorded against a different max.
+            return row ? scaleRow(row, t.max).toFixed(1) : '—';
           });
         }
       }
