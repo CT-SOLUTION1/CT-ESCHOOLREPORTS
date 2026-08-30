@@ -149,7 +149,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    pointer-events:none so it never intercepts clicks/taps on the editable score cells
    above it. This is separate from — and does not change — the sharp, full-opacity logo
    already shown in the header block (.rc-title-block .rc-logo below). */
-.rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.06;z-index:0;pointer-events:none;user-select:none;}
+.rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.035;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
 .rc-title-block{display:flex;align-items:stretch;gap:12px;text-align:center;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;}
@@ -160,7 +160,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    no extra network request and no re-encoding cost, meaning resolution and
    download/render speed are unaffected. object-fit:cover still crops any source
    image cleanly into that box. */
-.rc-title-block .rc-logo{height:100%;max-height:100%;width:auto;aspect-ratio:auto;max-width:120px;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
+.rc-title-block .rc-logo{height:auto;max-height:100%;width:auto;aspect-ratio:auto;max-width:150px;min-width:0;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
 .rc-title-block .rc-header-text{flex:1;min-width:0;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
@@ -207,7 +207,7 @@ table.rc-info-table td.photo-cell{padding:5px;text-align:center;vertical-align:m
 .rc-perf-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 
 table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:auto;}
-table.rc-perf th{background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:6px 8px;font-size:10px;font-weight:900;-webkit-text-stroke:.18px currentColor;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
+table.rc-perf th{text-transform:uppercase;background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:6px 8px;font-size:10px;font-weight:900;-webkit-text-stroke:.18px currentColor;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
 /* Fixed core columns (Subjects, Paper Avg, Final Average, Grade, Descriptor, Teacher
    Initials) always get a guaranteed minimum width so their headers stay on one or two
    clean lines and never get squeezed/overlapped when Course Work test columns are
@@ -282,7 +282,7 @@ table.rc-perf th.mrg-top, table.rc-perf th.mrg-bot{border-top:0 !important;borde
 #pdfCaptureHolder .pdf-report-card .rc-perf-wrap{overflow:visible !important;width:100%;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf{width:100% !important;min-width:0 !important;max-width:none !important;table-layout:fixed !important;border-collapse:separate !important;border-spacing:0 !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th,#pdfCaptureHolder .pdf-report-card table.rc-perf td{min-width:0 !important;max-width:none !important;white-space:normal !important;overflow-wrap:anywhere;word-break:break-word;}
-#pdfCaptureHolder .pdf-report-card table.rc-perf th{font-size:var(--pdf-table-head-size,9px) !important;line-height:1.15 !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;font-weight:900 !important;-webkit-text-stroke:.16px currentColor;}
+#pdfCaptureHolder .pdf-report-card table.rc-perf th{text-transform:uppercase;font-size:var(--pdf-table-head-size,9px) !important;line-height:1.15 !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;font-weight:900 !important;-webkit-text-stroke:.16px currentColor;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf td{font-size:var(--pdf-table-body-size,9px) !important;line-height:1.12 !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf tr.subrow td{font-size:var(--pdf-table-sub-size,8px) !important;padding:var(--pdf-table-pad-y,3px) var(--pdf-table-pad-x,3px) !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-subj,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-papers,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-pavg,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-final,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-grade,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-points,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-desc,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-init,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-eot,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cw,#pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cwsub{min-width:0 !important;}
@@ -346,7 +346,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 .rc-sign-block{min-width:0;text-align:center;}
 .rc-sign-block .rc-person{display:block;border-bottom:1px solid var(--ink);padding-bottom:3px;min-height:17px;}
 .rc-sign-block .rc-action{display:block;border-bottom:1px solid var(--ink);padding:5px 4px 3px;min-height:20px;font-weight:700;}
-.rc-term-middle{text-align:center;font-size:11.5px;font-weight:800;line-height:1.45;padding:6px 8px;background:var(--blue);color:#fff;border:1px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);}
+.rc-term-middle{justify-self:center;width:88%;box-sizing:border-box;text-align:center;font-size:11px;font-weight:800;line-height:1.35;padding:4px 7px;background:var(--blue);color:#fff;border:1px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);overflow:hidden;}
 .rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
@@ -5952,14 +5952,14 @@ function drawReportCardPage(pdf, data){
   // Work columns, an optional End of Term column, an optional Paper Average
   // column, then Final Average / Grade / (Points) / Descriptor / Initials.
   const cols = [];
-  cols.push({key:'subject', label:'Subjects', w:0.20});
-  if(!data.isP) cols.push({key:'papers', label:'PPs', w:0.045});
+  cols.push({key:'subject', label:'SUBJECTS', w:0.20});
+  if(!data.isP) cols.push({key:'papers', label:'PPS', w:0.045});
   if(data.showCW){
     if(data.useCwTestCols){
       const n = data.cwTests.length;
       const cwShare = Math.min(0.42, 0.16+n*0.045);
-      data.cwTests.forEach(t=>cols.push({key:'cw_'+t.name, label:t.name+' (/'+t.max+')', w:cwShare/(n+1)}));
-      cols.push({key:'cwavg', label:'Avg (/'+data.cfg.cwPercent+')', w:cwShare/(n+1)});
+      data.cwTests.forEach(t=>cols.push({key:'cw_'+t.name, label:t.name.toUpperCase()+' (/'+t.max+')', w:cwShare/(n+1)}));
+      cols.push({key:'cwavg', label:'AVG (/'+data.cfg.cwPercent+')', w:cwShare/(n+1)});
     } else {
       cols.push({key:'cwavg', label:data.cfg.cwLabel+' (/'+data.cfg.cwPercent+')', w:0.10});
     }
@@ -5967,8 +5967,8 @@ function drawReportCardPage(pdf, data){
   if(data.showEOT) cols.push({key:'eot', label:data.cfg.eotLabel+' (/'+data.cfg.eotPercent+')', w:0.09});
   if(!data.isP) cols.push({key:'paperavg', label:'Paper Avg (%)', w:0.09});
   cols.push({key:'final', label:'Final Avg (%)', w:0.10});
-  cols.push({key:'grade', label:'Grade', w:0.07});
-  if(data.isA) cols.push({key:'points', label:'Points', w:0.07});
+  cols.push({key:'grade', label:'GRADE', w:0.07});
+  if(data.isA) cols.push({key:'points', label:'POINTS', w:0.07});
   cols.push({key:'desc', label:data.isP?'Remarks':'Descriptor', w:0.14});
   cols.push({key:'init', label:'Tr. Init', w:0.06});
   const wSum = cols.reduce((a,c)=>a+c.w,0);
@@ -6174,17 +6174,18 @@ function drawReportCardPage(pdf, data){
   leftText('Signature: ______________', contentX, cy+11, 7.5);
 
   // Term dates are boxed like the report-card table headers.
-  const dateX = contentX + thirdW, dateW = thirdW, dateH = 30;
+  const dateW = thirdW*0.88, dateX = contentX + thirdW + (thirdW-dateW)/2, dateH = 24;
   pdf.setFillColor(29,78,137); pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6);
-  pdf.rect(dateX, cy-5, dateW, dateH, 'F');
-  pdf.rect(dateX, cy-5, dateW, dateH);
-  centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, cy+6, 7.1, 'bold', [255,255,255]);
-  centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, cy+17, 7.1, 'bold', [255,255,255]);
+  const dateY = cy-2;
+  pdf.rect(dateX, dateY, dateW, dateH, 'F');
+  pdf.rect(dateX, dateY, dateW, dateH);
+  centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, dateY+9, 6.8, 'bold', [255,255,255]);
+  centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, dateY+19, 6.8, 'bold', [255,255,255]);
 
   const rightX = contentX+thirdW*2;
   leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
   leftText('School Stamp: ______________', rightX, cy+11, 7.5);
-  cy += 32;
+  cy += 28;
 
   // ---- 11. Motto, fees legend, scoring note ----
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 8.5, 'italic', navy); cy += 12; }
