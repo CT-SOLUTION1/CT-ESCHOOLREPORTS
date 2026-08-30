@@ -1969,6 +1969,18 @@ function showActionFailure(message, button){
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
   _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),3200);
 }
+// True only while the banner is showing the in-progress (hourglass) state.
+function actionBannerStillProcessing(){
+  const el=document.getElementById('actionProgressToast');
+  return !!(el && el.classList.contains('show') && el.innerHTML.indexOf('⏳')!==-1);
+}
+// Dismisses the banner without claiming success — use when a command finishes,
+// is cancelled, or is a no-op, so nothing stays on screen once it's done.
+function hideActionBanner(){
+  if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
+  const el=document.getElementById('actionProgressToast');
+  if(el) el.classList.remove('show');
+}
 function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return d; } }
 function fmtDateTime(d){ if(!d) return '—'; try{ return new Date(d).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return d; } }
 // ---- Score submission deadline ----
@@ -3106,10 +3118,18 @@ function adminDashboard(){
     <h3>Enrollment by class</h3>
     ${DB.classes.length ? `<table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Students</th></tr>
     ${DB.classes.map(c=>{
-      const count = DB.students.filter(s=>s.classId===c.id).length;
+      const count = DB.students.filter(s=>s.classId===c.id && s.status!=='left').length;
       return `<tr><td>${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${count}</td></tr>`;
     }).join('')}
     </table>` : '<p class="small">No classes yet — add a class first.</p>'}
+  </div>
+  <div class="card">
+    <h3>Old Students</h3>
+    <p class="small">Students marked "left" are no longer counted under Students, Enrollment by class, or Total enrollment above. They're kept, in full, for two terms after the term they left in before being permanently removed.</p>
+    <div class="grid3">
+      <div class="card"><div class="small">TOTAL OLD STUDENTS</div><h1 style="margin:4px 0;">${DB.students.filter(s=>s.status==='left').length}</h1></div>
+    </div>
+    <button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button>
   </div>
   <div class="card">
     <h3>Year, Term & Promotion</h3>
@@ -3344,14 +3364,151 @@ function accountsView(){
       <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="5">No pending requests.</td></tr>'}
     </table>
   </div>
-  <div class="card"><h3>All staff & parent accounts</h3>
-    <table class="data-table"><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Linked</th><th>Action</th></tr>
-    ${others.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td><td>${a.role}</td>
+  <div class="card"><h3>Parent Accounts</h3>
+    ${others.some(a=>a.role==='parent') ? `
+    <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
+      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
+        <input type="checkbox" id="parentSelectAllCb" style="width:auto;" onchange="toggleAllParentCheckboxes(this)">
+        <span id="parentSelCount">0 selected</span>
+      </label>
+      <div class="flex">
+        <button type="button" class="btn-danger" onclick="deleteSelectedParents(this)">Delete selected parents</button>
+        <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllParents(this)">Delete ALL parents (${others.filter(a=>a.role==='parent').length})</button>
+      </div>
+    </div>` : ''}
+    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Linked Student</th><th>Action</th></tr>
+    ${others.filter(a=>a.role==='parent').map(a=>`<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
       <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
-      <td>${a.role==='parent'?esc((DB.students.find(s=>s.id===a.studentId)||{}).name||'—'):'—'}</td>
-      <td class="flex">${a.role==='teacher'?`<button class="btn-outline" data-action="editTeacherProfile:${a.username}"><b>Edit profile</b></button> `:''}${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`}${a.role==='teacher'?` <button class="btn-outline" data-action="resetAccPw:${a.username}">Reset password</button>`:''} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No accounts yet.</td></tr>'}
+      <td>${esc((DB.students.find(s=>s.id===a.studentId)||{}).name||'—')}</td>
+      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
     </table>
+  </div>
+  <div class="card"><h3>Staff Accounts</h3>
+    <label>Select a class to view its teachers</label>
+    <select onchange="filterStaffByClass(this.value)">
+      <option value="">-- select class --</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.staffClassFilter===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+    ${!VIEW.params.staffClassFilter ? `<p class="small" style="margin-top:10px;">Select a class above to see the teachers assigned to it.</p>` : (()=>{
+      const cls = DB.classes.find(c=>c.id===VIEW.params.staffClassFilter);
+      if(!cls) return '<p class="small" style="margin-top:10px;">That class no longer exists.</p>';
+      const roleFor = new Map();
+      if(cls.classTeacher) roleFor.set(cls.classTeacher, ['Class Teacher']);
+      DB.assignments.filter(x=>x.classId===cls.id).forEach(x=>{
+        const arr = roleFor.get(x.teacherUsername) || [];
+        arr.push(`Subject Teacher: ${x.subject}`);
+        roleFor.set(x.teacherUsername, arr);
+      });
+      const rows = [...roleFor.keys()].map(username=>others.find(a=>a.username===username && a.role==='teacher')).filter(Boolean);
+      return `
+      ${rows.length ? `
+      <div class="flex" style="margin:10px 0;justify-content:space-between;">
+        <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
+          <input type="checkbox" id="teacherSelectAllCb" style="width:auto;" onchange="toggleAllTeacherCheckboxes(this)">
+          <span id="teacherSelCount">0 selected</span>
+        </label>
+        <div class="flex">
+          <button type="button" class="btn-danger" onclick="deleteSelectedTeachers(this)">Delete selected teachers</button>
+        </div>
+      </div>` : ''}
+      <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Role(s) in this class</th><th>Status</th><th>Action</th></tr>
+      ${rows.map(a=>`<tr><td><input type="checkbox" class="teacherSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateTeacherSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td><td>${esc(roleFor.get(a.username).join(', '))}</td>
+        <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
+        <td class="flex"><button class="btn-outline" data-action="editTeacherProfile:${a.username}"><b>Edit profile</b></button> ${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-outline" data-action="resetAccPw:${a.username}">Reset password</button> <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No teachers assigned to this class yet.</td></tr>'}
+      </table>`;
+    })()}
   </div>`;
+}
+function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
+// Bulk delete for Teacher accounts only (parents are untouched here). Mirrors the
+// single 'delAcc' action's own safeguards exactly:
+// the admin's private owner code is required once for the whole batch (not per
+// teacher — that would be extremely tedious for a real bulk delete), then one
+// explicit confirm() naming the count, before anything is removed. Assignments
+// belonging to each deleted teacher are cascaded out too, same as the single delete;
+// scores they already entered are left on record.
+function toggleAllTeacherCheckboxes(masterCb){
+  document.querySelectorAll('.teacherSelCb').forEach(cb=>{ cb.checked = masterCb.checked; });
+  updateTeacherSelCount();
+}
+function updateTeacherSelCount(){
+  const boxes = document.querySelectorAll('.teacherSelCb');
+  const checked = document.querySelectorAll('.teacherSelCb:checked');
+  const el = document.getElementById('teacherSelCount');
+  if(el) el.textContent = `${checked.length} selected`;
+  const master = document.getElementById('teacherSelectAllCb');
+  if(master) master.checked = boxes.length>0 && checked.length===boxes.length;
+}
+async function performBulkTeacherDelete(usernames, btn){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  if(!usernames.length){ alert('No teachers selected.'); return; }
+  const code = prompt(`Enter your private owner code to permanently delete ${usernames.length} teacher account${usernames.length===1?'':'s'}:`);
+  if(code===null) return;
+  if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+  if(!confirm(`Delete ${usernames.length} teacher account${usernames.length===1?'':'s'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) return;
+  showActionProgress('Deleting…', btn);
+  try{
+    const unameSet = new Set(usernames);
+    DB.accounts = DB.accounts.filter(a=>!unameSet.has(a.username));
+    DB.assignments = DB.assignments.filter(x=>!unameSet.has(x.teacherUsername));
+    await Promise.all([saveAccounts(), saveAssignments()]);
+    showActionSuccess(`Deleted ${usernames.length} teacher account${usernames.length===1?'':'s'}`, btn);
+  }catch(e){
+    showActionFailure('Could not delete — please try again.', btn);
+    alert('Something went wrong while deleting: '+(e.message||e));
+  }
+  render();
+}
+function deleteSelectedTeachers(btn){
+  const usernames = Array.from(document.querySelectorAll('.teacherSelCb:checked')).map(cb=>cb.value);
+  performBulkTeacherDelete(usernames, btn);
+}
+function deleteAllTeachers(btn){
+  const usernames = Array.from(document.querySelectorAll('.teacherSelCb')).map(cb=>cb.value);
+  performBulkTeacherDelete(usernames, btn);
+}
+// Bulk delete for Parent accounts. Mirrors the single 'delAcc' action's own
+// safeguards exactly: the admin's private owner code is required once for the
+// whole batch, then one explicit confirm() naming the count, before anything
+// is removed. Unlinks the parent's linked student first (mirrors single delAcc).
+function toggleAllParentCheckboxes(masterCb){
+  document.querySelectorAll('.parentSelCb').forEach(cb=>{ cb.checked = masterCb.checked; });
+  updateParentSelCount();
+}
+function updateParentSelCount(){
+  const boxes = document.querySelectorAll('.parentSelCb');
+  const checked = document.querySelectorAll('.parentSelCb:checked');
+  const el = document.getElementById('parentSelCount');
+  if(el) el.textContent = `${checked.length} selected`;
+  const master = document.getElementById('parentSelectAllCb');
+  if(master) master.checked = boxes.length>0 && checked.length===boxes.length;
+}
+async function performBulkParentDelete(usernames, btn){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  if(!usernames.length){ alert('No parents selected.'); return; }
+  const code = prompt(`Enter your private owner code to permanently delete ${usernames.length} parent account${usernames.length===1?'':'s'}:`);
+  if(code===null) return;
+  if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+  if(!confirm(`Delete ${usernames.length} parent account${usernames.length===1?'':'s'} for good? This cannot be undone.`)) return;
+  showActionProgress('Deleting…', btn);
+  try{
+    const unameSet = new Set(usernames);
+    DB.accounts = DB.accounts.filter(a=>!unameSet.has(a.username));
+    await saveAccounts();
+    showActionSuccess(`Deleted ${usernames.length} parent account${usernames.length===1?'':'s'}`, btn);
+  }catch(e){
+    showActionFailure('Could not delete — please try again.', btn);
+    alert('Something went wrong while deleting: '+(e.message||e));
+  }
+  render();
+}
+function deleteSelectedParents(btn){
+  const usernames = Array.from(document.querySelectorAll('.parentSelCb:checked')).map(cb=>cb.value);
+  performBulkParentDelete(usernames, btn);
+}
+function deleteAllParents(btn){
+  const usernames = Array.from(document.querySelectorAll('.parentSelCb')).map(cb=>cb.value);
+  performBulkParentDelete(usernames, btn);
 }
 
 /* ---------- Admin: Students ---------- */
@@ -3456,15 +3613,75 @@ function renderStudentsTableHtml(){
   if(searchTerm) list = list.filter(s=>(s.name||'').toLowerCase().includes(searchTerm));
   list = sortByName(list);
   const banner = isPast ? `<div class="note" style="margin-bottom:10px;">Showing the class list as it stood in <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the current class list. The actions below (edit, mark as left, remove) still act on the student's current record.</div>` : '';
-  return banner + `<table class="data-table"><tr><th>Photo</th><th>Name</th><th>Adm No</th><th>Class</th><th>Combination / Subjects</th><th>Action</th></tr>
+  const bulkBar = list.length ? `
+    <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
+      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
+        <input type="checkbox" id="stuSelectAllCb" style="width:auto;" onchange="toggleAllStudentCheckboxes(this)">
+        <span id="stuSelCount">0 selected</span>
+      </label>
+      <div class="flex">
+        <button type="button" class="btn-danger" onclick="deleteSelectedStudents(this)">Delete selected</button>
+        <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllListedStudents(this)">Delete ALL listed (${list.length})</button>
+      </div>
+    </div>` : '';
+  return banner + bulkBar + `<table class="data-table"><tr><th></th><th>Photo</th><th>Name</th><th>Adm No</th><th>Class</th><th>Combination / Subjects</th><th>Action</th></tr>
     ${list.map(s=>{
       const clsId = isPast ? historicalClassFor(s, periodTerm, periodYear) : s.classId;
       const cls = DB.classes.find(c=>c.id===clsId);
-      return `<tr><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
+      return `<tr><td><input type="checkbox" class="stuSelCb" value="${s.id}" style="width:auto;" onchange="updateStuSelCount()"></td><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
       <td>${cls?esc(cls.name):'—'}${isPast && cls && cls.id!==s.classId ? ' <span class="small" style="color:var(--muted);">(since promoted)</span>' : ''}</td><td>${esc(comboLabel(s,cls))}</td>
       <td class="flex"><button class="btn-outline" data-action="editStudentProfile:${s.id}"><b>Edit profile</b></button> <button class="btn-outline" data-action="markStudentLeft:${s.id}">Mark as left</button> <button class="btn-danger" data-action="delStudent:${s.id}">Remove</button></td></tr>`;
-    }).join('') || '<tr><td colspan="6">No students match.</td></tr>'}
+    }).join('') || '<tr><td colspan="7">No students match.</td></tr>'}
     </table>`;
+}
+// Bulk delete for the Students table: "select some" (checkboxes + Delete selected)
+// or "delete all" (Delete ALL listed) — both act on exactly whatever renderStudentsTableHtml()
+// currently has on screen, so they respect whatever class/search/term filter is applied.
+// This mirrors the single 'delStudent' action (same permanent removal + photo cleanup),
+// just batched, and adds an explicit confirm() first since a multi-student delete is a
+// much bigger, harder-to-undo action than removing one student at a time.
+function toggleAllStudentCheckboxes(masterCb){
+  document.querySelectorAll('.stuSelCb').forEach(cb=>{ cb.checked = masterCb.checked; });
+  updateStuSelCount();
+}
+function updateStuSelCount(){
+  const boxes = document.querySelectorAll('.stuSelCb');
+  const checked = document.querySelectorAll('.stuSelCb:checked');
+  const el = document.getElementById('stuSelCount');
+  if(el) el.textContent = `${checked.length} selected`;
+  const master = document.getElementById('stuSelectAllCb');
+  if(master) master.checked = boxes.length>0 && checked.length===boxes.length;
+}
+async function performBulkStudentDelete(ids, confirmMsg, btn){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  if(!ids.length){ alert('No students selected.'); return; }
+  if(!confirm(confirmMsg)) return;
+  showActionProgress('Deleting…', btn);
+  try{
+    const idSet = new Set(ids);
+    const removed = DB.students.filter(s=>idSet.has(s.id));
+    DB.students = DB.students.filter(s=>!idSet.has(s.id));
+    await saveStudents();
+    // Best-effort: also remove each deleted student's stored photo, same as the
+    // single-student delete does — never let a storage hiccup here block the
+    // record deletion itself, which has already succeeded by this point.
+    for(const s of removed){
+      if(s.photo){ try{ await deletePhotoFromStorage(s.photo); }catch(e){} }
+    }
+    showActionSuccess(`Deleted ${removed.length} student${removed.length===1?'':'s'}`, btn);
+  }catch(e){
+    showActionFailure('Could not delete — please try again.', btn);
+    alert('Something went wrong while deleting: '+(e.message||e));
+  }
+  render();
+}
+function deleteSelectedStudents(btn){
+  const ids = Array.from(document.querySelectorAll('.stuSelCb:checked')).map(cb=>cb.value);
+  performBulkStudentDelete(ids, `Delete ${ids.length} selected student${ids.length===1?'':'s'} for good? This cannot be undone.`, btn);
+}
+function deleteAllListedStudents(btn){
+  const ids = Array.from(document.querySelectorAll('.stuSelCb')).map(cb=>cb.value);
+  performBulkStudentDelete(ids, `Delete ALL ${ids.length} student${ids.length===1?'':'s'} currently listed for good? This cannot be undone.`, btn);
 }
 // The class-filter select, search box, and term/year pickers each re-render only the
 // table div (not the whole view via render()) so the search input never loses
@@ -5370,6 +5587,513 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   </div>${bareCard ? '' : '</div>'}`;
 }
 
+/* ======================================================================
+   VECTOR PDF REPORT CARD ENGINE
+   ----------------------------------------------------------------------
+   PDF downloads used to work by screenshotting the on-screen report card
+   (html2canvas) and dropping that screenshot into the PDF as a compressed
+   JPEG. That made every letter on the downloaded PDF a photograph of text
+   instead of real text — always duller/blurrier than the live page, and
+   the JPEG compression added further fuzz around every character edge.
+   It also meant a bigger file for the same visual result, since a raster
+   image of text needs far more bytes than the text itself.
+   The two functions below replace that pipeline for report cards only
+   (mark sheets / class analysis still use the old html2canvas path, see
+   downloadElementAsPdf, since those are wide free-form tables that don't
+   need pixel-perfect column control the way a report card does):
+     1. buildReportCardData()  — pulls the exact same numbers/strings the
+        on-screen card shows (reusing the same helper functions as
+        reportCardHTML above) into a plain data object, with no HTML.
+     2. drawReportCardPage()   — draws that data straight onto a jsPDF
+        page using real text/line/rect calls, so the PDF page contains
+        actual selectable, crisp text — never a photo of text — and only
+        ever a couple of small embedded images (logo/photo), which is
+        also why file size drops rather than grows.
+   ====================================================================== */
+
+// Step 1: same computations as reportCardHTML(), returned as plain data.
+function buildReportCardData(studentId, viewTerm, viewYear){
+  const s = DB.students.find(x=>x.id===studentId);
+  if(!s) return null;
+  const cls = DB.classes.find(c=>c.id===s.classId);
+  if(!cls) return null;
+  const term = viewTerm || DB.info.currentTerm;
+  const year = viewYear || DB.info.currentYear;
+  const { rows, totalPoints, avgPct } = computeSubjectRows(s, cls, term, year);
+  const { position, size } = classPosition(s, cls, term, year);
+  const isA = cls.level==='A';
+  const isP = cls.level==='P';
+
+  let prevPeriod = null, prevPosition = null;
+  if(isP){
+    function prevTermYearFor(t, y){
+      if(t==='Term 1') return {term:'Term 3', year:Number(y)-1};
+      if(t==='Term 2') return {term:'Term 1', year:Number(y)};
+      if(t==='Term 3') return {term:'Term 2', year:Number(y)};
+      return null;
+    }
+    const periods = availableTermYears(studentId);
+    const prevTY = prevTermYearFor(term, year);
+    prevPeriod = prevTY ? (periods.find(p=>p.term===prevTY.term && Number(p.year)===Number(prevTY.year)) || null) : null;
+    prevPosition = prevPeriod ? classPosition(s, cls, prevPeriod.term, prevPeriod.year) : null;
+  }
+
+  let weakSubjects = null;
+  if(!isP){
+    const graded = rows.filter(r=>r.avg!=null);
+    if(graded.length){
+      const minAvg = Math.min(...graded.map(r=>r.avg));
+      weakSubjects = graded.filter(r=>Math.abs(r.avg-minAvg)<0.05).map(r=>r.subject);
+    }
+  }
+  const maxP = isA ? maxPointsFor(s, cls) : 100;
+  const metric = isA ? totalPoints : avgPct;
+  const pct = maxP ? metric/maxP : 0;
+
+  const overallGrade = gradeFor('', avgPct, cls.level);
+  const commentMap = isP ? PLE_GRADE_COMMENT : GRADE_COMMENT;
+  function primaryFinalRemark(pctVal){
+    if(pctVal==null || !Number.isFinite(Number(pctVal))) return '—';
+    const n=Number(Number(pctVal).toFixed(10));
+    if(n < 30) return 'Very weak';
+    if(n < 40) return 'Weak';
+    if(n < 50) return 'Improve';
+    if(n < 60) return 'Satisfactory';
+    if(n < 70) return 'Good';
+    if(n < 80) return 'Very good';
+    if(n < 90) return 'Excellent';
+    return 'Outstanding';
+  }
+  const overallDesc = commentMap[overallGrade] || '—';
+  const pAggregate = isP ? primaryAggregate(s, cls, term, year) : null;
+  const pDivision = isP ? primaryDivisionFor(pAggregate) : null;
+
+  const cfg = examConfig(cls && cls.id);
+  const showCW = cfg.cwEnabled;
+  const showEOT = cfg.eotEnabled;
+  const cwTests = cfg.cwTests || [];
+  const useCwTestCols = showCW && cwTests.length>0;
+
+  function assignmentFor(subject, paper){
+    const asns = DB.assignments.filter(a=>a.subject===subject && a.classId===cls.id);
+    if(!asns.length) return null;
+    if(paper==null) return asns[0];
+    return asns.find(a=>Array.isArray(a.papers) && a.papers.some(p=>String(p)===String(paper))) || asns[0];
+  }
+  function assignedTeacherInit(subject, paper){
+    const asn = assignmentFor(subject, paper);
+    if(!asn) return null;
+    const acc = DB.accounts.find(a=>a.username===asn.teacherUsername);
+    return acc ? initials(acc.name) : null;
+  }
+
+  const breakdowns = rows.map(r=>subjectBreakdown(s.id, r.subject, term, year));
+  const allPaperFinals = [];
+
+  // Build one entry per subject; each entry has one row per paper actually on
+  // record (paperRows), matching exactly how reportCardHTML decides rowspans.
+  const subjectEntries = rows.map((r,i)=>{
+    const bd = breakdowns[i];
+    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : (commentMap[r.grade] || '—'));
+    const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
+    const papersList = subjectPapersFor(r.subject, cls);
+    const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
+    const useSubrows = enteredPapers.length>0;
+    const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg}];
+
+    const rowsOut = paperRows.map(p=>{
+      const paperForLookup = useSubrows ? p.paper : (papersList.length===1 ? papersList[0] : null);
+      const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
+      const initTxt = (!teacherInit || teacherInit==='--') ? '' : teacherInit;
+      const papersTxt = useSubrows ? String(p.paper) : (papersList.length===1 ? String(papersList[0]) : '—');
+      let cwTestVals = [];
+      let cwAvgTxt = '—';
+      if(showCW){
+        cwAvgTxt = (p.aoiAvg===null || p.aoiAvg===undefined) ? '-' : p.aoiAvg.toFixed(1);
+        if(useCwTestCols){
+          cwTestVals = cwTests.map(t=>{
+            const row = cwTestScore(s.id, r.subject, t.name, paperForLookup, term, year);
+            return row ? String(row.marks) : '—';
+          });
+        }
+      }
+      let eotTxt = '';
+      if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? '-' : p.eotAvg.toFixed(1);
+      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg);
+      if(paperFinal!==null) allPaperFinals.push(paperFinal);
+      return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?'—':paperFinal.toFixed(1), teacherInitTxt: initTxt };
+    });
+
+    return {
+      subject: r.subject,
+      finalAvgTxt: r.avg==null?'-':r.avg.toFixed(1),
+      gradeTxt: r.grade ? gradeDisplay(r.subject, r.grade, cls.level) : '-',
+      pointsVal: isA ? (r.avg==null?0:r.pts) : null,
+      descriptorTxt: descriptor,
+      paperRows: rowsOut
+    };
+  });
+
+  const cwVals = breakdowns.map(b=>b.aoiAvg).filter(v=>v!==null);
+  const eotVals = breakdowns.map(b=>b.eotAvg).filter(v=>v!==null);
+  const cwTotalTxt = cwVals.length ? (cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1) : '—';
+  const eotTotalTxt = eotVals.length ? (eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1) : '—';
+  const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '—';
+  const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
+  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
+  const totalFinalTxt = isA ? avgPct.toFixed(1) : avgPct.toFixed(0)+'%';
+
+  const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
+  const ctName = classTeacherAcc? classTeacherAcc.name : '';
+  const htName = DB.info.headteacher || '';
+
+  return {
+    student: s, cls, term, year, isA, isP,
+    cfg, showCW, showEOT, cwTests, useCwTestCols,
+    subjectEntries,
+    totals: { cwTotalTxt, eotTotalTxt, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
+    summary: {
+      maxP, avgPct, overallGrade, overallDesc, pAggregate, pDivision, position, size,
+      prevPeriod, prevPosition, weakSubjects
+    },
+    comments: {
+      classComment: isP ? primaryRemark(pDivision,'class') : overallRemark(pct,'class'),
+      headComment: isP ? primaryRemark(pDivision,'head') : overallRemark(pct,'head')
+    },
+    signOff: { ctName, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
+    school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto },
+    feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, photo: s.photo
+  };
+}
+
+// Step 2: draw one full report card page onto an already-created jsPDF document.
+function drawReportCardPage(pdf, data){
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const M = 26; // outer page margin, points
+  const cardX = M, cardY = M, cardW = pageW - M*2, cardH = pageH - M*2;
+  const navy = [10,42,74], blueLight = [233,241,250], muted = [90,113,137], ink=[19,36,54];
+  let cy = cardY + 14; // running vertical cursor
+
+  function setC(rgb){ pdf.setTextColor(rgb[0],rgb[1],rgb[2]); }
+  function setDrawC(rgb){ pdf.setDrawColor(rgb[0],rgb[1],rgb[2]); }
+  function line(x1,y1,x2,y2,w){ pdf.setLineWidth(w||0.75); pdf.line(x1,y1,x2,y2); }
+  function wrap(text, w, size, style){
+    pdf.setFont('helvetica', style||'normal'); pdf.setFontSize(size);
+    return pdf.splitTextToSize(String(text==null?'':text), w);
+  }
+  function centerText(text, x, w, y, size, style, rgb){
+    pdf.setFont('helvetica', style||'normal'); pdf.setFontSize(size); setC(rgb||ink);
+    pdf.text(String(text), x + w/2, y, {align:'center'});
+  }
+  function leftText(text, x, y, size, style, rgb){
+    pdf.setFont('helvetica', style||'normal'); pdf.setFontSize(size); setC(rgb||ink);
+    pdf.text(String(text), x, y);
+  }
+
+  // ---- 1. Faint background watermark of the school logo (behind everything) ----
+  if(data.school.logo){
+    try{
+      const props = pdf.getImageProperties(data.school.logo);
+      const wmW = cardW*0.55, wmH = wmW*(props.height/props.width);
+      pdf.saveGraphicsState();
+      pdf.setGState(new pdf.GState({opacity:0.06}));
+      pdf.addImage(data.school.logo, 'PNG', cardX+(cardW-wmW)/2, cardY+(cardH-wmH)/2, wmW, wmH);
+      pdf.restoreGraphicsState();
+    }catch(e){ /* unreadable/unsupported image — skip watermark, never block the PDF */ }
+  }
+
+  // ---- 2. Outer decorative double border ----
+  setDrawC(navy);
+  pdf.setLineWidth(1.6); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
+  pdf.setLineWidth(0.6); pdf.rect(cardX+7, cardY+7, cardW-14, cardH-14);
+  const contentX = cardX + 16, contentW = cardW - 32;
+
+  // ---- 3. Topline: fees code + printed date ----
+  pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
+  if(data.feesCode) pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy);
+  pdf.text(`Printed ${fmtDate(Date.now())}`, contentX+contentW, cy, {align:'right'});
+  cy += 10;
+
+  // ---- 4. Title block: logo (left) + school name/subtitle/meta (right) ----
+  const titleTop = cy;
+  let textX = contentX;
+  if(data.school.logo){
+    try{
+      const props = pdf.getImageProperties(data.school.logo);
+      const logoH = 48, logoW = Math.min(60, logoH*(props.width/props.height));
+      pdf.addImage(data.school.logo, 'PNG', contentX, titleTop, logoW, logoH);
+      textX = contentX + logoW + 10;
+    }catch(e){ /* skip logo, keep going */ }
+  }
+  const textW = contentX + contentW - textX;
+  centerText(data.school.name||'', textX, textW, titleTop+13, 15, 'bold', navy);
+  const levelLbl = data.isA?'A Level':(data.isP?'Primary':'O Level');
+  centerText(`Student Academic Report Card — ${levelLbl}`, textX, textW, titleTop+24, 9.5, 'bold', ink);
+  let metaY = titleTop+35;
+  let metaLine1 = `Academic Year: ${data.year}`;
+  if(data.school.address) metaLine1 += '   |   '+data.school.address;
+  centerText(metaLine1, textX, textW, metaY, 8, 'italic', muted);
+  if(data.school.phone || data.school.email){
+    metaY += 9;
+    const parts = [data.school.phone?('Tel: '+data.school.phone):'', data.school.email?('Email: '+data.school.email):''].filter(Boolean).join('   |   ');
+    centerText(parts, textX, textW, metaY, 8, 'italic', muted);
+  }
+  cy = titleTop + 52;
+  setDrawC(navy); line(contentX, cy, contentX+contentW, cy, 1.2);
+  cy += 12;
+
+  // ---- 5. Student info table ----
+  const infoRowH = 15;
+  const hasPhoto = !!data.photo;
+  const photoColW = hasPhoto ? 54 : 0;
+  const infoTableW = contentW - photoColW;
+  const lblW = infoTableW*0.20, valW = infoTableW*0.30;
+  const infoRows = [
+    ['Name', data.student.name, 'Class', data.cls.name+(data.cls.stream?(' '+data.cls.stream):'')],
+    ['Term', `${data.term}, ${data.year}`, 'Sex', data.student.gender||'—'],
+    [data.isA?'Combination':(data.isP?'Fees Pay Code':'Optional Subjects'),
+      data.isP?(data.feesCode||'—'):comboLabel(data.student, data.cls),
+      'Admission No', data.student.admNo||'—']
+  ];
+  const infoTop = cy;
+  setDrawC([29,78,137]);
+  for(let i=0;i<infoRows.length;i++){
+    const ry = infoTop + i*infoRowH;
+    pdf.setLineWidth(0.7);
+    pdf.rect(contentX, ry, lblW, infoRowH);
+    pdf.rect(contentX+lblW, ry, valW, infoRowH);
+    pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH);
+    pdf.rect(contentX+lblW*2+valW, ry, valW, infoRowH);
+    pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
+    pdf.rect(contentX, ry, lblW, infoRowH, 'F'); pdf.rect(contentX, ry, lblW, infoRowH);
+    pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH, 'F'); pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH);
+    leftText(infoRows[i][0], contentX+4, ry+infoRowH-5, 7.5, 'bold', navy);
+    leftText(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5, 8.5, 'bold', ink);
+    leftText(infoRows[i][2], contentX+lblW+valW+4, ry+infoRowH-5, 7.5, 'bold', navy);
+    leftText(String(infoRows[i][3]), contentX+lblW*2+valW+4, ry+infoRowH-5, 8.5, 'bold', ink);
+  }
+  if(hasPhoto){
+    const px = contentX+infoTableW, py = infoTop, ph = infoRowH*3;
+    setDrawC([29,78,137]); pdf.setLineWidth(0.7); pdf.rect(px, py, photoColW, ph);
+    try{
+      const pp = pdf.getImageProperties(data.photo);
+      const inset=4, boxW=photoColW-inset*2, boxH=ph-inset*2;
+      let dw=boxW, dh=boxH*(pp.width/pp.height); // fit by height first, adjust
+      dh = boxH; dw = dh*(pp.width/pp.height);
+      if(dw>boxW){ dw=boxW; dh=dw*(pp.height/pp.width); }
+      pdf.addImage(data.photo, 'PNG', px+(photoColW-dw)/2, py+(ph-dh)/2, dw, dh);
+    }catch(e){}
+  }
+  cy = infoTop + infoRowH*3 + 14;
+
+  // ---- 6. Academic Performance Analysis table ----
+  setDrawC(navy);
+  leftText('ACADEMIC PERFORMANCE ANALYSIS', contentX, cy, 9, 'bold', navy);
+  line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+  cy += 14;
+
+  // Column plan, reusing the same weighting idea as the on-screen colgroup:
+  // a Subject column, an optional Papers column, an optional block of Course
+  // Work columns, an optional End of Term column, an optional Paper Average
+  // column, then Final Average / Grade / (Points) / Descriptor / Initials.
+  const cols = [];
+  cols.push({key:'subject', label:'Subjects', w:0.20});
+  if(!data.isP) cols.push({key:'papers', label:'PPs', w:0.045});
+  if(data.showCW){
+    if(data.useCwTestCols){
+      const n = data.cwTests.length;
+      const cwShare = Math.min(0.42, 0.16+n*0.045);
+      data.cwTests.forEach(t=>cols.push({key:'cw_'+t.name, label:t.name+' (/'+t.max+')', w:cwShare/(n+1)}));
+      cols.push({key:'cwavg', label:'Avg (/'+data.cfg.cwPercent+')', w:cwShare/(n+1)});
+    } else {
+      cols.push({key:'cwavg', label:data.cfg.cwLabel+' (/'+data.cfg.cwPercent+')', w:0.10});
+    }
+  }
+  if(data.showEOT) cols.push({key:'eot', label:data.cfg.eotLabel+' (/'+data.cfg.eotPercent+')', w:0.09});
+  if(!data.isP) cols.push({key:'paperavg', label:'Paper Avg (%)', w:0.09});
+  cols.push({key:'final', label:'Final Avg (%)', w:0.10});
+  cols.push({key:'grade', label:'Grade', w:0.07});
+  if(data.isA) cols.push({key:'points', label:'Points', w:0.07});
+  cols.push({key:'desc', label:data.isP?'Remarks':'Descriptor', w:0.14});
+  cols.push({key:'init', label:'Tr. Init', w:0.06});
+  const wSum = cols.reduce((a,c)=>a+c.w,0);
+  let xC = contentX;
+  cols.forEach(c=>{ c.width = contentW * (c.w/wSum); c.x = xC; xC += c.width; });
+
+  const headerH = 20;
+  setDrawC([29,78,137]); pdf.setLineWidth(0.6);
+  pdf.setFillColor(29,78,137);
+  pdf.rect(contentX, cy, contentW, headerH, 'F');
+  cols.forEach(c=>{
+    pdf.setLineWidth(0.6); pdf.setDrawColor(255,255,255);
+    pdf.rect(c.x, cy, c.width, headerH);
+    const lines = wrap(c.label, c.width-4, 6.6, 'bold');
+    const startY = cy + headerH/2 - ((lines.length-1)*7)/2 + 3;
+    lines.forEach((ln,i)=>centerText(ln, c.x, c.width, startY+i*7, 6.6, 'bold', [255,255,255]));
+  });
+  cy += headerH;
+
+  const bodySize = 8, lineH = 9.5;
+  function colX(key){ const c=cols.find(cc=>cc.key===key); return c?c:null; }
+
+  data.subjectEntries.forEach(entry=>{
+    const spanCount = entry.paperRows.length;
+    // Height needed by the subject/descriptor text spanning every paper subrow.
+    const subjLines = wrap(entry.subject, colX('subject').width-6, bodySize);
+    const descLines = wrap(entry.descriptorTxt, colX('desc').width-6, bodySize);
+    const mergedLines = Math.max(subjLines.length, descLines.length, 1);
+    const perRowH = Math.max(lineH+4, (mergedLines*lineH+8)/spanCount);
+    const rowHeights = entry.paperRows.map(()=>perRowH);
+    const groupH = rowHeights.reduce((a,b)=>a+b,0);
+    const groupTop = cy;
+
+    entry.paperRows.forEach((pr, idx)=>{
+      const rh = rowHeights[idx];
+      setDrawC([29,78,137]); pdf.setLineWidth(0.5);
+      cols.forEach(c=>pdf.rect(c.x, cy, c.width, rh));
+      if(!data.isP){ const c=colX('papers'); centerText(pr.papersTxt, c.x, c.width, cy+rh/2+3, bodySize); }
+      if(data.showCW){
+        if(data.useCwTestCols){
+          data.cwTests.forEach((t,ti)=>{ const c=colX('cw_'+t.name); centerText(pr.cwTestVals[ti]||'—', c.x, c.width, cy+rh/2+3, bodySize); });
+        }
+        const c=colX('cwavg'); centerText(pr.cwAvgTxt, c.x, c.width, cy+rh/2+3, bodySize);
+      }
+      if(data.showEOT){ const c=colX('eot'); centerText(pr.eotTxt, c.x, c.width, cy+rh/2+3, bodySize); }
+      if(!data.isP){ const c=colX('paperavg'); centerText(pr.paperFinalTxt, c.x, c.width, cy+rh/2+3, bodySize); }
+      const initC=colX('init'); centerText(pr.teacherInitTxt||'—', initC.x, initC.width, cy+rh/2+3, bodySize);
+      cy += rh;
+    });
+
+    // Merged cells: subject name, final avg, grade, points, descriptor —
+    // drawn once, vertically centered across the whole subject's group height.
+    const gc = colX('subject');
+    const gy0 = groupTop + groupH/2 - ((subjLines.length-1)*lineH)/2 + 3;
+    subjLines.forEach((ln,i)=>leftText(ln, gc.x+3, gy0+i*lineH, bodySize));
+    const fc = colX('final'); centerText(entry.finalAvgTxt, fc.x, fc.width, groupTop+groupH/2+3, bodySize, 'bold');
+    const grc = colX('grade'); centerText(entry.gradeTxt, grc.x, grc.width, groupTop+groupH/2+3, bodySize, 'bold');
+    if(data.isA){ const pc=colX('points'); centerText(String(entry.pointsVal), pc.x, pc.width, groupTop+groupH/2+3, bodySize); }
+    const dc = colX('desc');
+    const dy0 = groupTop + groupH/2 - ((descLines.length-1)*lineH)/2 + 3;
+    descLines.forEach((ln,i)=>centerText(ln, dc.x, dc.width, dy0+i*lineH, bodySize));
+  });
+
+  // ---- TOTAL / OVERALL row ----
+  const totRowH = 16;
+  setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
+  pdf.rect(contentX, cy, contentW, totRowH, 'F');
+  cols.forEach(c=>{ pdf.setLineWidth(0.6); pdf.rect(c.x, cy, c.width, totRowH); });
+  const labelSpanCols = data.isP ? ['subject'] : ['subject','papers'];
+  const labelW = labelSpanCols.reduce((a,k)=>a + (colX(k)?colX(k).width:0), 0);
+  leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', navy);
+  if(data.showCW){
+    if(data.useCwTestCols){ data.cwTests.forEach(t=>{ const c=colX('cw_'+t.name); centerText('—', c.x, c.width, cy+totRowH-5, bodySize); }); }
+    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold');
+  }
+  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
+  if(!data.isP){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
+  { const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
+  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
+  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
+  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
+  { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize); }
+  cy += totRowH + 14;
+
+  // ---- 7. Performance Summary table (3 label/value pairs x 2 rows) ----
+  leftText('PERFORMANCE SUMMARY', contentX, cy, 9, 'bold', navy);
+  line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+  cy += 12;
+  const sumRowH = 16, sumColW = contentW/6;
+  const sm = data.summary;
+  const summaryRows = [
+    ['Total Subjects', String(data.totals.subjectCount),
+     data.isA?'Total Points':'Total Final Average', data.isA?`${data.totals.totalPoints}/${sm.maxP}`:sm.avgPct.toFixed(0)+'%',
+     data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')],
+    [data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—'),
+     `${data.term} Position`, `${sm.position} / ${sm.size}`,
+     data.isP?'Previous Position':`Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`,
+     data.isP ? (sm.prevPosition?`${sm.prevPosition.position} / ${sm.prevPosition.size} (${sm.prevPeriod.term}, ${sm.prevPeriod.year})`:'—')
+              : (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.join(', '):'—')]
+  ];
+  setDrawC([29,78,137]);
+  summaryRows.forEach((row,ri)=>{
+    const ry = cy + ri*sumRowH;
+    for(let ci=0; ci<6; ci++){
+      const rx = contentX + ci*sumColW;
+      pdf.setLineWidth(0.6); pdf.rect(rx, ry, sumColW, sumRowH);
+      const isLbl = ci%2===0;
+      if(isLbl) pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
+      if(isLbl){ pdf.rect(rx, ry, sumColW, sumRowH, 'F'); pdf.rect(rx, ry, sumColW, sumRowH); }
+      const val = row[ci];
+      const lines = wrap(String(val), sumColW-6, isLbl?6.5:8, isLbl?'bold':'normal');
+      centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, isLbl?'bold':'normal', isLbl?navy:ink);
+    }
+  });
+  cy += sumRowH*2 + 14;
+
+  // ---- 8. Grading Scale (Primary only) ----
+  if(data.isP){
+    leftText('GRADING SCALE', contentX, cy, 9, 'bold', navy);
+    line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+    cy += 12;
+    const gradeColW = contentW/(PLE_GRADES.length+1);
+    const gradeRowH = 14;
+    setDrawC([29,78,137]);
+    pdf.setLineWidth(0.6); pdf.rect(contentX, cy, gradeColW, gradeRowH);
+    centerText('Range of Marks (%)', contentX, gradeColW, cy+gradeRowH-4, 6.5, 'bold', navy);
+    PLE_GRADES.forEach((g,i)=>{
+      const band = (DB.pbands||DEFAULT_P_BANDS)[g] || DEFAULT_P_BANDS[g];
+      const rx = contentX+gradeColW*(i+1);
+      pdf.rect(rx, cy, gradeColW, gradeRowH);
+      centerText(`${band[0]}–${band[1]}`, rx, gradeColW, cy+gradeRowH-4, 7);
+    });
+    cy += gradeRowH;
+    pdf.rect(contentX, cy, gradeColW, gradeRowH);
+    centerText('Grade', contentX, gradeColW, cy+gradeRowH-4, 6.5, 'bold', navy);
+    PLE_GRADES.forEach((g,i)=>{
+      const rx = contentX+gradeColW*(i+1);
+      pdf.rect(rx, cy, gradeColW, gradeRowH);
+      centerText(g, rx, gradeColW, cy+gradeRowH-4, 7.5, 'bold');
+    });
+    cy += gradeRowH + 14;
+  }
+
+  // ---- 9. Comments table ----
+  leftText('COMMENTS', contentX, cy, 9, 'bold', navy);
+  line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+  cy += 12;
+  const halfW = contentW/2;
+  const ctLines = wrap(data.comments.classComment, halfW-8, 8);
+  const htLines = wrap(data.comments.headComment, halfW-8, 8);
+  const commentBodyH = Math.max(ctLines.length, htLines.length)*10 + 8;
+  setDrawC([29,78,137]); pdf.setLineWidth(0.6);
+  pdf.rect(contentX, cy, halfW, 14); pdf.rect(contentX+halfW, cy, halfW, 14);
+  centerText("Class Teacher's Comment", contentX, halfW, cy+10, 7.5, 'bold', navy);
+  centerText("Head Teacher's Comment", contentX+halfW, halfW, cy+10, 7.5, 'bold', navy);
+  cy += 14;
+  pdf.rect(contentX, cy, halfW, commentBodyH); pdf.rect(contentX+halfW, cy, halfW, commentBodyH);
+  ctLines.forEach((ln,i)=>leftText(ln, contentX+4, cy+12+i*10, 8));
+  htLines.forEach((ln,i)=>leftText(ln, contentX+halfW+4, cy+12+i*10, 8));
+  cy += commentBodyH + 16;
+
+  // ---- 10. Sign-off row ----
+  const thirdW = contentW/3;
+  leftText(`Class Teacher: ${data.signOff.ctName}`, contentX, cy, 8, 'bold');
+  leftText('Signature: ______________', contentX, cy+11, 7.5);
+  centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, contentX+thirdW, thirdW, cy, 7.5);
+  centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, contentX+thirdW, thirdW, cy+11, 7.5);
+  const rightX = contentX+thirdW*2;
+  leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
+  leftText('School Stamp: ______________', rightX, cy+11, 7.5);
+  cy += 26;
+
+  // ---- 11. Motto, fees legend, scoring note ----
+  if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 8.5, 'italic', navy); cy += 12; }
+  const feesTxt = `Fees balance: ${data.feesBalance!=null?('UGX '+Number(data.feesBalance).toLocaleString()):'—'}  ·  Next term fees: ${data.nextTermFees!=null?('UGX '+Number(data.nextTermFees).toLocaleString()):'—'}`;
+  centerText(feesTxt, contentX, contentW, cy, 7.5, 'normal', muted); cy += 10;
+  centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
+}
+
 // Saves one mark typed straight into an open report card (see editableNow/canEditScore
 // inside reportCardHTML). Mirrors the same upsert logic as the regular mark-sheet
 // "saveScores" submit — one score row per student+subject+paper+kind(+label) — so both
@@ -5438,7 +6162,14 @@ document.addEventListener('click', async (e)=>{
     alert('Only an Admin can do that.'); return;
   }
   const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot']);
-  if(MUTATING_ACTIONS.has(action)) showActionProgress('Processing…');
+  // These are destructive/irreversible actions (deletes, account closures, etc.), so
+  // the progress banner must stay anchored to the button (el) and always resolve to
+  // success or failure — never leave "Processing…" on screen once the command is
+  // actually done. A case can call showActionSuccess/showActionFailure itself with a
+  // specific message; otherwise the fallback after the switch (or the catch, on
+  // error) resolves it.
+  if(MUTATING_ACTIONS.has(action)) showActionProgress('Processing…', el);
+  try{
   switch(action){
     case 'gotoCreateSchool': AUTH_VIEW='createSchool'; render(); break;
     case 'gotoTeacherSignup': AUTH_VIEW='signupTeacher'; render(); break;
@@ -5522,7 +6253,7 @@ Existing admission numbers for these students will be replaced by the rule, usin
 
 Continue?`);
       if(!sure) break;
-      showActionProgress('Adjusting existing admission numbers…');
+      showActionProgress('Adjusting existing admission numbers…', el);
       DB.classes.forEach(cls=>{
         const students=DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
         if(!students.length) return;
@@ -5532,7 +6263,7 @@ Continue?`);
       DB.info.admSchemaVersion=ADM_SCHEMA_VERSION;
       DB.info.admSchemaMigrated=true;
       await Promise.all([saveInfo(),saveClasses(),saveStudents()]);
-      showActionSuccess(`Adjusted ${active.length} admission numbers`);
+      showActionSuccess(`Adjusted ${active.length} admission numbers`, el);
       render();
       break;
     }
@@ -5545,12 +6276,12 @@ Continue?`);
       DB.classes = DB.classes.filter(c=>c.id!==arg);
       DB.assignments = DB.assignments.filter(a=>a.classId!==arg);
       await Promise.all([saveClasses(), saveAssignments()]);
-      showActionSuccess('Deleted successfully'); render(); break;
+      showActionSuccess('Deleted successfully', el); render(); break;
     }
     case 'delStudent': {
       const s = DB.students.find(x=>x.id===arg);
       DB.students = DB.students.filter(x=>x.id!==arg);
-      await saveStudents(); showActionSuccess('Deleted successfully');
+      await saveStudents(); showActionSuccess('Deleted successfully', el);
       if(s && s.photo) await deletePhotoFromStorage(s.photo); // remove their stored photo too — nothing left behind
       render(); break;
     }
@@ -5561,14 +6292,14 @@ Continue?`);
       s.status = 'left';
       s.leftTerm = DB.info.currentTerm;
       s.leftYear = DB.info.currentYear;
-      await saveStudents(); showActionSuccess('Moved to Old Students'); render(); break;
+      await saveStudents(); showActionSuccess('Moved to Old Students', el); render(); break;
     }
     case 'restoreStudent': {
       const s = DB.students.find(x=>x.id===arg);
       if(!s){ break; }
       s.status = 'active';
       delete s.leftTerm; delete s.leftYear;
-      await saveStudents(); showActionSuccess('Student restored successfully'); render(); break;
+      await saveStudents(); showActionSuccess('Student restored successfully', el); render(); break;
     }
     case 'delOldStudentNow': {
       const s = DB.students.find(x=>x.id===arg);
@@ -5577,22 +6308,22 @@ Continue?`);
       DB.students = DB.students.filter(x=>x.id!==arg);
       DB.scores = DB.scores.filter(sc=>sc.studentId!==arg);
       DB.accounts.forEach(a=>{ if(a.role==='parent' && a.studentId===arg) a.studentId=null; });
-      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess('Old student deleted successfully');
+      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess('Old student deleted successfully', el);
       if(s.photo) await deletePhotoFromStorage(s.photo);
       render(); break;
     }
-    case 'delAssign': DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); render(); break;
+    case 'delAssign': DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess('Removed successfully', el); render(); break;
     case 'delOSubject': {
       const name = decodeURIComponent(arg);
       DB.info.oExtraSubjects = (DB.info.oExtraSubjects||[]).filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryLower)) DB.info.oCompulsoryLower = DB.info.oCompulsoryLower.filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
-      await saveInfo(); render(); break;
+      await saveInfo(); showActionSuccess('Removed successfully', el); render(); break;
     }
     case 'delPSubject': {
       const name = decodeURIComponent(arg);
       DB.info.pExtraSubjects = (DB.info.pExtraSubjects||[]).filter(s=>s!==name);
-      await saveInfo(); render(); break;
+      await saveInfo(); showActionSuccess('Removed successfully', el); render(); break;
     }
     case 'delASubject': {
       const name = decodeURIComponent(arg);
@@ -5607,7 +6338,7 @@ Continue?`);
       list.add(username);
       sd[kind] = {...cur, reopenedFor:[...list]};
       DB.info.scoreDeadlines = sd;
-      await saveInfo(); showDeliveredToast('Reopened for this teacher'); render(); break;
+      await saveInfo(); showActionSuccess('Reopened for this teacher', el); render(); break;
     }
     case 'lockScoreDeadline': {
       const [kind, username] = arg.split(':');
@@ -5615,7 +6346,7 @@ Continue?`);
       const cur = sd[kind] || {deadline:null, reopenedFor:[]};
       sd[kind] = {...cur, reopenedFor:(cur.reopenedFor||[]).filter(u=>u!==username)};
       DB.info.scoreDeadlines = sd;
-      await saveInfo(); showDeliveredToast('Locked again'); render(); break;
+      await saveInfo(); showActionSuccess('Locked again', el); render(); break;
     }
     case 'reopenAllScoreDeadline': {
       const kind = arg;
@@ -5624,7 +6355,7 @@ Continue?`);
       const allUsernames = DB.accounts.filter(a=>a.role==='teacher').map(t=>t.username);
       sd[kind] = {...cur, reopenedFor: allUsernames};
       DB.info.scoreDeadlines = sd;
-      await saveInfo(); showDeliveredToast('Reopened for all teachers'); render(); break;
+      await saveInfo(); showActionSuccess('Reopened for all teachers', el); render(); break;
     }
     case 'delCwTest': {
       const sure = confirm('Delete this test? Scores already recorded under it stay on file (and keep counting toward the Course Work average) but it will no longer be offered to teachers, and its column will disappear from report cards.');
@@ -5632,7 +6363,7 @@ Continue?`);
       const cfg = {...(DB.info.examConfig||{})};
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==arg);
       DB.info.examConfig = cfg;
-      await saveInfo(); render(); break;
+      await saveInfo(); showActionSuccess('Test deleted', el); render(); break;
     }
     case 'editCwTestStart': {
       VIEW.params = {...VIEW.params, editCwTestId: arg}; render(); break;
@@ -5649,7 +6380,7 @@ Continue?`);
       const cfg = {...(cls.examConfig||{})};
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==testId);
       cls.examConfig = cfg;
-      await saveClasses(); render(); break;
+      await saveClasses(); showActionSuccess('Test deleted', el); render(); break;
     }
     case 'editClassCwTestStart': {
       const [, testId] = arg.split(':');
@@ -5863,16 +6594,16 @@ Continue?`);
     }
     case 'approveAcc': { const code=prompt('Enter your private owner code to approve:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
-      const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); render(); } break; }
+      const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); showActionSuccess('Approved', el); render(); } break; }
     case 'rejectAcc': { const code=prompt('Enter your private owner code to reject:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
-      DB.accounts = DB.accounts.filter(a=>a.username!==arg); await saveAccounts(); render(); break; }
+      DB.accounts = DB.accounts.filter(a=>a.username!==arg); await saveAccounts(); showActionSuccess('Rejected', el); render(); break; }
     case 'closeAcc': { const code=prompt('Enter your private owner code to close this account:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
-      const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='closed'; await saveAccounts(); render(); } break; }
+      const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='closed'; await saveAccounts(); showActionSuccess('Account closed', el); render(); } break; }
     case 'reopenAcc': { const code=prompt('Enter your private owner code to reopen:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
-      const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); render(); } break; }
+      const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); showActionSuccess('Account reopened', el); render(); } break; }
     case 'resetAccPw': { const code=prompt('Enter your private owner code to reset this teacher\'s password:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(!acc) break;
@@ -5980,6 +6711,14 @@ Continue?`)) break;
       if(FOUNDER_LOGINS && FOUNDER_LOGINS.schoolId===r.id) FOUNDER_LOGINS=null;
       VIEW = {name:'fschools'};
       alert(`"${r.name}" has been permanently deleted.`); render(); break; }
+  }
+  // Safety net: dismiss the banner if a case above finished, cancelled, or no-op'd
+  // without calling showActionSuccess itself — never leave it stuck on screen.
+  if(MUTATING_ACTIONS.has(action) && actionBannerStillProcessing()) hideActionBanner();
+  }catch(err){
+    console.error(err);
+    if(MUTATING_ACTIONS.has(action)) showActionFailure('Could not complete that action — please try again.', el);
+    else alert('Something went wrong. Please try again.');
   }
 });
 function renderShellWithContent(innerHtml){
@@ -6278,10 +7017,10 @@ document.addEventListener('submit', async (e)=>{
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
-  if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
-    alert('Only an Admin can do that.'); return;
-  }
   try{
+    if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
+      alert('Only an Admin can do that.'); return;
+    }
     if(type==='founderSetup'){
       const missing = ['name','username','password','code','recovery'].filter(k=>!fd.get(k) || !fd.get(k).trim());
       if(missing.length){ showFatal('Please fill in: '+missing.join(', ')); return; }
@@ -7312,8 +8051,18 @@ document.addEventListener('submit', async (e)=>{
         alert('Some scores could not be saved — check your internet connection and try submitting again.');
       });
     }
-  }catch(err){ console.error(err); showActionFailure('Could not complete the action. Please try again.', actionButton); alert('Something went wrong. Please try again.'); return; }
-  showActionSuccess('Saved successfully', actionButton);
+    showActionSuccess('Saved successfully', actionButton);
+  }catch(err){
+    console.error(err);
+    showActionFailure('Could not complete the action. Please try again.', actionButton);
+    alert('Something went wrong. Please try again.');
+  } finally {
+    // Any invalid-input, permission, or cancelled-confirm check above exits via a
+    // plain `return` rather than throwing, so it never reaches showActionSuccess.
+    // Always resolve the banner here regardless — dismiss it quietly if nothing
+    // was actually saved, but don't touch an already-shown success/failure message.
+    if(actionBannerStillProcessing()) hideActionBanner();
+  }
 });
 
 /* ---------- Lazy-loaded libraries ----------
@@ -7341,6 +8090,44 @@ function loadPdfLibs(){
     loadScriptOnce('jspdf', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
     loadScriptOnce('html2canvas', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js')
   ]);
+}
+// Report card PDFs are now drawn natively with jsPDF (see drawReportCardPage()) and
+// never screenshot the page, so they no longer need html2canvas at all. Loading just
+// this one script (instead of loadPdfLibs' pair) means the first report-card download
+// of a session pulls noticeably less over the network. Mark sheets / class analysis
+// (downloadElementAsPdf) still call loadPdfLibs() since those remain screenshot-based.
+function loadJsPdfOnly(){
+  if(window.jspdf) return Promise.resolve();
+  return loadScriptOnce('jspdf', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+}
+// School logos/student photos may be stored as WEBP (see COMPRESS_MIME above, which
+// prefers WEBP whenever the browser can encode it). jsPDF's core bundle can't reliably
+// embed WEBP — that needs a separate, bug-prone plugin — so every image is first
+// re-drawn through an offscreen <canvas> and re-exported as PNG before being handed to
+// jsPDF. The browser's own <img> tag already knows how to decode whatever format the
+// image was actually saved in (that's how it displays it on screen today), so this
+// works regardless of source format, and PNG is something every jsPDF build embeds
+// natively and reliably. Results are cached by source string so the same school logo
+// used across a whole bulk export is only ever converted once.
+const _pngCache = new Map();
+function toPngDataUrl(dataUrl){
+  if(!dataUrl) return Promise.resolve(null);
+  if(_pngCache.has(dataUrl)) return _pngCache.get(dataUrl);
+  const p = new Promise((resolve)=>{
+    const img = new Image();
+    img.onload = () => {
+      try{
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        resolve(c.toDataURL('image/png'));
+      }catch(e){ resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+  _pngCache.set(dataUrl, p);
+  return p;
 }
 // Delivers a finished jsPDF document to the user, on phone and computer, with a
 // single tap.
@@ -7762,77 +8549,36 @@ async function pdfForStudents(students, filename, opts={}){
   if(!students.length){ alert('No students to export.'); return; }
   setAppBusy(true); // guards this (potentially long, 100+ student) export against an auto-update reload
   try{
-  try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
+  // Report cards no longer need html2canvas at all — see buildReportCardData()/
+  // drawReportCardPage() above — so this only pulls jsPDF itself (~200KB lighter
+  // than before per session, and the very first report-card download on a fresh
+  // visit starts sooner). html2canvas is still fetched separately, only if/when
+  // the person opens a mark sheet / class analysis PDF (see downloadElementAsPdf).
+  try{ await loadJsPdfOnly(); }catch(e){ alert(e.message); return; }
   const { jsPDF } = window.jspdf;
   // compress:true turns on jsPDF's internal stream (Flate) compression for the
-  // PDF's own text/vector overhead — free file-size savings, zero effect on the
-  // embedded card image, safe to leave on for every export.
+  // PDF's own text/vector overhead — real text/lines compress extremely well,
+  // which is a big part of why these files are now much smaller than the old
+  // screenshot-based ones, on top of no longer paying for a JPEG at all.
   const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const holder = document.createElement('div');
-  holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.width='820px'; holder.style.background='#fff';
-  document.body.appendChild(holder);
-  // Render RESOLUTION (the scale factor) is what determines print sharpness.
-  // Optimised for much smaller PDFs while preserving high print resolution.
-  // A 2.5x capture still produces a very sharp A4 report card, while JPEG 0.82
-  // removes mostly invisible photographic redundancy. The same settings are used
-  // for both single and bulk downloads so their quality remains identical.
-  const scale = 2.5;
-  const format = 'JPEG';
-  const jpegQuality = 0.82;
   for(let i=0;i<students.length;i++){
-    // html2canvas has a long-standing, well-documented bug (the CSS spec itself calls
-    // border-collapse:collapse + rowspan/colspan "undefined" behaviour) where a merged
-    // (rowspan) cell painted across rows of slightly different height comes out with its
-    // text doubled/smeared — most visible on multi-paper subjects like Mathematics, whose
-    // Final Average/Grade/Points/Descriptor cells span two paper rows. Switching those
-    // tables to border-collapse:separate for this capture-only copy of the card sidesteps
-    // the bug entirely (each cell's borders and text are then painted independently
-    // instead of being merged/shared across the rowspan boundary) — the live on-screen
-    // card and the browser Print dialog still use the normal collapsed borders, so this
-    // override is scoped to just the offscreen holder html2canvas actually screenshots.
-    holder.innerHTML = `<style>#pdfCaptureHolder{width:820px;box-sizing:border-box;background:#fff;}#pdfCaptureHolder .rc-card{box-sizing:border-box;width:100%;max-width:none;margin:0;}#pdfCaptureHolder table.rc-perf{table-layout:fixed !important;width:100% !important;min-width:0 !important;}#pdfCaptureHolder .rc-perf-wrap{overflow:visible !important;width:100% !important;}#pdfCaptureHolder table.rc-perf,#pdfCaptureHolder table.rc-info-table,#pdfCaptureHolder table.rc-summary-table,#pdfCaptureHolder table.rc-comments-table{border-collapse:separate;border-spacing:0;}</style>`+
-      `<div id="pdfCaptureHolder" style="padding:10px 0;font-family:Inter,sans-serif;width:100%;box-sizing:border-box;">${reportCardHTML(students[i].id, true)}</div>`;
-    // NOTE: we deliberately do NOT call fitOnePage() here. fitOnePage scales the
-    // card with a CSS transform, and a transform never changes an element's
-    // layout box — only how it's painted. html2canvas captures the *layout* box,
-    // so a card grown by transform (few-subject classes) painted past its own
-    // box was getting silently clipped at the bottom, which is exactly why
-    // headers/footers were being cut off in generated PDFs. Instead we capture
-    // every card at its natural, un-transformed size and fit the resulting image
-    // onto the page mathematically below — that can never crop anything, no
-    // matter how long or short the card is.
-    let canvas = await html2canvas(holder, {scale, backgroundColor:'#ffffff', letterRendering:true});
-    let img = canvas.toDataURL('image/jpeg', jpegQuality);
-    // Fit the whole, uncropped card onto one A4 page — and make sure it actually
-    // fills that page, in both directions, rather than landing at natural size
-    // and leaving the rest blank:
-    //  - If the card is TALLER than one page at full width, shrink it (preserving
-    //    its own aspect ratio, letterboxed/centered) so nothing is ever cropped
-    //    or pushed onto a second page.
-    //  - If the card is SHORTER than one page at full width (a light card — few
-    //    subjects, common on Primary), stretch it to fill the remaining height
-    //    too. Every pixel of the original, uncropped card is still fully there;
-    //    it's just spread out a little further down the page instead of leaving
-    //    blank space beneath it.
-    // Small consistent A4 margins; the complete captured card is fitted inside this rectangle.
-    const marginPt=12, usableW=pageW-marginPt*2, usableH=pageH-marginPt*2;
-    let w=usableW, h=canvas.height*usableW/canvas.width, x=marginPt, y=marginPt;
-    if(h>usableH){ h=usableH; w=canvas.width*usableH/canvas.height; x=marginPt+(usableW-w)/2; }
-    else { w=usableW; h=usableH; }
+    const data = buildReportCardData(students[i].id);
     if(i>0) pdf.addPage();
-    pdf.addImage(img,format,x,y,w,h);
-    // Drop every reference to this student's rendered canvas/markup before
-    // starting the next one, and yield a tick so the browser can actually run
-    // garbage collection and repaint — without this, a long bulk run never gets
-    // a chance to reclaim memory between students and visibly stalls.
-    canvas.width = 0; canvas.height = 0; canvas = null; img = null;
-    holder.innerHTML = '';
+    if(!data){
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(11);
+      pdf.text('This student has no class assigned or could not be found.', 40, 60);
+    } else {
+      // Normalize logo/photo to PNG before drawing — see toPngDataUrl() above. The
+      // logo conversion is cache-hit-instant after the first student in a bulk run.
+      if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
+      if(data.photo) data.photo = await toPngDataUrl(data.photo);
+      drawReportCardPage(pdf, data);
+    }
     if(opts.onProgress) opts.onProgress(i+1, students.length);
+    // Yield a tick between students so a long bulk run doesn't visibly stall
+    // the tab and stays responsive to the progress UI.
     await new Promise(r=>setTimeout(r, 0));
   }
-  document.body.removeChild(holder);
   // openPreviewTab:false — report cards should download and leave the person right
   // where they were in the app, not pop the PDF open in a separate browser tab.
   openOrSavePdf(pdf, filename, {openPreviewTab:false});
