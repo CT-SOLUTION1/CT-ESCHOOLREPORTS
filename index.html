@@ -160,7 +160,11 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    no extra network request and no re-encoding cost, meaning resolution and
    download/render speed are unaffected. object-fit:cover still crops any source
    image cleanly into that box. */
-.rc-title-block .rc-logo{height:auto;max-height:100%;width:auto;aspect-ratio:auto;max-width:150px;min-width:0;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
+.rc-title-block .rc-logo{height:100%;max-height:100%;width:auto;aspect-ratio:auto;max-width:170px;min-width:0;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
+/* Print uses the exact same on-screen markup/CSS (see @media print rules below), so
+   this height:100% rule already keeps the logo matched to the header's height when
+   printed via the browser's own Print dialog, not just on screen. */
+#pdfCaptureHolder .rc-title-block .rc-logo{height:100% !important;max-height:100% !important;width:auto !important;max-width:170px !important;object-fit:contain !important;}
 .rc-title-block .rc-header-text{flex:1;min-width:0;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
@@ -168,7 +172,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    the school name visibly heavier than everything else without reducing their weight. */
 .rc-title-block .school{font-size:22px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 4px;white-space:nowrap;}
 /* Slightly increased header spacing makes the text stack reach the logo height without enlarging the overall report-card layout. */
-.rc-title-block .subtitle{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:4px;}
+.rc-title-block .subtitle{display:inline-block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 .rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:5px;font-weight:700;}
 
 /* The bio photo now lives INSIDE rc-info-table (as a rowspan cell) instead of
@@ -342,11 +346,16 @@ table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(-
 table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
 #pdfCaptureHolder .pdf-report-card table.rc-comments-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
-.rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:start;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
+.rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
 .rc-sign-block{min-width:0;text-align:center;}
 .rc-sign-block .rc-person{display:block;border-bottom:1px solid var(--ink);padding-bottom:3px;min-height:17px;}
 .rc-sign-block .rc-action{display:block;border-bottom:1px solid var(--ink);padding:5px 4px 3px;min-height:20px;font-weight:700;}
-.rc-term-middle{justify-self:center;width:88%;box-sizing:border-box;text-align:center;font-size:11px;font-weight:800;line-height:1.35;padding:4px 7px;background:var(--blue);color:#fff;border:1px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);overflow:hidden;}
+/* Balanced against the two sign-off blocks: align-items:stretch above makes this
+   column match their combined height exactly, and display:flex + justify-content:center
+   here centers the two date lines vertically within that height instead of hugging the
+   top, so the term-dates box always looks vertically "balanced" between Class Teacher
+   and Head Teacher regardless of how tall their signature blocks are. */
+.rc-term-middle{justify-self:center;width:88%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;text-align:center;font-size:11px;font-weight:800;line-height:1.35;padding:4px 7px;background:var(--blue);color:#fff;border:1px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);overflow:hidden;}
 .rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
@@ -5512,9 +5521,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
       <div class="rc-header-text">
         <div class="school">${esc(DB.info.schoolName)}</div>
-        <div class="subtitle">Student Academic Report Card — ${isA?'A Level':(isP?'Primary':'O Level')}</div>
         <div class="meta">Academic Year: ${yearLbl}${DB.info.address?' &nbsp;|&nbsp; '+esc(DB.info.address):''}</div>
         ${(DB.info.phone||DB.info.email)?`<div class="meta">${[DB.info.phone?'Tel: '+esc(DB.info.phone):'', DB.info.email?'Email: '+esc(DB.info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
+        <div class="subtitle">${isA?"A' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM":(isP?"STUDENT'S ACADEMIC REPORT CARD FORM":"O' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM")}</div>
       </div>
     </div>
 
@@ -5583,7 +5592,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <div class="rc-section-title">Grading Scale</div>
     <table class="rc-grading-scale-table">
       <tr>
-        <th>Range of Marks (%)</th>
+        <th>Range</th>
         ${PLE_GRADES.map(g=>{
           const band=(DB.pbands||DEFAULT_P_BANDS)[g] || DEFAULT_P_BANDS[g];
           return `<th>${band[0]}–${band[1]}</th>`;
@@ -5882,9 +5891,7 @@ function drawReportCardPage(pdf, data){
   }
   const textW = contentX + contentW - textX;
   centerText(data.school.name||'', textX, textW, titleTop+13, 15, 'bold', navy);
-  const levelLbl = data.isA?'A Level':(data.isP?'Primary':'O Level');
-  centerText(`Student Academic Report Card — ${levelLbl}`, textX, textW, titleTop+24, 9.5, 'bold', ink);
-  let metaY = titleTop+35;
+  let metaY = titleTop+24;
   let metaLine1 = `Academic Year: ${data.year}`;
   if(data.school.address) metaLine1 += '   |   '+data.school.address;
   centerText(metaLine1, textX, textW, metaY, 8, 'italic', muted);
@@ -5893,7 +5900,20 @@ function drawReportCardPage(pdf, data){
     const parts = [data.school.phone?('Tel: '+data.school.phone):'', data.school.email?('Email: '+data.school.email):''].filter(Boolean).join('   |   ');
     centerText(parts, textX, textW, metaY, 8, 'italic', muted);
   }
-  cy = titleTop + 52;
+  metaY += 12;
+  const formTitleLbl = data.isA?"A' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM":(data.isP?"STUDENT'S ACADEMIC REPORT CARD FORM":"O' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM");
+  // Balanced badge background behind the form-title text, matching the on-screen/print
+  // .subtitle CSS (blue-light fill, navy border+text) — sized to the text itself and
+  // centered in the header column so it looks the same across A/O/Primary levels.
+  pdf.setFont('helvetica','bold'); pdf.setFontSize(9.5);
+  const ftw = pdf.getTextWidth(formTitleLbl);
+  const padX = 8, boxW = ftw + padX*2, boxH = 13;
+  const boxX = textX + textW/2 - boxW/2, boxY = metaY - 9.3;
+  pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
+  setDrawC(navy); pdf.setLineWidth(0.6);
+  pdf.roundedRect(boxX, boxY, boxW, boxH, 1.5, 1.5, 'FD');
+  centerText(formTitleLbl, textX, textW, metaY, 9.5, 'bold', navy);
+  cy = titleTop + 54;
   setDrawC(navy); line(contentX, cy, contentX+contentW, cy, 1.2);
   cy += 12;
 
@@ -5951,6 +5971,10 @@ function drawReportCardPage(pdf, data){
   // a Subject column, an optional Papers column, an optional block of Course
   // Work columns, an optional End of Term column, an optional Paper Average
   // column, then Final Average / Grade / (Points) / Descriptor / Initials.
+  // All Academic Performance Analysis header labels are forced to upper case here
+  // (jsPDF draws literal text with no CSS, unlike the on-screen/table.rc-perf th
+  // headers which already render upper case via text-transform:uppercase) so the
+  // PDF headers always match the on-screen/printed uppercase styling.
   const cols = [];
   cols.push({key:'subject', label:'SUBJECTS', w:0.20});
   if(!data.isP) cols.push({key:'papers', label:'PPS', w:0.045});
@@ -5961,16 +5985,16 @@ function drawReportCardPage(pdf, data){
       data.cwTests.forEach(t=>cols.push({key:'cw_'+t.name, label:t.name.toUpperCase()+' (/'+t.max+')', w:cwShare/(n+1)}));
       cols.push({key:'cwavg', label:'AVG (/'+data.cfg.cwPercent+')', w:cwShare/(n+1)});
     } else {
-      cols.push({key:'cwavg', label:data.cfg.cwLabel+' (/'+data.cfg.cwPercent+')', w:0.10});
+      cols.push({key:'cwavg', label:(data.cfg.cwLabel+' (/'+data.cfg.cwPercent+')').toUpperCase(), w:0.10});
     }
   }
-  if(data.showEOT) cols.push({key:'eot', label:data.cfg.eotLabel+' (/'+data.cfg.eotPercent+')', w:0.09});
-  if(!data.isP) cols.push({key:'paperavg', label:'Paper Avg (%)', w:0.09});
-  cols.push({key:'final', label:'Final Avg (%)', w:0.10});
+  if(data.showEOT) cols.push({key:'eot', label:(data.cfg.eotLabel+' (/'+data.cfg.eotPercent+')').toUpperCase(), w:0.09});
+  if(!data.isP) cols.push({key:'paperavg', label:'PAPER AVG (%)', w:0.09});
+  cols.push({key:'final', label:'FINAL AVG (%)', w:0.10});
   cols.push({key:'grade', label:'GRADE', w:0.07});
   if(data.isA) cols.push({key:'points', label:'POINTS', w:0.07});
-  cols.push({key:'desc', label:data.isP?'Remarks':'Descriptor', w:0.14});
-  cols.push({key:'init', label:'Tr. Init', w:0.06});
+  cols.push({key:'desc', label:(data.isP?'Remarks':'Descriptor').toUpperCase(), w:0.14});
+  cols.push({key:'init', label:'TR. INIT', w:0.06});
   const wSum = cols.reduce((a,c)=>a+c.w,0);
   let xC = contentX;
   cols.forEach(c=>{ c.width = contentW * (c.w/wSum); c.x = xC; xC += c.width; });
@@ -6005,7 +6029,7 @@ function drawReportCardPage(pdf, data){
     if(cwCols.length){
       const gx=cwCols[0].x, gw=cwCols[cwCols.length-1].x+cwCols[cwCols.length-1].width-gx;
       pdf.rect(gx, cy, gw, headerTopH);
-      centerText(data.cfg.cwLabel, gx, gw, cy+8.5, 7.2, 'bold', [255,255,255]);
+      centerText(data.cfg.cwLabel.toUpperCase(), gx, gw, cy+8.5, 7.2, 'bold', [255,255,255]);
     }
   }
   cy += headerH;
@@ -6132,7 +6156,7 @@ function drawReportCardPage(pdf, data){
     const gradeRowH = 14;
     setDrawC([29,78,137]);
     pdf.setLineWidth(0.6); pdf.rect(contentX, cy, gradeColW, gradeRowH);
-    centerText('Range of Marks (%)', contentX, gradeColW, cy+gradeRowH-4, 6.5, 'bold', navy);
+    centerText('Range', contentX, gradeColW, cy+gradeRowH-4, 6.5, 'bold', navy);
     PLE_GRADES.forEach((g,i)=>{
       const band = (DB.pbands||DEFAULT_P_BANDS)[g] || DEFAULT_P_BANDS[g];
       const rx = contentX+gradeColW*(i+1);
@@ -6173,14 +6197,19 @@ function drawReportCardPage(pdf, data){
   leftText(`Class Teacher: ${data.signOff.ctName}`, contentX, cy, 8, 'bold');
   leftText('Signature: ______________', contentX, cy+11, 7.5);
 
-  // Term dates are boxed like the report-card table headers.
-  const dateW = thirdW*0.88, dateX = contentX + thirdW + (thirdW-dateW)/2, dateH = 24;
+  // Term dates are boxed like the report-card table headers. Sized and positioned to
+  // match the vertical span of the Class Teacher / Head Teacher sign-off text blocks
+  // (name line + signature/stamp line) so the term-dates box is the same height as,
+  // and vertically balanced/centered between, the two sign-off columns beside it.
+  const signBlockTop = cy - 6, signBlockBottom = cy + 15, dateH = signBlockBottom - signBlockTop;
+  const dateW = thirdW*0.88, dateX = contentX + thirdW + (thirdW-dateW)/2;
   pdf.setFillColor(29,78,137); pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6);
-  const dateY = cy-2;
+  const dateY = signBlockTop;
   pdf.rect(dateX, dateY, dateW, dateH, 'F');
   pdf.rect(dateX, dateY, dateW, dateH);
-  centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, dateY+9, 6.8, 'bold', [255,255,255]);
-  centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, dateY+19, 6.8, 'bold', [255,255,255]);
+  const dateCenterY = dateY + dateH/2;
+  centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, dateCenterY-2, 6.8, 'bold', [255,255,255]);
+  centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, dateCenterY+8, 6.8, 'bold', [255,255,255]);
 
   const rightX = contentX+thirdW*2;
   leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
