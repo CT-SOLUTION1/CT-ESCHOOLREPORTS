@@ -152,7 +152,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.035;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
-.rc-title-block{display:flex;align-items:stretch;gap:12px;text-align:center;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;}
+.rc-title-block{position:relative;display:block;text-align:center;border-bottom:2px solid var(--navy);padding:0 8px 10px;margin-bottom:14px;min-height:72px;}
 /* Logo is sized to match the header text block's own height (via align-items:stretch
    + height:100% + aspect-ratio) instead of a fixed px value, so it always looks
    proportionate to the school name/subtitle/meta stack next to it. This is a
@@ -160,17 +160,17 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    no extra network request and no re-encoding cost, meaning resolution and
    download/render speed are unaffected. object-fit:cover still crops any source
    image cleanly into that box. */
-.rc-title-block .rc-logo{height:100%;max-height:100%;width:auto;aspect-ratio:auto;max-width:170px;min-width:0;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
+.rc-title-block .rc-logo{position:absolute;left:0;top:0;height:72px;max-height:72px;width:auto;max-width:220px;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;}
 /* Print uses the exact same on-screen markup/CSS (see @media print rules below), so
    this height:100% rule already keeps the logo matched to the header's height when
    printed via the browser's own Print dialog, not just on screen. */
-#pdfCaptureHolder .rc-title-block .rc-logo{height:100% !important;max-height:100% !important;width:auto !important;max-width:170px !important;object-fit:contain !important;}
-.rc-title-block .rc-header-text{flex:1;min-width:0;}
+#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:0 !important;height:72px !important;max-height:72px !important;width:auto !important;max-width:220px !important;object-fit:contain !important;}
+.rc-title-block .rc-header-text{width:100%;min-width:0;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
    below), so a hairline text-stroke is layered on top of font-weight:900 here to push
    the school name visibly heavier than everything else without reducing their weight. */
-.rc-title-block .school{font-size:22px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 4px;white-space:nowrap;}
+.rc-title-block .school{font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 4px;white-space:nowrap;font-size:clamp(18px, calc(420px / max(18, var(--school-name-length, 24))), 30px);}
 /* Slightly increased header spacing makes the text stack reach the logo height without enlarging the overall report-card layout. */
 .rc-title-block .subtitle{display:inline-block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 .rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:5px;font-weight:700;}
@@ -403,6 +403,8 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
   @page{ size:A4; margin:10mm; }
 }
 @media (max-width:760px){
+  .rc-title-block{padding-left:8px;padding-right:8px;}
+  .rc-title-block .rc-logo{max-width:120px;height:60px;max-height:60px;}
   .layout{flex-direction:column;}
   .sidebar{width:100%;display:flex;overflow-x:auto;padding:6px;}
   .sidebar a{white-space:nowrap;border-left:none;border-bottom:3px solid transparent;}
@@ -5526,7 +5528,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <div class="rc-title-block">
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo">`:''}
       <div class="rc-header-text">
-        <div class="school">${esc(DB.info.schoolName)}</div>
+        <div class="school" style="--school-name-length:${Math.max(1,String(DB.info.schoolName||'').trim().length)}">${esc(DB.info.schoolName)}</div>
         <div class="meta">Academic Year: ${yearLbl}${DB.info.address?' &nbsp;|&nbsp; '+esc(DB.info.address):''}</div>
         ${(DB.info.phone||DB.info.email)?`<div class="meta">${[DB.info.phone?'Tel: '+esc(DB.info.phone):'', DB.info.email?'Email: '+esc(DB.info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
         <div class="subtitle">${isA?"A' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM":(isP?"STUDENT'S ACADEMIC REPORT CARD FORM":"O' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM")}</div>
@@ -5878,6 +5880,10 @@ function drawReportCardPage(pdf, data){
   const _rcPageOps = pdf.internal.pages[_rcPageNo];
   const _rcContentStart = _rcPageOps.length;
   const _rcContentTop = cardY + 14;
+  // Positions at which extra vertical space may be inserted when the report card
+  // is shorter than the available A4 area. The tables themselves stay at their
+  // normal row heights; spare height is distributed only between major sections.
+  const _rcGapMarkers = [];
 
   const contentX = cardX + 16, contentW = cardW - 32;
 
@@ -5889,17 +5895,30 @@ function drawReportCardPage(pdf, data){
 
   // ---- 4. Title block: logo (left) + school name/subtitle/meta (right) ----
   const titleTop = cy;
+  // Keep the school logo independent of the centered header text. This prevents the
+  // logo from shrinking the header's usable width or making the school name look
+  // shifted to the right when the title is centered.
   let textX = contentX;
+  const textW = contentW;
   if(data.school.logo){
     try{
       const props = pdf.getImageProperties(data.school.logo);
-      const logoH = 48, logoW = Math.min(60, logoH*(props.width/props.height));
+      const logoH = 54, logoW = Math.min(88, logoH*(props.width/props.height));
       pdf.addImage(data.school.logo, 'PNG', contentX, titleTop, logoW, logoH);
-      textX = contentX + logoW + 10;
     }catch(e){ /* skip logo, keep going */ }
   }
-  const textW = contentX + contentW - textX;
-  centerText(data.school.name||'', textX, textW, titleTop+13, 15, 'bold', navy);
+  // Dynamic school-name sizing: short names are larger, while long names
+  // reduce only as much as necessary to remain contained and prominent.
+  const _schoolName = String(data.school.name||'').trim();
+  let _schoolNameSize = 21;
+  if(_schoolName){
+    pdf.setFont('helvetica','bold');
+    for(let _sz=21; _sz>=12; _sz-=0.25){
+      pdf.setFontSize(_sz);
+      if(pdf.getTextWidth(_schoolName) <= textW-8){ _schoolNameSize=_sz; break; }
+    }
+  }
+  centerText(_schoolName, textX, textW, titleTop+14, _schoolNameSize, 'bold', navy);
   let metaY = titleTop+24;
   let metaLine1 = `Academic Year: ${data.year}`;
   if(data.school.address) metaLine1 += '   |   '+data.school.address;
@@ -5969,6 +5988,7 @@ function drawReportCardPage(pdf, data){
     }catch(e){}
   }
   cy = infoTop + infoRowH*3 + 14;
+  _rcGapMarkers.push(_rcPageOps.length);
 
   // ---- 6. Academic Performance Analysis table ----
   setDrawC(navy);
@@ -6123,6 +6143,7 @@ function drawReportCardPage(pdf, data){
   { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
   { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize); }
   cy += totRowH + 14;
+  _rcGapMarkers.push(_rcPageOps.length);
 
   // ---- 7. Performance Summary table (3 label/value pairs x 2 rows) ----
   leftText('PERFORMANCE SUMMARY', contentX, cy, 9, 'bold', navy);
@@ -6155,6 +6176,7 @@ function drawReportCardPage(pdf, data){
     }
   });
   cy += sumRowH*2 + 14;
+  _rcGapMarkers.push(_rcPageOps.length);
 
   // ---- 8. Grading Scale (Primary only) ----
   if(data.isP){
@@ -6181,6 +6203,9 @@ function drawReportCardPage(pdf, data){
       centerText(g, rx, gradeColW, cy+gradeRowH-4, 7.5, 'bold');
     });
     cy += gradeRowH + 14;
+    _rcGapMarkers.push(_rcPageOps.length);
+  } else {
+    _rcGapMarkers.push(_rcPageOps.length);
   }
 
   // ---- 9. Comments table ----
@@ -6200,6 +6225,7 @@ function drawReportCardPage(pdf, data){
   ctLines.forEach((ln,i)=>leftText(ln, contentX+4, cy+12+i*10, 8));
   htLines.forEach((ln,i)=>leftText(ln, contentX+halfW+4, cy+12+i*10, 8));
   cy += commentBodyH + 16;
+  _rcGapMarkers.push(_rcPageOps.length);
 
   // ---- 10. Sign-off row ----
   const thirdW = contentW/3;
@@ -6224,6 +6250,7 @@ function drawReportCardPage(pdf, data){
   leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
   leftText('School Stamp: ______________', rightX, cy+11, 7.5);
   cy += 28;
+  _rcGapMarkers.push(_rcPageOps.length);
 
   // ---- 11. Motto, fees legend, scoring note ----
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 8.5, 'italic', navy); cy += 12; }
@@ -6231,20 +6258,33 @@ function drawReportCardPage(pdf, data){
   centerText(feesTxt, contentX, contentW, cy, 7.5, 'normal', muted); cy += 10;
   centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
 
-  // Fit the finished content exactly between the top and bottom insets of the
-  // A4 frame. This works for both short and very long report cards. The frame
-  // itself is never scaled, while the content keeps its full horizontal width.
+  // Fit the finished content to the A4 frame without stretching normal table rows.
+  // If there is spare vertical room, distribute it between major sections only.
+  // If the card is genuinely long, retain the previous vertical-fit behavior so
+  // the complete report still remains on one A4 page.
   const _rcAvailableBottom = cardY + cardH - 12;
   const _rcNaturalHeight = Math.max(1, cy - _rcContentTop);
-  const _rcScaleY = (_rcAvailableBottom - _rcContentTop) / _rcNaturalHeight;
-  if(Number.isFinite(_rcScaleY) && _rcScaleY > 0 && Math.abs(_rcScaleY-1) > 0.0005){
-    // jsPDF's compat drawing coordinates use a top-left origin while the raw
-    // PDF CTM uses a bottom-left origin. This translation keeps the top of the
-    // report content anchored while the finished content stretches/compresses
-    // vertically to the exact printable A4 height.
-    const _rcTranslateY = (1 - _rcScaleY) * (pageH - _rcContentTop);
-    _rcPageOps.splice(_rcContentStart, 0, 'q', `1 0 0 ${_rcScaleY.toFixed(8)} 0 ${_rcTranslateY.toFixed(8)} cm`);
-    _rcPageOps.push('Q');
+  const _rcAvailableHeight = Math.max(1, _rcAvailableBottom - _rcContentTop);
+  const _rcExtraHeight = _rcAvailableHeight - _rcNaturalHeight;
+  if(_rcExtraHeight > 0.5 && _rcGapMarkers.length){
+    // Keep the report visually compact: distribute only a small, capped amount
+    // of spare A4 height between sections instead of creating large gaps.
+    const _rcMaxExtra = Math.min(_rcExtraHeight, 18);
+    const _rcGap = _rcMaxExtra / _rcGapMarkers.length;
+    for(let gi=_rcGapMarkers.length-1; gi>=0; gi--){
+      const at = _rcGapMarkers[gi];
+      _rcPageOps.splice(at, 0, `1 0 0 1 0 ${(-_rcGap*(gi+1)).toFixed(4)} cm`);
+    }
+  } else if(_rcExtraHeight < -0.5){
+    const _rcScaleY = _rcAvailableHeight / _rcNaturalHeight;
+    if(Number.isFinite(_rcScaleY) && _rcScaleY > 0){
+      // jsPDF's compat drawing coordinates use a top-left origin while the raw
+      // PDF CTM uses a bottom-left origin. This translation keeps the top of the
+      // report content anchored while the finished content compresses to A4.
+      const _rcTranslateY = (1 - _rcScaleY) * (pageH - _rcContentTop);
+      _rcPageOps.splice(_rcContentStart, 0, 'q', `1 0 0 ${_rcScaleY.toFixed(8)} 0 ${_rcTranslateY.toFixed(8)} cm`);
+      _rcPageOps.push('Q');
+    }
   }
 }
 
