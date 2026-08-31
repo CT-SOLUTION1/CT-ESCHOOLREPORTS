@@ -74,14 +74,30 @@ table{border-collapse:collapse;width:100%;background:#fff;}
 table.report-table, table.data-table{border:2px solid var(--blue);}
 table.report-table th, table.report-table td, table.data-table th, table.data-table td{border:1px solid var(--blue);padding:7px 9px;font-size:13px;text-align:center;}
 table.report-table th, table.data-table th{background:var(--blue);color:#fff;font-weight:900;text-transform:uppercase;font-size:11px;letter-spacing:.03em;}
-.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,var(--navy),var(--blue));padding:20px;}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,var(--navy),var(--blue));padding:20px;position:relative;overflow:hidden;isolation:isolate;}
+/* Animated rain droplets stay ONLY in the blue authentication background. The white
+   sign-in card is placed above these layers and remains completely clean. */
+.auth-wrap::before,.auth-wrap::after{content:"";position:absolute;inset:-120px;pointer-events:none;z-index:0;background-repeat:repeat;background-size:150px 190px;opacity:.24;}
+.auth-wrap::before{background-image:
+  radial-gradient(circle at 22px 28px,rgba(255,255,255,.72) 0 2px,rgba(255,255,255,.18) 3px,transparent 6px),
+  radial-gradient(circle at 96px 104px,rgba(255,255,255,.58) 0 1.8px,rgba(255,255,255,.15) 3px,transparent 6px),
+  radial-gradient(ellipse at 61px 154px,rgba(255,255,255,.48) 0 2px,transparent 5px);
+  animation:authDroplets 8s linear infinite;}
+.auth-wrap::after{background-image:
+  linear-gradient(112deg,transparent 0 45%,rgba(255,255,255,.16) 46%,transparent 49% 100%),
+  radial-gradient(circle at 132px 62px,rgba(255,255,255,.5) 0 2px,transparent 6px),
+  radial-gradient(circle at 38px 122px,rgba(255,255,255,.42) 0 1.5px,transparent 5px);
+  background-size:210px 250px;opacity:.16;animation:authDroplets 12s linear infinite reverse;}
+.auth-wrap>.auth-box{position:relative;z-index:2;}
+@keyframes authDroplets{from{background-position:0 -260px,0 -260px,0 -260px;}to{background-position:0 260px,0 260px,0 260px;}}
+@media (prefers-reduced-motion:reduce){.auth-wrap::before,.auth-wrap::after{animation:none;}}
 /* Watermark: CT-E SOLUTIONS crest shown faint behind the sign-in card (and every other
    screen sharing .auth-box — teacher/parent sign-up, founder login, password recovery,
    register-a-school). It's a ::before layer positioned behind .auth-box's own content
    (z-index:0 vs 1), so the brand name, contact line, form fields, and every link on top
    stay fully legible — only the crest itself is faded (7% opacity). */
 .auth-box{background:#fff;padding:36px;border-radius:14px;width:420px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden;}
-.platform-login-box{width:520px;min-height:620px;padding:46px 48px;display:flex;flex-direction:column;}
+.platform-login-box{width:520px;min-height:660px;padding:46px 48px;display:flex;flex-direction:column;}
 @media(max-width:600px){.platform-login-box{width:100%;min-height:0;padding:34px 24px;}}
 /* Login sections: stack the login card into distinct blocks and let the middle
    one flex-grow, so the box's full min-height is actually used (evenly spread)
@@ -3214,7 +3230,7 @@ function renderPlatformAuth(){
       </div>
     </div>
     ` : `
-    <div class="login-body">
+    <div class="login-body no-role-login-body">
       <div class="login-section login-section-tinted">
         <div class="login-section-label">Get the App</div>
         <button type="button" id="installAppBtn" class="install-app-btn" data-action="installApp">⬇ Download / Install App</button>
@@ -3243,9 +3259,9 @@ function renderPlatformAuth(){
           <a href="#" data-action="gotoTeacherSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Teacher sign-up</a>
           <a href="#" data-action="gotoParentSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Parent sign-up</a>
         </div>
-        <a href="#" data-action="gotoFounderLogin" class="btn" style="display:block;width:100%;box-sizing:border-box;margin-top:12px;text-align:center;text-decoration:none;">Founder Panel Login</a>
       </div>
     </div>
+    <button type="button" data-action="gotoFounderLogin" aria-label="Restricted access" style="position:fixed;left:10px;bottom:10px;width:30px;height:30px;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.55);background:rgba(0,0,0,.18);color:rgba(255,255,255,.9);font-size:13px;display:flex;align-items:center;justify-content:center;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,.12);opacity:.72;cursor:pointer;">•</button>
     `}
   </div></div>`;
 }
