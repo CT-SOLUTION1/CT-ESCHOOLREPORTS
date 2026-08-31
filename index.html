@@ -52,6 +52,9 @@ button{font-family:inherit;cursor:pointer;}
 .btn-outline{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:9px 16px;border-radius:6px;font-weight:700;}
 .btn-danger{background:var(--danger);color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:600;}
 .btn-gold{background:var(--gold);color:#3a2c00;border:none;padding:10px 18px;border-radius:6px;font-weight:800;}
+.install-app-btn{width:100%;padding:12px 14px;border-radius:7px;border:2px solid var(--gold);background:var(--gold);color:#2f2600;font-weight:900;font-size:14px;box-shadow:0 3px 8px rgba(10,42,74,.12);margin-top:14px;}
+.auth-action-stack{display:grid;gap:9px;margin-top:10px;}
+.auth-action-stack .btn,.auth-action-stack .btn-outline{width:100%;text-align:center;text-decoration:none;display:block;}
 input,select,textarea{padding:9px 10px;border:1px solid #b9c9da;border-radius:5px;font-size:16px;width:100%;font-family:inherit;}
 input.missing-mark::placeholder{color:var(--danger);font-weight:800;opacity:.85;}
 label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;}
@@ -138,9 +141,11 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .sync-status.sync-error{background:#fdeaea;color:#7a1f1f;border:1px solid #f3b9b9;}
 
 /* ---- Report card (Sample School official layout) ---- */
-.rc-card{font-family:'Times New Roman',Times,serif;background:#fff;padding:26px 30px 22px;border:1px solid #cfd9e3;width:100%;max-width:800px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;color:var(--ink);position:relative;overflow:hidden;}
+.rc-card{font-family:Georgia,'Times New Roman',serif;background:#fff;padding:24px 26px 20px;border:1px solid #cfd9e3;width:100%;max-width:724px;min-height:1055px;box-sizing:border-box;margin:0 auto;color:var(--ink);position:relative;overflow:hidden;box-shadow:0 2px 10px rgba(10,42,74,.08);}
 /* Thick decorative boundary stays inside the existing report-card margins. It is an overlay, so it consumes no layout space and cannot change table widths, A4 fit, or content positioning. */
 .rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
+/* The live report-card canvas uses the same printable proportion as the native A4 PDF (190:277). On narrow phones it remains responsive rather than overflowing the screen. */
+@media (max-width:760px){.rc-card{max-width:100%;min-height:0;aspect-ratio:190/277;padding:18px 18px 16px;overflow:hidden;}.rc-card .rc-content{transform-origin:top left;}}
 /* Faint background watermark of the school logo — purely decorative, sits behind every
    other element on the card via z-index. Centered and oversized (60% of the card width)
    at very low opacity so it never competes with the actual text/tables for legibility,
@@ -1109,7 +1114,46 @@ function syncStatusBanner(key){
   return '';
 }
 let AUTH_VIEW = 'login';
-let loginRole = 'admin';
+let loginRole = null;
+// PWA install prompt: captured as soon as the browser makes it available so the
+// login screen can offer an immediate, one-tap install/download-style button.
+let DEFERRED_INSTALL_PROMPT = null;
+let PWA_INSTALLED = false;
+function isPWAInstalled(){
+  return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+}
+function updatePWAInstallState(){
+  PWA_INSTALLED = isPWAInstalled();
+  const btn=document.getElementById('installAppBtn');
+  if(btn){
+    btn.textContent = PWA_INSTALLED ? '✓ App Installed' : '⬇ Download / Install App';
+    btn.disabled = PWA_INSTALLED;
+    btn.style.opacity = PWA_INSTALLED ? '.7' : '1';
+  }
+}
+async function installPWA(){
+  if(PWA_INSTALLED){ return; }
+  if(DEFERRED_INSTALL_PROMPT){
+    DEFERRED_INSTALL_PROMPT.prompt();
+    try{ await DEFERRED_INSTALL_PROMPT.userChoice; }catch(e){}
+    DEFERRED_INSTALL_PROMPT=null;
+    updatePWAInstallState();
+    return;
+  }
+  // iOS and browsers that do not expose beforeinstallprompt cannot be opened
+  // programmatically. Give a simple platform-appropriate instruction instead.
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  alert(ios
+    ? 'To install CT-E SOLUTIONS: tap the Share button in your browser, then choose “Add to Home Screen”.'
+    : 'The app-install prompt is not available yet. If your browser shows an Install App or Add to Home Screen option in its menu, choose it to install CT-E SOLUTIONS.');
+}
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault();
+  DEFERRED_INSTALL_PROMPT=e;
+  updatePWAInstallState();
+});
+window.addEventListener('appinstalled', ()=>{ DEFERRED_INSTALL_PROMPT=null; updatePWAInstallState(); });
+
 // Holds the accounts list for whichever school the founder is currently
 // inspecting on the "View logins" screen. Loaded on demand (not part of
 // the founder's own session) and cleared when they navigate away.
@@ -2687,6 +2731,9 @@ function render(){
   // Avoid destroying and rebuilding an unchanged screen. This preserves browser work
   // and makes repeated state notifications cheaper, while real data/view changes still render normally.
   if(app.innerHTML !== nextHtml) app.innerHTML = nextHtml;
+  // Keep the install button accurate every time the login dashboard is rendered.
+  // This is harmless on browsers that do not expose an install prompt.
+  updatePWAInstallState();
 }
 
 /* ============================================================
@@ -2974,6 +3021,10 @@ function renderPlatformAuth(){
       <div class="small">${esc(FOUNDER_CONTACT)}</div>
       <div class="small">School Report System</div>
     </div>
+    <button type="button" id="installAppBtn" class="install-app-btn" data-action="installApp">⬇ Download / Install App</button>
+    <div class="auth-action-stack">
+      <a href="#" data-action="gotoCreateSchool" class="btn-outline">Register New School</a>
+    </div>
     <div class="role-icons" style="margin-top:16px;">
       <button type="button" class="role-icon-btn ${loginRole==='admin'?'active':''}" data-action="setRole:admin">
         <span class="role-icon-circle">🗝️</span><span class="role-icon-label">Owner/Admin</span>
@@ -2985,6 +3036,8 @@ function renderPlatformAuth(){
         <span class="role-icon-circle">👪</span><span class="role-icon-label">Parent</span>
       </button>
     </div>
+    ${loginRole ? `
+    <div class="note" style="margin-top:12px;text-align:center;">${loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':'Parent'} login</div>
     <form data-form="login" novalidate>
       <input type="hidden" name="role" value="${loginRole}">
       <label>Username</label><input name="username" required autocomplete="username">
@@ -2993,6 +3046,7 @@ function renderPlatformAuth(){
     </form>
     <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></p>
     ${loginRole!=='parent' ? `<p class="small" style="text-align:center;margin-top:6px;"><a href="#" data-action="gotoSchoolRecovery">Forgot your password${loginRole==='admin'?' or owner code':''}?</a></p>` : ''}
+    ` : `<div class="note" style="margin-top:12px;text-align:center;">Select Owner/Admin, Teacher, or Parent above to continue to sign in.</div>`}
     <hr style="margin:16px 0;border:none;border-top:1px solid #e2e8f0;">
     <div style="text-align:center;font-size:13px;" class="small">
       <div style="margin-bottom:6px;">New here?</div>
@@ -3000,8 +3054,7 @@ function renderPlatformAuth(){
         <a href="#" data-action="gotoTeacherSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Teacher sign-up</a>
         <a href="#" data-action="gotoParentSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Parent sign-up</a>
       </div>
-      <div style="margin-top:12px;">Setting up a new school? <a href="#" data-action="gotoCreateSchool">Register your school</a></div>
-      <div style="margin-top:10px;"><a href="#" data-action="gotoFounderLogin" style="color:var(--muted);">CT-E SOLUTIONS founder sign-in</a></div>
+      <a href="#" data-action="gotoFounderLogin" class="btn" style="display:block;width:100%;box-sizing:border-box;margin-top:12px;text-align:center;text-decoration:none;">Founder Panel Login</a>
     </div>
   </div></div>`;
 }
@@ -4966,12 +5019,12 @@ function passwordView(){
       ? '<div class="ok-banner" style="border-radius:6px;">Recovery code is set — use "Forgot your password?" on the sign-in screen if you\'re ever locked out.</div>'
       : '<div class="note">No recovery code set yet. Add one below so you can reset your own password later.</div>') : ''}
     <form data-form="changePassword">
-      <label>Current username</label><input name="oldUsername" value="${esc(CUR&&CUR.username||'')}" required autocomplete="username">
-      <label>New username (leave blank to keep current)</label><input name="newUsername" value="${esc(CUR&&CUR.username||'')}" autocomplete="username">
+      <label>Current username</label><input name="oldUsername" value="${esc(CUR&&CUR.username||'')}" readonly required autocomplete="username">
+      <label>New username (leave blank to keep current)</label><input name="newUsername" value="" placeholder="Enter a new username" autocomplete="username">
       <label>Current password</label><input name="old" type="password" required autocomplete="current-password">
       <label>New password</label><input name="new" type="password" required minlength="4" autocomplete="new-password">
       ${showRecovery ? `<label>${acc && acc.recovery ? 'New recovery code (leave blank to keep)' : 'Set a recovery code (optional)'}</label><input name="recovery">` : ''}
-      <button class="btn" style="margin-top:14px;">Submit — update password</button>
+      <button class="btn" style="margin-top:14px;">Update username &amp; password</button>
     </form></div>`;
 }
 
@@ -6482,6 +6535,7 @@ document.addEventListener('click', async (e)=>{
   if(MUTATING_ACTIONS.has(action)) showActionProgress('Processing…', el);
   try{
   switch(action){
+    case 'installApp': installPWA(); break;
     case 'gotoCreateSchool': AUTH_VIEW='createSchool'; render(); break;
     case 'gotoTeacherSignup': AUTH_VIEW='signupTeacher'; render(); break;
     case 'gotoParentSignup': AUTH_VIEW='signupParent'; render(); break;
