@@ -1802,7 +1802,7 @@ async function restoreFounderSnapshot(schoolId,ts){
   const reg=REGISTRY.find(r=>r.id===schoolId);
   if(!confirm(`This will REPLACE ALL current data for "${reg?reg.name:schoolId}" with the selected snapshot.\n\nSnapshot students: ${data.students.length}\n\nThis cannot be undone. Continue?`)) return;
   await founderRestoreSchoolBackup(schoolId,data);
-  alert('Snapshot restored successfully.');
+  alertOk('Snapshot restored successfully.');
   await loadFounderSnapshots(); render();
 }
 
@@ -2086,7 +2086,123 @@ function showDeliveredToast(text){
   el.classList.add('show');
   if(_deliveredToastTimer) clearTimeout(_deliveredToastTimer);
   _deliveredToastTimer = setTimeout(()=>{ el.classList.remove('show'); }, 1600);
+  speak(text || 'Submitted');
 }
+
+/* ---------- Voice confirmations (browser Speech Synthesis — free, on-device) ----------
+   Reads success messages aloud (saved/deleted/submitted/updated) so a teacher entering
+   marks gets audible confirmation without having to glance at the screen every time.
+   - No queueing/overlap: every call cancels whatever utterance is currently speaking
+     or waiting, so rapid actions never pile up talking over each other.
+   - Off by default is NOT the case here — it's ON by default but easy to mute, since
+     a shared/quiet room (staff office, classroom) may not want audio popping off.
+   - Preference is per-device (localStorage), not synced through Firestore. */
+let VOICE_ENABLED = (function(){
+  try{ const v = localStorage.getItem('cte_voiceConfirm'); return v===null ? true : v==='1'; }
+  catch(e){ return true; }
+})();
+let VOICE_SETTINGS = (function(){
+  const defaults = {voiceURI:'', voiceName:'', lang:'', volume:1, rate:1, pitch:1, openSound:true, closeSound:true};
+  try{
+    const raw = localStorage.getItem('cte_voiceSettings');
+    const saved = raw ? JSON.parse(raw) : {};
+    return {...defaults, ...(saved||{})};
+  }catch(e){ return defaults; }
+})();
+function saveVoiceSettings(){
+  try{ localStorage.setItem('cte_voiceSettings', JSON.stringify(VOICE_SETTINGS)); }catch(e){}
+}
+function setVoiceEnabled(on){
+  VOICE_ENABLED = !!on;
+  try{ localStorage.setItem('cte_voiceConfirm', VOICE_ENABLED?'1':'0'); }catch(e){}
+  if(!VOICE_ENABLED && 'speechSynthesis' in window) speechSynthesis.cancel();
+}
+function availableSpeechVoices(){
+  try{ return ('speechSynthesis' in window) ? speechSynthesis.getVoices() : []; }catch(e){ return []; }
+}
+function selectedSpeechVoice(){
+  const voices = availableSpeechVoices();
+  if(!voices.length) return null;
+  if(VOICE_SETTINGS.voiceURI){
+    const exact = voices.find(v=>v.voiceURI===VOICE_SETTINGS.voiceURI);
+    if(exact) return exact;
+  }
+  if(VOICE_SETTINGS.voiceName){
+    const byName = voices.find(v=>v.name===VOICE_SETTINGS.voiceName && (!VOICE_SETTINGS.lang || v.lang===VOICE_SETTINGS.lang));
+    if(byName) return byName;
+  }
+  // No user selection: use the browser's default voice. This preserves the
+  // existing behaviour and means voices are available immediately without setup.
+  return voices.find(v=>v.default) || voices[0];
+}
+function speak(text){
+  if(!VOICE_ENABLED || !text) return;
+  if(!('speechSynthesis' in window)) return; // unsupported browser — silently skip
+  try{
+    // Cancel first: guarantees at most one utterance is ever queued/playing.
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text).replace(/[✓✕⚠⏳]/g,'').trim());
+    const v = selectedSpeechVoice();
+    if(v) u.voice = v;
+    u.lang = (v && v.lang) || VOICE_SETTINGS.lang || navigator.language || 'en-US';
+    u.rate = Math.max(0.5, Math.min(2, Number(VOICE_SETTINGS.rate)||1));
+    u.pitch = Math.max(0, Math.min(2, Number(VOICE_SETTINGS.pitch)||1));
+    u.volume = Math.max(0, Math.min(1, Number(VOICE_SETTINGS.volume)||1));
+    speechSynthesis.speak(u);
+  }catch(e){ /* speech synthesis unavailable — never let this break the app */ }
+}
+function playUISound(kind='open'){
+  if(kind==='open' && !VOICE_SETTINGS.openSound) return;
+  if(kind==='close' && !VOICE_SETTINGS.closeSound) return;
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    const ctx = new AC(), osc = ctx.createOscillator(), gain = ctx.createGain();
+    const vol = Math.max(0, Math.min(1, Number(VOICE_SETTINGS.volume)||1));
+    osc.type='sine';
+    osc.frequency.value = kind==='open' ? 660 : 440;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.06*vol), ctx.currentTime+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.12);
+    osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime+0.13);
+    setTimeout(()=>ctx.close().catch(()=>{}), 250);
+  }catch(e){}
+}
+function refreshSpeechVoices(){
+  try{ if('speechSynthesis' in window) speechSynthesis.getVoices(); }catch(e){}
+}
+if('speechSynthesis' in window){
+  speechSynthesis.onvoiceschanged = refreshSpeechVoices;
+  setTimeout(refreshSpeechVoices, 300);
+}
+// Live-save voice controls inside Other Settings. They are deliberately device-local
+// because available speech voices come from the browser/phone, not the shared school database.
+document.addEventListener('change', (e)=>{
+  if(e.target && e.target.id==='voiceSelect'){
+    const opt=e.target.selectedOptions && e.target.selectedOptions[0];
+    VOICE_SETTINGS.voiceURI=e.target.value||'';
+    VOICE_SETTINGS.voiceName=opt ? (opt.dataset.name||'') : '';
+    VOICE_SETTINGS.lang=opt ? (opt.dataset.lang||'') : '';
+    saveVoiceSettings();
+    speak('Voice changed successfully.');
+  }
+});
+document.addEventListener('input', (e)=>{
+  const id=e.target && e.target.id;
+  if(id==='voiceVolume' || id==='voiceRate' || id==='voicePitch'){
+    if(id==='voiceVolume') VOICE_SETTINGS.volume=Number(e.target.value);
+    if(id==='voiceRate') VOICE_SETTINGS.rate=Number(e.target.value);
+    if(id==='voicePitch') VOICE_SETTINGS.pitch=Number(e.target.value);
+    saveVoiceSettings();
+    const out=id==='voiceVolume'?'voiceVolumeValue':id==='voiceRate'?'voiceRateValue':'voicePitchValue';
+    const el=document.getElementById(out);
+    if(el) el.textContent=id==='voiceVolume' ? Math.round(VOICE_SETTINGS.volume*100)+'%' : id==='voiceRate' ? VOICE_SETTINGS.rate+'×' : VOICE_SETTINGS.pitch;
+  }
+});
+// For success confirmations that use the browser's alert() dialog rather than the
+// toast system above (a handful of save/update/submit/delete flows). Speaks first,
+// then shows the same alert exactly as before — behavior is otherwise unchanged.
+function alertOk(message){ speak(message); alert(message); }
 
 /* ---------- Universal save / action progress indicator ---------- */
 let _actionProgressTimer = null;
@@ -2120,6 +2236,7 @@ function showActionSuccess(message, button){
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
   _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),2200);
+  speak(message||'Saved successfully');
 }
 function showActionFailure(message, button){
   let el=document.getElementById('actionProgressToast');
@@ -3260,15 +3377,15 @@ const NAV_BY_ROLE = {
     ['accounts','Staff & Parent Accounts','👥'],['students','Students','🎓'],['oldstudents','Old Students','🎒'],['assignsubjects','Assign Subjects','📌'],
     ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Year, Term & Promotion','⬆️'],
     ['ascores','Enter / Download Scores','✍️'],['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
-    ['reports','Report Cards','📄'],['mastermarksheet','Master Mark Sheet','🗂️'],['password','Change Password','🔒']
+    ['reports','Report Cards','📄'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️']
   ],
   teacher: [
     ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
     ['classanalysis','Class Analysis','📈'],['mastermarksheet','Master Mark Sheet','🗂️'],
-    ['treports','View Report Cards','📄'],['password','Change Password','🔒']
+    ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
   ],
   parent: [
-    ['pdash','My Child','🏠'],['preport','Report Card','📄'],['password','Change Password','🔒']
+    ['pdash','My Child','🏠'],['preport','Report Card','📄'],['otherSettings','Other Settings','⚙️']
   ]
 };
 // A tap/click grid of icon tiles for a role's dashboard — one tile per feature,
@@ -3296,6 +3413,7 @@ function renderShell(){
       </div>
     </div>
     <div class="flex"><span class="badge-role">${CUR.role}</span><span>${esc(CUR.name)}</span>
+    <button class="btn-outline" style="padding:6px 10px;" data-action="toggleVoice" title="${VOICE_ENABLED?'Voice confirmations on — tap to mute':'Voice confirmations muted — tap to unmute'}">${VOICE_ENABLED?'🔊':'🔇'}</button>
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
   <div class="layout">
@@ -3341,7 +3459,8 @@ function renderView(view){
       case 'grading': return gradingView(VIEW.params.gcClassId);
       case 'promote': return promoteView();
       case 'reports': return reportsListView();
-      case 'password': return passwordView();
+      case 'password': return otherSettingsView();
+      case 'otherSettings': return otherSettingsView();
       case 'ascores': return CUR.role==='admin' ? scoresEntryView(liveAssignments(DB.assignments)) : '<p>You don\'t have permission to view this page.</p>';
       case 'marksheets': return marksheetsListView();
       case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
@@ -5087,10 +5206,57 @@ function setMasterMarkSheetParam(key, value){
 // Note: like Class Analysis and the Integrated Mark Sheet, the Master Mark Sheet is
 // exported as a PDF only — no CSV export is offered for this view by design.
 
-function passwordView(){
+function otherSettingsView(){
   const showRecovery = CUR && (CUR.role==='admin' || CUR.role==='teacher');
   const acc = showRecovery ? (DB.accounts||[]).find(a=>a.username===CUR.username) : null;
-  return `<h2>Change Password</h2><div class="card" style="max-width:420px;">
+  const voices = availableSpeechVoices();
+  const currentVoice = selectedSpeechVoice();
+  const voiceOptions = voices.map(v=>`<option value="${esc(v.voiceURI)}" data-name="${esc(v.name)}" data-lang="${esc(v.lang)}" ${currentVoice && v.voiceURI===currentVoice.voiceURI?'selected':''}>${esc(v.name)} — ${esc(v.lang)}${v.default?' (Default)':''}</option>`).join('');
+  return `<h2>Other Settings</h2>
+  <div class="card" style="max-width:760px;">
+    <h3 style="margin-top:0;">Voice & Sound Settings</h3>
+    <p class="small">Voice confirmations are ON by default. Change the voice, volume and speech behaviour for this device here. These settings are saved on this device.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;">
+      <div>
+        <label>Voice confirmations</label>
+        <button type="button" class="${VOICE_ENABLED?'btn':'btn-outline'}" style="width:100%;" data-action="toggleVoiceSettings">${VOICE_ENABLED?'🔊 Voice ON — tap to mute':'🔇 Voice OFF — tap to unmute'}</button>
+      </div>
+      <div>
+        <label>Voice</label>
+        <select id="voiceSelect">${voiceOptions || '<option value="">Browser default voice</option>'}</select>
+        <div class="small" style="margin-top:5px;">${voices.length?'Choose any voice provided by this phone/browser.':'Voice list will appear when the browser provides its voices.'}</div>
+      </div>
+      <div>
+        <label>Voice volume: <span id="voiceVolumeValue">${Math.round((Number(VOICE_SETTINGS.volume)||1)*100)}%</span></label>
+        <input id="voiceVolume" type="range" min="0" max="1" step="0.05" value="${Number(VOICE_SETTINGS.volume)||1}">
+      </div>
+      <div>
+        <label>Speech speed: <span id="voiceRateValue">${Number(VOICE_SETTINGS.rate)||1}×</span></label>
+        <input id="voiceRate" type="range" min="0.5" max="2" step="0.1" value="${Number(VOICE_SETTINGS.rate)||1}">
+      </div>
+      <div>
+        <label>Speech pitch: <span id="voicePitchValue">${Number(VOICE_SETTINGS.pitch)||1}</span></label>
+        <input id="voicePitch" type="range" min="0" max="2" step="0.1" value="${Number(VOICE_SETTINGS.pitch)||1}">
+      </div>
+      <div>
+        <label>Open sounds</label>
+        <button type="button" class="${VOICE_SETTINGS.openSound?'btn':'btn-outline'}" style="width:100%;" data-action="toggleOpenSound">${VOICE_SETTINGS.openSound?'🔔 Open sound ON':'🔕 Open sound OFF'}</button>
+      </div>
+      <div>
+        <label>Close sounds</label>
+        <button type="button" class="${VOICE_SETTINGS.closeSound?'btn':'btn-outline'}" style="width:100%;" data-action="toggleCloseSound">${VOICE_SETTINGS.closeSound?'🔔 Close sound ON':'🔕 Close sound OFF'}</button>
+      </div>
+    </div>
+    <div class="flex" style="margin-top:16px;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="btn" data-action="testVoice">🔊 Test Voice</button>
+      <button type="button" class="btn-outline" data-action="testOpenSound">Test Open Sound</button>
+      <button type="button" class="btn-outline" data-action="testCloseSound">Test Close Sound</button>
+      <button type="button" class="btn-outline" data-action="refreshVoices">Refresh Voices</button>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:760px;">
+    <h3 style="margin-top:0;">Password & Account</h3>
     ${showRecovery ? (acc && acc.recovery
       ? '<div class="ok-banner" style="border-radius:6px;">Recovery code is set — use "Forgot your password?" on the sign-in screen if you\'re ever locked out.</div>'
       : '<div class="note">No recovery code set yet. Add one below so you can reset your own password later.</div>') : ''}
@@ -5101,9 +5267,9 @@ function passwordView(){
       <label>New password</label><input name="new" type="password" required minlength="4" autocomplete="new-password">
       ${showRecovery ? `<label>${acc && acc.recovery ? 'New recovery code (leave blank to keep)' : 'Set a recovery code (optional)'}</label><input name="recovery">` : ''}
       <button class="btn" style="margin-top:14px;">Update username &amp; password</button>
-    </form></div>`;
+    </form>
+  </div>`;
 }
-
 /* ---------- Teacher ---------- */
 // Assignments whose class still exists. An assignment can be orphaned if its class was
 // later deleted (delClass only removes the class itself, not assignments that pointed to
@@ -6620,6 +6786,28 @@ document.addEventListener('click', async (e)=>{
     case 'gotoSchoolRecovery': AUTH_VIEW='schoolRecovery'; render(); break;
     case 'gotoLogin': AUTH_VIEW='login'; render(); break;
     case 'retryConnection': await loadAll(); render(); break;
+    case 'toggleVoice': setVoiceEnabled(!VOICE_ENABLED); render(); break;
+    case 'toggleVoiceSettings': {
+      setVoiceEnabled(!VOICE_ENABLED);
+      if(VOICE_ENABLED) speak('Voice confirmations are now on.');
+      playUISound(VOICE_ENABLED?'open':'close');
+      render();
+      break;
+    }
+    case 'toggleOpenSound': {
+      VOICE_SETTINGS.openSound=!VOICE_SETTINGS.openSound; saveVoiceSettings();
+      if(VOICE_SETTINGS.openSound) playUISound('open');
+      render(); break;
+    }
+    case 'toggleCloseSound': {
+      VOICE_SETTINGS.closeSound=!VOICE_SETTINGS.closeSound; saveVoiceSettings();
+      if(VOICE_SETTINGS.closeSound) playUISound('close');
+      render(); break;
+    }
+    case 'testVoice': speak('This is the CT-E SOLUTIONS voice test. Your selected voice and volume are working.'); break;
+    case 'testOpenSound': playUISound('open'); break;
+    case 'testCloseSound': playUISound('close'); break;
+    case 'refreshVoices': refreshSpeechVoices(); render(); break;
     case 'setRole': loginRole = arg; render(); break;
     case 'clearRole': loginRole = null; render(); break;
     case 'foundEnterSchool': await founderEnterSchool(arg); break;
@@ -6630,6 +6818,7 @@ document.addEventListener('click', async (e)=>{
         break;
       }
       const wasFounder = CUR && CUR.role==='founder';
+      playUISound('close');
       CUR=null; SCHOOL_ID=null; await setPersonal('session', null);
       // Burn the token so any other device/browser holding the old founder
       // session (or someone who copied it out of localStorage) is kicked out too.
@@ -6638,6 +6827,7 @@ document.addEventListener('click', async (e)=>{
     }
     case 'nav': {
       VIEW = {name:arg, params:{}};
+      playUISound('open');
       // Render immediately with whatever's already in memory — DB.scores is
       // kept fresh locally on every save via upsertScores/deleteScores, so
       // it's rarely more than a few minutes stale. Waiting on a network round
@@ -7082,7 +7272,7 @@ Continue?`);
       DB.accounts = DB.accounts.filter(a=>a.username!==arg);
       if(acc.role==='teacher'){ DB.assignments = DB.assignments.filter(x=>x.teacherUsername!==arg); await saveAssignments(); }
       await saveAccounts();
-      alert(`${acc.name} has been deleted.`); render(); break; }
+      alertOk(`${acc.name} has been deleted.`); render(); break; }
     case 'foundApprove': { const code=prompt('Enter your founder code to approve this school:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='active'; await saveRegistry(); render(); } break; }
@@ -7125,7 +7315,7 @@ Continue?`);
       acc.username = trimmedU;
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_accounts`, FOUNDER_LOGINS.accounts);
       await syncUsernameIndexForSchool(FOUNDER_LOGINS.schoolId, FOUNDER_LOGINS.accounts); // username changed, so the index must follow
-      alert('Username updated.'); render(); break; }
+      alertOk('Username updated.'); render(); break; }
     case 'foundResetLoginPw': { const code=prompt('Enter your founder code to reset this password:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       if(!FOUNDER_LOGINS){ break; }
@@ -7162,7 +7352,7 @@ Continue?`)) break;
       info.ownerCode = trimmed;
       FOUNDER_LOGINS.info = info;
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_info`, info);
-      alert(`Owner code reset successfully for ${info.schoolName||'this school'}. The new owner code is: ${trimmed}`);
+      alertOk(`Owner code reset successfully for ${info.schoolName||'this school'}. The new owner code is: ${trimmed}`);
       render(); break; }
     case 'foundDeleteSchool': { const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
       const code=prompt(`Enter your founder code to PERMANENTLY delete "${r.name}":`); if(code===null) break;
@@ -7171,7 +7361,7 @@ Continue?`)) break;
       await purgeSchool(r.id);
       if(FOUNDER_LOGINS && FOUNDER_LOGINS.schoolId===r.id) FOUNDER_LOGINS=null;
       VIEW = {name:'fschools'};
-      alert(`"${r.name}" has been permanently deleted.`); render(); break; }
+      alertOk(`"${r.name}" has been permanently deleted.`); render(); break; }
   }
   // Safety net: dismiss the banner if a case above finished, cancelled, or no-op'd
   // without calling showActionSuccess itself — never leave it stuck on screen.
@@ -7545,7 +7735,7 @@ document.addEventListener('submit', async (e)=>{
       if(fd.get('newPassword')) SYSTEM_OWNER.password = fd.get('newPassword');
       if(fd.get('newCode')) SYSTEM_OWNER.code = fd.get('newCode');
       if(fd.get('newRecovery') && fd.get('newRecovery').trim()) SYSTEM_OWNER.recovery = fd.get('newRecovery').trim();
-      await saveSystemOwner(); alert('Updated.');
+      await saveSystemOwner(); alertOk('Updated.');
     }
     else if(type==='createSchool'){
       // Email is required for every NEW school (existing schools registered before this
@@ -7573,7 +7763,7 @@ document.addEventListener('submit', async (e)=>{
         ensureSchoolAuthIdentity(id, email) // independent of the writes above — run alongside them, not after
       ]);
       SCHOOL_ID = null; DB = { info:null, accounts:[], classes:[], students:[], assignments:[], scores:[], bands:null, obands:null, autoSnapshots:[] };
-      alert('Your school has been submitted. It will work once the CT-E SOLUTIONS founder approves it.');
+      alertOk('Your school has been submitted. It will work once the CT-E SOLUTIONS founder approves it.');
       AUTH_VIEW='login'; render();
     }
     else if(type==='signupTeacher' || type==='signupParent'){
@@ -7597,7 +7787,7 @@ document.addEventListener('submit', async (e)=>{
       await switchPromise; // must be done before we write, but has been running in parallel with the checks above
       await setShared(`sch_${schoolId}_accounts`, accounts);
       await syncUsernameIndexForSchool(schoolId, accounts); // new account created, index must know about it
-      alert('Request submitted. The school owner must approve your account before you can sign in.');
+      alertOk('Request submitted. The school owner must approve your account before you can sign in.');
       AUTH_VIEW='login'; render();
     }
     else if(type==='login'){
@@ -8063,7 +8253,7 @@ document.addEventListener('submit', async (e)=>{
         added++;
       }
       await Promise.all([saveStudents(), saveClasses()]); form.reset(); render();
-      alert(`Bulk upload complete: ${added} student(s) added${skipped?`, ${skipped} skipped (missing name)`:''}.`);
+      alertOk(`Bulk upload complete: ${added} student(s) added${skipped?`, ${skipped} skipped (missing name)`:''}.`);
     }
     else if(type==='assignSubject'){
       // Primary has no papers concept — regardless of what the (possibly hidden) Papers
@@ -8113,7 +8303,7 @@ document.addEventListener('submit', async (e)=>{
       }
       if(passwordChanged) t.password = newPassword;
       await saveAccounts();
-      alert('Teacher profile updated.'); render();
+      alertOk('Teacher profile updated.'); render();
     }
     else if(type==='editAssignPapers'){
       const id = form.dataset.id;
@@ -8144,7 +8334,7 @@ document.addEventListener('submit', async (e)=>{
       // Subjects are never edited here — they stay whatever each subject teacher's own
       // roster says, including after a class change (the student simply won't appear on
       // any new-class subject teacher's roster until that teacher ticks them in).
-      await saveStudents(); alert('Student profile updated.'); render();
+      await saveStudents(); alertOk('Student profile updated.'); render();
     }
     else if(type==='saveBands'){
       const b={...(DB.bands||DEFAULT_A_BANDS)}; ['A','B','C','D','E'].forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
@@ -8266,7 +8456,7 @@ document.addEventListener('submit', async (e)=>{
         // point, then correctly in "to" from this point on.
         moved.forEach(s=>{ noteClassPlacement(s, to, DB.info.currentTerm, currYearVal); s.classId=to; });
       }
-      await saveStudents(); alert(`${moved.length} student(s) promoted successfully.`); render();
+      await saveStudents(); alertOk(`${moved.length} student(s) promoted successfully.`); render();
     }
     else if(type==='promoteAll'){
       const currYearRaw = fd.get('currYear');
@@ -8292,7 +8482,7 @@ document.addEventListener('submit', async (e)=>{
         }
         totalMoved += moved.length;
       });
-      await saveStudents(); alert(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
+      await saveStudents(); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
@@ -8359,7 +8549,7 @@ document.addEventListener('submit', async (e)=>{
       DB.students.push(newStudent);
       a.studentIds = Array.isArray(a.studentIds) ? [...new Set([...a.studentIds, newStudent.id])] : [newStudent.id];
       await Promise.all([saveStudents(), saveAssignments(), saveClasses()]);
-      alert(`${name} (${admNo}) was added to ${cls.name} and included in your marking list for ${a.subject}. Other subject teachers will need to tick them into their own lists too.`);
+      alertOk(`${name} (${admNo}) was added to ${cls.name} and included in your marking list for ${a.subject}. Other subject teachers will need to tick them into their own lists too.`);
       VIEW = {name:VIEW.name, params:{assignId, paper:form.dataset.paper, kind:form.dataset.kind, label:form.dataset.label||'', maxScore:Number(form.dataset.max)||100, editRoster:true}};
       render();
     }
@@ -8410,7 +8600,7 @@ document.addEventListener('submit', async (e)=>{
       const skipMsgParts = [];
       if(skipped) skipMsgParts.push(`${skipped} row(s) skipped (blank marks or admission number not on your list)`);
       if(outOfRange) skipMsgParts.push(`${outOfRange} row(s) rejected (mark outside 0–${max})`);
-      alert(`Mark sheet imported: ${imported} score(s) saved${skipMsgParts.length?`, ${skipMsgParts.join(', ')}`:''}.`);
+      alertOk(`Mark sheet imported: ${imported} score(s) saved${skipMsgParts.length?`, ${skipMsgParts.join(', ')}`:''}.`);
       render();
     }
     else if(type==='saveScores'){
