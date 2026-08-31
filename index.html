@@ -2086,7 +2086,6 @@ function showDeliveredToast(text){
   el.classList.add('show');
   if(_deliveredToastTimer) clearTimeout(_deliveredToastTimer);
   _deliveredToastTimer = setTimeout(()=>{ el.classList.remove('show'); }, 1600);
-  speak(text || 'Submitted');
 }
 
 /* ---------- Voice confirmations (browser Speech Synthesis — free, on-device) ----------
@@ -2184,7 +2183,6 @@ document.addEventListener('change', (e)=>{
     VOICE_SETTINGS.voiceName=opt ? (opt.dataset.name||'') : '';
     VOICE_SETTINGS.lang=opt ? (opt.dataset.lang||'') : '';
     saveVoiceSettings();
-    speak('Voice changed successfully.');
   }
 });
 document.addEventListener('input', (e)=>{
@@ -2202,7 +2200,7 @@ document.addEventListener('input', (e)=>{
 // For success confirmations that use the browser's alert() dialog rather than the
 // toast system above (a handful of save/update/submit/delete flows). Speaks first,
 // then shows the same alert exactly as before — behavior is otherwise unchanged.
-function alertOk(message){ speak(message); alert(message); }
+function alertOk(message){ alert(message); }
 
 /* ---------- Universal save / action progress indicator ---------- */
 let _actionProgressTimer = null;
@@ -2227,7 +2225,7 @@ function showActionProgress(message, button){
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
 }
-function showActionSuccess(message, button){
+function showActionSuccess(message, button, speakOnComplete=false){
   let el=document.getElementById('actionProgressToast');
   if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
   if(button) _lastActionButton=button;
@@ -2236,7 +2234,7 @@ function showActionSuccess(message, button){
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
   _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),2200);
-  speak(message||'Saved successfully');
+  if(speakOnComplete) speak(message);
 }
 function showActionFailure(message, button){
   let el=document.getElementById('actionProgressToast');
@@ -3851,7 +3849,7 @@ async function performBulkTeacherDelete(usernames, btn){
     DB.accounts = DB.accounts.filter(a=>!unameSet.has(a.username));
     DB.assignments = DB.assignments.filter(x=>!unameSet.has(x.teacherUsername));
     await Promise.all([saveAccounts(), saveAssignments()]);
-    showActionSuccess(`Deleted ${usernames.length} teacher account${usernames.length===1?'':'s'}`, btn);
+    showActionSuccess(`Deleted ${usernames.length} teacher account${usernames.length===1?'':'s'}`, btn, true);
   }catch(e){
     showActionFailure('Could not delete — please try again.', btn);
     alert('Something went wrong while deleting: '+(e.message||e));
@@ -3894,7 +3892,7 @@ async function performBulkParentDelete(usernames, btn){
     const unameSet = new Set(usernames);
     DB.accounts = DB.accounts.filter(a=>!unameSet.has(a.username));
     await saveAccounts();
-    showActionSuccess(`Deleted ${usernames.length} parent account${usernames.length===1?'':'s'}`, btn);
+    showActionSuccess(`Deleted ${usernames.length} parent account${usernames.length===1?'':'s'}`, btn, true);
   }catch(e){
     showActionFailure('Could not delete — please try again.', btn);
     alert('Something went wrong while deleting: '+(e.message||e));
@@ -4067,7 +4065,7 @@ async function performBulkStudentDelete(ids, confirmMsg, btn){
     for(const s of removed){
       if(s.photo){ try{ await deletePhotoFromStorage(s.photo); }catch(e){} }
     }
-    showActionSuccess(`Deleted ${removed.length} student${removed.length===1?'':'s'}`, btn);
+    showActionSuccess(`Deleted ${removed.length} student${removed.length===1?'':'s'}`, btn, true);
   }catch(e){
     showActionFailure('Could not delete — please try again.', btn);
     alert('Something went wrong while deleting: '+(e.message||e));
@@ -6927,12 +6925,12 @@ Continue?`);
       DB.classes = DB.classes.filter(c=>c.id!==arg);
       DB.assignments = DB.assignments.filter(a=>a.classId!==arg);
       await Promise.all([saveClasses(), saveAssignments()]);
-      showActionSuccess('Deleted successfully', el); render(); break;
+      showActionSuccess('Deleted successfully', el, true); render(); break;
     }
     case 'delStudent': {
       const s = DB.students.find(x=>x.id===arg);
       DB.students = DB.students.filter(x=>x.id!==arg);
-      await saveStudents(); showActionSuccess('Deleted successfully', el);
+      await saveStudents(); showActionSuccess('Deleted successfully', el, true);
       if(s && s.photo) await deletePhotoFromStorage(s.photo); // remove their stored photo too — nothing left behind
       render(); break;
     }
@@ -6943,7 +6941,7 @@ Continue?`);
       s.status = 'left';
       s.leftTerm = DB.info.currentTerm;
       s.leftYear = DB.info.currentYear;
-      await saveStudents(); showActionSuccess('Moved to Old Students', el); render(); break;
+      await saveStudents(); showActionSuccess('Moved to Old Students', el, true); render(); break;
     }
     case 'restoreStudent': {
       const s = DB.students.find(x=>x.id===arg);
@@ -6959,22 +6957,22 @@ Continue?`);
       DB.students = DB.students.filter(x=>x.id!==arg);
       DB.scores = DB.scores.filter(sc=>sc.studentId!==arg);
       DB.accounts.forEach(a=>{ if(a.role==='parent' && a.studentId===arg) a.studentId=null; });
-      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess('Old student deleted successfully', el);
+      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess('Old student deleted successfully', el, true);
       if(s.photo) await deletePhotoFromStorage(s.photo);
       render(); break;
     }
-    case 'delAssign': DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess('Removed successfully', el); render(); break;
+    case 'delAssign': DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess('Removed successfully', el, true); render(); break;
     case 'delOSubject': {
       const name = decodeURIComponent(arg);
       DB.info.oExtraSubjects = (DB.info.oExtraSubjects||[]).filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryLower)) DB.info.oCompulsoryLower = DB.info.oCompulsoryLower.filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
-      await saveInfo(); showActionSuccess('Removed successfully', el); render(); break;
+      await saveInfo(); showActionSuccess('Removed successfully', el, true); render(); break;
     }
     case 'delPSubject': {
       const name = decodeURIComponent(arg);
       DB.info.pExtraSubjects = (DB.info.pExtraSubjects||[]).filter(s=>s!==name);
-      await saveInfo(); showActionSuccess('Removed successfully', el); render(); break;
+      await saveInfo(); showActionSuccess('Removed successfully', el, true); render(); break;
     }
     case 'delASubject': {
       const name = decodeURIComponent(arg);
@@ -7014,7 +7012,7 @@ Continue?`);
       const cfg = {...(DB.info.examConfig||{})};
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==arg);
       DB.info.examConfig = cfg;
-      await saveInfo(); showActionSuccess('Test deleted', el); render(); break;
+      await saveInfo(); showActionSuccess('Test deleted', el, true); render(); break;
     }
     case 'editCwTestStart': {
       VIEW.params = {...VIEW.params, editCwTestId: arg}; render(); break;
@@ -7031,7 +7029,7 @@ Continue?`);
       const cfg = {...(cls.examConfig||{})};
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==testId);
       cls.examConfig = cfg;
-      await saveClasses(); showActionSuccess('Test deleted', el); render(); break;
+      await saveClasses(); showActionSuccess('Test deleted', el, true); render(); break;
     }
     case 'editClassCwTestStart': {
       const [, testId] = arg.split(':');
@@ -7935,6 +7933,7 @@ document.addEventListener('submit', async (e)=>{
       }
       DB.info.scoreDeadlines=sd;
       await saveInfo();
+      speak(`Term and year changed to ${newTerm}, ${newYear}.`);
       // The three explicit choices control the previous period's scores. Do not
       // run automatic retention pruning during a term/year switch.
       if(termChanged) await refreshScores();
@@ -8104,7 +8103,9 @@ document.addEventListener('submit', async (e)=>{
       DB.accounts.push({username:uname, password:fd.get('password'), role, name:fd.get('name'),
         status:'active', studentId: role==='parent'? (fd.get('studentId')||null) : null,
         recovery: role==='teacher' ? ((fd.get('recovery')||'').trim()||null) : null});
-      await saveAccounts(); render();
+      await saveAccounts();
+      speak(`${role==='teacher'?'Staff member':'Account'} ${fd.get('name')} has been added successfully.`);
+      render();
     }
     else if(type==='uploadStaffTemplate'){
       const file = fd.get('staffFile');
@@ -8225,7 +8226,9 @@ document.addEventListener('submit', async (e)=>{
       const newStu = {id:uid('std'), name:fd.get('name'), admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo, gender:fd.get('gender')||null, feesBalance, nextTermFees, feesCode, status:'active'};
       noteClassPlacement(newStu, cls.id, DB.info.currentTerm, DB.info.currentYear);
       DB.students.push(newStu);
-      await Promise.all([saveStudents(), saveClasses()]); form.reset(); render();
+      await Promise.all([saveStudents(), saveClasses()]);
+      speak(`Student ${newStu.name} has been added successfully.`);
+      form.reset(); render();
     }
     else if(type==='bulkAddStudents'){
       const clsSel = form.querySelector('#bulkClassSel');
@@ -8253,6 +8256,7 @@ document.addEventListener('submit', async (e)=>{
         added++;
       }
       await Promise.all([saveStudents(), saveClasses()]); form.reset(); render();
+      speak(`${added} student${added===1?' has':'s have'} been added successfully${skipped?`, ${skipped} skipped`:''}.`);
       alertOk(`Bulk upload complete: ${added} student(s) added${skipped?`, ${skipped} skipped (missing name)`:''}.`);
     }
     else if(type==='assignSubject'){
@@ -8456,7 +8460,7 @@ document.addEventListener('submit', async (e)=>{
         // point, then correctly in "to" from this point on.
         moved.forEach(s=>{ noteClassPlacement(s, to, DB.info.currentTerm, currYearVal); s.classId=to; });
       }
-      await saveStudents(); alertOk(`${moved.length} student(s) promoted successfully.`); render();
+      await saveStudents(); speak(`${moved.length} student${moved.length===1?' has':'s have'} been promoted successfully.`); alertOk(`${moved.length} student(s) promoted successfully.`); render();
     }
     else if(type==='promoteAll'){
       const currYearRaw = fd.get('currYear');
@@ -8482,7 +8486,7 @@ document.addEventListener('submit', async (e)=>{
         }
         totalMoved += moved.length;
       });
-      await saveStudents(); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
+      await saveStudents(); speak(`${totalMoved} student${totalMoved===1?' has':'s have'} been promoted successfully across ${moves.length} classes.`); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
@@ -8710,6 +8714,7 @@ document.addEventListener('submit', async (e)=>{
       // to editing.
       saveScoresPromise.then(()=>{
         SCORE_SYNC_STATUS[syncKey] = {state:'saved', at:Date.now()};
+        speak('Scores have been saved successfully.');
         const el = document.getElementById(`syncStatus_${syncKey}`);
         if(el) el.outerHTML = syncStatusBanner(syncKey);
       }).catch(err=>{
