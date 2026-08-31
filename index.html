@@ -731,6 +731,7 @@ function migrateBackupData(raw){
   info.pExtraSubjects = Array.isArray(info.pExtraSubjects) ? info.pExtraSubjects : [];
   info.aExtraSubjects = Array.isArray(info.aExtraSubjects) ? info.aExtraSubjects : [];
   info.examConfig = info.examConfig || {};
+  if(!Number.isFinite(Number(info.aPassMark))) info.aPassMark = DEFAULT_A_PASS_MARK;
   // oCompulsoryLower/oCompulsoryUpper (and the newer pCompulsory/aCompulsoryExtra) are
   // deliberately left untouched if absent — their respective helper functions already
   // treat "not present" as "use the syllabus defaults".
@@ -787,11 +788,19 @@ const ABBR = {'BIOLOGY':'BIO','CHEMISTRY':'CHEM','PHYSICS':'PHY','MATHEMATICS':'
   'SCIENCE':'SCI','SOCIAL STUDIES':'SST','RELIGIOUS EDUCATION':'RE','LOCAL LANGUAGE':'LL','MUSIC DANCE & DRAMA':'MDD'};
 
 const GRADE_POINTS = {A:5,B:4,C:3,D:2,E:1,O:1,F:0};
-const GRADE_COMMENT = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary',O:'Pass',F:'Fail'};
-// Subsidiary Mathematics & Subsidiary Computer: O (1 point) if the average is 50% or above, F (0 points) below 50%.
-// General Paper now follows this SAME condition — it is no longer graded on its own separate pass mark.
-const PASS_MARK_SUBSIDIARY = 50;
-const DEFAULT_A_BANDS = {A:[80,100],B:[70,79],C:[60,69],D:[50,59],E:[40,49],O:[35,39],F:[0,34]};
+const GRADE_COMMENT = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
+const DEFAULT_A_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
+const DEFAULT_O_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
+const DEFAULT_PASS_FAIL_COMMENTS = {Pass:'Pass',Fail:'Fail'};
+function gradeCommentsFor(level){
+  const key = level==='A' ? 'aGradeComments' : level==='O' ? 'oGradeComments' : null;
+  if(key && DB.info && DB.info[key]) return {...(level==='A'?DEFAULT_A_GRADE_COMMENTS:DEFAULT_O_GRADE_COMMENTS), ...DB.info[key]};
+  return level==='A' ? DEFAULT_A_GRADE_COMMENTS : level==='O' ? DEFAULT_O_GRADE_COMMENTS : GRADE_COMMENT;
+}
+function passFailComments(){ return {...DEFAULT_PASS_FAIL_COMMENTS, ...((DB.info&&DB.info.passFailComments)||{})}; }
+// A-Level uses the same A-E grading scale for all subjects, including General Paper and subsidiaries.
+const DEFAULT_A_PASS_MARK = 50;
+const DEFAULT_A_BANDS = {A:[80,100],B:[70,79],C:[60,69],D:[50,59],E:[0,49]};
 const DEFAULT_O_BANDS = {A:[85,100],B:[70,84],C:[55,69],D:[40,54],E:[0,39]};
 const AOI_MAX = 20;  // Default: Course Work is out of 20 (used until an admin changes it)
 const EOT_MAX = 80;  // Default: End of Term is out of 80 (20+80 = 100, used until an admin changes it)
@@ -2623,17 +2632,16 @@ function gradeFor(subject, avg, level){
     const b = DB.pbands || DEFAULT_P_BANDS;
     return pickGradeByThreshold(b, PLE_GRADES, 'F9')(avg);
   }
-  // General Paper now follows the SAME pass/fail condition as the subsidiaries:
-  // O (1 point) if the average is 50% and above, F (0 points) below 50%.
-  if(subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject)) return avg>=PASS_MARK_SUBSIDIARY ? 'O':'F';
+  // A-Level principal subjects use the school's configured A-E grading scale.
+  // General Paper and subsidiaries retain their separate administrator-defined Pass/Fail boundary.
+  if(subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject)){
+    const passMark = Math.max(0, Math.min(100, Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)));
+    return avg >= passMark ? 'O' : 'F';
+  }
   const b = DB.bands || DEFAULT_A_BANDS;
-  return pickGradeByThreshold(b, ['A','B','C','D','E','O','F'], 'F')(avg);
+  return pickGradeByThreshold(b, ['A','B','C','D','E'], 'E')(avg);
 }
-// A-Level subsidiaries (General Paper + Subsidiary Maths/Computer) are graded pass/fail
-// internally as 'O'/'F' (so GRADE_POINTS, sorting, etc. still work unchanged), but on the
-// report card the Grade column itself should read "Pass"/"Fail" rather than the bare
-// letter — the Descriptor column already showed those words via GRADE_COMMENT, this just
-// brings the Grade column into agreement for subsidiary subjects specifically.
+// A-Level principal subjects use A-E. General Paper and subsidiaries retain Pass/Fail internally.
 // Color-codes a grade letter/code so it's unmistakable at a glance on wide tables like
 // the Master Mark Sheet (bold text alone gets lost next to columns of plain numbers).
 // Covers O/A-Level letters (A-F,O) and Primary PLE codes (D1-F9) in one lookup.
@@ -2645,10 +2653,8 @@ function gradeColorFor(grade){
   return 'var(--navy)'; // B, C, D, C3-C6
 }
 function gradeDisplay(subject, grade, level){
-  if(level==='A' && (subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject))){
-    if(grade==='O') return 'Pass';
-    if(grade==='F') return 'Fail';
-  }
+  // O/F are never displayed as grades for O-Level or A-Level.
+  if((level==='O' || level==='A') && (grade==='O' || grade==='F')) return 'E';
   return grade;
 }
 // Aggregate (sum of grade-points) of the school's Primary compulsory (core) subjects →
@@ -2670,11 +2676,11 @@ function primaryAggregate(st, cls, term, year){
   return sum;
 }
 function gradeColsFor(level){
-  if(level==='A') return ['A','B','C','D','E','O','F'];
+  if(level==='A') return ['A','B','C','D','E'];
   if(level==='P') return PLE_GRADES;
   return ['A','B','C','D','E'];
 }
-function overallGradeFor(cls, avgPct){ return cls.level==='A' ? null : gradeFor('', avgPct, cls.level); }
+function overallGradeFor(cls, avgPct){ return gradeFor('', avgPct, cls.level); }
 function teacherForSubjectClass(subject, classId){
   const a = DB.assignments.find(a=>a.subject===subject && a.classId===classId);
   if(!a) return null;
@@ -4437,6 +4443,14 @@ function gradingView(gcClassId){
       <div class="grid3">
       ${['A','B','C','D','E'].map(g=>`<div><label>${g} min–max</label><div class="flex"><input name="${g}min" value="${b[g][0]}"><input name="${g}max" value="${b[g][1]}"></div></div>`).join('')}
       </div>
+      <h4 style="margin:16px 0 8px;">A-Level descriptors / comments</h4>
+      <div class="grid3">${['A','B','C','D','E'].map(g=>`<div><label>${g} descriptor / comment</label><input name="aComment_${g}" value="${esc(gradeCommentsFor('A')[g])}" required></div>`).join('')}</div>
+      <div style="margin-top:12px;max-width:260px;"><label>General Paper & Subsidiaries Pass Mark (%)</label><input name="aPassMark" type="number" min="0" max="100" step="0.1" value="${Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)}"></div>
+      <div class="grid2" style="margin-top:12px;">
+        <div><label>Pass descriptor / comment</label><input name="passComment" value="${esc(passFailComments().Pass)}" required></div>
+        <div><label>Fail descriptor / comment</label><input name="failComment" value="${esc(passFailComments().Fail)}" required></div>
+      </div>
+      <p class="small" style="margin-top:8px;">At or above this boundary = Pass (1 point); below it = Fail (0 points). This applies only to General Paper and subsidiary subjects.</p>
       <button class="btn" style="margin-top:14px;">Submit — save A-Level bands</button>
     </form>
   </div>
@@ -4446,6 +4460,8 @@ function gradingView(gcClassId){
       <div class="grid3">
       ${['A','B','C','D','E'].map(g=>`<div><label>${g} min–max</label><div class="flex"><input name="${g}min" value="${ob[g][0]}"><input name="${g}max" value="${ob[g][1]}"></div></div>`).join('')}
       </div>
+      <h4 style="margin:16px 0 8px;">O-Level descriptors / comments</h4>
+      <div class="grid3">${['A','B','C','D','E'].map(g=>`<div><label>${g} descriptor / comment</label><input name="oComment_${g}" value="${esc(gradeCommentsFor('O')[g])}" required></div>`).join('')}</div>
       <button class="btn" style="margin-top:14px;">Submit — save O-Level bands</button>
     </form>
   </div>
@@ -4564,8 +4580,10 @@ function gradingView(gcClassId){
     })()}
   </div>
   <div class="card"><h3>O/A-Level comment key</h3>
-    <table class="data-table"><tr>${Object.keys(GRADE_COMMENT).map(g=>`<th>${g}</th>`).join('')}</tr>
-    <tr>${Object.values(GRADE_COMMENT).map(c=>`<td>${c}</td>`).join('')}</tr></table>
+    <table class="data-table"><tr>${['A','B','C','D','E'].map(g=>`<th>${g}</th>`).join('')}</tr>
+    <tr>${['A','B','C','D','E'].map(g=>`<td>${esc(gradeCommentsFor('O')[g])}</td>`).join('')}</tr></table>
+    <p class="small" style="margin:8px 0 4px;"><b>A-Level:</b> ${['A','B','C','D','E'].map(g=>`${g} — ${esc(gradeCommentsFor('A')[g])}`).join(' &nbsp; | &nbsp; ')}</p>
+    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> Pass — ${esc(passFailComments().Pass)}; Fail — ${esc(passFailComments().Fail)}</p>
   </div>
   <div class="card"><h3>Primary (PLE) comment key</h3>
     <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
@@ -5233,7 +5251,7 @@ function masterMarkSheetView(forExport){
     </div>
     ${mode==='grades' ? `<p class="small" style="margin-top:10px;">${isP
       ? 'Grading scale (Primary/PLE): D1, D2 = Distinction &nbsp; C3–C6 = Credit &nbsp; P7, P8 = Pass &nbsp; F9 = Fail. Aggregate = sum of grade-points for the compulsory subjects; Division is derived from that aggregate.'
-      : `Grading scale (${isA?'A-Level':'O-Level'}): A = Excellent &nbsp; B = Very Good &nbsp; C = Good &nbsp; D = Fair &nbsp; E = Weak${isA?' &nbsp; O = Subsidiary Pass &nbsp; F = Fail':''}.`
+      : `Grading scale (${isA?'A-Level':'O-Level'}): A = Excellent &nbsp; B = Very Good &nbsp; C = Good &nbsp; D = Fair &nbsp; E = Weak${isA?' &nbsp; General Paper/Subsidiaries = Pass/Fail':''}.`
     }</p>` : ''}
     <div class="mm-footer">
       <span>Generated ${esc(new Date().toLocaleDateString())}</span>
@@ -5697,7 +5715,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // Overall grade / descriptor: A-Level → shown as points; O-Level → A-E grade off the
   // final average; Primary → Division off the aggregate of the 4 PLE-core subjects.
   const overallGrade = gradeFor('', avgPct, cls.level);
-  const commentMap = isP ? PLE_GRADE_COMMENT : GRADE_COMMENT;
+  const commentMap = isP ? PLE_GRADE_COMMENT : gradeCommentsFor(cls.level);
   // Primary report cards use a percentage-based Remarks scale instead of Descriptor.
   // The wording is based directly on the student's Final Average percentage.
   function primaryFinalRemark(pct){
@@ -5804,7 +5822,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const rowsHtml = rows.map((r,i)=>{
     r_subject = r.subject;
     const bd = breakdowns[i];
-    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : (commentMap[r.grade] || '—'));
+    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((r.grade==='O'||r.grade==='F') ? passFailComments()[r.grade==='O'?'Pass':'Fail'] : (commentMap[r.grade] || '—')));
     // Multi-paper subject (e.g. Paper 1 & Paper 2 of the same subject): show a row per
     // paper, but only for papers that actually have a score entered so far — a paper
     // with nothing on record yet simply doesn't get a row at all. The subject name,
@@ -5911,7 +5929,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // so "Paper Avg" here means exactly what "Paper Avg" means in every row above it.
   const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '—';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
-  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
+  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : ((totalGrade==='O'||totalGrade==='F') ? passFailComments()[totalGrade==='O'?'Pass':'Fail'] : (commentMap[totalGrade] || '—'))) : '—';
   // Final Average column, TOTAL row: this column is a percentage (see header "Final
   // Average (%)"), same as every subject row above it (r.avg.toFixed(1)) — it must NOT
   // repeat the Points total for A-Level, since Points already gets its own column right
@@ -6161,7 +6179,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const pct = maxP ? metric/maxP : 0;
 
   const overallGrade = gradeFor('', avgPct, cls.level);
-  const commentMap = isP ? PLE_GRADE_COMMENT : GRADE_COMMENT;
+  const commentMap = isP ? PLE_GRADE_COMMENT : gradeCommentsFor(cls.level);
   function primaryFinalRemark(pctVal){
     if(pctVal==null || !Number.isFinite(Number(pctVal))) return '—';
     const n=Number(Number(pctVal).toFixed(10));
@@ -6204,7 +6222,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   // record (paperRows), matching exactly how reportCardHTML decides rowspans.
   const subjectEntries = rows.map((r,i)=>{
     const bd = breakdowns[i];
-    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : (commentMap[r.grade] || '—'));
+    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((r.grade==='O'||r.grade==='F') ? passFailComments()[r.grade==='O'?'Pass':'Fail'] : (commentMap[r.grade] || '—')));
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
     const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
@@ -6253,7 +6271,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const eotTotalTxt = eotVals.length ? (eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1) : '—';
   const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '—';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
-  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
+  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : ((totalGrade==='O'||totalGrade==='F') ? passFailComments()[totalGrade==='O'?'Pass':'Fail'] : (commentMap[totalGrade] || '—'))) : '—';
   const totalFinalTxt = isA ? avgPct.toFixed(1) : avgPct.toFixed(0)+'%';
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
@@ -8402,11 +8420,25 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='saveBands'){
       const b={...(DB.bands||DEFAULT_A_BANDS)}; ['A','B','C','D','E'].forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
-      DB.bands=b; await saveBands(); render();
+      DB.bands=b;
+      if(DB.info){
+        DB.info.aPassMark=Math.max(0,Math.min(100,Number(fd.get('aPassMark')) || DEFAULT_A_PASS_MARK));
+        DB.info.aGradeComments={...(DB.info.aGradeComments||DEFAULT_A_GRADE_COMMENTS)};
+        ['A','B','C','D','E'].forEach(g=>{ DB.info.aGradeComments[g]=(fd.get('aComment_'+g)||'').trim() || DEFAULT_A_GRADE_COMMENTS[g]; });
+        DB.info.passFailComments={...(DB.info.passFailComments||DEFAULT_PASS_FAIL_COMMENTS), Pass:(fd.get('passComment')||'').trim()||DEFAULT_PASS_FAIL_COMMENTS.Pass, Fail:(fd.get('failComment')||'').trim()||DEFAULT_PASS_FAIL_COMMENTS.Fail};
+        await saveInfo();
+      }
+      await saveBands(); render();
     }
     else if(type==='saveOBands'){
       const b={...(DB.obands||DEFAULT_O_BANDS)}; ['A','B','C','D','E'].forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
-      DB.obands=b; await saveOBands(); render();
+      DB.obands=b;
+      if(DB.info){
+        DB.info.oGradeComments={...(DB.info.oGradeComments||DEFAULT_O_GRADE_COMMENTS)};
+        ['A','B','C','D','E'].forEach(g=>{ DB.info.oGradeComments[g]=(fd.get('oComment_'+g)||'').trim() || DEFAULT_O_GRADE_COMMENTS[g]; });
+        await saveInfo();
+      }
+      await saveOBands(); render();
     }
     else if(type==='savePBands'){
       const b={...(DB.pbands||DEFAULT_P_BANDS)}; PLE_GRADES.forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
