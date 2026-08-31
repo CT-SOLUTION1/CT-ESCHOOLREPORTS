@@ -153,26 +153,25 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
 .rc-title-block{display:flex;align-items:stretch;gap:12px;text-align:center;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;position:relative;}
-/* The logo is an absolutely-positioned overlay pinned to the top-left of the
-   header, rather than a flex sibling that consumes its own column of width.
-   That old layout centered the school name only within the *remaining* space
-   after the logo's column, so the text visibly sat off-center (shifted right)
-   whenever a logo was uploaded. Taking the logo out of the flex flow lets
-   rc-header-text take the header's full width again — the school name centers
-   across the whole card, exactly as wide/centered as it looked before a logo
-   was ever uploaded — with the logo simply floating over the freed-up space on
-   the left rather than reserving/shrinking that width. */
-.rc-title-block .rc-logo{position:absolute;left:0;top:0;height:100%;max-height:100%;width:auto;aspect-ratio:auto;max-width:170px;min-width:0;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
+/* The logo is a normal flex column beside the header text, not an overlay pinned on
+   top of it. An earlier version floated the logo absolutely over the header so the
+   school name could center across the full card width — but for a long school name
+   (which fills that full width) the centered text then ran underneath the logo,
+   hiding its first word(s). Giving the logo its own reserved column removes that
+   overlap for any name length: align-items:stretch on .rc-title-block makes the
+   logo match the header text's height automatically, and .rc-header-text centers
+   its text within the space actually left over next to the logo. */
+.rc-title-block .rc-logo{height:100%;max-height:100%;width:auto;aspect-ratio:auto;max-width:170px;min-width:0;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;flex-shrink:0;display:block;}
 /* Print uses the exact same on-screen markup/CSS (see @media print rules below), so
-   this height:100% rule already keeps the logo matched to the header's height when
-   printed via the browser's own Print dialog, not just on screen. */
-#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:0 !important;height:100% !important;max-height:100% !important;width:auto !important;max-width:170px !important;object-fit:contain !important;}
-.rc-title-block .rc-header-text{flex:1;width:100%;min-width:0;}
+   this rule already keeps the logo matched to the header's height and out of the
+   text's way when printed via the browser's own Print dialog, not just on screen. */
+#pdfCaptureHolder .rc-title-block .rc-logo{height:100% !important;max-height:100% !important;width:auto !important;max-width:170px !important;object-fit:contain !important;}
+.rc-title-block .rc-header-text{flex:1;min-width:0;}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
    below), so a hairline text-stroke is layered on top of font-weight:900 here to push
    the school name visibly heavier than everything else without reducing their weight. */
-.rc-title-block .school{font-size:22px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 4px;white-space:nowrap;}
+.rc-title-block .school{font-size:22px;font-weight:900;-webkit-text-stroke:0.4px currentColor;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 4px;white-space:normal;overflow-wrap:break-word;}
 /* Slightly increased header spacing makes the text stack reach the logo height without enlarging the overall report-card layout. */
 .rc-title-block .subtitle{display:inline-block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 .rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:5px;font-weight:700;}
@@ -5897,19 +5896,32 @@ function drawReportCardPage(pdf, data, gapBoost){
   pdf.text(`Printed ${fmtDate(Date.now())}`, contentX+contentW, cy, {align:'right'});
   cy += 10;
 
-  // ---- 4. Title block: logo overlaid top-left + school name/subtitle/meta
-  // centered across the FULL header width. The logo is drawn as an overlay
-  // instead of reserving/shrinking its own column, so the header text is
-  // centered exactly as it would be with no logo at all (matching how wide/
-  // centered it looked before a logo was ever uploaded) — any free space to
-  // the left of the centered text, where the logo sits, is expected. ----
+  // ---- 4. Title block: logo in its own reserved left column, school name/
+  // subtitle/meta centered in the remaining header width. (Matches the
+  // on-screen/print .rc-title-block layout — see the CSS comment above
+  // .rc-title-block .rc-logo — so a long school name can never render
+  // underneath the logo in the PDF either.) With no logo, text still
+  // centers across the full header width exactly as before. ----
   const titleTop = cy;
-  const textX = contentX, textW = contentW;
+  let textX = contentX, textW = contentW;
   if(data.school.logo){
     try{
       const props = pdf.getImageProperties(data.school.logo);
-      const logoH = 48, logoW = Math.min(60, logoH*(props.width/props.height));
+      // Fit the logo inside a bounding box without distorting it: pdf.addImage stretches
+      // the source to exactly the w/h given, so the old fixed-height-then-clamped-width
+      // approach (height locked at 48 while width was separately capped at 60) squished
+      // any logo wider than 1.25:1 into the wrong aspect ratio, making it look shrunk/
+      // squashed rather than just smaller. This instead scales the logo's real aspect
+      // ratio down to fit within maxLogoW x maxLogoH — like CSS object-fit:contain,
+      // matching how the on-screen/print logo (object-fit:contain) behaves.
+      const maxLogoH = 48, maxLogoW = 130;
+      const ratio = props.width/props.height;
+      let logoW = maxLogoH*ratio, logoH = maxLogoH;
+      if(logoW > maxLogoW){ logoW = maxLogoW; logoH = maxLogoW/ratio; }
       pdf.addImage(data.school.logo, 'PNG', contentX, titleTop, logoW, logoH);
+      const logoGap = 10;
+      textX = contentX + logoW + logoGap;
+      textW = contentW - logoW - logoGap;
     }catch(e){ /* skip logo, keep going */ }
   }
   centerText(data.school.name||'', textX, textW, titleTop+13, 15, 'bold', navy);
@@ -6282,7 +6294,15 @@ function drawReportCardPage(pdf, data, gapBoost){
 //     the layout never looks disorganized; any tiny remainder is absorbed by
 //     drawReportCardPage()'s own existing fit-to-page scale as before.
 function renderReportCardPageFitted(pdf, data){
-  const GAP_CAP = 26; // points; keeps inter-table spacing modest even on very short cards
+  // GAP_CAP (points): how much of a short card's leftover A4 space each inter-table
+  // gap is allowed to absorb before drawReportCardPage()'s final uniform-scale safety
+  // net has to close the remainder. 26pt was too tight for noticeably short cards (few
+  // subjects, no Course Work columns) — most of their shortfall fell through to the
+  // safety-net scale instead, visibly stretching the photo/text/tables. Raising the cap
+  // lets spacing absorb the shortfall in the vast majority of cases instead, while still
+  // leaving a lower cap than "unlimited" so an extremely short card doesn't end up with
+  // huge, disorganized-looking gaps between sections.
+  const GAP_CAP = 80; // points
   let gapBoost = 0;
   try{
     // Measurement pass: draw the exact same content onto a throwaway scratch
