@@ -6285,24 +6285,20 @@ function drawReportCardPage(pdf, data, gapBoost){
 // columns) gets absorbed:
 //   - If the card is naturally tall enough already (a normal number of rows),
 //     nothing here changes — drawReportCardPage() draws it exactly as before.
-//   - If the card is naturally short and would otherwise have to be stretched
-//     (larger row heights / larger text) to reach the bottom of the page, the
-//     shortfall is instead spread out as extra breathing room between the
-//     card's separate tables (info -> Academic Performance -> Performance
-//     Summary -> Grading Scale (Primary only) -> Comments), so subjects/rows/
-//     text keep their normal size. A per-gap cap keeps that spacing modest so
-//     the layout never looks disorganized; any tiny remainder is absorbed by
-//     drawReportCardPage()'s own existing fit-to-page scale as before.
+//   - If the card is naturally short, the ENTIRE shortfall is spread out as
+//     extra breathing room between the card's separate tables (info ->
+//     Academic Performance -> Performance Summary -> Grading Scale (Primary
+//     only) -> Comments), so subjects/rows/text/photo keep their exact normal
+//     size — nothing is stretched. A previous version capped how much of the
+//     shortfall each gap could absorb, which "kept gaps modest" but meant a
+//     genuinely short card still had leftover shortfall pushed onto
+//     drawReportCardPage()'s own uniform fit-to-page scale — and that scale
+//     stretches every row/photo/font uniformly along with the gaps, which is
+//     exactly the visible "stretching" this was meant to avoid. Since the gaps
+//     now close 100% of the shortfall, that final scale ends up at (or a hair
+//     from) 1 and never fires — the card fills A4 purely through extra
+//     spacing between tables, never through resizing their contents.
 function renderReportCardPageFitted(pdf, data){
-  // GAP_CAP (points): how much of a short card's leftover A4 space each inter-table
-  // gap is allowed to absorb before drawReportCardPage()'s final uniform-scale safety
-  // net has to close the remainder. 26pt was too tight for noticeably short cards (few
-  // subjects, no Course Work columns) — most of their shortfall fell through to the
-  // safety-net scale instead, visibly stretching the photo/text/tables. Raising the cap
-  // lets spacing absorb the shortfall in the vast majority of cases instead, while still
-  // leaving a lower cap than "unlimited" so an extremely short card doesn't end up with
-  // huge, disorganized-looking gaps between sections.
-  const GAP_CAP = 80; // points
   let gapBoost = 0;
   try{
     // Measurement pass: draw the exact same content onto a throwaway scratch
@@ -6313,7 +6309,7 @@ function renderReportCardPageFitted(pdf, data){
     if(measured && measured.naturalHeight < measured.availableHeight){
       const shortfall = measured.availableHeight - measured.naturalHeight;
       const numGaps = data.isP ? 5 : 4;
-      gapBoost = Math.min(GAP_CAP, shortfall / numGaps);
+      gapBoost = shortfall / numGaps;
     }
   }catch(e){ gapBoost = 0; /* if measurement fails for any reason, fall back to the original behavior */ }
   return drawReportCardPage(pdf, data, gapBoost);
