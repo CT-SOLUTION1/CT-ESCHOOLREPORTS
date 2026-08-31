@@ -88,11 +88,11 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .auth-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
 .auth-tabs button{flex:1;min-width:90px;padding:9px;border:2px solid var(--blue);background:#fff;color:var(--blue);border-radius:6px;font-weight:700;font-size:13px;}
 .auth-tabs button.active{background:var(--blue);color:#fff;}
-.role-icons{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;}
-.role-icon-btn{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;cursor:pointer;padding:4px;}
-.role-icon-circle{width:56px;height:56px;border-radius:50%;border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:24px;background:#fff;color:var(--blue);transition:background .15s,color .15s;}
+.role-icons{display:flex;gap:clamp(6px,3vw,22px);justify-content:center;flex-wrap:nowrap;}
+.role-icon-btn{flex:1 1 0;max-width:130px;display:flex;flex-direction:column;align-items:center;gap:9px;background:none;border:none;cursor:pointer;padding:4px;}
+.role-icon-circle{width:clamp(58px,20vw,78px);height:clamp(58px,20vw,78px);border-radius:50%;border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:clamp(26px,8vw,34px);background:#fff;color:var(--blue);transition:background .15s,color .15s;}
 .role-icon-btn.active .role-icon-circle{background:var(--blue);color:#fff;}
-.role-icon-label{font-size:12px;font-weight:700;color:var(--muted);}
+.role-icon-label{font-size:clamp(11px,3vw,13px);font-weight:700;color:var(--muted);text-align:center;line-height:1.2;}
 .role-icon-btn.active .role-icon-label{color:var(--blue);}
 .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:var(--blue-light);color:var(--blue);}
 .note{background:#FFF7E0;border:1px solid var(--gold);padding:12px 14px;border-radius:8px;font-size:13px;color:#5a4a00;}
@@ -3018,6 +3018,8 @@ function renderPlatformAuth(){
   if(AUTH_VIEW==='founderLogin') return renderFounderLoginForm();
   if(AUTH_VIEW==='founderRecovery') return renderFounderRecoveryForm();
   if(AUTH_VIEW==='schoolRecovery') return renderSchoolRecoveryForm();
+  const roleLabel = loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':'Parent';
+  const roleIcon = loginRole==='admin'?'🗝️':loginRole==='teacher'?'🎓':'👪';
   return `
   <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div style="text-align:center;margin-bottom:6px;">
@@ -3025,18 +3027,28 @@ function renderPlatformAuth(){
       <div class="small">${esc(FOUNDER_CONTACT)}</div>
       <div class="small">School Report System</div>
     </div>
+    ${loginRole ? `
+    <div class="panel-indicator-row" style="display:flex;align-items:center;justify-content:space-between;margin-top:22px;padding-bottom:10px;border-bottom:1px solid #e2e8f0;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="role-icon-circle" style="width:38px;height:38px;font-size:18px;background:var(--blue);color:#fff;">${roleIcon}</span>
+        <span style="font-weight:800;font-size:15px;">${roleLabel} Panel</span>
+      </div>
+      <button type="button" class="btn-outline" data-action="clearRole" style="padding:6px 12px;font-size:12px;white-space:nowrap;">Change role</button>
+    </div>
+    <div class="note" style="margin-top:12px;text-align:center;">${roleLabel} login</div>
+    <form data-form="login" novalidate>
+      <input type="hidden" name="role" value="${loginRole}">
+      <label>Username</label><input name="username" required autocomplete="username">
+      <label>Password</label><input name="password" type="password" required>
+      <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Sign in</button>
+    </form>
+    <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></p>
+    ${loginRole!=='parent' ? `<p class="small" style="text-align:center;margin-top:6px;"><a href="#" data-action="gotoSchoolRecovery">Forgot your password${loginRole==='admin'?' or owner code':''}?</a></p>` : ''}
+    ` : `
     <button type="button" id="installAppBtn" class="install-app-btn" data-action="installApp">⬇ Download / Install App</button>
     <div class="auth-action-stack">
       <a href="#" data-action="gotoCreateSchool" class="btn" style="background:#16a34a;color:#fff;border-color:#16a34a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;line-height:1.1;"><span style="font-size:11px;font-weight:500;opacity:.95;">New school:</span><span style="font-size:15px;font-weight:700;letter-spacing:.2px;">REGISTER NEW SCHOOL</span></a>
     </div>
-    ${loginRole ? `
-    <div style="margin-top:20px;text-align:center;">
-      <button type="button" class="role-icon-btn active" style="margin:auto;" data-action="setRole:${loginRole}">
-        <span class="role-icon-circle">${loginRole==='admin'?'🗝️':loginRole==='teacher'?'🎓':'👪'}</span>
-        <span class="role-icon-label">${loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':'Parent'}</span>
-      </button>
-      <button type="button" class="btn-outline" data-action="clearRole" style="margin-top:10px;padding:7px 14px;">Change role</button>
-    </div>` : `
     <div class="role-icons" style="margin-top:20px;">
       <button type="button" class="role-icon-btn" data-action="setRole:admin">
         <span class="role-icon-circle">🗝️</span><span class="role-icon-label">Owner/Admin</span>
@@ -3047,18 +3059,8 @@ function renderPlatformAuth(){
       <button type="button" class="role-icon-btn" data-action="setRole:parent">
         <span class="role-icon-circle">👪</span><span class="role-icon-label">Parent</span>
       </button>
-    </div>`}
-    ${loginRole ? `
-    <div class="note" style="margin-top:12px;text-align:center;">${loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':'Parent'} login</div>
-    <form data-form="login" novalidate>
-      <input type="hidden" name="role" value="${loginRole}">
-      <label>Username</label><input name="username" required autocomplete="username">
-      <label>Password</label><input name="password" type="password" required>
-      <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Sign in</button>
-    </form>
-    <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></p>
-    ${loginRole!=='parent' ? `<p class="small" style="text-align:center;margin-top:6px;"><a href="#" data-action="gotoSchoolRecovery">Forgot your password${loginRole==='admin'?' or owner code':''}?</a></p>` : ''}
-    ` : `<div class="note" style="margin-top:12px;text-align:center;">Select Owner/Admin, Teacher, or Parent above to continue to sign in.</div>`}
+    </div>
+    <div class="note" style="margin-top:12px;text-align:center;">Select Owner/Admin, Teacher, or Parent above to continue to sign in.</div>
     <hr style="margin:16px 0;border:none;border-top:1px solid #e2e8f0;">
     <div style="text-align:center;font-size:13px;" class="small">
       <div style="margin-bottom:6px;">New here?</div>
@@ -3068,6 +3070,7 @@ function renderPlatformAuth(){
       </div>
       <a href="#" data-action="gotoFounderLogin" class="btn" style="display:block;width:100%;box-sizing:border-box;margin-top:12px;text-align:center;text-decoration:none;">Founder Panel Login</a>
     </div>
+    `}
   </div></div>`;
 }
 function renderFounderLoginForm(){
@@ -6583,11 +6586,24 @@ document.addEventListener('click', async (e)=>{
       // same screen when it lands (myNavToken guards against a stale refresh
       // overwriting a screen they've since navigated away from).
       render();
+      // 'preport' (parent's "Report Card" nav tile) renders a .rc-card just like the
+      // admin/teacher 'viewReport' action does, so it needs the same A4-fill pass —
+      // otherwise a short card viewed this way stays its natural (short) height on
+      // screen instead of filling the page the way the downloaded PDF does.
+      if(arg==='preport'){
+        const rcRoot = document.getElementById('mainArea'); if(rcRoot) fitOnePage(rcRoot);
+      }
       if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet'].includes(arg)){
         const scoreRefresh = arg==='mastermarksheet'
           ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear)
           : refreshScores();
-        scoreRefresh.then(()=>{ if(NAV_TOKEN===myNavToken) render(); }).catch(e=>console.error(e));
+        scoreRefresh.then(()=>{
+          if(NAV_TOKEN!==myNavToken) return;
+          render();
+          if(arg==='preport'){
+            const rcRoot2 = document.getElementById('mainArea'); if(rcRoot2) fitOnePage(rcRoot2);
+          }
+        }).catch(e=>console.error(e));
       }
       break;
     }
