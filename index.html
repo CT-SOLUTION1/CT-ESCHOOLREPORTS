@@ -74,7 +74,16 @@ table{border-collapse:collapse;width:100%;background:#fff;}
 table.report-table, table.data-table{border:2px solid var(--blue);}
 table.report-table th, table.report-table td, table.data-table th, table.data-table td{border:1px solid var(--blue);padding:7px 9px;font-size:13px;text-align:center;}
 table.report-table th, table.data-table th{background:var(--blue);color:#fff;font-weight:900;text-transform:uppercase;font-size:11px;letter-spacing:.03em;}
-.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,var(--navy),var(--blue));padding:20px;}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,var(--navy),var(--blue));padding:20px;position:relative;overflow:hidden;}
+/* Subtle moving water droplets live only in the blue authentication background.
+   They are layered behind the white sign-in card and never enter the card itself. */
+.auth-wrap::before,.auth-wrap::after{content:"";position:absolute;inset:-30%;pointer-events:none;z-index:0;background-repeat:repeat;opacity:.22;}
+.auth-wrap::before{background-image:radial-gradient(circle at 20px 28px,rgba(255,255,255,.42) 0 2px,rgba(255,255,255,.14) 3px,transparent 7px),radial-gradient(circle at 90px 75px,rgba(255,255,255,.25) 0 3px,transparent 8px),radial-gradient(circle at 155px 38px,rgba(255,255,255,.30) 0 2px,transparent 7px);background-size:180px 140px;animation:authWaterDrift 18s linear infinite;}
+.auth-wrap::after{background-image:radial-gradient(ellipse at 35px 45px,rgba(255,255,255,.28) 0 2px,transparent 8px),radial-gradient(ellipse at 125px 105px,rgba(255,255,255,.22) 0 2px,transparent 7px);background-size:230px 180px;animation:authWaterDrift 27s linear infinite reverse;opacity:.14;}
+@keyframes authWaterDrift{from{transform:translate3d(-20px,-35px,0);}to{transform:translate3d(70px,85px,0);}}
+.auth-box{z-index:1;}
+.founder-secret-access{position:fixed;left:6px;bottom:6px;width:18px;height:18px;min-width:18px;min-height:18px;padding:0!important;margin:0!important;border:1px solid rgba(255,255,255,.38)!important;border-radius:50%!important;background:rgba(5,45,110,.72)!important;box-shadow:0 1px 4px rgba(0,0,0,.28);opacity:.72;z-index:20;display:block;box-sizing:border-box;text-decoration:none;font-size:0;line-height:0;}
+.founder-secret-access:hover,.founder-secret-access:focus{opacity:.95;outline:none;}
 /* Watermark: CT-E SOLUTIONS crest shown faint behind the sign-in card (and every other
    screen sharing .auth-box — teacher/parent sign-up, founder login, password recovery,
    register-a-school). It's a ::before layer positioned behind .auth-box's own content
@@ -86,12 +95,14 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 /* Login sections: stack the login card into distinct blocks and let the middle
    one flex-grow, so the box's full min-height is actually used (evenly spread)
    instead of leaving one big gap below whatever content happens to be shortest. */
-.login-body{display:flex;flex-direction:column;flex:1;}
-.login-section{padding:18px 0;}
-.login-section:first-child{padding-top:0;}
-.login-section:last-child{padding-bottom:0;}
+.login-body{display:flex;flex-direction:column;flex:1;min-height:0;}
+/* Use the whole white sign-in area: every remaining section receives an equal
+   share of the available vertical space instead of leaving unused space below. */
+.login-section{flex:1 1 0;min-height:0;padding:18px 0;display:flex;flex-direction:column;justify-content:center;}
+.login-section:first-child{padding-top:8px;}
+.login-section:last-child{padding-bottom:8px;}
 .login-section+.login-section{border-top:1px solid #e2e8f0;}
-.login-section-fill{flex:1;display:flex;flex-direction:column;justify-content:center;}
+.login-section-fill{flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;}
 .login-section-tinted{background:var(--blue-light);border-radius:12px;padding:20px;margin:2px 0;border-top:none !important;}
 .login-section-tinted+.login-section{border-top:none;}
 .login-section-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;text-align:center;}
@@ -156,8 +167,16 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 
 /* ---- Report card (Sample School official layout) ---- */
 .rc-card{font-family:Georgia,'Times New Roman',serif;background:#fff;padding:24px 26px 20px;border:1px solid #cfd9e3;width:100%;max-width:724px;min-height:1055px;box-sizing:border-box;margin:0 auto;color:var(--ink);position:relative;overflow:hidden;box-shadow:0 2px 10px rgba(10,42,74,.08);}
-/* The live/on-screen card should use the available A4 canvas right to its lower edge without changing the PDF capture geometry. */
-.rc-card:not(.pdf-report-card){padding-bottom:10px;}
+/* ON-SCREEN A4 CANVAS: the live report card is always exactly A4 portrait (190:277
+   inside the 10mm printable margins). The old desktop min-height/mobile aspect-ratio
+   combination could leave a card whose content was taller than its clipped frame.
+   Keeping one explicit A4 geometry for every screen size gives fitOnePage() a stable
+   target and ensures the lower boundary is always the true end of the visible page. */
+.rc-card:not(.pdf-report-card){min-height:0;height:auto;aspect-ratio:190/277;padding-bottom:10px;overflow:hidden;}
+/* The A4 frame itself never scales. Only the report contents are fitted inside it, exactly
+   like the PDF renderer: the border therefore remains on the true A4 boundary even when
+   a report contains many subjects/rows. */
+.rc-card:not(.pdf-report-card) .rc-content{transform-origin:top left;transform:none;width:auto;}
 /* Thick decorative boundary stays inside the existing report-card margins. It is an overlay, so it consumes no layout space and cannot change table widths, A4 fit, or content positioning. */
 .rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
 /* The live report-card canvas uses the same printable proportion as the native A4 PDF (190:277). On narrow phones it remains responsive rather than overflowing the screen. */
@@ -429,6 +448,8 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
   body *{visibility:hidden;}
   #printArea, #printArea *{visibility:visible;}
   #printArea{position:absolute;top:0;left:0;width:100%;}
+  /* Native browser printing must use the same A4 portrait geometry as the live card. */
+  #printArea .rc-card:not(.pdf-report-card){width:190mm !important;height:277mm !important;max-width:190mm !important;min-height:277mm !important;aspect-ratio:auto !important;overflow:hidden !important;box-shadow:none !important;}
   table{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   @page{ size:A4; margin:10mm; }
 }
@@ -2802,19 +2823,24 @@ async function deletePhotoFromStorage(url){
   // Nothing to do — the old base64 string is simply overwritten/removed
   // wherever the caller updates the record.
 }
-function fitOnePage(root){
-  const inner = root.querySelector('.rc-card');
+function fitOnePage(root, settle=true){
+  const inner = root && root.querySelector ? root.querySelector('.rc-card') : null;
   if(!inner) return;
 
-  // Always start from the natural layout. A report card with enough content must
-  // keep its normal row heights, normal wording size and normal table-to-table gaps.
-  inner.style.transform='';
-  inner.style.width='';
+  // IMPORTANT: the A4 FRAME must never be scaled. The PDF renderer keeps its page/frame
+  // fixed and fits the report CONTENT inside it. Doing the same on screen prevents the
+  // common problem where a long report shrinks its whole frame and still leaves its last
+  // section outside/under the visible A4 boundary.
+  const content = inner.querySelector('.rc-content');
+  if(!content) return;
+
+  // Always return to the natural layout before measuring. Images, fonts and long subject
+  // names can change the natural height after the first render.
+  content.style.transform='';
+  content.style.width='';
   inner.classList.remove('rc-auto-spaced','rc-logo-crowded');
   inner.style.removeProperty('--rc-extra-gap');
 
-  // Keep the logo completely out of the header layout. Only add a left safety pad
-  // when an unusually long school name would actually collide with the uploaded logo.
   const title = inner.querySelector('.rc-title-block');
   const logo = title && title.querySelector('.rc-logo');
   const schoolName = title && title.querySelector('.school');
@@ -2833,40 +2859,71 @@ function fitOnePage(root){
     if(logoRight + 8 > nameLeft) inner.classList.add('rc-logo-crowded');
   }
 
-  // The printable A4 area is 190mm × 277mm with the 10mm print margins.
-  // Short cards fill the page ONLY by adding controlled space between separate
-  // tables. Normal rows/fonts are never stretched. If the natural card is already
-  // tall enough, no extra spacing is introduced at all.
+  // The visible frame is exactly the A4 printable proportion used by the PDF:
+  // 190mm x 277mm. Calculate the actual interior height after the card padding so the
+  // content is fitted to the same usable area rather than to an arbitrary pixel height.
   const printableRatio = 277 / 190;
-  const target = Math.max(1, inner.getBoundingClientRect().width * printableRatio);
-  let h = Math.max(1, inner.scrollHeight);
-  const shortfall = target - h;
+  const frameWidth = Math.max(1, inner.clientWidth || inner.getBoundingClientRect().width);
+  const frameHeight = Math.max(1, frameWidth * printableRatio);
+  const cs = getComputedStyle(inner);
+  const padTop = parseFloat(cs.paddingTop) || 0;
+  const padBottom = parseFloat(cs.paddingBottom) || 0;
+  const available = Math.max(1, frameHeight - padTop - padBottom - 6); // 6px safety inside frame
+  let h = Math.max(1, content.scrollHeight);
+
+  // For short cards, use the unused A4 height as controlled space BETWEEN sections, just
+  // as the PDF fitting pass does. Never stretch individual rows or text.
   const gapTargets = [
-    inner.querySelector('.rc-info-table'),
-    inner.querySelector('table.rc-perf'),
-    inner.querySelector('table.rc-summary-table'),
-    inner.querySelector('table.rc-grading-scale-table')
+    content.querySelector('.rc-info-table'),
+    content.querySelector('table.rc-perf'),
+    content.querySelector('table.rc-summary-table'),
+    content.querySelector('table.rc-grading-scale-table')
   ].filter(Boolean);
 
-  if(shortfall > 2 && gapTargets.length){
-    // Spread only the genuine unused vertical space across table boundaries.
-    // No arbitrary padding is added to a card that is already naturally full.
-    const extraGap = shortfall / gapTargets.length;
+  if(available - h > 2 && gapTargets.length){
+    const extraGap = (available - h) / gapTargets.length;
+    content.style.setProperty('--rc-extra-gap', extraGap.toFixed(2)+'px');
     inner.style.setProperty('--rc-extra-gap', extraGap.toFixed(2)+'px');
     inner.classList.add('rc-auto-spaced');
-    h = Math.max(1, inner.scrollHeight);
+    h = Math.max(1, content.scrollHeight);
   }
 
-  // A naturally long card still has to fit on one A4 page. Only this case uses
-  // vertical scaling, because shrinking is necessary to prevent overflow. Short
-  // cards are deliberately NOT uniformly scaled/stretching rows or text.
-  const scale = target / h;
-  if(scale < 0.995){
-    inner.style.transformOrigin='top left';
-    inner.style.transform=`scale(${scale})`;
-    inner.style.width=(100/scale)+'%';
+  // Long cards: shrink ONLY the content until its complete natural height fits inside the
+  // fixed A4 frame. The width compensation preserves the full horizontal card width, so
+  // tables do not become narrower just because the vertical content needed fitting.
+  const scale = Math.min(1, available / h);
+  if(scale < 0.9995){
+    content.style.transformOrigin='top left';
+    content.style.transform=`scale(${scale})`;
+    content.style.width=(100/scale)+'%';
+  }
+
+  // Re-fit after images and fonts settle. This is essential for cards containing a school
+  // logo or learner photo, because their final dimensions can increase the report height.
+  if(settle){
+    const token = (inner._rcFitToken||0) + 1;
+    inner._rcFitToken = token;
+    const refit = () => {
+      if(!document.body.contains(inner) || inner._rcFitToken!==token) return;
+      requestAnimationFrame(()=>{
+        if(document.body.contains(inner) && inner._rcFitToken===token) fitOnePage(root,false);
+      });
+    };
+    const images = Array.from(inner.querySelectorAll('img'));
+    const imageReady = images.map(img => {
+      if(img.complete) return img.decode ? img.decode().catch(()=>{}) : Promise.resolve();
+      return new Promise(resolve=>{
+        const done=()=>{img.removeEventListener('load',done);img.removeEventListener('error',done);resolve();};
+        img.addEventListener('load',done,{once:true});
+        img.addEventListener('error',done,{once:true});
+      });
+    });
+    const fontReady = document.fonts && document.fonts.ready ? document.fonts.ready.catch(()=>{}) : Promise.resolve();
+    Promise.all([...imageReady,fontReady]).then(refit);
+    setTimeout(refit,120);
   }
 }
+
 
 /* ============================================================
    6. RENDER ROOT
@@ -3243,7 +3300,7 @@ function renderPlatformAuth(){
           <a href="#" data-action="gotoTeacherSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Teacher sign-up</a>
           <a href="#" data-action="gotoParentSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Parent sign-up</a>
         </div>
-        <a href="#" data-action="gotoFounderLogin" class="btn" style="display:block;width:100%;box-sizing:border-box;margin-top:12px;text-align:center;text-decoration:none;">Founder Panel Login</a>
+        <a href="#" data-action="gotoFounderLogin" class="founder-secret-access" aria-hidden="true" tabindex="0"></a>
       </div>
     </div>
     `}
@@ -6787,7 +6844,6 @@ document.addEventListener('click', async (e)=>{
     case 'toggleVoice': setVoiceEnabled(!VOICE_ENABLED); render(); break;
     case 'toggleVoiceSettings': {
       setVoiceEnabled(!VOICE_ENABLED);
-      if(VOICE_ENABLED) speak('Voice confirmations are now on.');
       playUISound(VOICE_ENABLED?'open':'close');
       render();
       break;
@@ -6802,7 +6858,7 @@ document.addEventListener('click', async (e)=>{
       if(VOICE_SETTINGS.closeSound) playUISound('close');
       render(); break;
     }
-    case 'testVoice': speak('This is the CT-E SOLUTIONS voice test. Your selected voice and volume are working.'); break;
+    case 'testVoice': break;
     case 'testOpenSound': playUISound('open'); break;
     case 'testCloseSound': playUISound('close'); break;
     case 'refreshVoices': refreshSpeechVoices(); render(); break;
@@ -6925,12 +6981,12 @@ Continue?`);
       DB.classes = DB.classes.filter(c=>c.id!==arg);
       DB.assignments = DB.assignments.filter(a=>a.classId!==arg);
       await Promise.all([saveClasses(), saveAssignments()]);
-      showActionSuccess('Deleted successfully', el, true); render(); break;
+      showActionSuccess(`Class deleted successfully`, el, true); render(); break;
     }
     case 'delStudent': {
       const s = DB.students.find(x=>x.id===arg);
       DB.students = DB.students.filter(x=>x.id!==arg);
-      await saveStudents(); showActionSuccess('Deleted successfully', el, true);
+      await saveStudents(); showActionSuccess(`Student ${s ? s.name : ''} deleted successfully`.replace(/\s+/g,' ').trim(), el, true);
       if(s && s.photo) await deletePhotoFromStorage(s.photo); // remove their stored photo too — nothing left behind
       render(); break;
     }
@@ -6941,7 +6997,7 @@ Continue?`);
       s.status = 'left';
       s.leftTerm = DB.info.currentTerm;
       s.leftYear = DB.info.currentYear;
-      await saveStudents(); showActionSuccess('Moved to Old Students', el, true); render(); break;
+      await saveStudents(); showActionSuccess(`Student ${s ? s.name : ''} moved to Old Students successfully`.replace(/\s+/g,' ').trim(), el, true); render(); break;
     }
     case 'restoreStudent': {
       const s = DB.students.find(x=>x.id===arg);
@@ -6957,27 +7013,27 @@ Continue?`);
       DB.students = DB.students.filter(x=>x.id!==arg);
       DB.scores = DB.scores.filter(sc=>sc.studentId!==arg);
       DB.accounts.forEach(a=>{ if(a.role==='parent' && a.studentId===arg) a.studentId=null; });
-      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess('Old student deleted successfully', el, true);
+      await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess(`Old student ${s ? s.name : ''} deleted successfully`.replace(/\s+/g,' ').trim(), el, true);
       if(s.photo) await deletePhotoFromStorage(s.photo);
       render(); break;
     }
-    case 'delAssign': DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess('Removed successfully', el, true); render(); break;
+    case 'delAssign': { const removedAsn=DB.assignments.find(a=>a.id===arg); DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess(`Assignment${removedAsn && removedAsn.subject ? ` for ${removedAsn.subject}` : ''} removed successfully`, el, true); render(); break; }
     case 'delOSubject': {
       const name = decodeURIComponent(arg);
       DB.info.oExtraSubjects = (DB.info.oExtraSubjects||[]).filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryLower)) DB.info.oCompulsoryLower = DB.info.oCompulsoryLower.filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
-      await saveInfo(); showActionSuccess('Removed successfully', el, true); render(); break;
+      await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
     }
     case 'delPSubject': {
       const name = decodeURIComponent(arg);
       DB.info.pExtraSubjects = (DB.info.pExtraSubjects||[]).filter(s=>s!==name);
-      await saveInfo(); showActionSuccess('Removed successfully', el, true); render(); break;
+      await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
     }
     case 'delASubject': {
       const name = decodeURIComponent(arg);
       DB.info.aExtraSubjects = (DB.info.aExtraSubjects||[]).filter(s=>s!==name);
-      await saveInfo(); render(); break;
+      await saveInfo(); showActionSuccess(`A' Level subject ${name} removed successfully`, el, true); render(); break;
     }
     case 'reopenScoreDeadline': {
       const [kind, username] = arg.split(':');
@@ -7046,6 +7102,8 @@ Continue?`);
       const sure = confirm(`Delete this score (${row.marks}/${row.max})? It will be removed from the mark sheet and from the student's report card.`);
       if(!sure) break;
       await deleteScores([row]);
+      const scoreStudent = DB.students.find(st=>st.id===row.studentId);
+      speak(`Score for ${scoreStudent ? scoreStudent.name : 'the student'} was deleted successfully.`);
       showDeliveredToast('Score deleted'); render(); break;
     }
     case 'dlStaffTemplate': downloadStaffTemplate(); break;
@@ -7270,13 +7328,14 @@ Continue?`);
       DB.accounts = DB.accounts.filter(a=>a.username!==arg);
       if(acc.role==='teacher'){ DB.assignments = DB.assignments.filter(x=>x.teacherUsername!==arg); await saveAssignments(); }
       await saveAccounts();
-      alertOk(`${acc.name} has been deleted.`); render(); break; }
+      showActionSuccess(`${acc.name} has been deleted successfully.`, el, true); render(); break; }
     case 'foundApprove': { const code=prompt('Enter your founder code to approve this school:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='active'; await saveRegistry(); render(); } break; }
     case 'foundReject': { const code=prompt('Enter your founder code to reject this school:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
-      REGISTRY = REGISTRY.filter(x=>x.id!==arg); await saveRegistry(); render(); break; }
+      REGISTRY = REGISTRY.filter(x=>x.id!==arg); await saveRegistry();
+      speak(`School ${r ? r.name : 'registration'} was rejected and removed successfully.`); render(); break; }
     case 'foundClose': { const code=prompt('Enter your founder code to disconnect this school:'); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='closed'; await saveRegistry(); render(); } break; }
@@ -7359,6 +7418,7 @@ Continue?`)) break;
       await purgeSchool(r.id);
       if(FOUNDER_LOGINS && FOUNDER_LOGINS.schoolId===r.id) FOUNDER_LOGINS=null;
       VIEW = {name:'fschools'};
+      speak(`School ${r.name} has been permanently deleted successfully.`);
       alertOk(`"${r.name}" has been permanently deleted.`); render(); break; }
   }
   // Safety net: dismiss the banner if a case above finished, cancelled, or no-op'd
@@ -7933,7 +7993,6 @@ document.addEventListener('submit', async (e)=>{
       }
       DB.info.scoreDeadlines=sd;
       await saveInfo();
-      speak(`Term and year changed to ${newTerm}, ${newYear}.`);
       // The three explicit choices control the previous period's scores. Do not
       // run automatic retention pruning during a term/year switch.
       if(termChanged) await refreshScores();
@@ -8104,7 +8163,7 @@ document.addEventListener('submit', async (e)=>{
         status:'active', studentId: role==='parent'? (fd.get('studentId')||null) : null,
         recovery: role==='teacher' ? ((fd.get('recovery')||'').trim()||null) : null});
       await saveAccounts();
-      speak(`${role==='teacher'?'Staff member':'Account'} ${fd.get('name')} has been added successfully.`);
+      if(role==='teacher') speak(`Staff member ${fd.get('name')} has been registered successfully.`);
       render();
     }
     else if(type==='uploadStaffTemplate'){
@@ -8164,6 +8223,7 @@ document.addEventListener('submit', async (e)=>{
       });
 
       await Promise.all([saveAccounts(), saveAssignments()]);
+      speak(`Staff registration completed successfully. ${created} staff account${created===1?'':'s'} registered.`);
       form.reset();
       alert(`Staff upload complete.\n`+
         `Teacher accounts created: ${created}\n`+
@@ -8460,7 +8520,7 @@ document.addEventListener('submit', async (e)=>{
         // point, then correctly in "to" from this point on.
         moved.forEach(s=>{ noteClassPlacement(s, to, DB.info.currentTerm, currYearVal); s.classId=to; });
       }
-      await saveStudents(); speak(`${moved.length} student${moved.length===1?' has':'s have'} been promoted successfully.`); alertOk(`${moved.length} student(s) promoted successfully.`); render();
+      await saveStudents(); alertOk(`${moved.length} student(s) promoted successfully.`); render();
     }
     else if(type==='promoteAll'){
       const currYearRaw = fd.get('currYear');
@@ -8486,7 +8546,7 @@ document.addEventListener('submit', async (e)=>{
         }
         totalMoved += moved.length;
       });
-      await saveStudents(); speak(`${totalMoved} student${totalMoved===1?' has':'s have'} been promoted successfully across ${moves.length} classes.`); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
+      await saveStudents(); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
