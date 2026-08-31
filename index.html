@@ -78,8 +78,8 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 /* Subtle moving water droplets live only in the blue authentication background.
    They are layered behind the white sign-in card and never enter the card itself. */
 .auth-wrap::before,.auth-wrap::after{content:"";position:absolute;inset:-30%;pointer-events:none;z-index:0;background-repeat:repeat;opacity:.22;}
-.auth-wrap::before{background-image:radial-gradient(circle at 20px 28px,rgba(255,255,255,.42) 0 2px,rgba(255,255,255,.14) 3px,transparent 7px),radial-gradient(circle at 90px 75px,rgba(255,255,255,.25) 0 3px,transparent 8px),radial-gradient(circle at 155px 38px,rgba(255,255,255,.30) 0 2px,transparent 7px);background-size:180px 140px;animation:authWaterDrift 18s linear infinite;}
-.auth-wrap::after{background-image:radial-gradient(ellipse at 35px 45px,rgba(255,255,255,.28) 0 2px,transparent 8px),radial-gradient(ellipse at 125px 105px,rgba(255,255,255,.22) 0 2px,transparent 7px);background-size:230px 180px;animation:authWaterDrift 27s linear infinite reverse;opacity:.14;}
+.auth-wrap::before{background-image:radial-gradient(circle at 20px 28px,rgba(255,255,255,.42) 0 2px,rgba(255,255,255,.14) 3px,transparent 7px),radial-gradient(circle at 90px 75px,rgba(255,255,255,.25) 0 3px,transparent 8px),radial-gradient(circle at 155px 38px,rgba(255,255,255,.30) 0 2px,transparent 7px);background-size:180px 140px;animation:authWaterDrift 12s linear infinite;}
+.auth-wrap::after{background-image:radial-gradient(ellipse at 35px 45px,rgba(255,255,255,.28) 0 2px,transparent 8px),radial-gradient(ellipse at 125px 105px,rgba(255,255,255,.22) 0 2px,transparent 7px);background-size:230px 180px;animation:authWaterDrift 18s linear infinite reverse;opacity:.14;}
 @keyframes authWaterDrift{from{transform:translate3d(-20px,-35px,0);}to{transform:translate3d(70px,85px,0);}}
 .auth-box{z-index:1;}
 .founder-secret-access{position:fixed;left:6px;bottom:6px;width:18px;height:18px;min-width:18px;min-height:18px;padding:0!important;margin:0!important;border:1px solid rgba(255,255,255,.38)!important;border-radius:50%!important;background:rgba(5,45,110,.72)!important;box-shadow:0 1px 4px rgba(0,0,0,.28);opacity:.72;z-index:20;display:block;box-sizing:border-box;text-decoration:none;font-size:0;line-height:0;}
@@ -791,14 +791,17 @@ const GRADE_POINTS = {A:5,B:4,C:3,D:2,E:1,O:1,F:0};
 const GRADE_COMMENT = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
 const DEFAULT_A_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
 const DEFAULT_O_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
+const DEFAULT_PASS_FAIL_GRADES = {Pass:'Pass',Fail:'Fail'};
 const DEFAULT_PASS_FAIL_COMMENTS = {Pass:'Pass',Fail:'Fail'};
 function gradeCommentsFor(level){
   const key = level==='A' ? 'aGradeComments' : level==='O' ? 'oGradeComments' : null;
   if(key && DB.info && DB.info[key]) return {...(level==='A'?DEFAULT_A_GRADE_COMMENTS:DEFAULT_O_GRADE_COMMENTS), ...DB.info[key]};
   return level==='A' ? DEFAULT_A_GRADE_COMMENTS : level==='O' ? DEFAULT_O_GRADE_COMMENTS : GRADE_COMMENT;
 }
+function passFailGrades(){ return {...DEFAULT_PASS_FAIL_GRADES, ...((DB.info&&DB.info.passFailGrades)||{})}; }
 function passFailComments(){ return {...DEFAULT_PASS_FAIL_COMMENTS, ...((DB.info&&DB.info.passFailComments)||{})}; }
-// A-Level uses the same A-E grading scale for all subjects, including General Paper and subsidiaries.
+// A-Level principal subjects use the configured A-E grading scale. General Paper and subsidiaries
+// use a separate Pass/Fail scale with 1/0 points; their labels and descriptors are admin-configurable.
 const DEFAULT_A_PASS_MARK = 50;
 const DEFAULT_A_BANDS = {A:[80,100],B:[70,79],C:[60,69],D:[50,59],E:[0,49]};
 const DEFAULT_O_BANDS = {A:[85,100],B:[70,84],C:[55,69],D:[40,54],E:[0,39]};
@@ -2653,7 +2656,14 @@ function gradeColorFor(grade){
   return 'var(--navy)'; // B, C, D, C3-C6
 }
 function gradeDisplay(subject, grade, level){
-  // O/F are never displayed as grades for O-Level or A-Level.
+  // General Paper and A-Level subsidiaries are displayed as the administrator's
+  // configured Pass/Fail labels. Internally they remain O/F solely so their
+  // 1/0 points and existing calculations continue to work.
+  if(level==='A' && (subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject))){
+    if(grade==='O') return passFailGrades().Pass;
+    if(grade==='F') return passFailGrades().Fail;
+  }
+  // O-Level and A-Level principal subjects never display O/F.
   if((level==='O' || level==='A') && (grade==='O' || grade==='F')) return 'E';
   return grade;
 }
@@ -4446,11 +4456,14 @@ function gradingView(gcClassId){
       <h4 style="margin:16px 0 8px;">A-Level descriptors / comments</h4>
       <div class="grid3">${['A','B','C','D','E'].map(g=>`<div><label>${g} descriptor / comment</label><input name="aComment_${g}" value="${esc(gradeCommentsFor('A')[g])}" required></div>`).join('')}</div>
       <div style="margin-top:12px;max-width:260px;"><label>General Paper & Subsidiaries Pass Mark (%)</label><input name="aPassMark" type="number" min="0" max="100" step="0.1" value="${Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)}"></div>
+      <h4 style="margin:16px 0 8px;">General Paper &amp; Subsidiaries — Pass/Fail labels and descriptors</h4>
       <div class="grid2" style="margin-top:12px;">
+        <div><label>Pass grade label</label><input name="passGrade" value="${esc(passFailGrades().Pass)}" required></div>
+        <div><label>Fail grade label</label><input name="failGrade" value="${esc(passFailGrades().Fail)}" required></div>
         <div><label>Pass descriptor / comment</label><input name="passComment" value="${esc(passFailComments().Pass)}" required></div>
         <div><label>Fail descriptor / comment</label><input name="failComment" value="${esc(passFailComments().Fail)}" required></div>
       </div>
-      <p class="small" style="margin-top:8px;">At or above this boundary = Pass (1 point); below it = Fail (0 points). This applies only to General Paper and subsidiary subjects.</p>
+      <p class="small" style="margin-top:8px;">At or above this boundary = the configured Pass grade (1 point); below it = the configured Fail grade (0 points). By default the grade labels and descriptors are both “Pass” and “Fail”, but the administrator may change them independently.</p>
       <button class="btn" style="margin-top:14px;">Submit — save A-Level bands</button>
     </form>
   </div>
@@ -4583,7 +4596,7 @@ function gradingView(gcClassId){
     <table class="data-table"><tr>${['A','B','C','D','E'].map(g=>`<th>${g}</th>`).join('')}</tr>
     <tr>${['A','B','C','D','E'].map(g=>`<td>${esc(gradeCommentsFor('O')[g])}</td>`).join('')}</tr></table>
     <p class="small" style="margin:8px 0 4px;"><b>A-Level:</b> ${['A','B','C','D','E'].map(g=>`${g} — ${esc(gradeCommentsFor('A')[g])}`).join(' &nbsp; | &nbsp; ')}</p>
-    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> Pass — ${esc(passFailComments().Pass)}; Fail — ${esc(passFailComments().Fail)}</p>
+    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> ${esc(passFailGrades().Pass)} — ${esc(passFailComments().Pass)}; ${esc(passFailGrades().Fail)} — ${esc(passFailComments().Fail)}</p>
   </div>
   <div class="card"><h3>Primary (PLE) comment key</h3>
     <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
@@ -8425,6 +8438,7 @@ document.addEventListener('submit', async (e)=>{
         DB.info.aPassMark=Math.max(0,Math.min(100,Number(fd.get('aPassMark')) || DEFAULT_A_PASS_MARK));
         DB.info.aGradeComments={...(DB.info.aGradeComments||DEFAULT_A_GRADE_COMMENTS)};
         ['A','B','C','D','E'].forEach(g=>{ DB.info.aGradeComments[g]=(fd.get('aComment_'+g)||'').trim() || DEFAULT_A_GRADE_COMMENTS[g]; });
+        DB.info.passFailGrades={...(DB.info.passFailGrades||DEFAULT_PASS_FAIL_GRADES), Pass:(fd.get('passGrade')||'').trim()||DEFAULT_PASS_FAIL_GRADES.Pass, Fail:(fd.get('failGrade')||'').trim()||DEFAULT_PASS_FAIL_GRADES.Fail};
         DB.info.passFailComments={...(DB.info.passFailComments||DEFAULT_PASS_FAIL_COMMENTS), Pass:(fd.get('passComment')||'').trim()||DEFAULT_PASS_FAIL_COMMENTS.Pass, Fail:(fd.get('failComment')||'').trim()||DEFAULT_PASS_FAIL_COMMENTS.Fail};
         await saveInfo();
       }
