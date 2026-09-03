@@ -405,9 +405,24 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 #pdfCaptureHolder .pdf-report-card table.rc-comments-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
 .rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
-.rc-sign-block{min-width:0;text-align:center;}
+.rc-sign-block{min-width:0;text-align:center;position:relative;}
 .rc-sign-block .rc-person{display:block;border-bottom:1px solid var(--ink);padding-bottom:3px;min-height:17px;}
 .rc-sign-block .rc-action{display:block;border-bottom:1px solid var(--ink);padding:5px 4px 3px;min-height:20px;font-weight:700;}
+/* School stamp overlay: sits diagonally on top of the Head Teacher name / "School
+   Stamp" line, shrunk to fit within that block's own footprint. It's absolutely
+   positioned and pointer-events:none, so it never takes up layout space or shifts
+   anything else on the report card — it just visually sits on top. Opacity + the
+   multiply blend mode let the name/label text underneath still read through it,
+   the way a real ink stamp overlapping a signature would. */
+.rc-stamp{position:absolute;left:50%;top:50%;width:100px;height:100px;max-width:92%;transform:translate(-50%,-50%) rotate(-18deg);object-fit:contain;opacity:.6;pointer-events:none;z-index:3;mix-blend-mode:multiply;}
+/* Uploaded Class Teacher signature: sits directly on top of the "Signature:" line,
+   scaled down to fit within that line's own footprint (never wider than the block,
+   capped in height) so it never grows the row or shifts anything else in the
+   sign-off row — same non-intrusive, absolutely-positioned approach as the school
+   stamp above. mix-blend-mode:multiply lets a plain white scan background disappear
+   so the ruled line still reads through underneath the ink itself. */
+.rc-sign-block .rc-action{position:relative;}
+.rc-teacher-signature{position:absolute;left:50%;bottom:2px;width:auto;height:auto;max-width:88%;max-height:26px;transform:translateX(-50%);object-fit:contain;pointer-events:none;z-index:2;mix-blend-mode:multiply;}
 /* Balanced against the two sign-off blocks: align-items:stretch above makes this
    column match their combined height exactly, and display:flex + justify-content:center
    here centers the two date lines vertically within that height instead of hugging the
@@ -1442,7 +1457,11 @@ async function pruneOldStudents(){
   DB.scores = DB.scores.filter(sc=>!purgeIds.has(sc.studentId));
   // A parent account linked to a purged student is unlinked rather than deleted
   // outright, so the admin can still see and manage the account itself afterwards.
-  DB.accounts.forEach(a=>{ if(a.role==='parent' && purgeIds.has(a.studentId)) a.studentId = null; });
+  DB.accounts.forEach(a=>{
+    if(a.role!=='parent') return;
+    if(purgeIds.has(a.studentId)) a.studentId = null;
+    if(Array.isArray(a.studentIds)) a.studentIds = a.studentIds.filter(id=>!purgeIds.has(id));
+  });
   await Promise.all([saveStudents(), saveScores(), saveAccounts()]);
   toPurge.forEach(s=>{ if(s.photo) deletePhotoFromStorage(s.photo); });
 }
@@ -3437,7 +3456,8 @@ function renderParentSignupSlot(){
     <form data-form="signupParent" novalidate style="margin-top:12px;">
       <label>School</label><select name="schoolId" required><option value="">-- select --</option>${activeSchools.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
       <label>Full name</label><input name="name" required>
-      <label>Child's admission number</label><input name="childAdmNo" required>
+      <label>Child's admission number(s)</label><input name="childAdmNo" required placeholder="e.g. STU/2024/001, STU/2024/014">
+      <p class="small" style="margin:2px 0 12px;">Have more than one child at this school? Separate each admission number with a comma — they'll all be linked to this one account once approved.</p>
       <label>Username</label><input name="username" required>
       <label>Password</label><input name="password" type="password" required minlength="4">
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
@@ -3457,7 +3477,7 @@ const NAV_BY_ROLE = {
     ['accounts','Staff & Parent Accounts','👥'],['students','Students','🎓'],['oldstudents','Old Students','🎒'],['assignsubjects','Assign Subjects','📌'],
     ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Year, Term & Promotion','⬆️'],
     ['ascores','Enter / Download Scores','✍️'],['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
-    ['reports','Report Cards','📄'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️']
+    ['reports','Report Cards','📄'],['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️']
   ],
   teacher: [
     ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
@@ -3465,7 +3485,7 @@ const NAV_BY_ROLE = {
     ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
   ],
   parent: [
-    ['pdash','My Child','🏠'],['preport','Report Card','📄'],['otherSettings','Other Settings','⚙️']
+    ['pdash','My Children','🏠'],['preport','Report Card','📄'],['pfinance','Fees & Requirements','💰'],['otherSettings','Other Settings','⚙️']
   ]
 };
 // A tap/click grid of icon tiles for a role's dashboard — one tile per feature,
@@ -3505,7 +3525,7 @@ function renderShell(){
 // or grading configuration are admin-only. This guard is a hard backstop — the sidebar
 // already hides these links from non-admins, but this makes it impossible to reach them
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
-const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','accounts','students','oldstudents','assignsubjects','olevel','grading','promote','teacherprofile','studentprofile','restoreitems']);
+const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','accounts','students','oldstudents','assignsubjects','olevel','grading','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems']);
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
@@ -3514,7 +3534,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','reportcard']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','reportcard','financestudent']);
 function renderView(view){
   try{
     if(ADMIN_ONLY_VIEWS.has(view) && (!CUR || CUR.role!=='admin')){
@@ -3539,6 +3559,8 @@ function renderView(view){
       case 'grading': return gradingView(VIEW.params.gcClassId);
       case 'promote': return promoteView();
       case 'reports': return reportsListView();
+      case 'finance': return financeRequirementsView();
+      case 'financestudent': return financeStudentView(VIEW.params.studentId);
       case 'password': return otherSettingsView();
       case 'otherSettings': return otherSettingsView();
       case 'ascores': return CUR.role==='admin' ? scoresEntryView(liveAssignments(DB.assignments)) : '<p>You don\'t have permission to view this page.</p>';
@@ -3551,9 +3573,10 @@ function renderView(view){
       case 'treports': return reportsListView();
       case 'pdash': return parentDashboard();
       case 'preport': return parentReportView();
+      case 'pfinance': return parentFinanceView();
       case 'reportcard': {
         const sid = VIEW.params.studentId;
-        if(CUR.role==='parent' && sid!==CUR.studentId) return '<p>You can only view your own child\'s report card.</p>';
+        if(CUR.role==='parent' && !parentStudentIds(CUR).includes(sid)) return '<p>You can only view your own child\'s report card.</p>';
         const stu = DB.students.find(x=>x.id===sid);
         if(!stu || stu.status==='left') return '<p>This student is in Old Students and is not included among current report cards.</p>';
         return reportCardHTML(sid, false, VIEW.params.viewTerm, VIEW.params.viewYear);
@@ -3576,6 +3599,591 @@ function backupReminderBanner(){
   }
   return '';
 }
+let FINANCE_UNLOCKED = false;
+function money(n){ return Number(n||0).toLocaleString(); }
+// Payer details are deliberately limited to just these three fields — name,
+// relationship to the student, and a contact number — nothing else. Used for both
+// fee payments and requirement cash payments. Formats compactly for table display,
+// and falls back gracefully for older records saved before this existed.
+function payerLine(rec){
+  if(!rec) return '—';
+  const name = (rec.payerName || rec.payer || '').trim();
+  if(!name) return '—';
+  const rel = (rec.payerRelationship||'').trim();
+  const contact = (rec.payerContact||'').trim();
+  let out = esc(name);
+  if(rel) out += ` (${esc(rel)})`;
+  if(contact) out += ` — ${esc(contact)}`;
+  return out;
+}
+const PAYER_RELATIONSHIPS = ['Parent','Guardian','Relative','Self','Sponsor','Other'];
+function payerRelationshipOptions(sel){ return PAYER_RELATIONSHIPS.map(r=>`<option ${sel===r?'selected':''}>${r}</option>`).join(''); }
+/* ======================================================================
+   FINANCE & REQUIREMENTS — data helpers
+   ----------------------------------------------------------------------
+   Everything here reads/writes DB.info.financeData (fees, payments,
+   requirements, reqStatus) — stored inline in the shared "info" document
+   alongside the rest of the school's settings, so a single school-wide
+   read gets everything. To keep that document well under Firestore's
+   1MB-per-document limit, payment and requirement-submission records
+   older than MAX_TERMS_BEHIND terms are pruned every time the school's
+   term is advanced (see pruneOldFinanceRecords, called from the
+   'setTerm' handler) — the same retention window already used for old
+   students and scores elsewhere in the app. Fee/requirement STRUCTURE
+   items stay untouched by pruning since there are only ever a handful of
+   them (admin-defined categories, not one row per student).
+
+   Each fee/requirement item is tagged with the term/year it belongs to
+   and can be scoped to a single class (e.g. a Boarding-only charge) or
+   left as 'all' so it applies to every class. Only items tagged for the
+   current term or earlier count toward what a student owes right now —
+   fee items can be set up ahead of time for next term without inflating
+   anyone's balance today.
+
+   Student balances shown here are the same balance shown on the report
+   card and in Edit Student Profile (s.feesBalance / s.nextTermFees):
+   syncStudentFinance() writes the computed number straight onto the
+   student record every time a fee or payment affecting them changes, so
+   the two views can never quietly disagree. A school that never opens
+   this section is unaffected — a student's manually-typed balance is
+   left alone until real ledger data exists for them. This is enforced by
+   two separate gates: financeSectionInUse() (has this SCHOOL recorded any
+   fee item or payment at all?) and, per student, whether THAT student has
+   any fee item or payment of their own — so a report card only ever shows
+   a finance-derived figure once a school is genuinely using this section,
+   and only for students who actually have ledger entries.
+====================================================================== */
+function financeData(){
+  DB.info.financeData = DB.info.financeData || {};
+  const d = DB.info.financeData;
+  d.fees = d.fees || []; d.payments = d.payments || []; d.requirements = d.requirements || []; d.reqStatus = d.reqStatus || [];
+  d.shortfalls = d.shortfalls || [];
+  // Expense catalog (reusable categories, e.g. "Fuel", "Electricity Bill") and expense
+  // records (an actual amount spent under one of those categories on a given date,
+  // tagged to a term/year). A category is never "used up" — it can be picked again
+  // as many times as needed within the same term, each time adding a new record.
+  d.expenseTypes = d.expenseTypes || [];
+  d.expenses = d.expenses || [];
+  return d;
+}
+// A "shortfall" is a snapshot of what a student still owed at the moment they were
+// marked left/completed — recorded under Old Students Finance so the debt stays
+// visible and can be followed up/settled even after the student's own profile is
+// purged by the two-term Old Students retention window (see pruneOldStudents).
+// Snapshot fields (name/admNo/className) are stored on the record itself rather
+// than looked up live, since the underlying student may no longer exist.
+function shortfallSettledAmount(sf){ return (sf.settlements||[]).reduce((a,x)=>a+Number(x.amount||0),0); }
+function shortfallRemaining(sf){ return Math.max(0, Number(sf.balance||0) - shortfallSettledAmount(sf)); }
+// A starter checklist of common Uganda secondary-school requirements an Admin
+// can quick-add from instead of typing each one out — purely a convenience
+// list, not enforced in any way. Any of these, once added, are ordinary
+// requirement items and can be edited or deleted individually like any other.
+const DEFAULT_REQUIREMENTS = [
+  {name:'School Uniform', category:'Uniform'},
+  {name:'School Shoes', category:'Uniform'},
+  {name:'Mattress', category:'Boarding'},
+  {name:'Bedsheets & Blankets', category:'Boarding'},
+  {name:'Basin', category:'Boarding'},
+  {name:'Padlock', category:'Boarding'},
+  {name:'Slippers', category:'Boarding'},
+  {name:'School ID', category:'Identity'},
+  {name:'Passport Photos', category:'Identity'},
+  {name:'Birth Certificate', category:'Admission Document'},
+  {name:'Previous School Result Slip', category:'Admission Document'},
+  {name:'Medical Form', category:'Medical'},
+  {name:'Textbooks', category:'Academic'},
+  {name:'Exercise Books', category:'Academic'},
+  {name:'Games Kit', category:'Other'},
+];
+// A starter checklist of common recurring school expenses an Admin can quick-add
+// from instead of typing each one out — purely a convenience list. Once added,
+// each becomes an ordinary expense category that can be picked, in the "Record
+// an Expense" form, as many separate times as needed in a given term (e.g.
+// "Fuel / Transport" bought three separate times in Term 2 is three records).
+const DEFAULT_EXPENSES = [
+  {name:'Staff Salaries & Wages', category:'Salaries'},
+  {name:'Electricity Bill', category:'Utilities'},
+  {name:'Water Bill', category:'Utilities'},
+  {name:'Stationery & Office Supplies', category:'Stationery'},
+  {name:'Fuel / Transport', category:'Transport'},
+  {name:'Repairs & Maintenance', category:'Maintenance'},
+  {name:'Food & Catering Supplies', category:'Meals'},
+  {name:'Medical & First Aid', category:'Medical'},
+  {name:'Examination Expenses', category:'Examination'},
+  {name:'Sports & Games Equipment', category:'Activity'},
+  {name:'Furniture & Fittings', category:'Development'},
+  {name:'Cleaning Supplies', category:'Other'},
+  {name:'Security Services', category:'Other'},
+  {name:'Internet & Communication', category:'Other'},
+  {name:'Miscellaneous', category:'Other'},
+];
+// A fee/requirement item's "scope" is one of:
+//   'all'            -> every student
+//   a classId         -> only students in that class (e.g. Boarding-only charge)
+//   'stu:<studentId>' -> only ONE named student — this is how a school gives an
+//                        individual learner their own fee structure (a bursary
+//                        top-up, a custom tuition figure, a one-off charge, etc)
+//                        that's completely separate from whatever their classmates
+//                        are charged.
+// On top of scope, an item can also carry excludeIds: [studentId,...] — students
+// who are exempted from an otherwise class-wide/all-students charge (e.g. two
+// scholarship learners skipped from the general Tuition line). Combining scope +
+// excludeIds is enough to give any student a genuinely different fee structure
+// from their classmates without needing a full per-student fee schedule.
+function feeScopeIsStudent(scope){ return typeof scope==='string' && scope.indexOf('stu:')===0; }
+function feeScopeStudentId(scope){ return feeScopeIsStudent(scope) ? scope.slice(4) : null; }
+function financeItemAppliesToStudent(item, student){
+  if(Array.isArray(item.excludeIds) && item.excludeIds.includes(student.id)) return false;
+  if(!item.scope || item.scope==='all') return true;
+  if(feeScopeIsStudent(item.scope)) return feeScopeStudentId(item.scope)===student.id;
+  return item.scope===student.classId;
+}
+function studentInvoicedFees(student, d){
+  return studentInvoicedFeesFor(student, DB.info.currentTerm, DB.info.currentYear, d);
+}
+// Same as studentInvoicedFees, but for any target term/year — not just the
+// school's current one — so a fees breakdown can be pulled up for a past term.
+function studentInvoicedFeesFor(student, term, year, d){
+  const idx = termIndex(term, year);
+  return d.fees.filter(f=> termIndex(f.term,f.year)<=idx && financeItemAppliesToStudent(f,student));
+}
+function studentNextTermFees(student, d){
+  const nextIdx = termIndex(DB.info.currentTerm, DB.info.currentYear)+1;
+  return d.fees.filter(f=> termIndex(f.term,f.year)===nextIdx && financeItemAppliesToStudent(f,student));
+}
+// Sum of everything a student has paid up to (and including) a given term/year —
+// generalization of the "total paid" figure so it can be pulled for any period,
+// not just today.
+function studentPaidUpTo(student, term, year, d){
+  const idx = termIndex(term, year);
+  return d.payments.filter(p=>p.studentId===student.id && termIndex(p.term||DB.info.currentTerm, p.year||DB.info.currentYear)<=idx).reduce((a,p)=>a+Number(p.amount||0),0);
+}
+function studentFinanceSummary(student, d){
+  d = d || financeData();
+  const due = studentInvoicedFees(student,d).reduce((a,f)=>a+Number(f.amount||0),0);
+  const paid = d.payments.filter(p=>p.studentId===student.id).reduce((a,p)=>a+Number(p.amount||0),0);
+  const nextTermFees = studentNextTermFees(student,d).reduce((a,f)=>a+Number(f.amount||0),0);
+  return { due, paid, balance: Math.max(0,due-paid), nextTermFees };
+}
+// Invoiced/paid/balance as of a specific term & year (for the Fees Register and
+// the per-student detail view's term/year picker) rather than always "to date".
+function studentFinanceSummaryFor(student, term, year, d){
+  d = d || financeData();
+  const due = studentInvoicedFeesFor(student, term, year, d).reduce((a,f)=>a+Number(f.amount||0),0);
+  const paid = studentPaidUpTo(student, term, year, d);
+  return { due, paid, balance: Math.max(0, due-paid) };
+}
+function studentRequirements(student, d){ return d.requirements.filter(r=>financeItemAppliesToStudent(r,student)); }
+function isReqSubmitted(reqId, studentId, d){ return d.reqStatus.some(x=>x.requirementId===reqId && x.studentId===studentId); }
+// A requirement can be fulfilled two ways: bringing the physical item ('item'), or
+// paying its cash equivalent instead ('cash', with amount/receipt/payer recorded).
+// Legacy records saved before this distinction existed have no .method — they were
+// always physical-item submissions, so they're treated as 'item'.
+function reqStatusFor(reqId, studentId, d){ return d.reqStatus.find(x=>x.requirementId===reqId && x.studentId===studentId) || null; }
+function reqStatusMethod(stat){ return stat ? (stat.method||'item') : null; }
+// Cash paid in place of a requirement is real money received, but it is kept in its
+// own analysis — entirely separate from fee payments — so the two never get mixed
+// together in reports even though both ultimately count as income for balancing.
+function reqCashRecords(d){ return d.reqStatus.filter(x=>x.method==='cash'); }
+function reqCashForPeriod(term, year, d){ return reqCashRecords(d).filter(x=>x.term===term && Number(x.year)===Number(year)); }
+function reqCashTotalForPeriod(term, year, d){ return reqCashForPeriod(term,year,d).reduce((a,x)=>a+Number(x.amount||0),0); }
+function reqCashTotalForYear(year, d){ return reqCashRecords(d).filter(x=>Number(x.year)===Number(year)).reduce((a,x)=>a+Number(x.amount||0),0); }
+function feesPaidForPeriod(term, year, d){ return d.payments.filter(p=>p.term===term && Number(p.year)===Number(year)).reduce((a,p)=>a+Number(p.amount||0),0); }
+function feesPaidForYear(year, d){ return d.payments.filter(p=>Number(p.year)===Number(year)).reduce((a,p)=>a+Number(p.amount||0),0); }
+function expensesForPeriod(term, year, d){ return d.expenses.filter(x=>x.term===term && Number(x.year)===Number(year)); }
+function expensesTotalForPeriod(term, year, d){ return expensesForPeriod(term,year,d).reduce((a,x)=>a+Number(x.amount||0),0); }
+function expensesTotalForYear(year, d){ return d.expenses.filter(x=>Number(x.year)===Number(year)).reduce((a,x)=>a+Number(x.amount||0),0); }
+// The account balance for one term, or for a whole year, is simply everything that
+// came in (fee payments + requirement cash — kept as separate lines, then summed)
+// minus everything spent (expenses) in that same period. Recomputed fresh from the
+// underlying records every time it's displayed, so it is always up to date the
+// moment a new payment, cash settlement, or expense is recorded — nothing needs a
+// manual resync.
+function periodBalance(term, year, d){
+  const feesIncome = feesPaidForPeriod(term,year,d);
+  const cashIncome = reqCashTotalForPeriod(term,year,d);
+  const expenses = expensesTotalForPeriod(term,year,d);
+  return { feesIncome, cashIncome, totalIncome: feesIncome+cashIncome, expenses, balance: feesIncome+cashIncome-expenses };
+}
+function yearBalance(year, d){
+  const feesIncome = feesPaidForYear(year,d);
+  const cashIncome = reqCashTotalForYear(year,d);
+  const expenses = expensesTotalForYear(year,d);
+  return { feesIncome, cashIncome, totalIncome: feesIncome+cashIncome, expenses, balance: feesIncome+cashIncome-expenses };
+}
+// Expense records grouped by category name, for the expense analysis breakdown —
+// same idea as fee items, but summing every time a category was picked in the period.
+function expenseAnalysisForPeriod(term, year, d){
+  const rows = expensesForPeriod(term,year,d);
+  const byName = new Map();
+  rows.forEach(x=>{ const key=x.name; byName.set(key, (byName.get(key)||0) + Number(x.amount||0)); });
+  return [...byName.entries()].map(([name,total])=>({name, total})).sort((a,b)=>b.total-a.total);
+}
+function studentReqProgress(student, d){
+  const list = studentRequirements(student,d);
+  return { total: list.length, submitted: list.filter(r=>isReqSubmitted(r.id, student.id, d)).length };
+}
+// Whether a school has actually started using Finance & Requirements at all —
+// i.e. has it recorded even one fee item or one payment, anywhere. Schools that
+// never touch this section (many won't) should never have a report card silently
+// start showing a "Fees balance" the admin didn't put there — this is the
+// school-wide switch that keeps the report card's fees line on its old,
+// manually-typed behaviour until the section is genuinely in use.
+function financeSectionInUse(d){
+  d = d || financeData();
+  return (d.fees && d.fees.length>0) || (d.payments && d.payments.length>0);
+}
+function syncStudentFinance(studentId, d){
+  const s = DB.students.find(x=>x.id===studentId);
+  if(!s) return;
+  d = d || financeData();
+  if(!financeSectionInUse(d)) return; // this school hasn't started using Finance & Requirements — never touch manually-typed figures
+  const hasLedgerData = d.fees.some(f=>financeItemAppliesToStudent(f,s)) || d.payments.some(p=>p.studentId===s.id);
+  if(!hasLedgerData) return; // no finance data for this student yet — leave any manually-typed balance alone
+  const sum = studentFinanceSummary(s,d);
+  s.feesBalance = sum.balance;
+  if(sum.nextTermFees>0) s.nextTermFees = sum.nextTermFees;
+}
+function syncAllStudentsFinance(){ const d=financeData(); if(!financeSectionInUse(d)) return; DB.students.forEach(s=>syncStudentFinance(s.id,d)); }
+function pruneOldFinanceRecords(){
+  const d = financeData();
+  d.payments = d.payments.filter(p=> termsBehindCurrent(p.term||DB.info.currentTerm, p.year||DB.info.currentYear) <= MAX_TERMS_BEHIND);
+  d.expenses = d.expenses.filter(x=> termsBehindCurrent(x.term||DB.info.currentTerm, x.year||DB.info.currentYear) <= MAX_TERMS_BEHIND);
+  const oldReqIds = new Set(d.requirements.filter(r=>termsBehindCurrent(r.term||DB.info.currentTerm, r.year||DB.info.currentYear) > MAX_TERMS_BEHIND).map(r=>r.id));
+  if(oldReqIds.size) d.reqStatus = d.reqStatus.filter(x=>!oldReqIds.has(x.requirementId));
+}
+// Plain onchange handler (not the data-action click system, which is built for
+// buttons/links and would fight a checkbox's own native toggle) for ticking off
+// an individual requirement for an individual student on their follow-up page.
+async function toggleRequirementSubmitted(reqId, studentId, checked){
+  const d = financeData();
+  d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
+  if(checked) d.reqStatus.push({requirementId:reqId, studentId, submittedAt:new Date().toISOString()});
+  await saveInfo();
+}
+function filterFinanceRows(q){
+  q = (q||'').toLowerCase().trim();
+  document.querySelectorAll('#financeStudentTable tr[data-searchtext]').forEach(tr=>{
+    tr.style.display = (!q || tr.dataset.searchtext.includes(q)) ? '' : 'none';
+  });
+}
+function financeRequirementsView(){
+  if(!FINANCE_UNLOCKED){ const first=!DB.info.financePassword; return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Finance & Requirements password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}"><label>Finance Password</label><input name="password" type="password" minlength="4" required autofocus>${first?'<p class="small">Must be different from your own login password.</p>':''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Finance Section'}</button></form>${FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock" style="margin-top:14px;">🛟 Founder Emergency Access</button>`:''}</div>`; }
+  const d = financeData();
+  const active = sortByName(DB.students.filter(s=>s.status!=='left'));
+  const totals = active.reduce((a,s)=>{ const sum=studentFinanceSummary(s,d); a.due+=sum.due; a.paid+=sum.paid; a.balance+=sum.balance; return a; }, {due:0,paid:0,balance:0});
+
+  const editFee = VIEW.params.editFeeId ? d.fees.find(f=>f.id===VIEW.params.editFeeId) : null;
+  const editPayment = VIEW.params.editPaymentId ? d.payments.find(p=>p.id===VIEW.params.editPaymentId) : null;
+  const editReq = VIEW.params.editReqId ? d.requirements.find(r=>r.id===VIEW.params.editReqId) : null;
+  const editExpenseType = VIEW.params.editExpenseTypeId ? d.expenseTypes.find(x=>x.id===VIEW.params.editExpenseTypeId) : null;
+  const editExpense = VIEW.params.editExpenseId ? d.expenses.find(x=>x.id===VIEW.params.editExpenseId) : null;
+  const cancelLink = `<a href="#" class="btn-outline" data-action="nav:finance" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel edit</a>`;
+  const classOptions = (selectedScope)=> `<option value="all" ${(!selectedScope||selectedScope==='all')?'selected':''}>All classes</option>` +
+    DB.classes.map(c=>`<option value="${c.id}" ${selectedScope===c.id?'selected':''}>${esc(c.name)} only</option>`).join('');
+  // Fee items additionally allow scoping to ONE named student — this is how a
+  // school gives an individual learner (a bursary case, a special arrangement,
+  // an extra one-off charge) their own fee structure separate from their class.
+  const feeScopeOptions = (selectedScope)=> classOptions(selectedScope) +
+    `<optgroup label="Individual student">${active.map(s=>`<option value="stu:${s.id}" ${selectedScope==='stu:'+s.id?'selected':''}>${esc(s.name)} — ${esc(s.admNo)} only</option>`).join('')}</optgroup>`;
+  const feeScopeLabel = (f)=>{
+    if(feeScopeIsStudent(f.scope)){ const st=DB.students.find(x=>x.id===feeScopeStudentId(f.scope)); return st?`Individual: ${esc(st.name)}`:'Individual student (removed)'; }
+    const cls=DB.classes.find(c=>c.id===f.scope); return cls?esc(cls.name):'All classes';
+  };
+  const excludeStudentsOptions = (selectedIds)=>{ const sel=new Set(selectedIds||[]); return active.map(s=>`<option value="${s.id}" ${sel.has(s.id)?'selected':''}>${esc(s.name)} — ${esc(s.admNo)}</option>`).join(''); };
+  const termOptions = (selTerm)=> ['Term 1','Term 2','Term 3'].map(t=>`<option ${(selTerm||DB.info.currentTerm)===t?'selected':''}>${t}</option>`).join('');
+
+  return `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS</h2><p class="small">Live follow-up using students already registered in the system. Balances here are the same "Fees balance" shown on each student's report card — kept automatically in sync.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>
+  <div class="grid3">
+    <div class="card"><div class="small">ACTIVE STUDENTS</div><h1>${active.length}</h1></div>
+    <div class="card"><div class="small">TOTAL PAID</div><h1>${money(totals.paid)}</h1></div>
+    <div class="card"><div class="small">TOTAL OUTSTANDING</div><h1>${money(totals.balance)}</h1></div>
+  </div>
+  <div class="grid3">
+    ${(()=>{ const b=periodBalance(DB.info.currentTerm, DB.info.currentYear, d); return `
+    <div class="card"><div class="small">FEES + CASH (${esc(DB.info.currentTerm)})</div><h1>${money(b.totalIncome)}</h1><div class="small">Fees ${money(b.feesIncome)} · Cash ${money(b.cashIncome)}</div></div>
+    <div class="card"><div class="small">EXPENSES (${esc(DB.info.currentTerm)})</div><h1>${money(b.expenses)}</h1></div>
+    <div class="card"><div class="small">TERM BALANCE</div><h1 style="color:${b.balance<0?'var(--danger)':'var(--good)'};">${money(b.balance)}</h1></div>`; })()}
+  </div>
+
+  <div class="card"><h3>1. Fees Structure</h3>
+    <p class="small">Each fee item is tagged with the term/year it belongs to and can be limited to one class (e.g. Boarding) or left open to all classes. Only items tagged for the current term or earlier count toward a student's balance today — set up next term's fees ahead of time and they'll only count once you advance the term.</p>
+    <form data-form="${editFee?'editFinanceFee':'addFinanceFee'}" ${editFee?`data-id="${editFee.id}"`:''}>
+      <label>Fee / Charge</label><input name="name" required placeholder="e.g. Tuition, UNEB, Development" value="${editFee?esc(editFee.name):''}">
+      <div class="grid2">
+        <div><label>Amount per student</label><input name="amount" type="number" min="0" step="0.01" required value="${editFee?editFee.amount:''}"></div>
+        <div><label>Category</label><select name="category">${['Tuition','Boarding','Meals','Examination','Development','Activity','Other'].map(c=>`<option ${editFee&&editFee.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      </div>
+      <div class="grid2">
+        <div><label>Term</label><select name="term">${termOptions(editFee?editFee.term:null)}</select></div>
+        <div><label>Year</label><input name="year" type="number" required value="${editFee?editFee.year:DB.info.currentYear}"></div>
+      </div>
+      <label>Applies to</label><select name="scope">${feeScopeOptions(editFee?editFee.scope:'all')}</select>
+      <p class="small" style="margin:6px 0 0;">Need a lower/higher amount for just one learner? Pick that student directly above under "Individual student", and add a separate item for them (instead of, or on top of, their class charge) — that's a fully independent fee structure for that one student.</p>
+      <label>Exempt specific students from this charge (optional)</label>
+      <select name="excludeIds" multiple size="4">${excludeStudentsOptions(editFee?editFee.excludeIds:[])}</select>
+      <p class="small" style="margin:4px 0 0;">Hold Ctrl/Cmd to select more than one. Anyone picked here is skipped entirely for this charge — e.g. a scholarship student excused from the general Tuition line.</p>
+      <div class="flex" style="margin-top:12px;"><button class="btn">${editFee?'Save changes':'Add Fee Item'}</button>${editFee?cancelLink:''}</div>
+    </form>
+    ${d.fees.length?`<table class="data-table"><tr><th>Charge</th><th>Category</th><th>Term</th><th>Applies to</th><th>Exempted</th><th>Amount</th><th>Action</th></tr>${d.fees.slice().sort((a,b)=>termIndex(b.term,b.year)-termIndex(a.term,a.year)).map(f=>`<tr><td>${esc(f.name)}</td><td>${esc(f.category)}</td><td>${esc(f.term)} ${f.year}</td><td>${feeScopeLabel(f)}</td><td>${(f.excludeIds&&f.excludeIds.length)?f.excludeIds.length:'—'}</td><td>${money(f.amount)}</td><td class="flex"><button class="btn-outline" data-action="editFinanceFee:${f.id}">Edit</button><button class="btn-danger" data-action="delFinanceFee:${f.id}">Delete</button></td></tr>`).join('')}</table>`:'<p class="small">No fee items configured.</p>'}
+  </div>
+
+  <div class="card"><h3>2. Student Payments</h3>
+    <form data-form="${editPayment?'editFinancePayment':'addFinancePayment'}" ${editPayment?`data-id="${editPayment.id}"`:''}>
+      <label>Student</label><select name="studentId" ${editPayment?'':'required'}>
+        <option value="">-- select student --</option>
+        ${active.map(st=>`<option value="${st.id}" ${editPayment&&editPayment.studentId===st.id?'selected':''}>${esc(st.name)} — ${esc(st.admNo)}</option>`).join('')}
+      </select>
+      <div class="grid2">
+        <div><label>Amount Paid</label><input name="amount" type="number" min="0" step="0.01" required value="${editPayment?editPayment.amount:''}"></div>
+        <div><label>Payment Date</label><input name="date" type="date" required value="${editPayment?editPayment.date:new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Receipt Number</label><input name="receipt" placeholder="Optional" value="${editPayment?esc(editPayment.receipt||''):''}"></div>
+        <div><label>Payment Method</label><select name="method">${['Cash','Bank','Mobile Money','Cheque','Other'].map(m=>`<option ${editPayment&&editPayment.method===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      </div>
+      <p class="small" style="margin-top:12px;margin-bottom:0;">Payer details — who actually handed over the money.</p>
+      <div class="grid2">
+        <div><label>Payer Name</label><input name="payerName" placeholder="e.g. Jane Nakato" value="${editPayment?esc(editPayment.payerName||editPayment.payer||''):''}"></div>
+        <div><label>Relationship to Student</label><select name="payerRelationship">${payerRelationshipOptions(editPayment?(editPayment.payerRelationship||''):'')}</select></div>
+      </div>
+      <label>Payer Contact</label><input name="payerContact" placeholder="Phone number" value="${editPayment?esc(editPayment.payerContact||''):''}">
+      <div class="flex" style="margin-top:12px;"><button class="btn">${editPayment?'Save changes':'Record Payment'}</button>${editPayment?cancelLink:''}</div>
+    </form>
+    <h4>Recent payments</h4>${(()=>{ const activeIds=new Set(active.map(s=>s.id)); const rows=d.payments.filter(x=>activeIds.has(x.studentId)); return rows.length?`<table class="data-table"><tr><th>Student</th><th>Amount</th><th>Date</th><th>Receipt</th><th>Method</th><th>Payer</th><th>Action</th></tr>${rows.slice().reverse().slice(0,30).map(x=>{const st=DB.students.find(z=>z.id===x.studentId);return `<tr><td>${st?esc(st.name):'—'}</td><td>${money(x.amount)}</td><td>${esc(x.date||'')}</td><td>${esc(x.receipt||'—')}</td><td>${esc(x.method||'')}</td><td>${payerLine(x)}</td><td class="flex"><button class="btn-outline" data-action="editFinancePayment:${x.id}">Edit</button><button class="btn-danger" data-action="delFinancePayment:${x.id}">Delete</button></td></tr>`;}).join('')}</table>${rows.length>30?`<p class="small">Showing the 30 most recent payments of ${rows.length}.</p>`:''}`:'<p class="small">No payments recorded.</p>'; })()}
+    <p class="small">Old Students' payment history no longer shows here once they've left — see <b>Old Students Finance</b> below for their outstanding shortfalls.</p>
+    <p class="small">Fees are entirely separate from Requirements (section 4 below) — a fee is money invoiced and paid against a student's tuition-style balance, while a requirement is a physical item (or its cash equivalent) tracked on its own checklist. The two never mix in these totals.</p>
+  </div>
+
+  <div class="card"><h3>3. Expenses</h3>
+    <p class="small">School spending, recorded against reusable categories. A category is never "used up" by picking it — record the same one again as many times as needed within a term (e.g. Fuel bought three separate times in Term 2 is three separate records), and every total below recalculates automatically the moment you save.</p>
+    <h4>Expense Categories</h4>
+    ${(()=>{ const existingNames=new Set(d.expenseTypes.map(x=>x.name.trim().toLowerCase())); const notAdded=DEFAULT_EXPENSES.filter(x=>!existingNames.has(x.name.toLowerCase()));
+      return notAdded.length ? `<form data-form="addDefaultExpenseTypes" style="border:1px dashed var(--border,#cfd9e3);padding:10px;border-radius:8px;margin-bottom:14px;">
+        <label>Quick-add from common expense categories</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;">${notAdded.map(x=>`<label style="display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;"><input type="checkbox" name="item" value="${esc(x.name)}|${esc(x.category)}" style="width:auto;">${esc(x.name)}</label>`).join('')}</div>
+        <button type="submit" class="btn-outline">Add selected</button>
+      </form>` : ''; })()}
+    <form data-form="${editExpenseType?'editExpenseType':'addExpenseType'}" ${editExpenseType?`data-id="${editExpenseType.id}"`:''}>
+      <label>Expense Category</label><input name="name" required placeholder="e.g. Fuel, Electricity Bill, Stationery" value="${editExpenseType?esc(editExpenseType.name):''}">
+      <label>Category Group</label><select name="category">${['Salaries','Utilities','Stationery','Transport','Maintenance','Meals','Medical','Examination','Activity','Development','Other'].map(c=>`<option ${editExpenseType&&editExpenseType.category===c?'selected':''}>${c}</option>`).join('')}</select>
+      <div class="flex" style="margin-top:12px;"><button class="btn">${editExpenseType?'Save changes':'Add Category'}</button>${editExpenseType?cancelLink:''}</div>
+    </form>
+    ${d.expenseTypes.length?`<table class="data-table"><tr><th>Category</th><th>Group</th><th>Action</th></tr>${d.expenseTypes.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.category)}</td><td class="flex"><button class="btn-outline" data-action="editExpenseType:${x.id}">Edit</button><button class="btn-danger" data-action="delExpenseType:${x.id}">Delete</button></td></tr>`).join('')}</table>`:'<p class="small">No expense categories configured yet — quick-add some above, or add your own.</p>'}
+
+    <h4 style="margin-top:22px;">Record an Expense</h4>
+    ${d.expenseTypes.length?`<form data-form="${editExpense?'editExpense':'addExpense'}" ${editExpense?`data-id="${editExpense.id}"`:''}>
+      <label>Category</label><select name="expenseChoice" ${editExpense?'':'required'}>
+        <option value="">-- select category --</option>
+        ${d.expenseTypes.map(x=>`<option value="${esc(x.name)}|${esc(x.category)}" ${editExpense&&editExpense.name===x.name?'selected':''}>${esc(x.name)}</option>`).join('')}
+      </select>
+      <div class="grid2">
+        <div><label>Amount Spent</label><input name="amount" type="number" min="0" step="0.01" required value="${editExpense?editExpense.amount:''}"></div>
+        <div><label>Date</label><input name="date" type="date" required value="${editExpense?editExpense.date:new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Term</label><select name="term">${termOptions(editExpense?editExpense.term:null)}</select></div>
+        <div><label>Year</label><input name="year" type="number" required value="${editExpense?editExpense.year:DB.info.currentYear}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Receipt / Voucher No.</label><input name="receipt" placeholder="Optional" value="${editExpense?esc(editExpense.receipt||''):''}"></div>
+        <div><label>Paid To (Recipient)</label><input name="payee" placeholder="e.g. Supplier/company/person name" value="${editExpense?esc(editExpense.payee||''):''}"></div>
+      </div>
+      <label>Note (optional)</label><input name="note" placeholder="Any extra detail" value="${editExpense?esc(editExpense.note||''):''}">
+      <div class="flex" style="margin-top:12px;"><button class="btn">${editExpense?'Save changes':'Record Expense'}</button>${editExpense?cancelLink:''}</div>
+    </form>`:'<p class="small">Add at least one expense category above before recording an expense.</p>'}
+    <h5>Recent expense records</h5>${d.expenses.length?`<table class="data-table"><tr><th>Category</th><th>Amount</th><th>Date</th><th>Term</th><th>Receipt</th><th>Paid To</th><th>Action</th></tr>${d.expenses.slice().reverse().slice(0,30).map(x=>`<tr><td>${esc(x.name)}</td><td>${money(x.amount)}</td><td>${esc(x.date||'')}</td><td>${esc(x.term)} ${x.year}</td><td>${esc(x.receipt||'—')}</td><td>${esc(x.payee||'—')}</td><td class="flex"><button class="btn-outline" data-action="editExpense:${x.id}">Edit</button><button class="btn-danger" data-action="delExpense:${x.id}">Delete</button></td></tr>`).join('')}</table>${d.expenses.length>30?`<p class="small">Showing the 30 most recent expense records of ${d.expenses.length}.</p>`:''}`:'<p class="small">No expenses recorded yet.</p>'}
+
+    <h5 style="margin-top:18px;">Expense analysis — ${esc(DB.info.currentTerm)} ${DB.info.currentYear}</h5>
+    ${(()=>{ const rows=expenseAnalysisForPeriod(DB.info.currentTerm, DB.info.currentYear, d); const total=rows.reduce((a,r)=>a+r.total,0);
+      return rows.length? `<table class="data-table"><tr><th>Category</th><th>Total Spent</th></tr>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${money(r.total)}</td></tr>`).join('')}<tr><td><b>Total</b></td><td><b>${money(total)}</b></td></tr></table>` : '<p class="small">No expenses recorded for the current term yet.</p>'; })()}
+  </div>
+
+  <div class="card"><h3>4. Requirements Follow-up</h3>
+    <p class="small">Track school requirements such as uniform, mattress, bedsheet, ID, textbooks, birth certificate, medical form, passport photos and other items. Open a student's own follow-up page (section 4 below) to tick off which of these they've actually submitted.</p>
+    ${(()=>{ const existingNames=new Set(d.requirements.map(r=>r.name.trim().toLowerCase())); const notAdded=DEFAULT_REQUIREMENTS.filter(x=>!existingNames.has(x.name.toLowerCase()));
+      return notAdded.length ? `<form data-form="addDefaultRequirements" style="border:1px dashed var(--border,#cfd9e3);padding:10px;border-radius:8px;margin-bottom:14px;">
+        <label>Quick-add from common requirements</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;">${notAdded.map((x,i)=>`<label style="display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;"><input type="checkbox" name="item" value="${esc(x.name)}|${esc(x.category)}" style="width:auto;">${esc(x.name)}</label>`).join('')}</div>
+        <button type="submit" class="btn-outline">Add selected</button>
+      </form>` : ''; })()}
+    <form data-form="${editReq?'editRequirement':'addRequirement'}" ${editReq?`data-id="${editReq.id}"`:''}>
+      <label>Requirement Item</label><input name="name" required value="${editReq?esc(editReq.name):''}">
+      <div class="grid2">
+        <div><label>Category</label><select name="category">${['Admission Document','Uniform','Boarding','Academic','Medical','Identity','Other'].map(c=>`<option ${editReq&&editReq.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+        <div><label>Applies to</label><select name="scope">${classOptions(editReq?editReq.scope:'all')}</select></div>
+      </div>
+      <div class="flex" style="margin-top:12px;"><button class="btn">${editReq?'Save changes':'Add Requirement'}</button>${editReq?cancelLink:''}</div>
+    </form>
+    ${d.requirements.length?`<table class="data-table"><tr><th>Requirement</th><th>Category</th><th>Applies to</th><th>Submitted</th><th>Action</th></tr>${d.requirements.map(r=>{const cls=DB.classes.find(c=>c.id===r.scope);const eligible=active.filter(s=>financeItemAppliesToStudent(r,s));const submitted=eligible.filter(s=>isReqSubmitted(r.id,s.id,d)).length;return `<tr><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${cls?esc(cls.name):'All classes'}</td><td>${submitted} / ${eligible.length}</td><td class="flex"><button class="btn-outline" data-action="editRequirement:${r.id}">Edit</button><button class="btn-danger" data-action="delRequirement:${r.id}">Delete</button></td></tr>`;}).join('')}</table>`:'<p class="small">No requirements configured.</p>'}
+  </div>
+
+  <div class="card"><h3>5. Student Financial & Requirements Follow-up</h3>
+  <label>Search</label><input placeholder="Search by name or admission number…" oninput="filterFinanceRows(this.value)">
+  <table class="data-table" id="financeStudentTable"><tr><th>Admission No.</th><th>Student</th><th>Class</th><th>Total Paid</th><th>Balance</th><th>Requirements</th><th>Action</th></tr>
+  ${active.map(st=>{const sum=studentFinanceSummary(st,d);const cl=DB.classes.find(c=>c.id===st.classId);const prog=studentReqProgress(st,d);return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td>${esc(st.admNo)}</td><td>${esc(st.name)}</td><td>${cl?esc(cl.name):'—'}</td><td>${money(sum.paid)}</td><td>${money(sum.balance)}</td><td>${prog.total?`${prog.submitted} / ${prog.total}`:'—'}</td><td><button class="btn-outline" data-action="financeStudent:${st.id}">View / Update</button></td></tr>`;}).join('')}
+  </table></div>
+
+  ${feesRegisterSectionHTML(d, active)}
+
+  ${oldStudentsFinanceSectionHTML(d)}
+
+  <div class="card"><h3>7. Term &amp; Year Account Balance</h3>
+    <p class="small">Everything received (fee payments, plus cash paid in place of a requirement — kept as its own separate line) minus everything spent (Expenses, section 3), for each term of the current year and for the year as a whole. Recalculates automatically as records are added.</p>
+    <table class="data-table"><tr><th>Period</th><th>Fees Received</th><th>Cash (Requirements)</th><th>Total Income</th><th>Expenses</th><th>Balance</th></tr>
+    ${['Term 1','Term 2','Term 3'].map(t=>{ const b=periodBalance(t, DB.info.currentYear, d); const isCur = t===DB.info.currentTerm; return `<tr${isCur?' style="font-weight:700;"':''}><td>${t}${isCur?' (current)':''}</td><td>${money(b.feesIncome)}</td><td>${money(b.cashIncome)}</td><td>${money(b.totalIncome)}</td><td>${money(b.expenses)}</td><td style="color:${b.balance<0?'var(--danger)':'var(--good)'};">${money(b.balance)}</td></tr>`; }).join('')}
+    ${(()=>{ const yb=yearBalance(DB.info.currentYear, d); return `<tr style="background:var(--blue-light);font-weight:900;"><td>${DB.info.currentYear} (Year total)</td><td>${money(yb.feesIncome)}</td><td>${money(yb.cashIncome)}</td><td>${money(yb.totalIncome)}</td><td>${money(yb.expenses)}</td><td style="color:${yb.balance<0?'var(--danger)':'var(--good)'};">${money(yb.balance)}</td></tr>`; })()}
+    </table>
+    <p class="small">Fees Received and Cash (Requirements) are analysed on an equal footing here — both are income — but are always shown as separate columns so the two are never confused with each other.</p>
+  </div>
+
+  <div class="card"><h3>8. Finance Control</h3>
+  <button type="button" class="btn-outline" data-action="resyncFinance">Recompute all balances now</button>
+  <p class="small">Balances are kept in sync automatically as fees and payments are recorded — use this only if something looks out of date after a bulk change.</p>
+  <form data-form="setFinancePassword" style="margin-top:14px;"><label>Change Separate Finance Password</label><input name="password" type="password" minlength="4" required><p class="small">Must be different from your own login password.</p><button class="btn-outline" style="margin-top:12px;">Save Finance Password</button></form></div>`;
+}
+// A wide, printable register of every student's Invoiced / Paid / Balance figures
+// for a chosen Class + Term + Year — lets an admin flip through one class/term at a
+// time (e.g. "S.2 East, Term 2, 2026") instead of scrolling the full school list.
+function feesRegisterSectionHTML(d, active){
+  const p = VIEW.params||{};
+  const regClass = p.feesRegClass || 'all';
+  const regTerm = p.feesRegTerm || DB.info.currentTerm;
+  const regYear = p.feesRegYear || DB.info.currentYear;
+  const rows = sortByName(regClass==='all' ? active : active.filter(s=>s.classId===regClass));
+  const totals = rows.reduce((a,s)=>{ const sum=studentFinanceSummaryFor(s, regTerm, regYear, d); a.due+=sum.due; a.paid+=sum.paid; a.balance+=sum.balance; return a; }, {due:0,paid:0,balance:0});
+  return `<div class="card"><h3>5b. Fees Register — by Class, Term &amp; Year</h3>
+  <p class="small">A wider, per-student breakdown of Invoiced, Paid and Balance for one class, term and year at a time — handy for a printed register or a class-by-class review, using the same cumulative "to date" balance shown everywhere else in Finance.</p>
+  <div class="grid3">
+    <div><label>Class</label><select onchange="setAnalysisParam('feesRegClass', this.value)">
+      <option value="all" ${regClass==='all'?'selected':''}>All classes</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${regClass===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select></div>
+    <div><label>Term</label><select onchange="setAnalysisParam('feesRegTerm', this.value)">
+      ${['Term 1','Term 2','Term 3'].map(t=>`<option ${regTerm===t?'selected':''}>${t}</option>`).join('')}
+    </select></div>
+    <div><label>Year</label><input value="${esc(String(regYear))}" onchange="setAnalysisParam('feesRegYear', this.value)"></div>
+  </div>
+  <div class="grid3" style="margin-top:10px;">
+    <div class="card"><div class="small">STUDENTS SHOWN</div><h1>${rows.length}</h1></div>
+    <div class="card"><div class="small">TOTAL PAID (to date)</div><h1>${money(totals.paid)}</h1></div>
+    <div class="card"><div class="small">TOTAL BALANCE (to date)</div><h1>${money(totals.balance)}</h1></div>
+  </div>
+  <div style="overflow-x:auto;"><table class="data-table" style="margin-top:12px;min-width:640px;"><tr><th>Adm No.</th><th>Student</th><th>Class</th><th>Invoiced</th><th>Paid</th><th>Balance</th><th>Action</th></tr>
+  ${rows.length? rows.map(st=>{ const sum=studentFinanceSummaryFor(st, regTerm, regYear, d); const cl=DB.classes.find(c=>c.id===st.classId); return `<tr><td>${esc(st.admNo)}</td><td>${esc(st.name)}</td><td>${cl?esc(cl.name):'—'}</td><td>${money(sum.due)}</td><td>${money(sum.paid)}</td><td style="color:${sum.balance>0?'var(--danger)':'var(--good)'};">${money(sum.balance)}</td><td><button class="btn-outline" data-action="financeStudent:${st.id}">View / Update</button></td></tr>`;}).join('') : '<tr><td colspan="7">No students in this class.</td></tr>'}
+  </table></div>
+  </div>`;
+}
+// "Old Students Finance": a shortfall is recorded automatically (see the
+// 'markStudentLeft' action) whenever a student leaves/completes with an
+// outstanding fees balance — a snapshot kept permanently, independent of the
+// student's own profile, so a debt from a leaver doesn't just quietly vanish
+// once Old Students retention purges their record two terms later.
+function oldStudentsFinanceSectionHTML(d){
+  const settleId = VIEW.params && VIEW.params.settleShortfallId;
+  const settleTarget = settleId ? d.shortfalls.find(x=>x.id===settleId) : null;
+  const outstanding = d.shortfalls.filter(sf=>shortfallRemaining(sf)>0);
+  const balanced = d.shortfalls.filter(sf=>shortfallRemaining(sf)<=0);
+  const totalShortfall = outstanding.reduce((a,sf)=>a+shortfallRemaining(sf),0);
+  const row = (sf)=>{
+    const remaining = shortfallRemaining(sf);
+    const settled = shortfallSettledAmount(sf);
+    const isBalanced = remaining<=0;
+    const history = (sf.settlements&&sf.settlements.length) ? `<tr><td colspan="8" style="padding-left:24px;"><table class="data-table" style="margin:6px 0;"><tr><th>Settlement Date</th><th>Amount</th><th>Note</th><th>Action</th></tr>${sf.settlements.map(st=>`<tr><td>${esc(st.date||'')}</td><td>${money(st.amount)}</td><td>${esc(st.note||'—')}</td><td><button class="btn-danger" data-action="delShortfallSettlement:${sf.id}|${st.id}">Remove</button></td></tr>`).join('')}</table></td></tr>` : '';
+    return `<tr><td>${esc(sf.name)}</td><td>${esc(sf.admNo||'—')}</td><td>${esc(sf.className||'—')}</td><td>${esc(sf.leftTerm||'—')}, ${esc(String(sf.leftYear||''))}</td>
+      <td>${money(sf.balance)}</td><td>${money(settled)}</td><td>${isBalanced?'<span style="color:var(--good);font-weight:700;">Balanced</span>':money(remaining)}</td>
+      <td class="flex">${isBalanced?'':`<button class="btn-outline" data-action="editShortfallSettlement:${sf.id}">Record settlement</button><button class="btn-outline" data-action="settleShortfallFull:${sf.id}">Mark fully balanced</button>`}<button class="btn-danger" data-action="delShortfall:${sf.id}">Delete record</button></td></tr>${history}`;
+  };
+  const settleForm = settleTarget ? `<form data-form="addShortfallSettlement" data-id="${settleTarget.id}" style="margin:12px 0;">
+    <p class="small">Recording a settlement for <b>${esc(settleTarget.name)}</b> — outstanding: ${money(shortfallRemaining(settleTarget))}.</p>
+    <div class="grid2">
+      <div><label>Amount Received</label><input name="amount" type="number" min="0" step="0.01" max="${shortfallRemaining(settleTarget)}" required></div>
+      <div><label>Date</label><input name="date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <label>Note (optional)</label><input name="note" placeholder="e.g. Cash refund of tuition overage claim">
+    <div class="flex" style="margin-top:12px;"><button class="btn">Save Settlement</button><a href="#" class="btn-outline" data-action="nav:finance" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a></div>
+  </form>` : '';
+  return `<div class="card"><h3>6. Old Students Finance (Shortfalls)</h3>
+  <p class="small">When a student is marked "left" with an outstanding fees balance, that shortfall as a result of leaving before completing their level is captured here automatically and kept permanently — separate from the two-term Old Students window — so it stays visible and followable even after their student profile is eventually purged. Old Students' figures no longer appear in the live sections above; this is where their finance record gets balanced.</p>
+  <div class="grid3">
+    <div class="card"><div class="small">OLD STUDENTS OWING</div><h1>${outstanding.length}</h1></div>
+    <div class="card"><div class="small">TOTAL OUTSTANDING</div><h1>${money(totalShortfall)}</h1></div>
+    <div class="card"><div class="small">FULLY BALANCED</div><h1>${balanced.length}</h1></div>
+  </div>
+  ${settleForm}
+  ${d.shortfalls.length? `<table class="data-table"><tr><th>Name</th><th>Adm No.</th><th>Last Class</th><th>Left In</th><th>Balance at Departure</th><th>Settled</th><th>Remaining</th><th>Action</th></tr>${outstanding.map(row).join('')}${balanced.map(row).join('')}</table>` : '<p class="small">No shortfall records yet — these appear here only when a student leaves while still owing a balance.</p>'}
+  </div>`;
+}
+function financeStudentView(studentId){
+  if(!FINANCE_UNLOCKED) return financeRequirementsView();
+  const s = DB.students.find(x=>x.id===studentId);
+  if(!s) return `<h2>Student Follow-up</h2><div class="card"><p>Student not found.</p><button class="btn-outline" data-action="nav:finance">Back to Finance & Requirements</button></div>`;
+  const d = financeData();
+  const cl = DB.classes.find(c=>c.id===s.classId);
+  const viewTerm = VIEW.params.finTerm || DB.info.currentTerm;
+  const viewYear = VIEW.params.finYear || DB.info.currentYear;
+  const isCurrentPeriod = viewTerm===DB.info.currentTerm && Number(viewYear)===Number(DB.info.currentYear);
+  const sum = isCurrentPeriod ? studentFinanceSummary(s,d) : studentFinanceSummaryFor(s, viewTerm, viewYear, d);
+  const myPayments = d.payments.filter(p=>p.studentId===s.id).slice().reverse();
+  const myFees = isCurrentPeriod ? studentInvoicedFees(s,d) : studentInvoicedFeesFor(s, viewTerm, viewYear, d);
+  const myReqs = studentRequirements(s,d);
+  return `<h2>${esc(s.name)} — Financial &amp; Requirements Follow-up</h2>
+  <p class="small">${esc(s.admNo)} · ${cl?esc(cl.name):'—'}</p>
+  <div class="card"><h3>View as of</h3>
+  <div class="grid2">
+    <div><label>Term</label><select onchange="setAnalysisParam('finTerm', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${viewTerm===t?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div><label>Year</label><input value="${esc(String(viewYear))}" onchange="setAnalysisParam('finYear', this.value)"></div>
+  </div>
+  <p class="small" style="margin-bottom:0;">Figures below are cumulative to the end of the selected term/year (same "balance carries forward" logic used everywhere in Finance). ${isCurrentPeriod?'This is the current term.':''}</p></div>
+  <div class="grid3">
+    <div class="card"><div class="small">INVOICED (to ${esc(viewTerm)} ${esc(String(viewYear))})</div><h1>${money(sum.due)}</h1></div>
+    <div class="card"><div class="small">TOTAL PAID</div><h1>${money(sum.paid)}</h1></div>
+    <div class="card"><div class="small">BALANCE</div><h1>${money(sum.balance)}</h1></div>
+  </div>
+  <div class="card"><h3>Fee items invoiced ${isCurrentPeriod?'so far':`by ${esc(viewTerm)} ${esc(String(viewYear))}`}</h3>${myFees.length?`<table class="data-table"><tr><th>Charge</th><th>Term</th><th>Applies to</th><th>Amount</th></tr>${myFees.map(f=>`<tr><td>${esc(f.name)}</td><td>${esc(f.term)} ${f.year}</td><td>${feeScopeIsStudent(f.scope)?'Individual charge':(DB.classes.find(c=>c.id===f.scope)?esc(DB.classes.find(c=>c.id===f.scope).name):'All classes')}</td><td>${money(f.amount)}</td></tr>`).join('')}</table>`:'<p class="small">No fee items apply to this student for this period.</p>'}
+  ${isCurrentPeriod && sum.nextTermFees?`<p class="small">Next term's fees, set up in advance: <b>${money(sum.nextTermFees)}</b></p>`:''}</div>
+  <div class="card"><h3>Payment history</h3>${myPayments.length?`<table class="data-table"><tr><th>Amount</th><th>Date</th><th>Receipt</th><th>Method</th><th>Payer</th></tr>${myPayments.map(p=>`<tr><td>${money(p.amount)}</td><td>${esc(p.date||'')}</td><td>${esc(p.receipt||'—')}</td><td>${esc(p.method||'')}</td><td>${payerLine(p)}</td></tr>`).join('')}</table>`:'<p class="small">No payments recorded for this student.</p>'}</div>
+  <div class="card"><h3>Requirements checklist</h3>
+  <p class="small">Each requirement can be cleared two ways: the physical item is submitted, or its cash equivalent is paid instead. Only one can apply at a time — recording one automatically replaces the other. Cash paid here is tracked in its own "Cash (Requirements)" analysis, kept separate from fee payments.</p>
+  ${(()=>{ const target = VIEW.params.reqCashTarget; const targetReq = target ? myReqs.find(r=>target===`${r.id}|${s.id}`) : null;
+    const cashForm = targetReq ? `<form data-form="recordReqCash" data-id="${targetReq.id}|${s.id}" style="border:1px dashed var(--border,#cfd9e3);padding:12px;border-radius:8px;margin-bottom:14px;">
+      <p class="small">Recording a cash payment in place of <b>${esc(targetReq.name)}</b> for ${esc(s.name)}.</p>
+      <div class="grid2">
+        <div><label>Amount Paid</label><input name="amount" type="number" min="0" step="0.01" required></div>
+        <div><label>Date</label><input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Receipt Number</label><input name="receipt" placeholder="Optional"></div>
+        <div><label>Payer Name</label><input name="payerName" placeholder="e.g. Jane Nakato"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Relationship to Student</label><select name="payerRelationship">${payerRelationshipOptions('')}</select></div>
+        <div><label>Payer Contact</label><input name="payerContact" placeholder="Phone number"></div>
+      </div>
+      <div class="flex" style="margin-top:12px;"><button class="btn">Save Cash Payment</button><a href="#" class="btn-outline" data-action="reqCancelCashForm" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a></div>
+    </form>` : '';
+    if(!myReqs.length) return '<p class="small">No requirements apply to this student.</p>';
+    return `${cashForm}<table class="data-table"><tr><th>Requirement</th><th>Category</th><th>Status</th><th>Action</th></tr>${myReqs.map(r=>{
+      const stat = reqStatusFor(r.id, s.id, d);
+      const method = reqStatusMethod(stat);
+      const pairArg = `${r.id}|${s.id}`;
+      let statusCell, actionCell;
+      if(!stat){
+        statusCell = '<span class="small">Not yet</span>';
+        actionCell = `<button class="btn-outline" data-action="reqMarkItem:${pairArg}">Mark Submitted (Item)</button> <button class="btn-outline" data-action="reqShowCashForm:${pairArg}">Record Cash Payment</button>`;
+      } else if(method==='cash'){
+        statusCell = `💵 Cash: ${money(stat.amount)} (Receipt ${esc(stat.receipt||'—')}) — Paid by ${payerLine(stat)}`;
+        actionCell = `<button class="btn-outline" data-action="reqMarkItem:${pairArg}">Switch to Item</button> <button class="btn-danger" data-action="reqUndoStatus:${pairArg}">Remove</button>`;
+      } else {
+        statusCell = '✅ Submitted (Item)';
+        actionCell = `<button class="btn-outline" data-action="reqShowCashForm:${pairArg}">Switch to Cash</button> <button class="btn-danger" data-action="reqUndoStatus:${pairArg}">Undo</button>`;
+      }
+      return `<tr><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${statusCell}</td><td class="flex">${actionCell}</td></tr>`;
+    }).join('')}</table>`; })()}
+  </div>
+  <button class="btn-outline" data-action="nav:finance">Back to Finance & Requirements</button>`;
+}
+
 function adminDashboard(){
   const i = DB.info;
   return `
@@ -3588,6 +4196,7 @@ function adminDashboard(){
   </div>
   ${backupReminderBanner()}
   ${featureTilesHTML('admin','dashboard')}
+  <div class="card"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
   <div class="grid3">
     <div class="card"><div class="small">CLASSES</div><h1 style="margin:4px 0;">${DB.classes.length}</h1></div>
     <div class="card"><div class="small">STUDENTS</div><h1 style="margin:4px 0;">${DB.students.filter(s=>s.status!=='left').length}</h1></div>
@@ -3710,6 +4319,12 @@ function schoolInfoView(){
         <div><label>Motto</label><input name="motto" value="${esc(i.motto||'')}"></div>
       </div>
       <label>Headteacher's full name</label><input name="headteacher" value="${esc(i.headteacher||'')}" required>
+      <div class="flex" style="margin-top:6px;">
+        ${i.stamp?`<img loading="lazy" decoding="async" src="${i.stamp}" class="photo-thumb" style="width:80px;height:80px;object-fit:contain;background:#f4f8fc;">`:''}
+        <div><label>Upload / change school stamp</label><input type="file" name="stamp" accept="image/*">
+          <p class="small">Shown faded and rotated over the Head Teacher / School Stamp line on every report card — sized to fit that space automatically, so it never shifts or displaces anything else on the layout. A stamp photographed against a plain background (or with a transparent PNG background) looks best. ${i.stamp?'<a href="#" data-action="removeSchoolStamp">Remove stamp</a>':''}</p>
+        </div>
+      </div>
       <button class="btn" style="margin-top:16px;">Save changes</button>
     </form>
   </div>`;
@@ -3813,9 +4428,10 @@ function accountsView(){
         <div><label>Username</label><input name="username" required></div>
         <div><label>Password</label><input name="password" type="password" required minlength="4"></div>
       </div>
-      <div id="parentLinkWrap"><label>Link to student (for parents)</label>
-        <select name="studentId"><option value="">-- select student --</option>
-        ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+      <div id="parentLinkWrap"><label>Link to student(s) (for parents)</label>
+        <select name="studentIds" multiple size="4">
+        ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select>
+        <p class="small" style="margin:4px 0 0;">Hold Ctrl/Cmd to select more than one child — useful for siblings sharing one parent account.</p>
       </div>
       <div id="teacherRecoveryWrap"><label>Recovery code (optional)</label><input name="recovery">
         <p class="small">Lets this teacher reset their own password later without going through you.</p>
@@ -3839,7 +4455,7 @@ function accountsView(){
   <div class="card"><h3>Pending approval (${pending.length})</h3>
     <table class="data-table"><tr><th>Name</th><th>Username</th><th>Role</th><th>Linked</th><th>Action</th></tr>
     ${pending.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td><td>${a.role}</td>
-      <td>${a.role==='parent'?(a.studentId?esc((DB.students.find(s=>s.id===a.studentId)||{}).name||'—'):`<span style="color:var(--danger);">no match "${esc(a.pendingAdmNo||'')}"</span>`):'—'}</td>
+      <td>${a.role==='parent'?(()=>{ const kids=parentChildren(a); const parts=[]; if(kids.length) parts.push(esc(kids.map(k=>k.name).join(', '))); if(a.pendingAdmNo) parts.push(`<span style="color:var(--danger);">no match "${esc(a.pendingAdmNo)}"</span>`); return parts.join(' + ') || '—'; })():'—'}</td>
       <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="5">No pending requests.</td></tr>'}
     </table>
   </div>
@@ -3855,12 +4471,20 @@ function accountsView(){
         <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllParents(this)">Delete ALL parents (${others.filter(a=>a.role==='parent').length})</button>
       </div>
     </div>` : ''}
-    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Linked Student</th><th>Action</th></tr>
-    ${others.filter(a=>a.role==='parent').map(a=>`<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
+    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Linked Children</th><th>Action</th></tr>
+    ${others.filter(a=>a.role==='parent').map(a=>{ const kids=parentChildren(a); return `<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
       <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
-      <td>${esc((DB.students.find(s=>s.id===a.studentId)||{}).name||'—')}</td>
-      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
+      <td>${kids.length? kids.map(k=>`${esc(k.name)} <button type="button" class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkParentChild('${esc(a.username)}','${k.id}')">✕</button>`).join('<br>') : '—'}</td>
+      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
     </table>
+    ${others.some(a=>a.role==='parent') ? `<form data-form="linkParentChild" style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px;">
+      <label>Link an additional child to an existing parent account</label>
+      <div class="grid2">
+        <div><select name="username" required><option value="">-- select parent --</option>${others.filter(a=>a.role==='parent').map(a=>`<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})</option>`).join('')}</select></div>
+        <div><select name="studentId" required><option value="">-- select student --</option>${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select></div>
+      </div>
+      <button class="btn-outline" style="margin-top:10px;">Link child</button>
+    </form>` : ''}
   </div>
   <div class="card"><h3>Staff Accounts</h3>
     <label>Select a class to view its teachers</label>
@@ -3988,6 +4612,19 @@ function deleteSelectedParents(btn){
 function deleteAllParents(btn){
   const usernames = Array.from(document.querySelectorAll('.parentSelCb')).map(cb=>cb.value);
   performBulkParentDelete(usernames, btn);
+}
+// Removes one child from a parent account's linked children (used by the ✕ next
+// to each child's name in the Parent Accounts table). Works whether the account
+// still uses the legacy single `studentId` field or the newer `studentIds` array.
+async function unlinkParentChild(username, studentId){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  const acc = DB.accounts.find(a=>a.username===username && a.role==='parent');
+  if(!acc) return;
+  if(!confirm('Unlink this child from this parent account?')) return;
+  if(acc.studentId===studentId) acc.studentId = null;
+  if(Array.isArray(acc.studentIds)) acc.studentIds = acc.studentIds.filter(id=>id!==studentId);
+  await saveAccounts();
+  render();
 }
 
 /* ---------- Admin: Students ---------- */
@@ -4362,6 +4999,12 @@ function teacherProfileView(username){
         <div><label>Full name</label><input name="name" value="${esc(t.name)}" required></div>
         <div><label>Username</label><input name="username" value="${esc(t.username)}" required></div>
       </div>
+      <div class="flex" style="margin-top:6px;">
+        ${t.signature?`<img loading="lazy" decoding="async" src="${t.signature}" class="photo-thumb" style="width:130px;height:60px;object-fit:contain;background:#f4f8fc;">`:''}
+        <div><label>Upload / change signature</label><input type="file" name="signature" accept="image/*">
+          <p class="small">Shown on the Signature line of this teacher's report cards whenever they're the Class Teacher — sized to fit that space automatically, so it never shifts or displaces anything else on the layout. A signature scanned/photographed against a plain white background (or a transparent PNG) looks best. ${t.signature?`<a href="#" data-action="removeTeacherSignature:${esc(username)}">Remove signature</a>`:''}</p>
+        </div>
+      </div>
       <label>New password (optional)</label>
       <input name="password" placeholder="Leave blank to keep the current password" autocomplete="new-password">
       <p class="small" style="margin-top:4px;">Changing the username or password here requires your owner code and will not sign this teacher out of any device already logged in — let them know the new details directly.</p>
@@ -4436,6 +5079,7 @@ function studentProfileView(studentId){
         <div><label>Fees balance</label><input name="feesBalance" type="number" step="0.01" value="${s.feesBalance!=null?s.feesBalance:''}"></div>
         <div><label>Next term fees</label><input name="nextTermFees" type="number" step="0.01" value="${s.nextTermFees!=null?s.nextTermFees:''}"></div>
       </div>
+      <p class="small">If this student has any fee items or payments recorded in <a href="#" data-action="nav:finance">Finance &amp; Requirements</a>, these two numbers are recalculated automatically from that record every time a fee or payment affecting them changes — anything typed here manually is then only a temporary override until the next finance update.</p>
       <button class="btn" style="margin-top:14px;">Submit — save student profile</button>
     </form>
   </div>
@@ -5509,6 +6153,51 @@ function scoresEntryView(mine){
       const missSet = MISSING_MARKERS[missKey] || new Set();
       const cfgHere = examConfig(a.classId);
       const scoresLocked = CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, sel.kind);
+      // Has this exact test/exam (this assignment + paper + kind + label, this term/year)
+      // already got marks saved for at least one student on the list? If so, don't drop
+      // straight into the entry table again — ask first, so a teacher doesn't mistake a
+      // routine re-visit for a fresh, empty sheet and re-key everything from scratch.
+      function existingScoreFor(studentId){
+        if(sel.kind==='EOT'){
+          return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===a.subject && sc.paper==sel.paper && sc.kind==='EOT' && sc.term===term && sc.year===year);
+        }
+        return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===a.subject && sc.paper==sel.paper && sc.kind==='AOI' && sc.label===(sel.label||'') && sc.term===term && sc.year===year);
+      }
+      const existingCount = students.filter(s=>existingScoreFor(s.id)).length;
+      const hasExisting = existingCount>0;
+      const testWord = sel.kind==='AOI' ? esc(cfgHere.cwLabel) : esc(cfgHere.eotLabel);
+      if(hasExisting && !sel.confirmEdit && !sel.viewOnly){
+        // Gate: scores already exist for this exact test. Ask the teacher to explicitly
+        // choose to continue editing, or close — closing shows the read-only list of
+        // what's already on record instead of an editable sheet.
+        studentRows = `
+      <div class="card">
+        <h3 style="margin-top:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
+        <p class="small">Scores have already been entered for this ${testWord} — ${existingCount} of ${students.length} student${students.length===1?'':'s'} on your list already ${existingCount===1?'has':'have'} a mark saved (out of ${sel.maxScore||100}). To avoid accidentally duplicating or overwriting what's on file, choose one of the options below.</p>
+        <div class="flex" style="gap:10px;">
+          <button class="btn" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Continue to edit</button>
+          <button class="btn-outline" data-action="closeScoreEntry:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Close — just show me what's on record</button>
+        </div>
+      </div>`;
+      } else if(sel.viewOnly){
+        // Read-only view of the already-saved scores for this exact test — no input
+        // boxes, nothing to submit. "Edit these scores" is the only way back into the
+        // editable sheet from here.
+        studentRows = `
+      <div class="card">
+        <div class="flex" style="justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
+          <button type="button" class="btn-outline" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit these scores</button>
+        </div>
+        <p class="small">Read-only view of what's currently on record for <b>${currentColLabel}</b>, out of <b>${sel.maxScore||100}</b>. Click "Edit these scores" above if you need to correct or add to these.</p>
+        <table class="data-table"><tr><th>Student</th><th>${currentColLabel}</th></tr>
+        ${students.map(s=>{
+          const existingRow = existingScoreFor(s.id);
+          return `<tr><td style="text-align:left;">${esc(s.name)}</td><td>${existingRow?esc(existingRow.marks)+'/'+esc(existingRow.max):'<span style="color:var(--muted);">— not entered —</span>'}</td></tr>`;
+        }).join('')}
+        </table>
+      </div>`;
+      } else {
       studentRows = `
       ${newCount? `<div class="note" style="margin-bottom:14px;">${newCount} new student${newCount>1?'s':''} in this class ${newCount>1?"aren't":"isn't"} on your list yet. <a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Update my student list</a></div>` : ''}
       ${scoresLocked? `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>The ${esc(sel.kind==='AOI'?cfgHere.cwLabel:cfgHere.eotLabel)} submission deadline (${fmtDateTime(scoreDeadlineFor(sel.kind).deadline)}) has passed.</b> You can still see everything below, but scores can't be submitted, edited, or deleted until your admin reopens entry for you.</div>` : ''}
@@ -5521,12 +6210,8 @@ function scoresEntryView(mine){
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
           <table class="data-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
-            let existing = '', existingRow = null;
-            if(sel.kind==='EOT'){
-              existingRow = DB.scores.find(sc=>sc.studentId===s.id && sc.subject===a.subject && sc.paper==sel.paper && sc.kind==='EOT' && sc.term===term && sc.year===year);
-            } else {
-              existingRow = DB.scores.find(sc=>sc.studentId===s.id && sc.subject===a.subject && sc.paper==sel.paper && sc.kind==='AOI' && sc.label===(sel.label||'') && sc.term===term && sc.year===year);
-            }
+            let existing = '';
+            const existingRow = existingScoreFor(s.id);
             existing = existingRow ? existingRow.marks : '';
             const delScoreBtn = existingRow ? `<button type="button" class="btn-danger" style="padding:4px 10px;" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>Delete score</button>` : '';
             const otherCells = otherCols.map(c=>{
@@ -5576,6 +6261,7 @@ function scoresEntryView(mine){
           <button class="btn" style="margin-top:10px;">Submit — import marks from this file</button>
         </form>
       </div>`;
+      }
     }
   }
   const pickerSubmitted = !!(sel.assignId && sel.paper && sel.kind);
@@ -5633,6 +6319,14 @@ function scoresEntryView(mine){
           <p class="small" style="margin-top:6px;">No named ${esc(examConfig().cwLabel)} tests yet — add one under Settings → Grading Setup if you want separate columns (e.g. Test 1, Test 2). Until then, scores are recorded under a single "${esc(examConfig().cwLabel)}" bucket.</p>` : ''}`}
         </div>
       </div>
+      ${!isAdmin ? `
+      <div class="grid2">
+        <div><label>Term (${esc(String(DB.info.currentYear))} academic year)</label><select name="teacherTerm" id="teacherTermSel">
+          ${['Term 1','Term 2','Term 3'].map(t=>`<option value="${t}" ${t===DB.info.currentTerm?'selected':''}>${t}</option>`).join('')}
+        </select></div>
+        <div><label>School's current term</label><input type="text" value="${esc(DB.info.currentTerm)}" disabled></div>
+      </div>
+      <p class="small">Double-check the term before loading the list — as a Teacher you can only enter or edit scores for the school's <b>current</b> term (${esc(DB.info.currentTerm)}, ${esc(String(DB.info.currentYear))}). If you need a past term corrected, ask your Admin.</p>` : ''}
       <label>What was this test/exam marked out of? <span style="color:var(--danger);">*compulsory</span></label>
       <input name="maxScore" id="maxScoreInput" type="number" min="1" step="1" value="" placeholder="Type the maximum mark here — required" required>
       <p class="small">You must type this in yourself every time, even if it looks like it matches a test the admin already set up — it isn't pre-filled. Enter students' raw marks below exactly as marked (e.g. out of 30, out of 50 — whatever this test's maximum was). Whatever maximum you set here, the system automatically converts the average onto the report card's uniform scale set by the admin: ${esc(examConfig().cwLabel)} out of ${examConfig().cwPercent}, ${esc(examConfig().eotLabel)} out of ${examConfig().eotPercent}.</p>
@@ -5662,22 +6356,105 @@ function scoresEntryView(mine){
 }
 
 /* ---------- Parent ---------- */
+// A parent account can be linked to more than one student at the same school (e.g.
+// siblings). Historically an account carried a single `studentId`; new/updated
+// accounts carry a `studentIds` array instead. Both are honoured here so old
+// accounts keep working without needing a data migration, and every parent-facing
+// screen (My Children, Report Card, Fees & Requirements) can show all of a
+// parent's children rather than just one.
+function parentStudentIds(acc){
+  if(!acc) return [];
+  const ids = Array.isArray(acc.studentIds) ? acc.studentIds.slice() : [];
+  if(acc.studentId && !ids.includes(acc.studentId)) ids.push(acc.studentId);
+  return [...new Set(ids)].filter(id=>DB.students.some(s=>s.id===id));
+}
+function parentChildren(acc){
+  return sortByName(parentStudentIds(acc).map(id=>DB.students.find(s=>s.id===id)).filter(Boolean));
+}
+// Which child a parent is currently looking at, across My Children / Report Card /
+// Fees & Requirements — remembered in VIEW.params so it's consistent as they move
+// between those pages, and always falls back to the first child on file.
+function activeParentChildId(children){
+  const chosen = VIEW.params && VIEW.params.childId;
+  if(chosen && children.some(c=>c.id===chosen)) return chosen;
+  return children.length ? children[0].id : null;
+}
+function setActiveParentChild(id){ VIEW.params = {...VIEW.params, childId:id}; render(); }
+// Shown at the top of every parent screen once there's more than one child linked,
+// so the parent can switch which child's information is being displayed.
+function parentChildPickerHTML(children, activeId){
+  if(children.length<2) return '';
+  return `<div class="card" style="padding:12px 16px;"><label style="margin:0 0 6px;">Viewing child</label>
+  <select onchange="setActiveParentChild(this.value)">${children.map(c=>`<option value="${c.id}" ${c.id===activeId?'selected':''}>${esc(c.name)} — ${esc(c.admNo)}</option>`).join('')}</select></div>`;
+}
 function parentDashboard(){
-  const st = DB.students.find(s=>s.id===CUR.studentId);
-  if(!st) return '<p>No child linked to this account yet. Contact the school admin.</p>';
+  const children = parentChildren(CUR);
+  if(!children.length) return '<p>No child linked to this account yet. Contact the school admin.</p>';
+  const activeId = activeParentChildId(children);
+  const st = DB.students.find(s=>s.id===activeId);
   const cls = DB.classes.find(c=>c.id===st.classId);
+  const d = financeData();
+  const sum = studentFinanceSummary(st,d);
+  const prog = studentReqProgress(st,d);
   return `<h2>${esc(st.name)}</h2>
   ${featureTilesHTML('parent','pdash')}
+  ${parentChildPickerHTML(children, activeId)}
   <div class="card flex">
     ${st.photo?`<img loading="lazy" decoding="async" src="${st.photo}" class="photo-thumb" style="width:90px;height:90px;">`:''}
     <div><div><b>Class:</b> ${cls?esc(cls.name):'—'}</div><div><b>Subjects:</b> ${esc(comboLabel(st,cls))}</div><div><b>Admission No:</b> ${esc(st.admNo)}${st.feesCode?` &nbsp;|&nbsp; <b>Fees Code:</b> ${esc(st.feesCode)}`:''}</div></div>
   </div>
+  <div class="card"><h3>Fees at a glance</h3>
+  <div class="grid3">
+    <div class="card"><div class="small">INVOICED TO DATE</div><h1>${money(sum.due)}</h1></div>
+    <div class="card"><div class="small">TOTAL PAID</div><h1>${money(sum.paid)}</h1></div>
+    <div class="card"><div class="small">BALANCE</div><h1 style="color:${sum.balance>0?'var(--danger)':'var(--good)'};">${money(sum.balance)}</h1></div>
+  </div>
+  ${prog.total?`<p class="small">Requirements submitted: <b>${prog.submitted} / ${prog.total}</b></p>`:''}
+  <button class="btn-outline" data-action="nav:pfinance">Open full Fees &amp; Requirements</button>
+  </div>
   <button class="btn-outline" data-action="viewReport:${st.id}">Open latest report card</button>`;
 }
 function parentReportView(){
-  const st = DB.students.find(s=>s.id===CUR.studentId);
-  if(!st) return '<p>No child linked yet.</p>';
-  return reportCardHTML(st.id, false);
+  const children = parentChildren(CUR);
+  if(!children.length) return '<p>No child linked yet.</p>';
+  const activeId = activeParentChildId(children);
+  return `${parentChildPickerHTML(children, activeId)}${reportCardHTML(activeId, false)}`;
+}
+// Read-only mirror of the admin's per-student Finance & Requirements detail page,
+// for a parent to check their own child(ren)'s fees balance, invoiced items,
+// payment history and requirements status — with every editing control stripped
+// out, since a parent may look but never change financial records.
+function parentFinanceView(){
+  const children = parentChildren(CUR);
+  if(!children.length) return '<p>No child linked to this account yet. Contact the school admin.</p>';
+  const activeId = activeParentChildId(children);
+  const s = DB.students.find(x=>x.id===activeId);
+  const cls = DB.classes.find(c=>c.id===s.classId);
+  const d = financeData();
+  const sum = studentFinanceSummary(s,d);
+  const myPayments = d.payments.filter(p=>p.studentId===s.id).slice().reverse();
+  const myFees = studentInvoicedFees(s,d);
+  const myReqs = studentRequirements(s,d);
+  return `<h2>Fees &amp; Requirements</h2>
+  ${parentChildPickerHTML(children, activeId)}
+  <p class="small">${esc(s.name)} · ${esc(s.admNo)} · ${cls?esc(cls.name):'—'}</p>
+  <div class="grid3">
+    <div class="card"><div class="small">INVOICED TO DATE</div><h1>${money(sum.due)}</h1></div>
+    <div class="card"><div class="small">TOTAL PAID</div><h1>${money(sum.paid)}</h1></div>
+    <div class="card"><div class="small">BALANCE</div><h1 style="color:${sum.balance>0?'var(--danger)':'var(--good)'};">${money(sum.balance)}</h1></div>
+  </div>
+  <div class="card"><h3>Fee items invoiced so far</h3>${myFees.length?`<table class="data-table"><tr><th>Charge</th><th>Term</th><th>Amount</th></tr>${myFees.map(f=>`<tr><td>${esc(f.name)}</td><td>${esc(f.term)} ${f.year}</td><td>${money(f.amount)}</td></tr>`).join('')}</table>`:'<p class="small">No fee items apply to this student yet.</p>'}
+  ${sum.nextTermFees?`<p class="small">Next term's fees, set up in advance: <b>${money(sum.nextTermFees)}</b></p>`:''}</div>
+  <div class="card"><h3>Payment history</h3>${myPayments.length?`<table class="data-table"><tr><th>Amount</th><th>Date</th><th>Receipt</th><th>Method</th></tr>${myPayments.map(p=>`<tr><td>${money(p.amount)}</td><td>${esc(p.date||'')}</td><td>${esc(p.receipt||'—')}</td><td>${esc(p.method||'')}</td></tr>`).join('')}</table>`:'<p class="small">No payments recorded for this student.</p>'}</div>
+  <div class="card"><h3>Requirements checklist</h3>${myReqs.length?`<table class="data-table"><tr><th>Requirement</th><th>Category</th><th>Status</th></tr>${myReqs.map(r=>{
+    const stat = reqStatusFor(r.id, s.id, d);
+    const method = reqStatusMethod(stat);
+    let statusCell;
+    if(!stat) statusCell = '<span class="small">Not yet</span>';
+    else if(method==='cash') statusCell = `💵 Paid cash equivalent (${money(stat.amount)})`;
+    else statusCell = '✅ Submitted';
+    return `<tr><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${statusCell}</td></tr>`;
+  }).join('')}</table>`:'<p class="small">No requirements apply to this student.</p>'}</div>`;
 }
 
 /* ============================================================
@@ -5963,6 +6740,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
   const ctName = classTeacherAcc? classTeacherAcc.name : '';
+  const ctSignature = classTeacherAcc? classTeacherAcc.signature : null;
   const htName = DB.info.headteacher || '';
 
   const yearLbl = esc(String(year||''));
@@ -6113,7 +6891,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <div class="rc-sign-row">
       <div class="rc-sign-block">
         <span class="rc-person">Class Teacher: ${esc(ctName)}</span>
-        <span class="rc-action">Signature:</span>
+        <span class="rc-action">Signature:${ctSignature?`<img loading="lazy" decoding="async" src="${ctSignature}" class="rc-teacher-signature" alt="">`:''}</span>
       </div>
 
       <div class="rc-term-middle">
@@ -6124,6 +6902,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <div class="rc-sign-block">
         <span class="rc-person">Head Teacher: ${esc(htName)}</span>
         <span class="rc-action">School Stamp:</span>
+        ${DB.info.stamp?`<img loading="lazy" decoding="async" src="${DB.info.stamp}" class="rc-stamp" alt="">`:''}
       </div>
     </div>
 
@@ -6298,6 +7077,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
   const ctName = classTeacherAcc? classTeacherAcc.name : '';
+  const ctSignature = classTeacherAcc? classTeacherAcc.signature : null;
   const htName = DB.info.headteacher || '';
 
   return {
@@ -6313,8 +7093,8 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       classComment: isP ? primaryRemark(pDivision,'class') : overallRemark(pct,'class'),
       headComment: isP ? primaryRemark(pDivision,'head') : overallRemark(pct,'head')
     },
-    signOff: { ctName, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
-    school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto },
+    signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
+    school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
     feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, photo: s.photo
   };
 }
@@ -6710,6 +7490,23 @@ function drawReportCardPage(pdf, data, gapBoost){
   const thirdW = contentW/3;
   leftText(`Class Teacher: ${data.signOff.ctName}`, contentX, cy, 8, 'bold');
   leftText('Signature: ______________', contentX, cy+11, 7.5);
+  // Uploaded Class Teacher signature: drawn directly above the "Signature: ____" line,
+  // scaled to fit within this sign-off block's own footprint (never wider than the
+  // Class Teacher column, capped in height) so it never shifts or reflows anything
+  // else on the page — same non-intrusive, draw-on-top approach as the School Stamp
+  // a little further down.
+  if(data.signOff.ctSignature){
+    try{
+      const sigProps = pdf.getImageProperties(data.signOff.ctSignature);
+      const sigBoxW = thirdW*0.72, sigBoxH = 13;
+      const sigRatio = sigProps.width/sigProps.height;
+      let sigW = sigBoxW, sigH = sigW/sigRatio;
+      if(sigH > sigBoxH){ sigH = sigBoxH; sigW = sigH*sigRatio; }
+      const sigX = contentX + (thirdW - sigW)/2;
+      const sigY = cy + 10 - sigH; // sit just above the signature line, not touching the name above
+      pdf.addImage(data.signOff.ctSignature, 'PNG', sigX, sigY, sigW, sigH);
+    }catch(e){ /* unreadable/unsupported signature image — skip it, never block the PDF */ }
+  }
 
   // Term dates are boxed like the report-card table headers. Sized and positioned to
   // match the vertical span of the Class Teacher / Head Teacher sign-off text blocks
@@ -6728,6 +7525,29 @@ function drawReportCardPage(pdf, data, gapBoost){
   const rightX = contentX+thirdW*2;
   leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
   leftText('School Stamp: ______________', rightX, cy+11, 7.5);
+  // School stamp overlay: shrunk to fit within this sign-off block's own footprint
+  // (never wider/taller than the Head Teacher column) and rotated diagonally, the
+  // way a real ink stamp lands across a name/signature line. Drawn faded (opacity)
+  // so the name and "School Stamp" label beneath still read through it. Since this
+  // is drawn as a separate image on top — not part of the text flow — it never
+  // shifts or reflows anything else on the page.
+  if(data.school.stamp){
+    try{
+      const stampProps = pdf.getImageProperties(data.school.stamp);
+      const stampBoxW = thirdW*0.6, stampBoxH = 30; // roughly this sign-off block's own span
+      const stampRatio = stampProps.width/stampProps.height;
+      let stampW = stampBoxW, stampH = stampW/stampRatio;
+      if(stampH > stampBoxH*2.2){ stampH = stampBoxH*2.2; stampW = stampH*stampRatio; }
+      const stampCx = rightX + thirdW*0.42, stampCy = cy + 3;
+      pdf.saveGraphicsState();
+      pdf.setGState(new pdf.GState({opacity:0.55}));
+      // jsPDF rotates an image about its own (x,y) insertion corner, not its center,
+      // so x/y are offset by half the image's own footprint to keep the ROTATED
+      // image visually centered on the same point a non-rotated one would be.
+      pdf.addImage(data.school.stamp, 'PNG', stampCx-stampW/2, stampCy-stampH/2, stampW, stampH, undefined, undefined, -18);
+      pdf.restoreGraphicsState();
+    }catch(e){ /* unreadable/unsupported stamp image — skip it, never block the PDF */ }
+  }
   cy += 28;
 
   // ---- 11. Motto, fees legend, scoring note ----
@@ -6858,11 +7678,14 @@ document.addEventListener('click', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
-    'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent']);
+    'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature',
+    'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
+    'settleShortfallFull','delShortfallSettlement','delShortfall',
+    'editExpenseType','delExpenseType','editExpense','delExpense','reqMarkItem','reqUndoStatus','reqShowCashForm','reqCancelCashForm']);
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
-  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot']);
+  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
   // These are destructive/irreversible actions (deletes, account closures, etc.), so
   // the progress banner must stay anchored to the button (el) and always resolve to
   // success or failure — never leave "Processing…" on screen once the command is
@@ -6873,6 +7696,17 @@ document.addEventListener('click', async (e)=>{
   try{
   switch(action){
     case 'installApp': installPWA(); break;
+    case 'financeLock': FINANCE_UNLOCKED=false; render(); break;
+    case 'founderFinanceUnlock': {
+      if(!FOUNDER_IMPERSONATING_SCHOOL){ alert('Founder emergency access is only available while you are inside a school via the Founder Panel.'); break; }
+      const code = prompt('Enter your founder code to unlock Finance & Requirements for this school:');
+      if(code===null) break;
+      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      FINANCE_UNLOCKED = true;
+      alert(DB.info.financePassword ? `Emergency access granted.\n\nThis school's current Finance password is: ${DB.info.financePassword}\n\nShare it with the school's Admin if they've lost it, or they can change it from Finance Control while you're inside.` : 'Emergency access granted. This school has not set a Finance password yet.');
+      render();
+      break;
+    }
     case 'gotoCreateSchool': AUTH_VIEW='createSchool'; render(); break;
     case 'gotoTeacherSignup': AUTH_VIEW='signupTeacher'; render(); break;
     case 'gotoParentSignup': AUTH_VIEW='signupParent'; render(); break;
@@ -6956,7 +7790,7 @@ document.addEventListener('click', async (e)=>{
     case 'editStudentProfile': VIEW = {name:'studentprofile', params:{studentId:arg}}; render(); break;
     case 'editClass': VIEW = {name:'classedit', params:{classId:arg}}; render(); break;
     case 'viewReport': {
-      if(CUR.role==='parent' && arg!==CUR.studentId){ alert("You can only view your own child's report card."); break; }
+      if(CUR.role==='parent' && !parentStudentIds(CUR).includes(arg)){ alert("You can only view your own child's report card."); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       VIEW = {name:'reportcard', params:{studentId:arg}};
       render();
@@ -7037,14 +7871,34 @@ Continue?`);
       s.status = 'left';
       s.leftTerm = DB.info.currentTerm;
       s.leftYear = DB.info.currentYear;
-      await saveStudents(); showActionSuccess(`Student ${s ? s.name : ''} moved to Old Students successfully`.replace(/\s+/g,' ').trim(), el, true); render(); break;
+      // If they're leaving with an outstanding fees balance, capture a permanent
+      // shortfall record now — a snapshot of what they still owed — so the debt
+      // stays visible under Old Students Finance even after their profile is
+      // eventually purged by the Old Students retention window.
+      {
+        const d = financeData();
+        const sum = studentFinanceSummary(s, d);
+        if(sum.balance > 0){
+          const cls = DB.classes.find(c=>c.id===s.classId);
+          d.shortfalls.push({ id: uid('short'), studentId: s.id, name: s.name, admNo: s.admNo,
+            className: cls ? cls.name : '', leftTerm: DB.info.currentTerm, leftYear: DB.info.currentYear,
+            balance: sum.balance, recordedAt: new Date().toISOString(), settlements: [] });
+        }
+      }
+      await Promise.all([saveStudents(), saveInfo()]); showActionSuccess(`Student ${s ? s.name : ''} moved to Old Students successfully`.replace(/\s+/g,' ').trim(), el, true); render(); break;
     }
     case 'restoreStudent': {
       const s = DB.students.find(x=>x.id===arg);
       if(!s){ break; }
       s.status = 'active';
       delete s.leftTerm; delete s.leftYear;
-      await saveStudents(); showActionSuccess('Student restored successfully', el); render(); break;
+      // Back to active — any shortfall recorded when they left is retired, since
+      // their live balance is now tracked normally under Finance & Requirements.
+      {
+        const d = financeData();
+        d.shortfalls = d.shortfalls.filter(sf=>sf.studentId!==s.id);
+      }
+      await Promise.all([saveStudents(), saveInfo()]); showActionSuccess('Student restored successfully', el); render(); break;
     }
     case 'delOldStudentNow': {
       const s = DB.students.find(x=>x.id===arg);
@@ -7052,7 +7906,11 @@ Continue?`);
       if(!confirm(`Permanently delete ${s.name}'s record now, including their scores? This cannot be undone.`)) break;
       DB.students = DB.students.filter(x=>x.id!==arg);
       DB.scores = DB.scores.filter(sc=>sc.studentId!==arg);
-      DB.accounts.forEach(a=>{ if(a.role==='parent' && a.studentId===arg) a.studentId=null; });
+      DB.accounts.forEach(a=>{
+        if(a.role!=='parent') return;
+        if(a.studentId===arg) a.studentId=null;
+        if(Array.isArray(a.studentIds)) a.studentIds = a.studentIds.filter(id=>id!==arg);
+      });
       await Promise.all([saveStudents(), saveScores(), saveAccounts()]); showActionSuccess(`Old student ${s ? s.name : ''} deleted successfully`.replace(/\s+/g,' ').trim(), el, true);
       if(s.photo) await deletePhotoFromStorage(s.photo);
       render(); break;
@@ -7197,9 +8055,159 @@ Continue?`);
     case 'switchScoreCol': {
       // Jump straight into editing an already-submitted test/paper — clicked from one of
       // the "other columns" shown alongside the test currently being entered, so a teacher
-      // can fix an earlier mark without hunting for it via the paper/kind picker.
+      // can fix an earlier mark without hunting for it via the paper/kind picker. Since the
+      // teacher explicitly clicked "edit this test's scores", skip the re-entry gate below.
       const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
-      VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false}};
+      VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false, confirmEdit:true, viewOnly:false}};
+      render();
+      break;
+    }
+    case 'confirmEditScores': {
+      // Teacher chose "Continue to edit" on the already-has-scores gate — proceed into
+      // the normal editable mark sheet for this exact test.
+      const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
+      VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false, confirmEdit:true, viewOnly:false}};
+      render();
+      break;
+    }
+    case 'closeScoreEntry': {
+      // Teacher chose "Close" on the already-has-scores gate — show the read-only list of
+      // what's already on record instead of an editable sheet.
+      const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
+      VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false, confirmEdit:false, viewOnly:true}};
+      render();
+      break;
+    }
+    case 'removeSchoolStamp': {
+      if(!confirm('Remove the school stamp? It will no longer appear on report cards until a new one is uploaded.')) break;
+      const oldStamp = DB.info.stamp;
+      DB.info.stamp = null;
+      await saveInfo();
+      await deletePhotoFromStorage(oldStamp);
+      render();
+      break;
+    }
+    case 'removeTeacherSignature': {
+      const tSig = DB.accounts.find(a=>a.username===arg && a.role==='teacher');
+      if(!tSig) break;
+      if(!confirm(`Remove ${tSig.name}'s signature? It will no longer appear on report cards until a new one is uploaded.`)) break;
+      const oldSig = tSig.signature;
+      tSig.signature = null;
+      await saveAccounts();
+      await deletePhotoFromStorage(oldSig);
+      render();
+      break;
+    }
+    case 'editFinanceFee': VIEW.params = {...VIEW.params, editFeeId: arg}; render(); break;
+    case 'delFinanceFee': {
+      if(!confirm('Delete this fee item? Affected student balances will be recalculated without it.')) break;
+      const d = financeData();
+      d.fees = d.fees.filter(f=>f.id!==arg);
+      syncAllStudentsFinance();
+      await Promise.all([saveInfo(), saveStudents()]);
+      render();
+      break;
+    }
+    case 'editFinancePayment': VIEW.params = {...VIEW.params, editPaymentId: arg}; render(); break;
+    case 'delFinancePayment': {
+      if(!confirm("Delete this payment record? The student's balance will go back up by this amount.")) break;
+      const d = financeData();
+      const pay = d.payments.find(p=>p.id===arg);
+      d.payments = d.payments.filter(p=>p.id!==arg);
+      if(pay) syncStudentFinance(pay.studentId, d);
+      await Promise.all([saveInfo(), saveStudents()]);
+      render();
+      break;
+    }
+    case 'editRequirement': VIEW.params = {...VIEW.params, editReqId: arg}; render(); break;
+    case 'delRequirement': {
+      if(!confirm('Delete this requirement? Its submission records will also be removed.')) break;
+      const d = financeData();
+      d.requirements = d.requirements.filter(r=>r.id!==arg);
+      d.reqStatus = d.reqStatus.filter(x=>x.requirementId!==arg);
+      await saveInfo();
+      render();
+      break;
+    }
+    case 'financeStudent': VIEW = {name:'financestudent', params:{studentId:arg}}; render(); break;
+    case 'editExpenseType': VIEW.params = {...VIEW.params, editExpenseTypeId: arg}; render(); break;
+    case 'delExpenseType': {
+      if(!confirm('Delete this expense category? Past expense records already saved under it are kept and unaffected.')) break;
+      const d = financeData();
+      d.expenseTypes = d.expenseTypes.filter(x=>x.id!==arg);
+      await saveInfo();
+      render();
+      break;
+    }
+    case 'editExpense': VIEW.params = {...VIEW.params, editExpenseId: arg}; render(); break;
+    case 'delExpense': {
+      if(!confirm('Delete this expense record? It will no longer count in the expense analysis or account balance.')) break;
+      const d = financeData();
+      d.expenses = d.expenses.filter(x=>x.id!==arg);
+      await saveInfo();
+      render();
+      break;
+    }
+    case 'reqMarkItem': {
+      const [reqId, studentId] = arg.split('|');
+      const d = financeData();
+      d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
+      d.reqStatus.push({requirementId:reqId, studentId, method:'item', submittedAt:new Date().toISOString(), term:DB.info.currentTerm, year:DB.info.currentYear, recordedBy:CUR.username});
+      await saveInfo();
+      render();
+      break;
+    }
+    case 'reqUndoStatus': {
+      const [reqId, studentId] = arg.split('|');
+      if(!confirm('Remove this requirement record? If it was a cash payment, that amount will no longer count in the cash analysis or account balance.')) break;
+      const d = financeData();
+      d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
+      await saveInfo();
+      render();
+      break;
+    }
+    case 'reqShowCashForm': VIEW.params = {...VIEW.params, reqCashTarget: arg}; render(); break;
+    case 'reqCancelCashForm': VIEW.params = {...VIEW.params, reqCashTarget: null}; render(); break;
+    case 'resyncFinance': {
+      syncAllStudentsFinance();
+      await Promise.all([saveInfo(), saveStudents()]);
+      alertOk('Balances recomputed.');
+      render();
+      break;
+    }
+    case 'editShortfallSettlement': VIEW.params = {...VIEW.params, settleShortfallId: arg}; render(); break;
+    case 'settleShortfallFull': {
+      const d = financeData();
+      const sf = d.shortfalls.find(x=>x.id===arg);
+      if(!sf) break;
+      const remaining = shortfallRemaining(sf);
+      if(remaining<=0) break;
+      if(!confirm(`Mark ${sf.name}'s shortfall of ${money(remaining)} as fully balanced?`)) break;
+      sf.settlements = sf.settlements || [];
+      sf.settlements.push({id:uid('settle'), amount:remaining, date:new Date().toISOString().slice(0,10), note:'Marked fully balanced', recordedBy:CUR.username});
+      await saveInfo();
+      showActionSuccess(`${sf.name}'s shortfall balanced`, el, true);
+      render();
+      break;
+    }
+    case 'delShortfallSettlement': {
+      const [sfId, settleId] = arg.split('|');
+      const d = financeData();
+      const sf = d.shortfalls.find(x=>x.id===sfId);
+      if(!sf) break;
+      if(!confirm('Remove this settlement record? The shortfall balance will go back up by this amount.')) break;
+      sf.settlements = (sf.settlements||[]).filter(x=>x.id!==settleId);
+      await saveInfo();
+      showActionSuccess('Settlement removed', el, true);
+      render();
+      break;
+    }
+    case 'delShortfall': {
+      if(!confirm('Delete this shortfall record entirely? This cannot be undone.')) break;
+      const d = financeData();
+      d.shortfalls = d.shortfalls.filter(x=>x.id!==arg);
+      await saveInfo();
+      showActionSuccess('Shortfall record deleted', el, true);
       render();
       break;
     }
@@ -7765,12 +8773,168 @@ document.addEventListener('submit', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
-    'updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore']);
+    'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
+    'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
     }
-    if(type==='founderSetup'){
+    if(type==='financeUnlock'){ if(!DB.info.financePassword){ alert('No Finance password has been set. Ask the Admin to create one from this section.'); return; } if(fd.get('password')!==DB.info.financePassword){ alert('Incorrect Finance password.'); return; } FINANCE_UNLOCKED=true; render(); return; }
+    else if(type==='setFinancePassword'){ const pw=fd.get('password'); if(CUR && CUR.password && pw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; } DB.info.financePassword=pw; await saveInfo(); alert('Finance password saved.'); return; }
+    else if(type==='addFinanceFee' || type==='editFinanceFee'){
+      const name=(fd.get('name')||'').trim();
+      if(!name){ alert('Please enter a fee/charge name.'); return; }
+      const d = financeData();
+      const rec = { name, amount:Number(fd.get('amount')||0), category:fd.get('category'), term:fd.get('term'), year:Number(fd.get('year')||DB.info.currentYear), scope:fd.get('scope')||'all', excludeIds:fd.getAll('excludeIds').filter(Boolean) };
+      if(type==='editFinanceFee'){
+        const existing = d.fees.find(f=>f.id===form.dataset.id);
+        if(!existing){ alert('Fee item not found.'); return; }
+        Object.assign(existing, rec);
+      } else {
+        d.fees.push({id:uid('fee'), ...rec});
+      }
+      syncAllStudentsFinance();
+      await Promise.all([saveInfo(), saveStudents()]);
+      VIEW.params = {...VIEW.params, editFeeId:null};
+      render(); return;
+    }
+    else if(type==='addFinancePayment' || type==='editFinancePayment'){
+      const d = financeData();
+      const existingPay = type==='editFinancePayment' ? d.payments.find(p=>p.id===form.dataset.id) : null;
+      if(type==='editFinancePayment' && !existingPay){ alert('Payment not found.'); return; }
+      const studentId = fd.get('studentId') || (existingPay && existingPay.studentId);
+      if(!studentId){ alert('Please choose a student.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>0)){ alert('Please enter a payment amount greater than zero.'); return; }
+      const date = fd.get('date')||'';
+      if(!date){ alert('Please enter the payment date.'); return; }
+      const rec = { studentId, amount, date, receipt:(fd.get('receipt')||'').trim(), method:fd.get('method'), payerName:(fd.get('payerName')||'').trim(), payerRelationship:fd.get('payerRelationship')||'', payerContact:(fd.get('payerContact')||'').trim() };
+      if(existingPay){
+        Object.assign(existingPay, rec); // term/year of the original recording are kept as-is
+      } else {
+        d.payments.push({id:uid('pay'), recordedBy:CUR.username, term:DB.info.currentTerm, year:DB.info.currentYear, ...rec});
+      }
+      syncStudentFinance(studentId, d);
+      await Promise.all([saveInfo(), saveStudents()]);
+      VIEW.params = {...VIEW.params, editPaymentId:null};
+      render(); return;
+    }
+    else if(type==='addShortfallSettlement'){
+      const d = financeData();
+      const sf = d.shortfalls.find(x=>x.id===form.dataset.id);
+      if(!sf){ alert('Shortfall record not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>0)){ alert('Please enter a settlement amount greater than zero.'); return; }
+      const remaining = shortfallRemaining(sf);
+      if(amount>remaining+0.0001){ alert(`That's more than the outstanding balance of ${money(remaining)}.`); return; }
+      sf.settlements = sf.settlements || [];
+      sf.settlements.push({id:uid('settle'), amount, date:fd.get('date')||new Date().toISOString().slice(0,10), note:(fd.get('note')||'').trim(), recordedBy:CUR.username});
+      await saveInfo();
+      VIEW.params = {...VIEW.params, settleShortfallId:null};
+      render(); return;
+    }
+    else if(type==='addDefaultRequirements'){
+      const items = fd.getAll('item');
+      if(!items.length){ alert('Tick at least one item to add.'); return; }
+      const d = financeData();
+      const existingNames = new Set(d.requirements.map(r=>r.name.trim().toLowerCase()));
+      items.forEach(v=>{
+        const [name, category] = v.split('|');
+        if(name && !existingNames.has(name.trim().toLowerCase())){
+          d.requirements.push({id:uid('req'), name, category:category||'Other', scope:'all', term:DB.info.currentTerm, year:DB.info.currentYear});
+          existingNames.add(name.trim().toLowerCase());
+        }
+      });
+      await saveInfo();
+      render(); return;
+    }
+    else if(type==='addDefaultExpenseTypes'){
+      const items = fd.getAll('item');
+      if(!items.length){ alert('Tick at least one category to add.'); return; }
+      const d = financeData();
+      const existingNames = new Set(d.expenseTypes.map(x=>x.name.trim().toLowerCase()));
+      items.forEach(v=>{
+        const [name, category] = v.split('|');
+        if(name && !existingNames.has(name.trim().toLowerCase())){
+          d.expenseTypes.push({id:uid('etype'), name, category:category||'Other'});
+          existingNames.add(name.trim().toLowerCase());
+        }
+      });
+      await saveInfo();
+      render(); return;
+    }
+    else if(type==='addExpenseType' || type==='editExpenseType'){
+      const name=(fd.get('name')||'').trim();
+      if(!name){ alert('Please enter an expense category name.'); return; }
+      const d = financeData();
+      if(type==='editExpenseType'){
+        const existing = d.expenseTypes.find(x=>x.id===form.dataset.id);
+        if(!existing){ alert('Expense category not found.'); return; }
+        existing.name=name; existing.category=fd.get('category');
+      } else {
+        const existingNames = new Set(d.expenseTypes.map(x=>x.name.trim().toLowerCase()));
+        if(existingNames.has(name.toLowerCase())){ alert('That expense category already exists.'); return; }
+        d.expenseTypes.push({id:uid('etype'), name, category:fd.get('category')});
+      }
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editExpenseTypeId:null};
+      render(); return;
+    }
+    else if(type==='addExpense' || type==='editExpense'){
+      const d = financeData();
+      const existingExp = type==='editExpense' ? d.expenses.find(x=>x.id===form.dataset.id) : null;
+      if(type==='editExpense' && !existingExp){ alert('Expense record not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>0)){ alert('Please enter an amount greater than zero.'); return; }
+      const date = fd.get('date')||'';
+      if(!date){ alert('Please enter the date.'); return; }
+      let name, category;
+      const choice = fd.get('expenseChoice');
+      if(choice){ [name, category] = choice.split('|'); }
+      else if(existingExp){ name = existingExp.name; category = existingExp.category; }
+      if(!name){ alert('Please choose an expense category.'); return; }
+      const rec = { name, category, amount, date, term:fd.get('term')||DB.info.currentTerm, year:Number(fd.get('year')||DB.info.currentYear), receipt:(fd.get('receipt')||'').trim(), payee:(fd.get('payee')||'').trim(), note:(fd.get('note')||'').trim() };
+      if(existingExp){
+        Object.assign(existingExp, rec);
+      } else {
+        d.expenses.push({id:uid('expense'), recordedBy:CUR.username, ...rec});
+      }
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editExpenseId:null};
+      render(); return;
+    }
+    else if(type==='recordReqCash'){
+      const [reqId, studentId] = (form.dataset.id||'').split('|');
+      const d = financeData();
+      const req = d.requirements.find(r=>r.id===reqId);
+      const stud = DB.students.find(s=>s.id===studentId);
+      if(!req || !stud){ alert('Requirement or student not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>0)){ alert('Please enter a cash amount greater than zero.'); return; }
+      const date = fd.get('date')||'';
+      if(!date){ alert('Please enter the date.'); return; }
+      d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
+      d.reqStatus.push({requirementId:reqId, studentId, method:'cash', amount, date, receipt:(fd.get('receipt')||'').trim(), payerName:(fd.get('payerName')||'').trim(), payerRelationship:fd.get('payerRelationship')||'', payerContact:(fd.get('payerContact')||'').trim(), submittedAt:new Date().toISOString(), term:DB.info.currentTerm, year:DB.info.currentYear, recordedBy:CUR.username});
+      await saveInfo();
+      VIEW.params = {...VIEW.params, reqCashTarget:null};
+      render(); return;
+    }
+    else if(type==='addRequirement' || type==='editRequirement'){
+      const name=(fd.get('name')||'').trim();
+      if(!name){ alert('Please enter a requirement name.'); return; }
+      const d = financeData();
+      if(type==='editRequirement'){
+        const existing = d.requirements.find(r=>r.id===form.dataset.id);
+        if(!existing){ alert('Requirement not found.'); return; }
+        existing.name=name; existing.category=fd.get('category'); existing.scope=fd.get('scope')||'all';
+      } else {
+        d.requirements.push({id:uid('req'), name, category:fd.get('category'), scope:fd.get('scope')||'all', term:DB.info.currentTerm, year:DB.info.currentYear});
+      }
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editReqId:null};
+      render(); return;
+    }
+    else if(type==='founderSetup'){
       const missing = ['name','username','password','code','recovery'].filter(k=>!fd.get(k) || !fd.get(k).trim());
       if(missing.length){ showFatal('Please fill in: '+missing.join(', ')); return; }
       { const conflict = await checkCredentialUniqueness(fd.get('username'), fd.get('password'));
@@ -7878,9 +9042,13 @@ document.addEventListener('submit', async (e)=>{
         accounts.push({username:uname, password:fd.get('password'), role:'teacher', name:fd.get('name'), status:'pending', recovery:(fd.get('recovery')||'').trim()||null});
       } else {
         const students = await getShared(`sch_${schoolId}_students`, []);
-        const st = students.find(s=>s.admNo===fd.get('childAdmNo'));
+        // Supports one or several admission numbers (comma-separated) so a parent
+        // with more than one child at the school can link all of them at signup.
+        const admNos = (fd.get('childAdmNo')||'').split(',').map(x=>x.trim()).filter(Boolean);
+        const matchedIds = [], unmatched = [];
+        admNos.forEach(no=>{ const st = students.find(s=>s.admNo===no); if(st) matchedIds.push(st.id); else unmatched.push(no); });
         accounts.push({username:uname, password:fd.get('password'), role:'parent', name:fd.get('name'),
-          status:'pending', studentId: st? st.id: null, pendingAdmNo: st? null: fd.get('childAdmNo')});
+          status:'pending', studentIds: matchedIds, pendingAdmNo: unmatched.length? unmatched.join(', ') : null});
       }
       await switchPromise; // must be done before we write, but has been running in parallel with the checks above
       await setShared(`sch_${schoolId}_accounts`, accounts);
@@ -8025,6 +9193,8 @@ document.addEventListener('submit', async (e)=>{
       // times the year is changed on this form.
       DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
       DB.info.termEndDate=fd.get('termEndDate'); DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
+      if(termChanged) pruneOldFinanceRecords(); // keep the shared info doc bounded, same retention window as old students/scores
+      if(termChanged) syncAllStudentsFinance(); // recompute report-card fees figures for the new current term (no-op if this school doesn't use Finance & Requirements)
       const sd={...(DB.info.scoreDeadlines||{})};
       for(const kind of ['AOI','EOT']){
         const newDeadline=fd.get(kind==='AOI'?'scoreDeadlineAOI':'scoreDeadlineEOT')||null;
@@ -8156,6 +9326,15 @@ document.addEventListener('submit', async (e)=>{
         DB.info.logo = await uploadPhotoToStorage(blob, `schools/${SCHOOL_ID}/logo`);
         await deletePhotoFromStorage(oldLogo); // old logo is fully replaced — free up its space
       }
+      const stampFile = fd.get('stamp');
+      if(stampFile && stampFile.size>0){
+        const oldStamp = DB.info.stamp;
+        // Same compression cap as the logo — a stamp is a small overlay image, not a
+        // full-page graphic, so there's no need for a separate/larger allowance.
+        const stampBlob = await compressImage(stampFile, LOGO_MAX_DIM, LOGO_MAX_BYTES);
+        DB.info.stamp = await uploadPhotoToStorage(stampBlob, `schools/${SCHOOL_ID}/stamp`);
+        await deletePhotoFromStorage(oldStamp);
+      }
       DB.info.schoolName=fd.get('schoolName'); DB.info.address=fd.get('address'); DB.info.phone=fd.get('phone');
       const newEmail = normalizeSchoolEmail(fd.get('email'));
       const emailChanged = newEmail && newEmail!==normalizeSchoolEmail(DB.info.email);
@@ -8200,10 +9379,21 @@ document.addEventListener('submit', async (e)=>{
       { const conflict = await checkCredentialUniqueness(uname, fd.get('password'));
         if(conflict.exactMatch){ alert('That exact username and password combination is already used by another account (at this or another school). Please change the username or the password.'); return; } }
       DB.accounts.push({username:uname, password:fd.get('password'), role, name:fd.get('name'),
-        status:'active', studentId: role==='parent'? (fd.get('studentId')||null) : null,
+        status:'active', studentIds: role==='parent'? fd.getAll('studentIds').filter(Boolean) : null,
         recovery: role==='teacher' ? ((fd.get('recovery')||'').trim()||null) : null});
       await saveAccounts();
       if(role==='teacher') speak(`Staff member ${fd.get('name')} has been registered successfully.`);
+      render();
+    }
+    else if(type==='linkParentChild'){
+      const username = fd.get('username');
+      const studentId = fd.get('studentId');
+      if(!username || !studentId){ alert('Please choose both a parent and a student.'); return; }
+      const acc = DB.accounts.find(a=>a.username===username && a.role==='parent');
+      if(!acc){ alert('Parent account not found.'); return; }
+      acc.studentIds = Array.isArray(acc.studentIds) ? acc.studentIds : (acc.studentId ? [acc.studentId] : []);
+      if(!acc.studentIds.includes(studentId)) acc.studentIds.push(studentId);
+      await saveAccounts();
       render();
     }
     else if(type==='uploadStaffTemplate'){
@@ -8371,6 +9561,15 @@ document.addEventListener('submit', async (e)=>{
       const oldUsername = form.dataset.username;
       const t = DB.accounts.find(a=>a.username===oldUsername && a.role==='teacher');
       if(!t){ alert('Teacher not found.'); return; }
+      const sigFile = fd.get('signature');
+      if(sigFile && sigFile.size>0){
+        const oldSig = t.signature;
+        // Same compression cap as the school stamp — a signature is a small overlay
+        // image, not a full-page graphic, so there's no need for a larger allowance.
+        const sigBlob = await compressImage(sigFile, LOGO_MAX_DIM, LOGO_MAX_BYTES);
+        t.signature = await uploadPhotoToStorage(sigBlob, `schools/${SCHOOL_ID}/signatures`);
+        await deletePhotoFromStorage(oldSig);
+      }
       const newName = (fd.get('name')||'').trim();
       if(!newName){ alert('Please enter a name.'); return; }
       const newUsername = (fd.get('username')||'').trim();
@@ -8638,6 +9837,19 @@ document.addEventListener('submit', async (e)=>{
       if(!maxRaw || !Number.isFinite(maxScore) || maxScore<1){
         alert('Please enter the maximum mark this test/exam was marked out of before continuing.');
         return;
+      }
+      // Teacher-only "accuracy and assurance" check: the Term field below Assessment
+      // type is drawn from the school's 3-term academic year (set by the Admin under
+      // Settings), but a Teacher may only ever load the CURRENT term's list — this
+      // just makes them explicitly confirm it's the right one before proceeding,
+      // rather than silently assuming it behind the scenes. Admin is unaffected: they
+      // still use the separate "Scoring period" picker above for past terms/years.
+      if(CUR.role!=='admin'){
+        const chosenTerm = fd.get('teacherTerm') || DB.info.currentTerm;
+        if(chosenTerm !== DB.info.currentTerm){
+          alert(`You selected ${chosenTerm}, but the school's current term is ${DB.info.currentTerm}. As a Teacher you can only enter or edit scores for the current term — please select ${DB.info.currentTerm} and try again, or ask your Admin if you need a different term corrected.`);
+          return;
+        }
       }
       VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
     }
@@ -9363,9 +10575,10 @@ async function pdfForStudents(students, filename, opts={}){
       pdf.setFont('helvetica','normal'); pdf.setFontSize(11);
       pdf.text('This student has no class assigned or could not be found.', 40, 60);
     } else {
-      // Normalize logo/photo to PNG before drawing — see toPngDataUrl() above. The
-      // logo conversion is cache-hit-instant after the first student in a bulk run.
+      // Normalize logo/photo/stamp to PNG before drawing — see toPngDataUrl() above.
+      // The conversion is cache-hit-instant after the first student in a bulk run.
       if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
+      if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
       if(data.photo) data.photo = await toPngDataUrl(data.photo);
       renderReportCardPageFitted(pdf, data);
     }
