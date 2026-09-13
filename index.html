@@ -57,6 +57,13 @@ button{font-family:inherit;cursor:pointer;}
 .auth-action-stack .btn,.auth-action-stack .btn-outline{width:100%;text-align:center;text-decoration:none;display:block;}
 input,select,textarea{padding:9px 10px;border:1px solid #b9c9da;border-radius:5px;font-size:16px;width:100%;font-family:inherit;}
 input.missing-mark::placeholder{color:var(--danger);font-weight:800;opacity:.85;}
+/* Login/credential boxes specifically (username + password) get a taller, easier-to-tap
+   box than ordinary form fields. Scoped to name="username"/name="password" only, so this
+   never touches unrelated fields (school name, email, admission number, etc.) elsewhere in
+   the app, and never changes the normal block flow/order of the surrounding .login-section
+   blocks — each field just grows a little taller in place, sections still stack in the same
+   order with their existing borders/spacing intact. */
+input[name="username"],input[name="password"]{padding:16px 14px;font-size:17px;}
 label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;}
 .card{background:#fff;border-radius:10px;padding:22px;box-shadow:0 2px 10px rgba(10,42,74,.08);margin-bottom:18px;}
 /* Performance: allow off-screen content to defer expensive layout/paint until needed. */
@@ -308,6 +315,16 @@ table.rc-grading-scale-table tr:nth-child(2) td:not(:first-child){width:auto;}
 .primary-report-card table.rc-grading-scale-table{font-size:10px;}
 #pdfCaptureHolder .primary-report-card table.rc-grading-scale-table{width:100% !important;table-layout:fixed !important;margin:8px 0 10px;}
 #pdfCaptureHolder .primary-report-card table.rc-grading-scale-table th,#pdfCaptureHolder .primary-report-card table.rc-grading-scale-table td{font-size:var(--pdf-table-body-size,9px) !important;padding:3px 4px !important;}
+/* Compact O'/A' Level Grading Key: a small reference table (grade / label / descriptor
+   sentence) placed right below Performance Summary. Kept deliberately small (tight padding,
+   small font) so it adds only a little vertical space; fitOnePage()/the PDF engine still
+   scale the whole card to the fixed A4 frame, so this never pushes content off the page. */
+table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:#f4f4f5;}
+table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:#f4f4f5;}
+table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;}
+table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;}
+#pdfCaptureHolder .pdf-report-card table.rc-grading-key-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
+#pdfCaptureHolder .pdf-report-card table.rc-grading-key-table td{font-size:7.5px !important;padding:2px 4px !important;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
    export (see mergedTd() in reportCardHTML): a subject-level value (Final Average,
    Grade, Points, Descriptor, Subject name) that spans more than one paper row is
@@ -403,6 +420,11 @@ table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;t
 table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
 table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
 #pdfCaptureHolder .pdf-report-card table.rc-comments-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
+
+.rc-comments-plain{margin-bottom:16px;}
+.rc-comments-line{font-size:11.5px;padding:6px 0;border-bottom:1px solid var(--blue);overflow-wrap:break-word;word-break:break-word;}
+.rc-comments-line:last-child{border-bottom:none;}
+.rc-comments-line b{color:var(--navy);margin-right:6px;}
 
 .rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
 .rc-sign-block{min-width:0;text-align:center;position:relative;}
@@ -815,6 +837,16 @@ const GRADE_POINTS = {A:5,B:4,C:3,D:2,E:1,O:1,F:0};
 const GRADE_COMMENT = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
 const DEFAULT_A_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
 const DEFAULT_O_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
+// Fixed competency descriptor sentences shown in the O'/A' Level report card Grading Key.
+// This wording is standard (not a user-editable setting) and is keyed by grade letter; the
+// short label shown next to each letter still comes from the school's own gradeCommentsFor().
+const GRADE_KEY_DESCRIPTIONS = {
+  A:"Demonstrates an extra ordinary level of competency by applying innovatively and creatively  acquired knowledge in real life situation",
+  B:"Demonstrates a high level of competency by applying innovatively and creatively  acquired knowledge in real life situation",
+  C:"Demonstrates an adequate level of competency by applying innovatively and creatively  acquired knowledge in real life situation",
+  D:"Demonstrates a minimum level of competency by applying innovatively and creatively  acquired knowledge in real life situation",
+  E:"Demonstrates below the Basic level of competency by applying innovatively and creatively acquired knowledge in real life situation"
+};
 const DEFAULT_PASS_FAIL_GRADES = {Pass:'Pass',Fail:'Fail'};
 const DEFAULT_PASS_FAIL_COMMENTS = {Pass:'Pass',Fail:'Fail'};
 function gradeCommentsFor(level){
@@ -2921,6 +2953,7 @@ function fitOnePage(root, settle=true){
     content.querySelector('.rc-info-table'),
     content.querySelector('table.rc-perf'),
     content.querySelector('table.rc-summary-table'),
+    content.querySelector('table.rc-grading-key-table'),
     content.querySelector('table.rc-grading-scale-table')
   ].filter(Boolean);
 
@@ -5433,6 +5466,32 @@ async function runDownloadSelectedReportsPdf(btn){
   try{ await downloadSelectedReportsPdf(); }
   finally{ btn.disabled = false; btn.innerHTML = orig; }
 }
+// Downloads a single student's report card for whatever term/year is currently
+// selected on the report card screen — including past terms/years, not just the
+// current one. Reuses the same buildReportCardData()/renderReportCardPageFitted()
+// pipeline as the bulk export above, so a downloaded single card and a bulk one
+// look identical.
+async function downloadReportCardPdf(studentId, term, year){
+  setAppBusy(true);
+  try{
+    try{ await loadJsPdfOnly(); }catch(e){ alert(e.message); return; }
+    const { jsPDF } = window.jspdf;
+    try{ await refreshScores(); }
+    catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
+    const data = buildReportCardData(studentId, term, year);
+    if(!data){ alert('This student has no class assigned or could not be found.'); return; }
+    if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
+    if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
+    if(data.photo) data.photo = await toPngDataUrl(data.photo);
+    const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+    renderReportCardPageFitted(pdf, data);
+    const stu = DB.students.find(s=>s.id===studentId);
+    const termLbl = String(term||DB.info.currentTerm||'Term').replace(/\s+/g,'_');
+    const yearLbl = year||DB.info.currentYear;
+    const filename = `${(stu?stu.name:'student').replace(/\s+/g,'_')}_${termLbl}_${yearLbl}_report.pdf`;
+    openOrSavePdf(pdf, filename, {openPreviewTab:false});
+  } finally { setAppBusy(false); }
+}
 // Prints exactly the ticked report cards in one go, each on its own page, without
 // leaving the Report Cards list — builds a temporary #printArea (the same element
 // id the single report-card page uses to isolate what the browser Print dialog
@@ -6474,6 +6533,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const { position, size } = classPosition(s, cls, term, year);
   const isA = cls.level==='A';
   const isP = cls.level==='P';
+  const isO = cls.level==='O';
   // Previous Position (Primary only): the student's rank in the term immediately
   // before the one being viewed, following the school calendar's own rotation —
   // Term 1 looks back to Term 3 of the PRIOR year, Term 2 looks back to Term 1 of
@@ -6783,7 +6843,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   return `
   ${periodPicker}
-  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?'<button class="btn" onclick="window.print()"><b>Print this report card</b></button>':''}
+  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?`<button class="btn" onclick="window.print()"><b>Print this report card</b></button>
+  <button class="btn-outline" data-action="dlReportCardPdf:${s.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>`:''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
   ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
@@ -6862,6 +6923,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </tr>
     </table>
 
+    ${!isP ? `
+    <div class="rc-section-title">Grading Key</div>
+    <table class="rc-grading-key-table">
+      <colgroup><col style="width:7%"><col style="width:16%"><col style="width:77%"></colgroup>
+      ${['A','B','C','D','E'].map(g=>`<tr><td class="gk-letter"><b>${g}</b></td><td class="gk-label">${esc(gradeCommentsFor(cls.level)[g])}</td><td class="gk-desc">${esc(GRADE_KEY_DESCRIPTIONS[g])}</td></tr>`).join('')}
+    </table>` : ''}
+
     ${isP ? `
     <div class="rc-section-title">Grading Scale</div>
     <table class="rc-grading-scale-table">
@@ -6878,6 +6946,11 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </tr>
     </table>` : ''}
 
+    ${isO ? `
+    <div class="rc-comments-plain">
+      <div class="rc-comments-line"><b>Class teacher's comment:</b> ${esc(overallRemark(pct,'class'))}</div>
+      <div class="rc-comments-line"><b>Head teacher's comment:</b> ${esc(overallRemark(pct,'head'))}</div>
+    </div>` : `
     <div class="rc-section-title">Comments</div>
     <table class="rc-comments-table">
       <colgroup><col style="width:50%"><col style="width:50%"></colgroup>
@@ -6886,7 +6959,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         <td>${isP ? esc(primaryRemark(pDivision,'class')) : esc(overallRemark(pct,'class'))}</td>
         <td>${isP ? esc(primaryRemark(pDivision,'head')) : esc(overallRemark(pct,'head'))}</td>
       </tr>
-    </table>
+    </table>`}
 
     <div class="rc-sign-row">
       <div class="rc-sign-block">
@@ -6952,6 +7025,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const { position, size } = classPosition(s, cls, term, year);
   const isA = cls.level==='A';
   const isP = cls.level==='P';
+  const isO = cls.level==='O';
 
   let prevPeriod = null, prevPosition = null;
   if(isP){
@@ -7081,9 +7155,13 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const htName = DB.info.headteacher || '';
 
   return {
-    student: s, cls, term, year, isA, isP,
+    student: s, cls, term, year, isA, isP, isO,
     cfg, showCW, showEOT, cwTests, useCwTestCols,
     subjectEntries,
+    // O'/A' Level only: rows for the compact Grading Key table shown right below
+    // Performance Summary. The descriptor sentence is fixed standard wording; the short
+    // label ("Exceptional", etc.) still comes from the school's own gradeCommentsFor().
+    gradingKey: isP ? null : ['A','B','C','D','E'].map(g=>({ grade:g, label: commentMap[g] || g, desc: GRADE_KEY_DESCRIPTIONS[g] })),
     totals: { cwTotalTxt, eotTotalTxt, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
     summary: {
       maxP, avgPct, overallGrade, overallDesc, pAggregate, pDivision, position, size,
@@ -7441,6 +7519,31 @@ function drawReportCardPage(pdf, data, gapBoost){
   });
   cy += sumRowH*2 + 14 + gapBoost;
 
+  // ---- 7b. Grading Key (O'/A' Level only) ----
+  // A small, tightly-padded reference table (grade / label / descriptor sentence),
+  // deliberately kept compact so it adds minimal height — renderReportCardPageFitted()
+  // still scales/paginates the whole card to the fixed A4 frame around it.
+  if(!data.isP && data.gradingKey){
+    leftText('GRADING KEY', contentX, cy, 9, 'bold', navy);
+    line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+    cy += 10;
+    const gkLetterW = contentW*0.07, gkLabelW = contentW*0.16, gkDescW = contentW - gkLetterW - gkLabelW;
+    setDrawC([29,78,137]); pdf.setLineWidth(0.5);
+    pdf.setFillColor(244,244,245);
+    data.gradingKey.forEach(row=>{
+      const descLines = wrap(row.desc, gkDescW-6, 6.5);
+      const rh = Math.max(9, descLines.length*6.5 + 4);
+      let rx = contentX;
+      pdf.rect(rx, cy, gkLetterW, rh, 'FD'); centerText(row.grade, rx, gkLetterW, cy+rh/2+2, 7, 'bold'); rx += gkLetterW;
+      pdf.rect(rx, cy, gkLabelW, rh, 'FD'); centerText(row.label, rx, gkLabelW, cy+rh/2+2, 6.5, 'bold'); rx += gkLabelW;
+      pdf.rect(rx, cy, gkDescW, rh, 'FD');
+      const dy0 = cy + rh/2 - ((descLines.length-1)*6.5)/2 + 2;
+      descLines.forEach((ln,i)=>leftText(ln, rx+3, dy0+i*6.5, 6.5));
+      cy += rh;
+    });
+    cy += 10 + gapBoost;
+  }
+
   // ---- 8. Grading Scale (Primary only) ----
   if(data.isP){
     leftText('GRADING SCALE', contentX, cy, 9, 'bold', navy);
@@ -7468,23 +7571,38 @@ function drawReportCardPage(pdf, data, gapBoost){
     cy += gradeRowH + 14 + gapBoost;
   }
 
-  // ---- 9. Comments table ----
-  leftText('COMMENTS', contentX, cy, 9, 'bold', navy);
-  line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
-  cy += 12;
-  const halfW = contentW/2;
-  const ctLines = wrap(data.comments.classComment, halfW-8, 8);
-  const htLines = wrap(data.comments.headComment, halfW-8, 8);
-  const commentBodyH = Math.max(ctLines.length, htLines.length)*10 + 8;
-  setDrawC([29,78,137]); pdf.setLineWidth(0.6);
-  pdf.rect(contentX, cy, halfW, 14); pdf.rect(contentX+halfW, cy, halfW, 14);
-  centerText("Class Teacher's Comment", contentX, halfW, cy+10, 7.5, 'bold', navy);
-  centerText("Head Teacher's Comment", contentX+halfW, halfW, cy+10, 7.5, 'bold', navy);
-  cy += 14;
-  pdf.rect(contentX, cy, halfW, commentBodyH); pdf.rect(contentX+halfW, cy, halfW, commentBodyH);
-  ctLines.forEach((ln,i)=>leftText(ln, contentX+4, cy+12+i*10, 8));
-  htLines.forEach((ln,i)=>leftText(ln, contentX+halfW+4, cy+12+i*10, 8));
-  cy += commentBodyH + 16;
+  // ---- 9. Comments ----
+  if(data.isO){
+    // O-Level: plain statement lines instead of the boxed two-column table.
+    function labeledLine(label, value, yPos){
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); setC(navy);
+      pdf.text(label, contentX, yPos);
+      const labelW = pdf.getTextWidth(label + ' ');
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(8.5); setC(ink);
+      pdf.text(String(value==null?'':value), contentX + labelW, yPos);
+    }
+    labeledLine("Class teacher's comment:", data.comments.classComment, cy);
+    cy += 14;
+    labeledLine("Head teacher's comment:", data.comments.headComment, cy);
+    cy += 16;
+  } else {
+    leftText('COMMENTS', contentX, cy, 9, 'bold', navy);
+    line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+    cy += 12;
+    const halfW = contentW/2;
+    const ctLines = wrap(data.comments.classComment, halfW-8, 8);
+    const htLines = wrap(data.comments.headComment, halfW-8, 8);
+    const commentBodyH = Math.max(ctLines.length, htLines.length)*10 + 8;
+    setDrawC([29,78,137]); pdf.setLineWidth(0.6);
+    pdf.rect(contentX, cy, halfW, 14); pdf.rect(contentX+halfW, cy, halfW, 14);
+    centerText("Class Teacher's Comment", contentX, halfW, cy+10, 7.5, 'bold', navy);
+    centerText("Head Teacher's Comment", contentX+halfW, halfW, cy+10, 7.5, 'bold', navy);
+    cy += 14;
+    pdf.rect(contentX, cy, halfW, commentBodyH); pdf.rect(contentX+halfW, cy, halfW, commentBodyH);
+    ctLines.forEach((ln,i)=>leftText(ln, contentX+4, cy+12+i*10, 8));
+    htLines.forEach((ln,i)=>leftText(ln, contentX+halfW+4, cy+12+i*10, 8));
+    cy += commentBodyH + 16;
+  }
 
   // ---- 10. Sign-off row ----
   const thirdW = contentW/3;
@@ -8307,6 +8425,12 @@ Continue?`);
       // downloadTablesAsPdf for why this uses a dedicated row-paginating export
       // instead of the generic canvas-tiling one used by wide mark sheets.
       await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_class_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
+      break;
+    }
+    case 'dlReportCardPdf': {
+      const [studentId, termEnc, year] = (arg||'').split(':');
+      const term = termEnc?decodeURIComponent(termEnc):undefined;
+      await downloadReportCardPdf(studentId, term, year);
       break;
     }
     case 'mmPage': {
