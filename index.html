@@ -330,10 +330,12 @@ table.rc-grading-scale-table tr:nth-child(2) td:not(:first-child){width:auto;}
    sentence) placed right below Performance Summary. Kept deliberately small (tight padding,
    small font) so it adds only a little vertical space; fitOnePage()/the PDF engine still
    scale the whole card to the fixed A4 frame, so this never pushes content off the page. */
-table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:var(--blue-light);}
-table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:var(--blue-light);color:var(--ink);}
-table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;}
-table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;}
+table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:#E9F1FA !important;color-scheme:light;forced-color-adjust:none;}
+table.rc-grading-key-table tr{background:#E9F1FA !important;}
+table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;color-scheme:light;forced-color-adjust:none;}
+table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;font-weight:900;background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
+table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
+table.rc-grading-key-table td.gk-desc{background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table td{font-size:7.5px !important;padding:2px 4px !important;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
@@ -435,8 +437,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 #pdfCaptureHolder .pdf-report-card table.rc-comments-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
 .rc-comments-plain{margin-bottom:16px;}
-.rc-comments-line{font-size:11.5px;padding:6px 0;border-bottom:1px solid var(--blue);overflow-wrap:break-word;word-break:break-word;}
-.rc-comments-line:last-child{border-bottom:none;}
+.rc-comments-line{font-size:11.5px;padding:6px 0;overflow-wrap:break-word;word-break:break-word;}
 .rc-comments-line b{color:var(--navy);margin-right:6px;}
 
 .rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
@@ -847,6 +848,14 @@ const ABBR = {'BIOLOGY':'BIO','CHEMISTRY':'CHEM','PHYSICS':'PHY','MATHEMATICS':'
   'SCIENCE':'SCI','SOCIAL STUDIES':'SST','RELIGIOUS EDUCATION':'RE','LOCAL LANGUAGE':'LL','MUSIC DANCE & DRAMA':'MDD'};
 
 const GRADE_POINTS = {A:5,B:4,C:3,D:2,E:1,O:1,F:0};
+// Default A-Level points-per-grade — the long-standing standard scale. Admins can now
+// override these (see Grading Setup → A-Level bands), so anywhere a principal subject's
+// points are needed, use aPoints() below rather than reaching for GRADE_POINTS directly.
+const DEFAULT_A_POINTS = {A:5,B:4,C:3,D:2,E:1};
+// Current admin-configured A-Level points-per-grade, falling back to the standard scale
+// above for any grade not yet customised (e.g. right after upgrading from a version
+// where points were fixed).
+function aPoints(){ return {...DEFAULT_A_POINTS, ...(DB.info?.aPoints||{})}; }
 const GRADE_COMMENT = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
 const DEFAULT_A_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
 const DEFAULT_O_GRADE_COMMENTS = {A:'Exceptional',B:'Outstanding',C:'Satisfactory',D:'Basic',E:'Elementary'};
@@ -862,6 +871,25 @@ const GRADE_KEY_DESCRIPTIONS = {
 };
 const DEFAULT_PASS_FAIL_GRADES = {Pass:'Pass',Fail:'Fail'};
 const DEFAULT_PASS_FAIL_COMMENTS = {Pass:'Pass',Fail:'Fail'};
+// Primary (PLE-style) class/head teacher remarks, one pair of sentences per Division —
+// same "school can customize, sensible defaults if they never touch it" pattern as
+// aGradeComments/oGradeComments below, via DB.info.primaryRemarks. Merged per-division
+// (not a flat overwrite) so a school editing only Division 1 doesn't lose the defaults
+// for Division 2–U.
+const DEFAULT_PRIMARY_REMARKS = {
+  'Division 1': {class:'Excellent performance this term. Keep up the excellent work!', head:'An excellent result — well done.'},
+  'Division 2': {class:'Very good performance. Keep working hard.', head:'A very good result this term.'},
+  'Division 3': {class:'Good performance, but there is clear room for improvement.', head:'A fair result — more effort next term will help.'},
+  'Division 4': {class:'Fair performance. More effort and attention is needed.', head:'This result calls for renewed effort next term.'},
+  'Division U': {class:'Below average performance. Needs serious improvement and support.', head:'This result is a serious concern and needs urgent action.'}
+};
+function primaryRemarksFor(){
+  const custom = DB.info && DB.info.primaryRemarks;
+  if(!custom) return DEFAULT_PRIMARY_REMARKS;
+  const merged = {};
+  Object.keys(DEFAULT_PRIMARY_REMARKS).forEach(d=>{ merged[d] = {...DEFAULT_PRIMARY_REMARKS[d], ...(custom[d]||{})}; });
+  return merged;
+}
 function gradeCommentsFor(level){
   const key = level==='A' ? 'aGradeComments' : level==='O' ? 'oGradeComments' : null;
   if(key && DB.info && DB.info[key]) return {...(level==='A'?DEFAULT_A_GRADE_COMMENTS:DEFAULT_O_GRADE_COMMENTS), ...DB.info[key]};
@@ -1152,14 +1180,9 @@ function primaryDivisionFor(aggregate){
   return 'Division U';
 }
 function primaryRemark(division, who){
-  const map = {
-    'Division 1': who==='class' ? 'Excellent performance this term. Keep up the excellent work!' : 'An excellent result — well done.',
-    'Division 2': who==='class' ? 'Very good performance. Keep working hard.' : 'A very good result this term.',
-    'Division 3': who==='class' ? 'Good performance, but there is clear room for improvement.' : 'A fair result — more effort next term will help.',
-    'Division 4': who==='class' ? 'Fair performance. More effort and attention is needed.' : 'This result calls for renewed effort next term.',
-    'Division U': who==='class' ? 'Below average performance. Needs serious improvement and support.' : 'This result is a serious concern and needs urgent action.'
-  };
-  return map[division] || (who==='class' ? 'Performance on record. Keep working hard.' : 'Result on record.');
+  const map = primaryRemarksFor();
+  const entry = map[division] || map['Division U'];
+  return (entry && entry[who]) || (who==='class' ? 'Performance on record. Keep working hard.' : 'Result on record.');
 }
 
 /* ============================================================
@@ -2769,11 +2792,12 @@ function teacherForSubjectClass(subject, classId){
   if(!a) return null;
   return DB.accounts.find(acc=>acc.username===a.teacherUsername) || null;
 }
-// maxPointsFor: every ticked principal is worth 5, GENERAL PAPER and the auto-derived
+// maxPointsFor: every ticked principal is worth the top (A-grade) points value from the
+// admin-configured A-Level points scale (aPoints()), GENERAL PAPER and the auto-derived
 // subsidiary are each worth a flat 1 (their own pass/fail scale — see gradeFor), and any
 // admin-added extra compulsory A-Level subjects (aCompulsoryExtra) are graded normally
-// (A-E scale) so each is worth 5, same as a principal.
-function maxPointsFor(st, cls){ return principalsFor(st, cls || classOf(st)).length*5 + 1 + 1 + aCompulsoryExtra().length*5; }
+// (A-E scale) so each is worth the same top points value as a principal.
+function maxPointsFor(st, cls){ const top = aPoints().A; return principalsFor(st, cls || classOf(st)).length*top + 1 + 1 + aCompulsoryExtra().length*top; }
 
 function computeSubjectRows(st, cls, term, year){
   const subs = studentSubjects(st, cls);
@@ -2782,7 +2806,11 @@ function computeSubjectRows(st, cls, term, year){
     const avg = subjectAverage(st.id, subj, term, year);
     const grade = avg===null ? null : gradeFor(subj, avg, cls.level);
     let pts=0;
-    if(cls.level==='A' && grade) pts = GRADE_POINTS[grade];
+    if(cls.level==='A' && grade){
+      // Pass/Fail subjects (General Paper, subsidiaries) keep their fixed 1/0 points;
+      // A-E principal subjects use the admin-configured (editable) points scale.
+      pts = (grade==='O'||grade==='F') ? GRADE_POINTS[grade] : aPoints()[grade];
+    }
     if(avg!==null){ sumAvg+=avg; countAvg++; totalPoints+=pts; }
     const t = teacherForSubjectClass(subj, cls.id);
     return {subject:subj, avg, grade, pts, teacherInit: t?initials(t.name):'--'};
@@ -5142,48 +5170,82 @@ function gradingView(gcClassId){
   const b = DB.bands||DEFAULT_A_BANDS, ob = DB.obands||DEFAULT_O_BANDS, pb = DB.pbands||DEFAULT_P_BANDS;
   return `
   <h2>Grading Setup</h2>
-  <div class="note">A-Level points are fixed: A=5, B=4, C=3, D=2, E=1, F=0. General Paper is pass/fail (O=1 point, F=0) —
+  <div class="note">A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper is pass/fail (O=1 point, F=0) —
   <b>O if the average is 50% and above, F if below 50%</b> — the exact same condition used for Subsidiary Mathematics and Subsidiary Computer.
   O-Level has no points, only A–E descriptors. Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects).
   All banding tables below are editable.</div>
   <div class="card" style="margin-top:14px;">
-    <h3>A-Level bands (%)</h3>
+    <h3>A-Level bands</h3>
+    <p class="small">Each row is one grade — min/max %, points, and its descriptor all edit together. Points default to the standard A-Level scale (A=5, B=4, C=3, D=2, E=1) but can be changed below.</p>
     <form data-form="saveBands">
-      <div class="grid3">
-      ${['A','B','C','D','E'].map(g=>`<div><label>${g} min–max</label><div class="flex"><input name="${g}min" value="${b[g][0]}"><input name="${g}max" value="${b[g][1]}"></div></div>`).join('')}
-      </div>
-      <h4 style="margin:16px 0 8px;">A-Level descriptors / comments</h4>
-      <div class="grid3">${['A','B','C','D','E'].map(g=>`<div><label>${g} descriptor / comment</label><input name="aComment_${g}" value="${esc(gradeCommentsFor('A')[g])}" required></div>`).join('')}</div>
-      <div style="margin-top:12px;max-width:260px;"><label>General Paper & Subsidiaries Pass Mark (%)</label><input name="aPassMark" type="number" min="0" max="100" step="0.1" value="${Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)}"></div>
-      <h4 style="margin:16px 0 8px;">General Paper &amp; Subsidiaries — Pass/Fail labels and descriptors</h4>
-      <div class="grid2" style="margin-top:12px;">
-        <div><label>Pass grade label</label><input name="passGrade" value="${esc(passFailGrades().Pass)}" required></div>
-        <div><label>Fail grade label</label><input name="failGrade" value="${esc(passFailGrades().Fail)}" required></div>
-        <div><label>Pass descriptor / comment</label><input name="passComment" value="${esc(passFailComments().Pass)}" required></div>
-        <div><label>Fail descriptor / comment</label><input name="failComment" value="${esc(passFailComments().Fail)}" required></div>
-      </div>
-      <p class="small" style="margin-top:8px;">At or above this boundary = the configured Pass grade (1 point); below it = the configured Fail grade (0 points). By default the grade labels and descriptors are both “Pass” and “Fail”, but the administrator may change them independently.</p>
+      <table class="data-table" style="width:100%;">
+        <tr><th>Grade</th><th>Min %</th><th>Max %</th><th>Points</th><th>Descriptor / comment</th></tr>
+        ${['A','B','C','D','E'].map(g=>`<tr>
+          <td><b>${g}</b></td>
+          <td><input name="${g}min" value="${b[g][0]}" style="text-align:center;"></td>
+          <td><input name="${g}max" value="${b[g][1]}" style="text-align:center;"></td>
+          <td><input name="aPoints_${g}" type="number" step="0.5" value="${aPoints()[g]}" style="text-align:center;width:70px;" required></td>
+          <td><input name="aComment_${g}" value="${esc(gradeCommentsFor('A')[g])}" required></td>
+        </tr>`).join('')}
+      </table>
+      <h4 style="margin:16px 0 8px;">General Paper &amp; Subsidiaries — Pass/Fail</h4>
+      <p class="small" style="margin-top:-4px;">At or above the pass mark below = the configured Pass grade (1 point); below it = the configured Fail grade (0 points). Same row layout: label, fixed points, and descriptor together.</p>
+      <div style="max-width:260px;margin-bottom:10px;"><label>Pass mark (%)</label><input name="aPassMark" type="number" min="0" max="100" step="0.1" value="${Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)}"></div>
+      <table class="data-table" style="width:100%;">
+        <tr><th>Grade label</th><th>Points</th><th>Descriptor / comment</th></tr>
+        <tr>
+          <td><input name="passGrade" value="${esc(passFailGrades().Pass)}" required style="text-align:center;"></td>
+          <td>1</td>
+          <td><input name="passComment" value="${esc(passFailComments().Pass)}" required></td>
+        </tr>
+        <tr>
+          <td><input name="failGrade" value="${esc(passFailGrades().Fail)}" required style="text-align:center;"></td>
+          <td>0</td>
+          <td><input name="failComment" value="${esc(passFailComments().Fail)}" required></td>
+        </tr>
+      </table>
       <button class="btn" style="margin-top:14px;">Submit — save A-Level bands</button>
     </form>
   </div>
   <div class="card">
-    <h3>O-Level bands (%)</h3>
+    <h3>O-Level bands</h3>
+    <p class="small">O-Level has no points — each row is just a grade's min/max % and its descriptor.</p>
     <form data-form="saveOBands">
-      <div class="grid3">
-      ${['A','B','C','D','E'].map(g=>`<div><label>${g} min–max</label><div class="flex"><input name="${g}min" value="${ob[g][0]}"><input name="${g}max" value="${ob[g][1]}"></div></div>`).join('')}
-      </div>
-      <h4 style="margin:16px 0 8px;">O-Level descriptors / comments</h4>
-      <div class="grid3">${['A','B','C','D','E'].map(g=>`<div><label>${g} descriptor / comment</label><input name="oComment_${g}" value="${esc(gradeCommentsFor('O')[g])}" required></div>`).join('')}</div>
+      <table class="data-table" style="width:100%;">
+        <tr><th>Grade</th><th>Min %</th><th>Max %</th><th>Descriptor / comment</th></tr>
+        ${['A','B','C','D','E'].map(g=>`<tr>
+          <td><b>${g}</b></td>
+          <td><input name="${g}min" value="${ob[g][0]}" style="text-align:center;"></td>
+          <td><input name="${g}max" value="${ob[g][1]}" style="text-align:center;"></td>
+          <td><input name="oComment_${g}" value="${esc(gradeCommentsFor('O')[g])}" required></td>
+        </tr>`).join('')}
+      </table>
       <button class="btn" style="margin-top:14px;">Submit — save O-Level bands</button>
     </form>
   </div>
   <div class="card">
-    <h3>Primary bands (%) — per subject (PLE scale)</h3>
-    <p class="small">Each subject is graded D1–F9 off its final average. The 4 PLE-core subjects (English, Mathematics, Science, Social Studies) also feed the Division on the report card: Division 1 = aggregate 4–12, Division 2 = 13–23, Division 3 = 24–29, Division 4 = 30–34, Division U = 35–36.</p>
+    <h3>Primary bands — per subject (PLE scale)</h3>
+    <p class="small">Each subject is graded D1–F9 off its final average — no points or descriptor at this level, just the min/max % per row. The 4 PLE-core subjects (English, Mathematics, Science, Social Studies) also feed the Division on the report card: Division 1 = aggregate 4–12, Division 2 = 13–23, Division 3 = 24–29, Division 4 = 30–34, Division U = 35–36.</p>
     <form data-form="savePBands">
-      <div class="grid3">
-      ${PLE_GRADES.map(g=>`<div><label>${g} min–max</label><div class="flex"><input name="${g}min" value="${pb[g][0]}"><input name="${g}max" value="${pb[g][1]}"></div></div>`).join('')}
-      </div>
+      <table class="data-table" style="width:100%;max-width:420px;">
+        <tr><th>Grade</th><th>Min %</th><th>Max %</th></tr>
+        ${PLE_GRADES.map(g=>`<tr>
+          <td><b>${g}</b></td>
+          <td><input name="${g}min" value="${pb[g][0]}" style="text-align:center;"></td>
+          <td><input name="${g}max" value="${pb[g][1]}" style="text-align:center;"></td>
+        </tr>`).join('')}
+      </table>
+      <h4 style="margin:16px 0 8px;">Division remarks — Class &amp; Head teacher's comment</h4>
+      <p class="small" style="margin-top:-4px;">Shown on every Primary report card, based on the student's Division. Each row holds the aggregate range for reference plus both comments — leave a box blank to keep the default wording.</p>
+      <table class="data-table" style="width:100%;">
+        <tr><th>Division</th><th>Aggregate</th><th>Class teacher's comment</th><th>Head teacher's comment</th></tr>
+        ${PLE_DIVISIONS.map(d=>`<tr>
+          <td><b>${d.name}</b></td>
+          <td>${d.min}–${d.max}</td>
+          <td><input name="pRemarkClass_${d.name.replace(/\s+/g,'')}" value="${esc(primaryRemarksFor()[d.name].class)}" required></td>
+          <td><input name="pRemarkHead_${d.name.replace(/\s+/g,'')}" value="${esc(primaryRemarksFor()[d.name].head)}" required></td>
+        </tr>`).join('')}
+      </table>
       <button class="btn" style="margin-top:14px;">Submit — save Primary bands</button>
     </form>
   </div>
@@ -7554,9 +7616,17 @@ function drawReportCardPage(pdf, data, gapBoost){
       const descLines = wrap(row.desc, gkDescW-6, 6.5);
       const rh = Math.max(9, descLines.length*6.5 + 4);
       let rx = contentX;
+      // Each rect's fill color must be re-set immediately before that rect is drawn.
+      // pdf.text() (called via centerText/leftText for the previous cell's label) shares
+      // the same underlying nonstroking color state as pdf.rect() in the PDF spec, so once
+      // text is drawn in "ink", any later 'FD' rect silently inherits that dark ink as its
+      // fill instead of blueLight unless we explicitly reset it right here — this was
+      // exactly why the label/description columns rendered dark with near-invisible text.
       pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
       pdf.rect(rx, cy, gkLetterW, rh, 'FD'); centerText(row.grade, rx, gkLetterW, cy+rh/2+2, 7, 'bold', ink); rx += gkLetterW;
+      pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
       pdf.rect(rx, cy, gkLabelW, rh, 'FD'); centerText(row.label, rx, gkLabelW, cy+rh/2+2, 6.5, 'bold', ink); rx += gkLabelW;
+      pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
       pdf.rect(rx, cy, gkDescW, rh, 'FD');
       const dy0 = cy + rh/2 - ((descLines.length-1)*6.5)/2 + 2;
       descLines.forEach((ln,i)=>leftText(ln, rx+3, dy0+i*6.5, 6.5, 'normal', ink));
@@ -9789,6 +9859,8 @@ document.addEventListener('submit', async (e)=>{
       DB.bands=b;
       if(DB.info){
         DB.info.aPassMark=Math.max(0,Math.min(100,Number(fd.get('aPassMark')) || DEFAULT_A_PASS_MARK));
+        DB.info.aPoints={...(DB.info.aPoints||DEFAULT_A_POINTS)};
+        ['A','B','C','D','E'].forEach(g=>{ const v=Number(fd.get('aPoints_'+g)); DB.info.aPoints[g]=Number.isFinite(v)?v:DEFAULT_A_POINTS[g]; });
         DB.info.aGradeComments={...(DB.info.aGradeComments||DEFAULT_A_GRADE_COMMENTS)};
         ['A','B','C','D','E'].forEach(g=>{ DB.info.aGradeComments[g]=(fd.get('aComment_'+g)||'').trim() || DEFAULT_A_GRADE_COMMENTS[g]; });
         DB.info.passFailGrades={...(DB.info.passFailGrades||DEFAULT_PASS_FAIL_GRADES), Pass:(fd.get('passGrade')||'').trim()||DEFAULT_PASS_FAIL_GRADES.Pass, Fail:(fd.get('failGrade')||'').trim()||DEFAULT_PASS_FAIL_GRADES.Fail};
@@ -9809,7 +9881,20 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='savePBands'){
       const b={...(DB.pbands||DEFAULT_P_BANDS)}; PLE_GRADES.forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
-      DB.pbands=b; await savePBands(); render();
+      DB.pbands=b;
+      if(DB.info){
+        const merged = primaryRemarksFor();
+        Object.keys(DEFAULT_PRIMARY_REMARKS).forEach(d=>{
+          const key = d.replace(/\s+/g,'');
+          merged[d] = {
+            class: (fd.get('pRemarkClass_'+key)||'').trim() || DEFAULT_PRIMARY_REMARKS[d].class,
+            head: (fd.get('pRemarkHead_'+key)||'').trim() || DEFAULT_PRIMARY_REMARKS[d].head
+          };
+        });
+        DB.info.primaryRemarks = merged;
+        await saveInfo();
+      }
+      await savePBands(); render();
     }
     else if(type==='saveExamConfig'){
       DB.info.examConfig = {
