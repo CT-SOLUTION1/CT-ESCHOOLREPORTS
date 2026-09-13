@@ -319,8 +319,8 @@ table.rc-grading-scale-table tr:nth-child(2) td:not(:first-child){width:auto;}
    sentence) placed right below Performance Summary. Kept deliberately small (tight padding,
    small font) so it adds only a little vertical space; fitOnePage()/the PDF engine still
    scale the whole card to the fixed A4 frame, so this never pushes content off the page. */
-table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:#f4f4f5;}
-table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:#f4f4f5;}
+table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:var(--blue-light);}
+table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:var(--blue-light);color:var(--ink);}
 table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;}
 table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
@@ -7529,16 +7529,17 @@ function drawReportCardPage(pdf, data, gapBoost){
     cy += 10;
     const gkLetterW = contentW*0.07, gkLabelW = contentW*0.16, gkDescW = contentW - gkLetterW - gkLabelW;
     setDrawC([29,78,137]); pdf.setLineWidth(0.5);
-    pdf.setFillColor(244,244,245);
+    pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
     data.gradingKey.forEach(row=>{
       const descLines = wrap(row.desc, gkDescW-6, 6.5);
       const rh = Math.max(9, descLines.length*6.5 + 4);
       let rx = contentX;
-      pdf.rect(rx, cy, gkLetterW, rh, 'FD'); centerText(row.grade, rx, gkLetterW, cy+rh/2+2, 7, 'bold'); rx += gkLetterW;
-      pdf.rect(rx, cy, gkLabelW, rh, 'FD'); centerText(row.label, rx, gkLabelW, cy+rh/2+2, 6.5, 'bold'); rx += gkLabelW;
+      pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
+      pdf.rect(rx, cy, gkLetterW, rh, 'FD'); centerText(row.grade, rx, gkLetterW, cy+rh/2+2, 7, 'bold', ink); rx += gkLetterW;
+      pdf.rect(rx, cy, gkLabelW, rh, 'FD'); centerText(row.label, rx, gkLabelW, cy+rh/2+2, 6.5, 'bold', ink); rx += gkLabelW;
       pdf.rect(rx, cy, gkDescW, rh, 'FD');
       const dy0 = cy + rh/2 - ((descLines.length-1)*6.5)/2 + 2;
-      descLines.forEach((ln,i)=>leftText(ln, rx+3, dy0+i*6.5, 6.5));
+      descLines.forEach((ln,i)=>leftText(ln, rx+3, dy0+i*6.5, 6.5, 'normal', ink));
       cy += rh;
     });
     cy += 10 + gapBoost;
