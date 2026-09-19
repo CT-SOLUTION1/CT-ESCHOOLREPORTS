@@ -3,7 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <title>CT-E SOLUTIONS — School Report System</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
+     desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
+     computer) and scale it to fit the screen. Pinch-to-zoom stays enabled for reading detail.
+     Without an initial-scale the browser fits the whole page to the screen width. -->
+<meta name="viewport" id="viewportMeta" content="width=1280, minimum-scale=0.1, maximum-scale=5, user-scalable=yes">
+<script>
+(function(){
+  try{
+    // Wide screens (large tablets/desktops) just use their real width; everything narrower
+    // keeps the 1280px desktop layout above, which the browser scales to fit the screen.
+    if((screen.width||0) >= 1280) document.getElementById('viewportMeta').setAttribute('content','width=device-width, initial-scale=1');
+  }catch(e){}
+})();
+</script>
 
 <!-- PWA: lets phones/computers "install" this as an app icon, full-screen, no browser bar -->
 <link rel="manifest" href="manifest.json">
@@ -51,6 +64,7 @@
   --ink:#132436; --paper:#FFFFFF; --muted:#5A7189; --danger:#B23A3A; --good:#1E7A46;
 }
 *{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;} /* stop phones inflating text on the scaled desktop layout */
 body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--blue-light);color:var(--ink);}
 h1,h2,h3,.display{font-family:Georgia,'Playfair Display',serif;}
 button{font-family:inherit;cursor:pointer;}
@@ -59,6 +73,19 @@ button{font-family:inherit;cursor:pointer;}
 .btn-outline{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:9px 16px;border-radius:6px;font-weight:700;}
 .btn-danger{background:var(--danger);color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:600;}
 .btn-gold{background:var(--gold);color:#3a2c00;border:none;padding:10px 18px;border-radius:6px;font-weight:800;}
+/* Requirements: category-first picker (see reqSelectionFormHTML) */
+.req-cat-btn{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px;}
+.req-cat-btn:hover{background:var(--blue-light);}
+.req-cat-btn.active{background:var(--blue);color:#fff;}
+.req-cat-btn .req-cat-count{font-weight:800;}
+.req-cat-panel{display:none;border:1px solid #cfd9e3;border-radius:8px;padding:12px 14px;margin:10px 0;background:#fbfdff;}
+.req-opt-list{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 12px;}
+label.req-opt{display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);}
+label.req-opt input{width:auto;}
+.req-add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px dashed #cfd9e3;padding-top:10px;}
+.req-add-row input.req-add-input{flex:1 1 220px;min-width:160px;width:auto;}
+.req-add-row select{width:auto;}
+.req-sel-total{font-weight:800;color:var(--navy);font-size:13px;}
 .install-app-btn{width:100%;padding:12px 14px;border-radius:7px;border:2px solid var(--gold);background:var(--gold);color:#2f2600;font-weight:900;font-size:14px;box-shadow:0 3px 8px rgba(10,42,74,.12);margin-top:14px;}
 .auth-action-stack{display:grid;gap:9px;margin-top:10px;}
 .auth-action-stack .btn,.auth-action-stack .btn-outline{width:100%;text-align:center;text-decoration:none;display:block;}
@@ -3838,6 +3865,11 @@ const DEFAULT_REQUIREMENTS = [
   {name:'Exercise Books', category:'Academic'},
   {name:'Games Kit', category:'Other'},
 ];
+// The categories a requirement can belong to, in the order they are offered when an
+// admin is choosing which requirements a class demands (see reqSelectionFormHTML).
+// The icons are purely decorative.
+const REQ_CATEGORIES = ['Admission Document','Uniform','Boarding','Academic','Medical','Identity','Other'];
+const REQ_CATEGORY_ICONS = {'Admission Document':'📄','Uniform':'👕','Boarding':'🛏️','Academic':'📚','Medical':'🏥','Identity':'🆔','Other':'📦'};
 // A starter checklist of common recurring school expenses an Admin can quick-add
 // from instead of typing each one out — purely a convenience list. Once added,
 // each becomes an ordinary expense category that can be picked, in the "Record
@@ -4728,22 +4760,17 @@ function requirementsAnalysisView(d){
 // The Requirement Types catalog (add/edit/delete a requirement, quick-add from
 // common defaults) — collapsed into a <details> block since, day to day, an
 // admin mostly just wants the class's tick-table below, not the catalog. It
-// pops open automatically the first time (no requirements yet) or whenever an
-// edit is in progress, so it's never hidden right when it's needed.
+// only pops open automatically while an edit is in progress. (Picking which
+// requirements a class demands — including adding new ones — now happens in
+// reqSelectionFormHTML, category by category.)
 function requirementTypesCatalogHTML(d, active){
   const editReq = VIEW.params.editReqId ? d.requirements.find(r=>r.id===VIEW.params.editReqId) : null;
   const cancelLink = `<a href="#" class="btn-outline" data-action="nav:finance" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel edit</a>`;
   const classOptions = (selectedScope)=> `<option value="all" ${(!selectedScope||selectedScope==='all')?'selected':''}>All classes</option>` +
     DB.classes.map(c=>`<option value="${c.id}" ${selectedScope===c.id?'selected':''}>${esc(c.name)} only</option>`).join('');
-  const openAttr = (editReq || !d.requirements.length) ? ' open' : '';
+  const openAttr = editReq ? ' open' : '';
   return `<details class="card"${openAttr}><summary style="cursor:pointer;font-weight:800;">Manage Requirement Types${d.requirements.length?` (${d.requirements.length})`:''}</summary>
     <div style="margin-top:14px;">
-    ${(()=>{ const existingNames=new Set(d.requirements.map(r=>r.name.trim().toLowerCase())); const notAdded=DEFAULT_REQUIREMENTS.filter(x=>!existingNames.has(x.name.toLowerCase()));
-      return notAdded.length ? `<form data-form="addDefaultRequirements" style="border:1px dashed var(--border,#cfd9e3);padding:10px;border-radius:8px;margin-bottom:14px;">
-        <label>Quick-add from common requirements</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;">${notAdded.map(x=>`<label style="display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;"><input type="checkbox" name="item" value="${esc(x.name)}|${esc(x.category)}" style="width:auto;">${esc(x.name)}</label>`).join('')}</div>
-        <button type="submit" class="btn-outline">Add selected</button>
-      </form>` : ''; })()}
     <form data-form="${editReq?'editRequirement':'addRequirement'}" ${editReq?`data-id="${editReq.id}"`:''}>
       <label>Requirement Item</label><input name="name" required value="${editReq?esc(editReq.name):''}">
       <div class="grid2">
@@ -4756,28 +4783,125 @@ function requirementTypesCatalogHTML(d, active){
     </div>
   </details>`;
 }
-// Step shown right after a class is chosen, before any tick-table appears: a
-// checklist of every requirement type eligible for this class (see
-// classReqAvailable) so the admin explicitly picks which ones the school is
-// actually demanding here. Nothing is saved until "Save Selection" is
-// pressed, so browsing this screen never silently changes anything.
+// ---- Requirement picker helpers (category-first) --------------------------------
+// The picker below is ONE form. Choosing a category only shows/hides that
+// category's panel in the browser — every panel stays inside the same form, so
+// ticks made in one category are never lost when the admin moves to another,
+// and a single "Save Selection" saves everything at once.
+function reqPickCategory(btn){
+  const form = btn.closest('form'); if(!form) return;
+  const cat = btn.getAttribute('data-reqcat');
+  form.querySelectorAll('.req-cat-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  form.querySelectorAll('.req-cat-panel').forEach(p=>{ p.style.display = (p.getAttribute('data-reqcat')===cat) ? 'block' : 'none'; });
+  const hint = form.querySelector('.req-cat-hint'); if(hint) hint.style.display = 'none';
+}
+function reqRefreshCounts(form){
+  if(!form) return;
+  let total = 0;
+  form.querySelectorAll('.req-cat-panel').forEach(p=>{
+    const n = p.querySelectorAll('input[type=checkbox]:checked').length;
+    total += n;
+    const cat = p.getAttribute('data-reqcat');
+    form.querySelectorAll('.req-cat-btn').forEach(b=>{
+      if(b.getAttribute('data-reqcat')===cat){ const c = b.querySelector('.req-cat-count'); if(c) c.textContent = n ? ' · '+n : ''; }
+    });
+  });
+  const t = form.querySelector('.req-sel-total');
+  if(t) t.textContent = total + ' requirement' + (total===1?'':'s') + ' selected';
+}
+// "Add more": adds a new, already-ticked option to the open category. Nothing is
+// written to the database until Save Selection is pressed.
+function reqAddCustom(btn){
+  const panel = btn.closest('.req-cat-panel'), form = btn.closest('form');
+  if(!panel || !form) return;
+  const input = panel.querySelector('.req-add-input');
+  const name = (input.value||'').replace(/\s+/g,' ').trim();
+  if(!name){ input.focus(); return; }
+  const cat = panel.getAttribute('data-reqcat');
+  const scopeSel = panel.querySelector('.req-add-scope');
+  const scope = scopeSel ? scopeSel.value : 'all';
+  // Already listed in this category? Just tick it instead of adding a duplicate.
+  const dup = Array.from(panel.querySelectorAll('.req-opt-name')).find(s=>s.textContent.trim().toLowerCase()===name.toLowerCase());
+  if(dup){
+    const cb = dup.closest('label').querySelector('input[type=checkbox]');
+    if(cb) cb.checked = true;
+  } else {
+    const label = document.createElement('label'); label.className = 'req-opt';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'newReq'; cb.checked = true;
+    cb.value = JSON.stringify({name:name, category:cat, scope:scope});
+    const nm = document.createElement('span'); nm.className = 'req-opt-name'; nm.textContent = name;
+    const tag = document.createElement('span'); tag.className = 'small'; tag.style.cssText = 'margin:0;text-transform:none;'; tag.textContent = '(new)';
+    label.appendChild(cb); label.appendChild(nm); label.appendChild(tag);
+    const list = panel.querySelector('.req-opt-list');
+    const empty = list.querySelector('.req-empty'); if(empty) empty.remove();
+    list.appendChild(label);
+  }
+  input.value = ''; input.focus();
+  reqRefreshCounts(form);
+}
+// Pressing Enter in the "Add more" box adds the item — it must never submit (save) the whole form.
+function reqAddKey(ev, input){
+  if(ev.key !== 'Enter') return;
+  ev.preventDefault();
+  const btn = input.closest('.req-add-row').querySelector('button');
+  if(btn) reqAddCustom(btn);
+}
+// Step shown right after a class is chosen, before any tick-table appears.
+//   1. The admin picks a CATEGORY (Uniform, Boarding, Academic, ...). Nothing
+//      is listed until they do — no big "common requirements" dump on opening.
+//   2. That category's panel shows the appropriate requirements: any already in
+//      the school's catalog for this class, plus common suggestions for that
+//      category that haven't been added yet. Tick the ones this class demands.
+//   3. "Add more" lets the admin type in anything that isn't listed.
+// Suggestions and new items only become real catalog entries when
+// "Save Selection" is pressed, so browsing this screen never silently changes anything.
 function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured){
+  const isAllView = finClassId==='all';
   const avail = classReqAvailable(finClassId, d);
   const saved = d.classReqSelections[finClassId];
-  // First time through, default every eligible item to ticked (least surprise —
-  // matches how the old unscoped table behaved); once a selection exists, reflect
-  // exactly what was saved, including a deliberate "everything unticked".
-  const checkedSet = new Set(saved!==undefined ? saved : avail.map(r=>r.id));
-  if(!avail.length){
-    return `<div class="card"><h3>Select Requirements — ${esc(clsLabel)}</h3><p class="small">No requirement types are eligible for this class yet. Add some under "Manage Requirement Types" below (or set an existing one's "Applies to" to this class), then come back here to pick which ones are demanded.</p></div>`;
-  }
-  return `<div class="card"><h3>Select Requirements Demanded — ${esc(clsLabel)}</h3>
-    <p class="small">Tick every requirement the school demands for this class. Only the ticked ones will appear as columns in the table below.</p>
-    <form data-form="saveClassReqSelection" data-classid="${esc(finClassId)}">
-      <div style="display:flex;flex-wrap:wrap;gap:8px 18px;margin:10px 0;">
-        ${avail.map(r=>`<label style="display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;"><input type="checkbox" name="reqIds" value="${r.id}" style="width:auto;" ${checkedSet.has(r.id)?'checked':''}>${esc(r.name)} <span class="small">(${esc(r.category)})</span></label>`).join('')}
+  // Nothing is pre-ticked the first time a class is configured: with the panels
+  // tucked behind category buttons, a hidden pre-ticked item could easily be saved
+  // by accident. Once a selection exists, reflect exactly what was saved.
+  const checkedSet = new Set(saved!==undefined ? saved : []);
+  const nameKey = s => String(s||'').trim().toLowerCase();
+  const availNames = new Set(avail.map(r=>nameKey(r.name)));
+  const cats = REQ_CATEGORIES.slice();
+  avail.forEach(r=>{ const c = r.category || 'Other'; if(!cats.includes(c)) cats.push(c); });
+  const iconFor = c => REQ_CATEGORY_ICONS[c] || '📌';
+
+  const chips = [], panels = [];
+  let totalSelected = 0;
+  cats.forEach(cat=>{
+    const have = avail.filter(r=>(r.category||'Other')===cat);
+    const suggestions = DEFAULT_REQUIREMENTS.filter(x=>x.category===cat && !availNames.has(nameKey(x.name)));
+    const tickedHere = have.filter(r=>checkedSet.has(r.id)).length;
+    totalSelected += tickedHere;
+    chips.push(`<button type="button" class="req-cat-btn" data-reqcat="${esc(cat)}" onclick="reqPickCategory(this)">${iconFor(cat)} ${esc(cat)}<span class="req-cat-count">${tickedHere?' · '+tickedHere:''}</span></button>`);
+    const opts = have.map(r=>`<label class="req-opt"><input type="checkbox" name="reqIds" value="${esc(r.id)}" ${checkedSet.has(r.id)?'checked':''}><span class="req-opt-name">${esc(r.name)}</span></label>`).join('')
+      + suggestions.map(x=>`<label class="req-opt"><input type="checkbox" name="newReq" value="${esc(JSON.stringify({name:x.name, category:cat, scope:'all'}))}"><span class="req-opt-name">${esc(x.name)}</span></label>`).join('');
+    const scopeSelect = isAllView ? '' : `<select class="req-add-scope" title="Which classes this new requirement applies to"><option value="all">All classes</option><option value="${esc(finClassId)}">${esc(clsLabel)} only</option></select>`;
+    panels.push(`<div class="req-cat-panel" data-reqcat="${esc(cat)}">
+      <div style="font-weight:800;color:var(--navy);">${iconFor(cat)} ${esc(cat)}</div>
+      <div class="small" style="margin:2px 0 0;text-transform:none;">Tick the requirements the school demands for ${esc(clsLabel)}.</div>
+      <div class="req-opt-list">${opts || '<span class="small req-empty" style="margin:0;text-transform:none;">Nothing listed for this category yet — add your own below.</span>'}</div>
+      <div class="req-add-row">
+        <input type="text" class="req-add-input" maxlength="80" placeholder="Add more — type a requirement" onkeydown="reqAddKey(event,this)">
+        ${scopeSelect}
+        <button type="button" class="btn-outline" onclick="reqAddCustom(this)">➕ Add</button>
       </div>
-      <div class="flex"><button class="btn">Save Selection</button>${alreadyConfigured?`<a href="#" class="btn-outline" data-action="reqCancelSelection" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}</div>
+    </div>`);
+  });
+
+  return `<div class="card"><h3>Select Requirements Demanded — ${esc(clsLabel)}</h3>
+    <p class="small" style="text-transform:none;"><b>1.</b> Choose a category. <b>2.</b> Tick the requirements the school demands for this class, or use <b>➕ Add</b> for anything that isn't listed. You can move between categories — nothing is saved until you press <b>Save Selection</b>. Only the ticked requirements appear as columns in the table.</p>
+    <form data-form="saveClassReqSelection" data-classid="${esc(finClassId)}" onchange="reqRefreshCounts(this)">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;">${chips.join('')}</div>
+      <p class="small req-cat-hint" style="margin:6px 0;text-transform:none;">👆 Choose a category above to see its requirements.</p>
+      ${panels.join('')}
+      <div class="flex" style="align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px;">
+        <button class="btn">Save Selection</button>${alreadyConfigured?`<a href="#" class="btn-outline" data-action="reqCancelSelection" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}
+        <span class="req-sel-total">${totalSelected} requirement${totalSelected===1?'':'s'} selected</span>
+      </div>
     </form>
   </div>`;
 }
@@ -6888,10 +7012,7 @@ function projectAssessmentView(){
     const grade = (rec && rec.score!=null) ? projectGradeFor(Number(rec.score)) : null;
     const gradeCell = grade ? `<b style="color:${gradeColorFor(grade)};">${grade}</b> — ${esc(comments[grade]||'')}` : '—';
     const scoreCell = canEnterScores
-      ? `<form data-form="setProjectScore" data-studentid="${s.id}" data-classid="${cls.id}" data-subject="${esc(subject)}" class="flex" style="gap:4px;flex-wrap:nowrap;justify-content:center;">
-          <input name="score" type="number" min="0" max="100" step="0.1" value="${scoreVal}" style="width:80px;">
-          <button class="btn-outline" style="padding:4px 8px;">Save</button>
-        </form>`
+      ? `<input name="score_${esc(s.id)}" type="number" min="0" max="100" step="0.1" value="${scoreVal}" style="width:90px;">`
       : (scoreVal!==''?esc(String(scoreVal)):'—');
     return `<tr><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td><td>${scoreCell}</td><td>${gradeCell}</td></tr>`;
   }).join('');
@@ -6930,10 +7051,16 @@ function projectAssessmentView(){
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — ${esc(subject)} Project — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">Score each student's project out of 100 — the grade and comment are worked out automatically from the Project Grading Scale below.</p>
+    ${canEnterScores && students.length ? `<p class="small">Type or change any scores below, then press <b>Save All Scores</b> once. Clear a box to remove that student's score. <b>Delete All Scores</b> removes every score for this class and subject this term.</p>` : ''}
+    ${canEnterScores && students.length ? `<form data-form="saveAllProjectScores" data-classid="${cls.id}" data-subject="${esc(subject)}">` : ''}
     <table class="data-table">
       <tr><th>Adm No.</th><th>Student</th><th>Score (/100)</th><th>Grade &amp; Comment</th></tr>
       ${rowsHtml || `<tr><td colspan="4">No students take this subject in this class.</td></tr>`}
     </table>
+    ${canEnterScores && students.length ? `<div class="flex" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
+      <button class="btn" name="op" value="saveAll">💾 Save All Scores</button>
+      <button class="btn-danger" name="op" value="deleteAll" onclick="return confirm('Delete ALL project scores for ${esc(cls.name).replace(/'/g,'')} — ${esc(subject).replace(/'/g,'')} for ${esc(term)}, ${esc(String(year))}? This cannot be undone.')">🗑 Delete All Scores</button>
+    </div></form>` : ''}
   </div>` : `<div class="card"><p class="small">This class has no subjects on record yet.</p></div>`}
 
   <div class="card">
@@ -10311,11 +10438,71 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='saveClassReqSelection'){
       const classId = form.dataset.classid;
-      const ids = fd.getAll('reqIds');
       const d = financeData();
-      d.classReqSelections[classId] = ids;
+      const ids = new Set(fd.getAll('reqIds'));
+      // Ticked suggestions / "Add more" items that aren't in the catalog yet become
+      // real requirement items now. If an eligible item with the same name already
+      // exists, that one is reused instead of creating a duplicate.
+      const nameKey = s => String(s||'').trim().toLowerCase();
+      const eligible = r => classId==='all' || r.scope==='all' || r.scope===classId;
+      fd.getAll('newReq').forEach(v=>{
+        let o = null;
+        try{ o = JSON.parse(v); }catch(e){ return; }
+        const name = String((o && o.name) || '').replace(/\s+/g,' ').trim();
+        if(!name) return;
+        let found = d.requirements.find(r=>nameKey(r.name)===nameKey(name) && eligible(r));
+        if(!found){
+          const scope = (o.scope && o.scope!=='all' && o.scope===classId) ? classId : 'all';
+          found = {id:uid('req'), name, category:(o.category||'Other'), scope, term:DB.info.currentTerm, year:DB.info.currentYear};
+          d.requirements.push(found);
+        }
+        ids.add(found.id);
+      });
+      d.classReqSelections[classId] = Array.from(ids);
       await saveInfo();
       VIEW.params = {...VIEW.params, reqSelecting:false};
+      render(); return;
+    }
+    else if(type==='saveAllProjectScores'){
+      const classId = form.dataset.classid, subject = form.dataset.subject;
+      const cls = DB.classes.find(c=>c.id===classId);
+      if(!cls){ alert('Class not found.'); return; }
+      if(!(CUR.role==='admin' || (CUR.role==='teacher' && cls.classTeacher===CUR.username))){
+        alert('Only an Admin, or this class\'s Class Teacher, can enter project scores.'); return;
+      }
+      const term = DB.info.currentTerm, year = DB.info.currentYear;
+      const d = projectData();
+      const op = (actionButton && actionButton.value) || 'saveAll';
+      if(op==='deleteAll'){
+        const before = d.scores.length;
+        d.scores = d.scores.filter(x=>!(x.classId===classId && x.subject===subject && x.term===term && Number(x.year)===Number(year)));
+        const n = before - d.scores.length;
+        await saveInfo();
+        showUpdateToast(n ? `Deleted ${n} project score${n===1?'':'s'}.` : 'There were no scores to delete.');
+        render(); return;
+      }
+      // Validate every box first so a single typo never leaves the sheet half-saved.
+      const entries = [];
+      for(const [key, raw] of fd.entries()){
+        if(key.indexOf('score_')!==0) continue;
+        const studentId = key.slice(6);
+        const stu = DB.students.find(x=>x.id===studentId);
+        if(!stu || stu.classId!==classId) continue;
+        const txt = String(raw).trim();
+        const score = txt==='' ? null : Number(txt);
+        if(score!==null && !(score>=0 && score<=100)){ alert(`Please enter a score between 0 and 100 for ${stu.name}.`); return; }
+        entries.push({studentId, score});
+      }
+      const now = new Date().toISOString();
+      let saved = 0, removed = 0;
+      entries.forEach(({studentId, score})=>{
+        const rec = projectScoreRecord(studentId, classId, subject, term, year, d);
+        if(score===null){ if(rec){ d.scores = d.scores.filter(x=>x!==rec); removed++; } }
+        else if(rec){ if(Number(rec.score)!==score){ rec.score = score; rec.teacher = CUR.username; rec.recordedAt = now; } saved++; }
+        else { d.scores.push({id:uid('projscore'), studentId, classId, subject, term, year, score, teacher:CUR.username, recordedAt:now}); saved++; }
+      });
+      await saveInfo();
+      showUpdateToast(`Saved ${saved} score${saved===1?'':'s'}${removed?`, removed ${removed}`:''}.`);
       render(); return;
     }
     else if(type==='setProjectScore'){
