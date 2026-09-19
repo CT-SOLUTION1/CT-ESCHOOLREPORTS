@@ -6,15 +6,39 @@
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
      computer) and scale it to fit the screen. Pinch-to-zoom stays enabled for reading detail.
-     Without an initial-scale the browser fits the whole page to the screen width. -->
-<meta name="viewport" id="viewportMeta" content="width=1280, minimum-scale=0.1, maximum-scale=5, user-scalable=yes">
+     The scale-to-fit is computed and set explicitly (not left to the browser's "no
+     initial-scale = auto-fit" behavior) because that auto-fit isn't reliable inside
+     standalone/installed-app contexts on every device/browser — without it, some installed
+     apps were falling back to the phone's real (narrow) width, which triggers the mobile
+     table CSS and breaks rows into uneven, wrapped-button layouts instead of the clean
+     desktop table. -->
+<meta name="viewport" id="viewportMeta" content="width=1280, initial-scale=1, minimum-scale=0.1, maximum-scale=5, user-scalable=yes">
 <script>
 (function(){
-  try{
-    // Wide screens (large tablets/desktops) just use their real width; everything narrower
-    // keeps the 1280px desktop layout above, which the browser scales to fit the screen.
-    if((screen.width||0) >= 1280) document.getElementById('viewportMeta').setAttribute('content','width=device-width, initial-scale=1');
-  }catch(e){}
+  function applyDesktopViewport(){
+    try{
+      var meta = document.getElementById('viewportMeta');
+      if(!meta) return;
+      var dw = screen.width || screen.availWidth || 0;
+      if(!dw) return;
+      if(dw >= 1280){
+        // Real desktop/large tablet: use the device's own width, fully responsive.
+        meta.setAttribute('content','width=device-width, initial-scale=1');
+      } else {
+        // Phone/small tablet: force the 1280px desktop layout and scale it down to
+        // exactly fit the screen, computed here rather than left to browser auto-fit.
+        var scale = Math.max(0.1, Math.min(1, dw/1280));
+        meta.setAttribute('content','width=1280, initial-scale='+scale.toFixed(4)+', minimum-scale=0.1, maximum-scale=5, user-scalable=yes');
+      }
+    }catch(e){}
+  }
+  applyDesktopViewport();
+  // Some installed/standalone apps don't fully apply a viewport meta change made
+  // this early (before layout exists yet); reapplying once things have settled
+  // makes sure the scale sticks either way instead of silently falling back to
+  // the device's real narrow width.
+  document.addEventListener('DOMContentLoaded', applyDesktopViewport);
+  window.addEventListener('load', applyDesktopViewport);
 })();
 </script>
 

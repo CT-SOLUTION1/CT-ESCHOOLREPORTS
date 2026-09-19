@@ -18,7 +18,7 @@
    You should still bump CACHE_NAME on every deploy — it's what actually triggers
    browsers to install this file as a new version in the first place.
 --------------------------------------------------------------------------- */
-const CACHE_NAME = 'cte-solutions-v1'; // <-- bump this (e.g. -v2, -v3...) on every deploy
+const CACHE_NAME = 'cte-solutions-v2'; // <-- bump this (e.g. -v2, -v3...) on every deploy
 const APP_SHELL = [
   './',
   './index.html',
