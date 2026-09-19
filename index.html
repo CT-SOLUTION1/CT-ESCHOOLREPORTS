@@ -215,6 +215,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.035;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
+.rc-topline .fees-code-tag{font-weight:900;color:var(--navy);}
 .rc-title-block{display:block;text-align:center;border-bottom:2px solid var(--navy);padding:10px 0;margin-bottom:14px;position:relative;min-height:74px;}
 /* The school logo is deliberately OUTSIDE the header's layout flow. This keeps the
    school name genuinely centered across the full report-card width, while the logo
@@ -239,6 +240,23 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 /* Slightly increased header spacing makes the text stack reach the logo height without enlarging the overall report-card layout. */
 .rc-title-block .subtitle{display:inline-block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 .rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:5px;font-weight:700;}
+
+/* Fees/Requirements Demand Note — deliberately its OWN lightweight card rather than
+   reusing .rc-card (which pulls in the full-A4 aspect-ratio, watermark image, double
+   border and auto-font-spacing machinery built for a printed report card). The
+   .dn-title-block below mirrors .rc-title-block's look (centered logo, bold uppercase
+   school name, italic contact line, badge-style subtitle) so a demand note is
+   immediately recognizable as coming from the same school documents — but the card
+   itself is sized to a genuine half page, not a full one, and works identically no
+   matter which screen (Fees or Requirements) generated it. */
+.dn-card{font-family:Georgia,'Times New Roman',serif;background:#fff;padding:20px 24px 18px;width:100%;max-width:640px;box-sizing:border-box;margin:0 auto;color:var(--ink);position:relative;box-shadow:0 2px 10px rgba(10,42,74,.08);color-scheme:light;}
+.dn-title-block{display:block;text-align:center;border-bottom:2px solid var(--navy);padding:8px 0;margin-bottom:12px;position:relative;min-height:64px;}
+.dn-title-block .dn-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:52px;width:auto;max-width:180px;object-fit:contain;display:block;}
+.dn-title-block .dn-header-text{width:100%;text-align:center;}
+.dn-title-block .dn-school{font-size:19px;font-weight:900;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 3px;}
+.dn-title-block .dn-meta{font-size:10.5px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:3px;font-weight:700;}
+.dn-title-block .dn-subtitle{display:inline-block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
+@media print{ #printArea .dn-card{width:190mm !important;max-width:190mm !important;box-shadow:none !important;} }
 
 /* The bio photo now lives INSIDE rc-info-table (as a rowspan cell) instead of
    sitting beside it in a flex row — that old layout shrank the table's own
@@ -429,6 +447,14 @@ table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;table-l
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;overflow-wrap:break-word;word-break:break-word;}
 table.rc-summary-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.02em;color:var(--navy);}
 table.rc-summary-table td.val{font-weight:800;}
+/* Project Work: appears only when a student has at least one Project Assessment
+   score on file for their current class/term (see reportCardHTML) — same bordered
+   look as the other report-card tables, but with a real header row (Subject
+   Assessed / Score / Grade / Descriptor) since it isn't a label/value pair table
+   like rc-summary-table above. */
+table.rc-project-table{width:100%;border-collapse:collapse;margin:14px 0;table-layout:fixed;}
+table.rc-project-table th, table.rc-project-table td{border:1.4px solid var(--blue);padding:7px 9px;font-size:12px;text-align:center;overflow-wrap:break-word;word-break:break-word;}
+table.rc-project-table th{background:var(--blue);color:#fff;font-weight:900;text-transform:uppercase;font-size:10.5px;letter-spacing:.02em;}
 #pdfCaptureHolder .pdf-report-card table.rc-summary-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
 table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
@@ -2740,6 +2766,30 @@ function gradeFor(subject, avg, level){
   const b = DB.bands || DEFAULT_A_BANDS;
   return pickGradeByThreshold(b, ['A','B','C','D','E'], 'E')(avg);
 }
+/* ----------------------------------------------------------------------
+   Project Assessment — a simple, holistic per-subject project score (0–100)
+   recorded per class/subject/term, kept entirely separate from the regular
+   test/exam scoring pipeline (DB.scores) so it never affects subject
+   averages, report-card grades, or Class Analysis. Stored under
+   DB.info.projectAssessment and saved via saveInfo(), the same lightweight
+   pattern used by financeData() above. Its own A–E grading scale and
+   descriptor comments default to the school's O-Level scale/comments but
+   are tracked independently (projectData().bands/.comments) so an Admin can
+   adjust Project Assessment's scale without touching subject grading at all.
+---------------------------------------------------------------------- */
+function projectData(){
+  DB.info.projectAssessment = DB.info.projectAssessment || {};
+  const p = DB.info.projectAssessment;
+  p.scores = p.scores || []; // {id, studentId, classId, subject, term, year, score, teacher, recordedAt}
+  return p;
+}
+function projectBands(){ return (DB.info.projectAssessment && DB.info.projectAssessment.bands) || DEFAULT_O_BANDS; }
+function projectGradeComments(){ return {...DEFAULT_O_GRADE_COMMENTS, ...((DB.info.projectAssessment && DB.info.projectAssessment.comments) || {})}; }
+function projectGradeFor(avg){ return pickGradeByThreshold(projectBands(), ['A','B','C','D','E'], 'E')(avg); }
+function projectScoreRecord(studentId, classId, subject, term, year, d){
+  d = d || projectData();
+  return d.scores.find(x=>x.studentId===studentId && x.classId===classId && x.subject===subject && x.term===term && Number(x.year)===Number(year)) || null;
+}
 // A-Level principal subjects use A-E. General Paper and subsidiaries retain Pass/Fail internally.
 // Color-codes a grade letter/code so it's unmistakable at a glance on wide tables like
 // the Master Mark Sheet (bold text alone gets lost next to columns of plain numbers).
@@ -3551,11 +3601,12 @@ const NAV_BY_ROLE = {
     ['accounts','Staff & Parent Accounts','👥'],['students','Students','🎓'],['oldstudents','Old Students','🎒'],['assignsubjects','Assign Subjects','📌'],
     ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Year, Term & Promotion','⬆️'],
     ['ascores','Enter / Download Scores','✍️'],['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
+    ['projects','Project Assessment','🧪'],
     ['reports','Report Cards','📄'],['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️']
   ],
   teacher: [
     ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
-    ['classanalysis','Class Analysis','📈'],['mastermarksheet','Master Mark Sheet','🗂️'],
+    ['classanalysis','Class Analysis','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','Master Mark Sheet','🗂️'],
     ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
   ],
   parent: [
@@ -3605,7 +3656,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
 // Teacher anywhere sees a friendly permission message instead, same pattern as the
 // admin-only backstop above.
-const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet']);
+const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet','projects']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
 const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','reportcard','financestudent']);
@@ -3641,6 +3692,7 @@ function renderView(view){
       case 'marksheets': return marksheetsListView();
       case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
       case 'classanalysis': return classAnalysisView();
+      case 'projects': return projectAssessmentView();
       case 'mastermarksheet': return masterMarkSheetView();
       case 'tdash': return teacherDashboard();
       case 'tscores': return scoresEntryView(liveAssignments(DB.assignments.filter(a=>a.teacherUsername===CUR.username)));
@@ -3732,12 +3784,29 @@ function financeData(){
   const d = DB.info.financeData;
   d.fees = d.fees || []; d.payments = d.payments || []; d.requirements = d.requirements || []; d.reqStatus = d.reqStatus || [];
   d.shortfalls = d.shortfalls || [];
+  // Which requirement types the school has flagged as actually demanded for a given
+  // class (or 'all'), keyed by finClassId. This is separate from a requirement's own
+  // .scope (which classes it's even eligible for) — .scope narrows the catalog down
+  // to what COULD apply; classReqSelections is the admin's explicit tick-list of
+  // which of those eligible items are demanded THIS time round, driving which
+  // columns appear in the requirements table. Undefined for a class = never
+  // configured yet, so the selection screen is shown; an empty array is a
+  // deliberate "nothing demanded" choice and is respected as such.
+  d.classReqSelections = d.classReqSelections || {};
   // Expense catalog (reusable categories, e.g. "Fuel", "Electricity Bill") and expense
   // records (an actual amount spent under one of those categories on a given date,
   // tagged to a term/year). A category is never "used up" — it can be picked again
   // as many times as needed within the same term, each time adding a new record.
   d.expenseTypes = d.expenseTypes || [];
   d.expenses = d.expenses || [];
+  // Simple "Agreed Fees" ledger — deliberately separate from the itemized d.fees
+  // invoicing above. d.classAgreed holds one lump agreed amount per class per
+  // term/year; d.studentAgreed lets one learner's agreed amount be overridden
+  // away from their class's figure; d.installments is the list of part-payments
+  // (with date + payer) recorded against a student's agreed amount for a term.
+  d.classAgreed = d.classAgreed || [];
+  d.studentAgreed = d.studentAgreed || [];
+  d.installments = d.installments || [];
   return d;
 }
 // A "shortfall" is a snapshot of what a student still owed at the moment they were
@@ -3897,6 +3966,408 @@ function studentReqProgress(student, d){
   const list = studentRequirements(student,d);
   return { total: list.length, submitted: list.filter(r=>isReqSubmitted(r.id, student.id, d)).length };
 }
+// Requirement types eligible to even be considered for a given class picker
+// selection (finClassId is a real classId, or 'all' for "All Students"): a
+// requirement scoped to 'all' is always eligible; one scoped to a specific
+// class is only eligible when that's the class currently chosen, or when the
+// admin is looking at "All Students" (where every requirement is fair game).
+function classReqAvailable(finClassId, d){
+  const isAll = finClassId==='all';
+  return d.requirements.filter(r=> isAll || r.scope==='all' || r.scope===finClassId);
+}
+/* ----------------------------------------------------------------------
+   "Agreed Fees" ledger — a school-wide lump amount agreed per class for a
+   term/year (d.classAgreed), which any individual student can be given
+   their own override amount for (d.studentAgreed), tracked against a list
+   of dated, named-payer installments (d.installments). This is the simple
+   class-by-class fees workflow used by the Fees tab of Finance &
+   Requirements — kept entirely separate from the older itemized d.fees /
+   d.payments invoicing above, so the two never interact.
+---------------------------------------------------------------------- */
+function classAgreedRecord(classId, term, year, d){ return d.classAgreed.find(x=>x.classId===classId && x.term===term && Number(x.year)===Number(year)) || null; }
+function studentAgreedRecord(studentId, term, year, d){ return d.studentAgreed.find(x=>x.studentId===studentId && x.term===term && Number(x.year)===Number(year)) || null; }
+// A student's agreed amount is their own override if one has been set for
+// this term/year, otherwise whatever their class has been agreed at.
+function studentAgreedAmount(student, term, year, d){
+  const own = studentAgreedRecord(student.id, term, year, d);
+  if(own) return Number(own.amount||0);
+  const cls = classAgreedRecord(student.classId, term, year, d);
+  return cls ? Number(cls.amount||0) : 0;
+}
+function studentInstallments(studentId, term, year, d){
+  return d.installments.filter(x=>x.studentId===studentId && x.term===term && Number(x.year)===Number(year))
+    .slice().sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.createdAt||'').localeCompare(b.createdAt||''));
+}
+function studentAgreedSummary(student, term, year, d){
+  const agreed = studentAgreedAmount(student, term, year, d);
+  const installments = studentInstallments(student.id, term, year, d);
+  const paid = installments.reduce((a,x)=>a+Number(x.amount||0),0);
+  return { agreed, paid, balance: Math.max(0, agreed-paid), installments };
+}
+// The term/year immediately before the given one, following the school calendar's
+// own rotation (Term 1 looks back to Term 3 of the PRIOR year, Term 2 looks back to
+// Term 1 of the same year, Term 3 looks back to Term 2 of the same year). Shared by
+// the report card's "Previous Position" feature and the Fees table's "Last Term
+// Balance" column below.
+function previousTermYear(term, year){
+  if(term==='Term 1') return {term:'Term 3', year:Number(year)-1};
+  if(term==='Term 2') return {term:'Term 1', year:Number(year)};
+  if(term==='Term 3') return {term:'Term 2', year:Number(year)};
+  return null;
+}
+// A student's Agreed Fees balance as it stood at the end of the term immediately
+// before the given one — used for the Fees table's "Last Term Balance" column so a
+// balance a student carries into a new term/year doesn't just silently vanish from
+// view. null when there's no agreed-fees record at all for that prior term (e.g. the
+// student wasn't enrolled yet, or the school only just started using Agreed Fees) —
+// callers show that as "—" rather than a misleading 0.
+function studentLastTermBalance(student, term, year, d){
+  const prev = previousTermYear(term, year);
+  if(!prev) return null;
+  const rec = studentAgreedRecord(student.id, prev.term, prev.year, d) || classAgreedRecord(student.classId, prev.term, prev.year, d);
+  const hadInstallments = studentInstallments(student.id, prev.term, prev.year, d).length>0;
+  if(!rec && !hadInstallments) return null; // nothing on file for that prior term at all
+  return studentAgreedSummary(student, prev.term, prev.year, d).balance;
+}
+// A student's TOTAL outstanding Agreed Fees as of a given term/year — this term's
+// own balance PLUS whatever is still unpaid from every earlier term still within the
+// data-retention window (see MAX_TERMS_BEHIND). Each term's Agreed Fees are tracked
+// independently (a later term's agreed amount is never automatically reduced by an
+// earlier term's unpaid balance), so this walks back through the retained terms and
+// adds up everything still owed, for the School Fees Analysis screen below.
+function cumulativeAgreedBalance(student, term, year, d){
+  const idx = termIndex(term, year);
+  let total = 0;
+  for(let back=0; back<=MAX_TERMS_BEHIND; back++){
+    const i = idx - back;
+    if(i<=0) break;
+    const y = Math.floor((i-1)/3), n = ((i-1)%3)+1;
+    const t = ['Term 1','Term 2','Term 3'][n-1];
+    total += studentAgreedSummary(student, t, y, d).balance;
+  }
+  return total;
+}
+// Whether THIS student has any Agreed Fees ledger entry of their own, for the
+// CURRENT term/year — a classwide amount, a personal override, or a recorded
+// installment. Mirrors the itemized ledger's own per-student check in
+// syncStudentFinance() below, so a school using Agreed Fees only starts
+// overwriting a student's report-card figures once that student genuinely has
+// Agreed Fees data, exactly like the itemized system already does.
+function studentHasAgreedData(student, d, term, year){
+  return !!(classAgreedRecord(student.classId, term, year, d)
+    || studentAgreedRecord(student.id, term, year, d)
+    || d.installments.some(x=>x.studentId===student.id && x.term===term && Number(x.year)===Number(year)));
+}
+// What a student's report card should show as "next term's fees" under the
+// Agreed Fees workflow. If the admin has already set up next term's Agreed
+// Fees in advance (a student override, else the classwide amount) that figure
+// is used, exactly like the itemized d.fees "next term" items above. Otherwise
+// there is nothing to look ahead to yet, so this copies the amount already
+// agreed for the CURRENT term forward as the expected next-term figure — most
+// schools' fees stay the same term to term, so "copying agreed fees" gives a
+// sensible number instead of leaving the report card blank until the admin
+// re-enters an identical figure by hand.
+function studentAgreedNextTermFees(student, d){
+  const nextIdx = termIndex(DB.info.currentTerm, DB.info.currentYear) + 1;
+  const y = Math.floor((nextIdx-1)/3), n = ((nextIdx-1)%3)+1;
+  const nextTerm = ['Term 1','Term 2','Term 3'][n-1], nextYear = y;
+  const ownNext = studentAgreedRecord(student.id, nextTerm, nextYear, d);
+  if(ownNext) return Number(ownNext.amount||0);
+  const clsNext = classAgreedRecord(student.classId, nextTerm, nextYear, d);
+  if(clsNext) return Number(clsNext.amount||0);
+  return studentAgreedAmount(student, DB.info.currentTerm, DB.info.currentYear, d); // copy this term's agreed fee forward
+}
+// End-of-Year versions of the same two figures, for the Fees Analysis screen's
+// "End of Year" mode — simply Term 1 + Term 2 + Term 3 of that one year, added
+// together (each term's Agreed Fees/installments are independent records, so
+// there's no double-counting). Outstanding "as of end of year" is a separate,
+// already-cumulative figure — see cumulativeAgreedBalance(student,'Term 3',year,d).
+function yearPaidTotal(student, year, d){
+  return ['Term 1','Term 2','Term 3'].reduce((a,t)=>a+studentAgreedSummary(student, t, year, d).paid, 0);
+}
+function yearAgreedBalance(student, year, d){
+  return ['Term 1','Term 2','Term 3'].reduce((a,t)=>a+studentAgreedSummary(student, t, year, d).balance, 0);
+}
+// "1st", "2nd", "3rd", "4th"... used for the installment sub-column headers
+// and the installment number in the per-student follow-up list.
+function ordinal(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+// The header block shared by every Demand Note — deliberately built to look like
+// the report card's own header (centered logo, bold uppercase school name, italic
+// address/contact line, badge-style document title) using the dedicated .dn-*
+// classes (see CSS) rather than .rc-title-block itself, so a half-page note never
+// drags in the full-page report-card machinery (watermark, double border, etc).
+function demandNoteHeaderHTML(docTitle){
+  return `<div class="dn-title-block">
+    ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="dn-logo" alt="School logo">`:''}
+    <div class="dn-header-text">
+      <div class="dn-school">${esc(DB.info.schoolName||'')}</div>
+      ${DB.info.address?`<div class="dn-meta">${esc(DB.info.address)}</div>`:''}
+      ${(DB.info.phone||DB.info.email)?`<div class="dn-meta">${[DB.info.phone?'Tel: '+esc(DB.info.phone):'',DB.info.email?'Email: '+esc(DB.info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
+      <div class="dn-subtitle">${esc(docTitle)}</div>
+    </div>
+  </div>`;
+}
+// Every requirement demanded for a student's OWN class (falling back to whatever
+// was demanded under "All Students" if that class has no selection of its own
+// yet), filtered to the ones actually applicable to this student. Kept separate
+// from studentRequirements() (which returns every requirement type regardless of
+// whether the school ever ticked it as "demanded") — a Demand Note should only
+// ever list items the school is actually asking for.
+function studentDemandReqs(s, d){
+  const key = (d.classReqSelections[s.classId]!==undefined) ? s.classId : 'all';
+  const avail = classReqAvailable(key, d);
+  const selectedIds = new Set(d.classReqSelections[key]||[]);
+  return avail.filter(r=>selectedIds.has(r.id) && financeItemAppliesToStudent(r, s));
+}
+// Requirements — unlike Agreed Fees — are demanded per CLASS, not per term/year
+// (classReqSelections carries forward unchanged until an admin deliberately
+// changes it), and once cleared, a requirement stays cleared with no per-term
+// reset. That means any requirement still outstanding right now necessarily
+// carries over from whenever it was first demanded — including an earlier term
+// a student has since moved on from — so "still outstanding" IS the carried-
+// forward balance. This renders that as a table cell: the outstanding item
+// name(s) in red if anything is still owed, "Cleared" in green once every
+// demanded requirement has been submitted/paid, or "—" if nothing is demanded
+// for this student's class at all.
+function requirementLastTermBalanceCell(student, d){
+  const reqs = studentDemandReqs(student, d);
+  if(!reqs.length) return `<td>—</td>`;
+  const outstanding = reqs.filter(r=>!reqStatusFor(r.id, student.id, d));
+  if(!outstanding.length) return `<td style="color:var(--good);font-weight:700;">Cleared</td>`;
+  const names = outstanding.map(r=>esc(r.name));
+  const label = names.length<=2 ? names.join(', ') : `${names.slice(0,2).join(', ')} +${names.length-2} more`;
+  return `<td style="color:var(--danger);font-weight:700;" title="${esc(outstanding.map(r=>r.name).join(', '))}">${label}</td>`;
+}
+// The single Demand Note template — a headed, half-page notice addressed to the
+// learner's parent/guardian, covering BOTH the fees balance and any outstanding
+// requirements in one document. It is intentionally the exact same note whether
+// it's triggered from the Fees tab or the Requirements tab (see studentDemandReqs
+// above), so "Demand Note" always means the same thing to a parent no matter
+// where it was printed or downloaded from. Rendered as plain content (no id of
+// its own) — callers wrap it in #printArea for printing, or capture it directly
+// for a PDF download.
+function demandNoteHTML(s, cl, d, term, year){
+  const sum = studentAgreedSummary(s, term, year, d);
+  const reqs = studentDemandReqs(s, d);
+  const outstandingReqs = reqs.filter(r=>!reqStatusFor(r.id, s.id, d));
+  const reqRows = reqs.map(r=>{
+    const stat = reqStatusFor(r.id, s.id, d);
+    const status = !stat ? 'Outstanding' : (stat.method==='cash' ? `Cleared — Cash (${money(stat.amount||0)})` : 'Cleared — Submitted');
+    return `<tr><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${status}</td></tr>`;
+  }).join('');
+  const hasBalance = sum.balance>0;
+  const hasOutstandingReqs = outstandingReqs.length>0;
+  let requestLine;
+  if(hasBalance && hasOutstandingReqs) requestLine = 'You are kindly requested to clear the above fees balance and bring/submit the outstanding requirement(s) listed above, within the shortest time possible from the date of this note.';
+  else if(hasBalance) requestLine = 'You are kindly requested to clear the above fees balance within the shortest time possible from the date of this note.';
+  else if(hasOutstandingReqs) requestLine = 'You are kindly requested to bring/submit the outstanding requirement(s) listed above within the shortest time possible from the date of this note.';
+  else requestLine = 'There is no outstanding fees balance or requirement on this learner\'s account as of the date of this note. Thank you.';
+  return `<div class="dn-card">
+    ${demandNoteHeaderHTML('DEMAND NOTE')}
+    <p style="margin:0 0 8px;"><b>Date:</b> ${esc(fmtDate(new Date().toISOString()))}</p>
+    <p style="margin:0 0 4px;">To: <b>The Parent/Guardian/Sponsor of ${esc(s.name)}</b></p>
+    <p style="margin:0 0 12px;">Adm No.: ${esc(s.admNo)} &nbsp;|&nbsp; Class: ${cl?esc(cl.name):'—'} &nbsp;|&nbsp; Term: ${esc(term)}, ${esc(String(year))}</p>
+    <p style="margin:0 0 10px;">This is to notify you that the above-named learner currently has the following outstanding balance and/or requirement(s) with the school:</p>
+    <table class="data-table" style="margin-top:4px;">
+      <tr><th>Agreed Fees</th><td>${money(sum.agreed)}</td></tr>
+      <tr><th>Total Paid</th><td>${money(sum.paid)}</td></tr>
+      <tr><th>Balance Due</th><td style="color:var(--danger);font-weight:900;">${money(sum.balance)}</td></tr>
+    </table>
+    ${reqs.length?`<table class="data-table" style="margin-top:10px;"><tr><th>Requirement</th><th>Category</th><th>Status</th></tr>${reqRows}</table>`:''}
+    <p style="margin-top:14px;">${requestLine}</p>
+    <div class="flex" style="justify-content:space-between;margin-top:36px;">
+      <div>_____________________<br><span class="small">Accounts Office</span></div>
+      <div>_____________________<br><span class="small">Head Teacher</span></div>
+    </div>
+  </div>`;
+}
+// Prints one student's Demand Note without leaving whatever table (Fees or
+// Requirements) triggered it — a temporary #printArea holder, printed, then
+// removed again once the browser's print dialog has closed.
+function printDemandNoteFor(studentId){
+  const d = financeData();
+  const s = DB.students.find(x=>x.id===studentId);
+  if(!s){ alert('Student not found.'); return; }
+  const cl = DB.classes.find(c=>c.id===s.classId);
+  const old = document.getElementById('multiPrintHolder');
+  if(old) old.remove();
+  const holder = document.createElement('div');
+  holder.id = 'multiPrintHolder';
+  holder.innerHTML = `<div id="printArea">${demandNoteHTML(s, cl, d, DB.info.currentTerm, DB.info.currentYear)}</div>`;
+  document.body.appendChild(holder);
+  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(cleanup, 15000); // fallback in case a browser never fires afterprint
+  setTimeout(()=>window.print(), 150);
+}
+// Renders a Demand Note (or any similar half-page card) off-screen and captures it
+// as a single-page PDF via html2canvas — the note keeps its natural half-page size
+// on the page rather than being stretched to fill a full A4 sheet.
+async function downloadDemandNoteElement(html, filename){
+  setAppBusy(true);
+  try{
+    try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
+    const old = document.getElementById('dnDownloadHolder');
+    if(old) old.remove();
+    const holder = document.createElement('div');
+    holder.id = 'dnDownloadHolder';
+    holder.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;';
+    holder.innerHTML = html;
+    const inner = holder.firstElementChild;
+    inner.id = 'dnCaptureArea';
+    document.body.appendChild(holder);
+    try{
+      const canvas = await html2canvas(inner, {scale:2, backgroundColor:'#ffffff'});
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+      const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW - 40;
+      const imgH = imgW * canvas.height / canvas.width;
+      const finalH = Math.min(imgH, pageH-40);
+      const finalW = finalH===imgH ? imgW : imgW*(finalH/imgH);
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(pageW-finalW)/2, 20, finalW, finalH);
+      openOrSavePdf(pdf, filename, {openPreviewTab:false});
+    } finally { holder.remove(); }
+  } finally { setAppBusy(false); }
+}
+// Downloads a single student's Demand Note as its own PDF.
+async function downloadDemandNoteFor(studentId){
+  const d = financeData();
+  const s = DB.students.find(x=>x.id===studentId);
+  if(!s){ alert('Student not found.'); return; }
+  const cl = DB.classes.find(c=>c.id===s.classId);
+  const filename = `${(s.name||'student').replace(/\s+/g,'_')}_demand_note.pdf`;
+  await downloadDemandNoteElement(demandNoteHTML(s, cl, d, DB.info.currentTerm, DB.info.currentYear), filename);
+}
+// Prints every ticked student's Demand Note in one go, each on its own page —
+// used by the "Print selected" bulk button on both the Fees and Requirements
+// tables (see SELECTED_FEE_NOTES / SELECTED_REQ_NOTES below).
+function printSelectedDemandNotes(selectedSet){
+  if(CUR.role!=='admin'){ alert('Only an Admin can print demand notes.'); return; }
+  const d = financeData();
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const students = DB.students.filter(s=>selectedSet.has(s.id) && s.status!=='left');
+  if(!students.length){ alert('Tick at least one student first.'); return; }
+  const old = document.getElementById('multiPrintHolder');
+  if(old) old.remove();
+  const holder = document.createElement('div');
+  holder.id = 'multiPrintHolder';
+  holder.innerHTML = `<div id="printArea">${students.map((s,i)=>{
+    const cl = DB.classes.find(c=>c.id===s.classId);
+    return `<div${i<students.length-1?' style="page-break-after:always;"':''}>${demandNoteHTML(s, cl, d, term, year)}</div>`;
+  }).join('')}</div>`;
+  document.body.appendChild(holder);
+  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(cleanup, 15000);
+  setTimeout(()=>window.print(), 150);
+}
+// Downloads every ticked student's Demand Note as ONE combined PDF, one note per
+// page — the download counterpart of printSelectedDemandNotes above.
+async function downloadSelectedDemandNotesPdf(selectedSet){
+  if(CUR.role!=='admin'){ alert('Only an Admin can download demand notes.'); return; }
+  const d = financeData();
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const students = DB.students.filter(s=>selectedSet.has(s.id) && s.status!=='left');
+  if(!students.length){ alert('Tick at least one student first.'); return; }
+  setAppBusy(true);
+  try{
+    try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+    const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+    const old = document.getElementById('dnDownloadHolder');
+    if(old) old.remove();
+    const holder = document.createElement('div');
+    holder.id = 'dnDownloadHolder';
+    holder.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;';
+    document.body.appendChild(holder);
+    try{
+      for(let i=0;i<students.length;i++){
+        const s = students[i];
+        const cl = DB.classes.find(c=>c.id===s.classId);
+        holder.innerHTML = demandNoteHTML(s, cl, d, term, year);
+        const inner = holder.firstElementChild;
+        inner.id = 'dnCaptureArea';
+        const canvas = await html2canvas(inner, {scale:2, backgroundColor:'#ffffff'});
+        const imgW = pageW - 40;
+        const imgH = imgW * canvas.height / canvas.width;
+        const finalH = Math.min(imgH, pageH-40);
+        const finalW = finalH===imgH ? imgW : imgW*(finalH/imgH);
+        if(i>0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(pageW-finalW)/2, 20, finalW, finalH);
+      }
+    } finally { holder.remove(); }
+    const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_demand_notes`;
+    openOrSavePdf(pdf, `${baseName}.pdf`, {openPreviewTab:false});
+  } finally { setAppBusy(false); }
+}
+async function runDownloadSelectedDemandNotesPdf(btn, selectedSet){
+  if(btn.disabled) return;
+  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
+  try{ await downloadSelectedDemandNotesPdf(selectedSet); }
+  finally{ btn.disabled = false; btn.innerHTML = orig; }
+}
+// Tick-to-select state for the Fees and Requirements tables — kept as two separate
+// sets (mirroring SELECTED_REPORTS for report cards) so ticking students in one
+// table never affects the other, even though both ultimately print/download the
+// same unified Demand Note.
+const SELECTED_FEE_NOTES = new Set();
+const SELECTED_REQ_NOTES = new Set();
+function financeActiveStudents(finClassId){
+  const isAll = finClassId==='all';
+  return sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
+}
+function toggleFeeNoteSelect(studentId){
+  if(SELECTED_FEE_NOTES.has(studentId)) SELECTED_FEE_NOTES.delete(studentId); else SELECTED_FEE_NOTES.add(studentId);
+  render();
+}
+function toggleFeeNoteSelectAll(finClassId, checked){
+  financeActiveStudents(finClassId).forEach(s=>{ if(checked) SELECTED_FEE_NOTES.add(s.id); else SELECTED_FEE_NOTES.delete(s.id); });
+  render();
+}
+function clearFeeNoteSelection(){ SELECTED_FEE_NOTES.clear(); render(); }
+function toggleReqNoteSelect(studentId){
+  if(SELECTED_REQ_NOTES.has(studentId)) SELECTED_REQ_NOTES.delete(studentId); else SELECTED_REQ_NOTES.add(studentId);
+  render();
+}
+function toggleReqNoteSelectAll(finClassId, checked){
+  financeActiveStudents(finClassId).forEach(s=>{ if(checked) SELECTED_REQ_NOTES.add(s.id); else SELECTED_REQ_NOTES.delete(s.id); });
+  render();
+}
+function clearReqNoteSelection(){ SELECTED_REQ_NOTES.clear(); render(); }
+// Print or download the WHOLE Fees/Requirements table (not just individual demand
+// notes) — used by the "Print Table" / "Download Table as PDF" buttons on both
+// tables. The table's wrapping element already has a stable id ('feesTableExport'
+// or 'reqTableExport') so it can be found on screen; it is only ever RENAMED to
+// 'printArea' for the duration of the print/export (never left there), because a
+// demand note print/download elsewhere on the very same page also relies on a
+// temporary #printArea — leaving this one permanently named #printArea would make
+// both show up together the moment either was triggered.
+function printFinanceTable(exportElId){
+  const el = document.getElementById(exportElId);
+  if(!el){ alert('Nothing to print yet.'); return; }
+  const oldId = el.id;
+  el.id = 'printArea';
+  const revert = ()=>{ if(el.id==='printArea') el.id = oldId; window.removeEventListener('afterprint', revert); };
+  window.addEventListener('afterprint', revert);
+  setTimeout(revert, 15000); // fallback in case a browser never fires afterprint
+  printLandscape();
+}
+async function downloadFinanceTablePdf(exportElId, filename){
+  const el = document.getElementById(exportElId);
+  if(!el){ alert('Nothing to export yet.'); return; }
+  const oldId = el.id;
+  el.id = 'printArea';
+  try{ await downloadTablesAsPdf('printArea', filename, {orientation:'landscape'}); }
+  finally{ el.id = oldId; }
+}
+async function runDownloadFinanceTablePdf(btn, exportElId, filename){
+  if(btn.disabled) return;
+  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
+  try{ await downloadFinanceTablePdf(exportElId, filename); }
+  finally{ btn.disabled = false; btn.innerHTML = orig; }
+}
 // Whether a school has actually started using Finance & Requirements at all —
 // i.e. has it recorded even one fee item or one payment, anywhere. Schools that
 // never touch this section (many won't) should never have a report card silently
@@ -3905,18 +4376,42 @@ function studentReqProgress(student, d){
 // manually-typed behaviour until the section is genuinely in use.
 function financeSectionInUse(d){
   d = d || financeData();
-  return (d.fees && d.fees.length>0) || (d.payments && d.payments.length>0);
+  return (d.fees && d.fees.length>0) || (d.payments && d.payments.length>0)
+    || (d.classAgreed && d.classAgreed.length>0) || (d.studentAgreed && d.studentAgreed.length>0)
+    || (d.installments && d.installments.length>0);
 }
+// Keeps a student's report-card figures (s.feesBalance / s.nextTermFees) in sync
+// with WHICHEVER of the two finance workflows the school actually uses. The two
+// ledgers themselves stay fully independent (see the "Agreed Fees" ledger note
+// above) — this function is just the single place that decides which one's
+// numbers get mirrored onto the report card, so the two views can never quietly
+// disagree no matter which workflow a school has adopted.
+// Itemized d.fees/d.payments wins first (matches the previous behaviour exactly).
+// Only when a student has no itemized ledger entries of their own does this fall
+// back to the Agreed Fees ledger: the outstanding balance is the CUMULATIVE
+// figure (this term plus anything still carried from earlier terms — the same
+// number the Fees Analysis screen calls "total outstanding"), and next term's
+// fees is whatever studentAgreedNextTermFees() resolves to, i.e. next term's own
+// Agreed Fees if already set up, otherwise this term's agreed amount copied
+// forward.
 function syncStudentFinance(studentId, d){
   const s = DB.students.find(x=>x.id===studentId);
   if(!s) return;
   d = d || financeData();
   if(!financeSectionInUse(d)) return; // this school hasn't started using Finance & Requirements — never touch manually-typed figures
-  const hasLedgerData = d.fees.some(f=>financeItemAppliesToStudent(f,s)) || d.payments.some(p=>p.studentId===s.id);
-  if(!hasLedgerData) return; // no finance data for this student yet — leave any manually-typed balance alone
-  const sum = studentFinanceSummary(s,d);
-  s.feesBalance = sum.balance;
-  if(sum.nextTermFees>0) s.nextTermFees = sum.nextTermFees;
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const hasItemizedData = d.fees.some(f=>financeItemAppliesToStudent(f,s)) || d.payments.some(p=>p.studentId===s.id);
+  if(hasItemizedData){
+    const sum = studentFinanceSummary(s,d);
+    s.feesBalance = sum.balance;
+    if(sum.nextTermFees>0) s.nextTermFees = sum.nextTermFees;
+    return;
+  }
+  const hasAgreedData = studentHasAgreedData(s, d, term, year);
+  if(!hasAgreedData) return; // no finance data for this student yet, in either ledger — leave any manually-typed balance alone
+  s.feesBalance = cumulativeAgreedBalance(s, term, year, d);
+  const nextAmt = studentAgreedNextTermFees(s, d);
+  if(nextAmt>0) s.nextTermFees = nextAmt;
 }
 function syncAllStudentsFinance(){ const d=financeData(); if(!financeSectionInUse(d)) return; DB.students.forEach(s=>syncStudentFinance(s.id,d)); }
 function pruneOldFinanceRecords(){
@@ -3929,11 +4424,21 @@ function pruneOldFinanceRecords(){
 // Plain onchange handler (not the data-action click system, which is built for
 // buttons/links and would fight a checkbox's own native toggle) for ticking off
 // an individual requirement for an individual student on their follow-up page.
-async function toggleRequirementSubmitted(reqId, studentId, checked){
+async function toggleRequirementSubmitted(reqId, studentId, checked, cbEl){
   const d = financeData();
   d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
   if(checked) d.reqStatus.push({requirementId:reqId, studentId, submittedAt:new Date().toISOString()});
-  await saveInfo();
+  if(cbEl) cbEl.disabled = true;
+  try{
+    await saveInfo();
+    if(cbEl){ cbEl.title = checked ? 'Submitted' : 'Not yet'; }
+  }catch(err){
+    console.error(err);
+    alert('Could not save that change — check your internet connection and try again.');
+    if(cbEl) cbEl.checked = !checked; // revert the tick on failure so the box reflects what actually saved
+  }finally{
+    if(cbEl) cbEl.disabled = false;
+  }
 }
 function filterFinanceRows(q){
   q = (q||'').toLowerCase().trim();
@@ -3941,8 +4446,425 @@ function filterFinanceRows(q){
     tr.style.display = (!q || tr.dataset.searchtext.includes(q)) ? '' : 'none';
   });
 }
+// The main entry point for the Finance & Requirements section. After
+// unlocking, the admin must first choose Fees or Requirements, then a class
+// (or "All Students") before anything else is shown — see finTabChooserHTML()
+// and classPickerHTML() below. "Advanced finance tools" is a link back to the
+// full original toolkit (itemized fee catalog, expenses, income, old students,
+// control) kept intact in financeAdvancedView() further down.
 function financeRequirementsView(){
   if(!FINANCE_UNLOCKED){ const first=!DB.info.financePassword; return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Finance & Requirements password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}"><label>Finance Password</label><input name="password" type="password" minlength="4" required autofocus>${first?'<p class="small">Must be different from your own login password.</p>':''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Finance Section'}</button></form>${FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock" style="margin-top:14px;">🛟 Founder Emergency Access</button>`:''}</div>`; }
+  const lockHeader = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS</h2><p class="small">Choose Fees, Requirements, or one of the Analysis screens to get started.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>`;
+  const finTab = VIEW.params.finTab;
+  if(!finTab) return lockHeader + finTabChooserHTML();
+  if(finTab==='advanced') return financeAdvancedView();
+  const d = financeData();
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const backTabs = `<p class="small" style="margin:8px 0 14px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p>`;
+  if(finTab==='analysis') return lockHeader + backTabs + feesAnalysisView(d);
+  if(finTab==='reqanalysis') return lockHeader + backTabs + requirementsAnalysisView(d);
+  if(finTab==='fees'){
+    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
+    return lockHeader + backTabs + feesClassTableView(d, term, year);
+  }
+  if(finTab==='requirements'){
+    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
+    return lockHeader + backTabs + requirementsClassView(d, term, year);
+  }
+  return lockHeader + finTabChooserHTML();
+}
+// Tile chooser shown right after unlocking: Fees or Requirements first, as
+// requested, with a quiet link through to the original full toolkit.
+function finTabChooserHTML(){
+  return `<div class="card">
+    <div class="flex" style="gap:14px;flex-wrap:wrap;">
+      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:fees">💰 Fees</button>
+      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:requirements">📋 Requirements</button>
+      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:analysis">📊 School Fees Analysis</button>
+      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:reqanalysis">📋 School Requirements Analysis</button>
+    </div>
+    <p class="small" style="margin-top:16px;"><a href="#" data-action="finTab:advanced">Advanced finance tools (fee item catalog, expenses, income analysis, old students, control)</a></p>
+  </div>`;
+}
+// Class chooser shown after picking Fees or Requirements: a named class, or
+// "Show All Students" across every class at once.
+function classPickerHTML(){
+  return `<div class="card"><h3>Choose a Class</h3>
+    <div class="flex" style="flex-wrap:wrap;gap:10px;">
+      ${DB.classes.map(c=>`<button type="button" class="btn-outline" data-action="finClass:${c.id}">${esc(c.name)}</button>`).join('')}
+      <button type="button" class="btn" data-action="finClass:all">Show All Students</button>
+    </div>
+    ${!DB.classes.length?'<p class="small">No classes set up yet — add one under "Classes" first.</p>':''}
+  </div>`;
+}
+// Fees tab, once a class (or "all") has been chosen. For a single class, this
+// first lets the admin set/edit the classwide Agreed Fees amount for the
+// current term; then shows every active student with their own agreed
+// amount (editable per learner), a merged Installments column whose
+// sub-columns grow to fit whichever student has the most part-payments, a
+// running Balance, and per-row actions to open the fee follow-up page or
+// jump straight to printing that learner's demand note.
+function feesClassTableView(d, term, year){
+  const finClassId = VIEW.params.finClassId;
+  const isAll = finClassId==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===finClassId);
+  if(!isAll && !cls) return classPickerHTML();
+  const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
+
+  let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
+    <h3 style="margin:0;">${isAll?'All Students':esc(cls.name)} — Fees (${esc(term)} ${esc(String(year))})</h3>
+    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
+  </div>`;
+
+  if(!isAll){
+    const rec = classAgreedRecord(finClassId, term, year, d);
+    const editing = VIEW.params.editClassAgreed;
+    if(!rec || editing){
+      out += `<div class="card"><form data-form="setClassAgreedFee" data-classid="${finClassId}">
+        <label>${rec?'Edit':'Set'} Classwide Agreed Fees for ${esc(cls.name)} (${esc(term)} ${esc(String(year))})</label>
+        <input name="amount" type="number" min="0" step="0.01" required value="${rec?rec.amount:''}">
+        <div class="flex" style="margin-top:10px;"><button class="btn">Save</button>${rec?`<a href="#" class="btn-outline" data-action="cancelEditClassAgreed" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}</div>
+      </form></div>`;
+    } else {
+      out += `<div class="card flex" style="justify-content:space-between;align-items:center;">
+        <div><span class="small">CLASSWIDE AGREED FEES</span><h2 style="margin:4px 0;">${money(rec.amount)}</h2></div>
+        <button type="button" class="btn-outline" data-action="editClassAgreedFee:${finClassId}">Edit classwise fees</button>
+      </div>`;
+    }
+  }
+
+  const summaries = active.map(s=>({s, sum: studentAgreedSummary(s, term, year, d)}));
+  const maxInst = summaries.length ? Math.max(1, ...summaries.map(x=>x.sum.installments.length)) : 1;
+  const editAgreedId = VIEW.params.editAgreedStudentId;
+
+  const feeSelectedCount = active.filter(s=>SELECTED_FEE_NOTES.has(s.id)).length;
+  const allFeeVisibleSelected = active.length>0 && active.every(s=>SELECTED_FEE_NOTES.has(s.id));
+  out += `<div class="card">
+    <p class="small" style="margin-top:0;">Tick students below to print or download just their demand notes — each note covers both their fees balance and any outstanding requirements.</p>
+    <div class="flex" style="align-items:center;flex-wrap:wrap;gap:10px;">
+      <span class="small" style="margin:0;text-transform:none;font-weight:700;">${feeSelectedCount} selected</span>
+      <button type="button" class="btn-outline" ${feeSelectedCount?'':'disabled'} onclick="printSelectedDemandNotes(SELECTED_FEE_NOTES)">🖨 Print selected</button>
+      <button type="button" class="btn-outline" ${feeSelectedCount?'':'disabled'} onclick="runDownloadSelectedDemandNotesPdf(this, SELECTED_FEE_NOTES)">⬇ Download selected as PDF</button>
+      ${feeSelectedCount?`<button type="button" class="btn-outline" onclick="clearFeeNoteSelection()">Clear selection</button>`:''}
+    </div>
+  </div>`;
+
+  const head = `<tr><th rowspan="2"><input type="checkbox" style="width:auto;" ${allFeeVisibleSelected?'checked':''} onchange="toggleFeeNoteSelectAll('${finClassId}', this.checked)"></th><th rowspan="2">Adm No.</th><th rowspan="2">Student</th>${isAll?'<th rowspan="2">Class</th>':''}<th rowspan="2">Agreed Fees</th><th rowspan="2">Last Term Balance</th><th colspan="${maxInst}">Installments</th><th rowspan="2">Balance</th><th rowspan="2">Action</th></tr><tr>${Array.from({length:maxInst},(_,i)=>`<th>${ordinal(i+1)} Pay</th>`).join('')}</tr>`;
+
+  const rows = summaries.map(({s,sum})=>{
+    const clx = DB.classes.find(c=>c.id===s.classId);
+    const agreedCell = editAgreedId===s.id
+      ? `<form data-form="setStudentAgreedFee" data-studentid="${s.id}" class="flex" style="gap:4px;flex-wrap:nowrap;"><input name="amount" type="number" min="0" step="0.01" value="${sum.agreed}" style="width:90px;"><button class="btn-outline" style="padding:4px 8px;">Save</button></form>`
+      : `${money(sum.agreed)} <button type="button" class="btn-outline" style="padding:2px 6px;font-size:11px;" data-action="editStudentAgreedFee:${s.id}">Edit</button>`;
+    const lastBal = studentLastTermBalance(s, term, year, d);
+    const lastBalCell = lastBal===null ? '<td>—</td>' : (lastBal>0 ? `<td style="color:var(--danger);font-weight:700;">${money(lastBal)}</td>` : `<td style="color:var(--good);font-weight:700;">Cleared</td>`);
+    const instCells = Array.from({length:maxInst},(_,i)=>{
+      if(i<sum.installments.length){ const inst=sum.installments[i]; return `<td title="${esc(inst.date||'')} — ${esc(inst.payerName||inst.payer||'')}">${money(inst.amount)}</td>`; }
+      if(sum.balance<=0 && sum.agreed>0) return `<td>Nil</td>`;
+      return `<td>—</td>`;
+    }).join('');
+    return `<tr><td><input type="checkbox" style="width:auto;" ${SELECTED_FEE_NOTES.has(s.id)?'checked':''} onchange="toggleFeeNoteSelect('${s.id}')"></td><td>${esc(s.admNo)}</td><td>${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${agreedCell}</td>${lastBalCell}${instCells}<td>${money(sum.balance)}</td><td class="flex"><button type="button" class="btn-outline" data-action="financeStudent:${s.id}">Update Fees</button> <button type="button" class="btn-outline" data-action="printDemandNote:${s.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download</button></td></tr>`;
+  }).join('');
+
+  const feesFileName = `${(isAll?'All_Students':cls.name).replace(/\s+/g,'_')}_fees_${term.replace(/\s+/g,'_')}_${year}.pdf`;
+  out += `<div class="card">
+    <p class="small" style="margin-top:0;">Export or print this whole table, exactly as shown below.</p>
+    <div class="flex">
+      <button type="button" class="btn-outline" onclick="printFinanceTable('feesTableExport')">🖨 Print Table</button>
+      <button type="button" class="btn-outline" onclick="runDownloadFinanceTablePdf(this, 'feesTableExport', '${feesFileName}')">⬇ Download Table as PDF</button>
+    </div>
+  </div>
+  <div id="feesTableExport"><div class="card" style="overflow-x:auto;">
+    <h3 style="margin-top:0;">${isAll?'All Students':esc(cls.name)} — Fees — ${esc(term)} ${esc(String(year))}</h3>
+    <table class="data-table">${head}${rows || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}</table>
+  </div></div>`;
+  return out;
+}
+// School Fees Analysis — a bird's-eye view separate from the per-class working
+// table above. Pick End of Term or End of Year, a term (if applicable) and year,
+// then pick School-wide or a single class. "Total Collected" is money actually
+// received during the chosen period (just that term, or all three terms of that
+// year added together); "Total Outstanding" is each student's cumulative unpaid
+// balance as of the END of that period — this period's own shortfall PLUS
+// whatever is still unpaid from earlier terms (see cumulativeAgreedBalance) — so
+// a balance a student carries forward never quietly disappears from the picture.
+function feesAnalysisView(d){
+  const period = VIEW.params.anPeriod==='year' ? 'year' : 'term';
+  const term = VIEW.params.anTerm || DB.info.currentTerm;
+  const year = VIEW.params.anYear || DB.info.currentYear;
+  const scope = VIEW.params.anScope || 'all';
+  const isAll = scope==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===scope);
+  const periodLabel = period==='year' ? `${esc(String(year))} (full year)` : `${esc(term)} ${esc(String(year))}`;
+  const periodWord = period==='year' ? 'Year' : 'Term';
+
+  let out = `<div class="flex" style="justify-content:space-between;align-items:center;"><h3 style="margin:0;">📊 School Fees Analysis</h3></div>
+  <div class="card">
+    <label>Period</label>
+    <select onchange="setAnalysisParam('anPeriod', this.value)">
+      <option value="term" ${period==='term'?'selected':''}>End of Term</option>
+      <option value="year" ${period==='year'?'selected':''}>End of Year</option>
+    </select>
+    <div class="grid2" style="margin-top:10px;">
+      ${period==='term'?`<div><label>Term</label><select onchange="setAnalysisParam('anTerm', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${term===t?'selected':''}>${t}</option>`).join('')}</select></div>`:'<div></div>'}
+      <div><label>Year</label><input value="${esc(String(year))}" onchange="setAnalysisParam('anYear', this.value)"></div>
+    </div>
+    <label style="margin-top:10px;">Scope</label>
+    <select onchange="setAnalysisParam('anScope', this.value)">
+      <option value="all" ${isAll?'selected':''}>School-wide (all classes)</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${scope===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+  </div>`;
+
+  if(!isAll && !cls){ out += `<p class="small">That class no longer exists — pick another scope above.</p>`; return out; }
+
+  const studentsInScope = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===scope)));
+  const rows = studentsInScope.map(s=>{
+    const paid = period==='year' ? yearPaidTotal(s, year, d) : studentAgreedSummary(s, term, year, d).paid;
+    const ownBalance = period==='year' ? yearAgreedBalance(s, year, d) : studentAgreedSummary(s, term, year, d).balance;
+    const cum = period==='year' ? cumulativeAgreedBalance(s, 'Term 3', year, d) : cumulativeAgreedBalance(s, term, year, d);
+    return { s, paid, ownBalance, cum };
+  });
+  const totalCollected = rows.reduce((a,x)=>a+x.paid, 0);
+  const totalOutstanding = rows.reduce((a,x)=>a+x.cum, 0);
+
+  out += `<div class="grid2">
+    <div class="card"><div class="small">TOTAL COLLECTED (${periodLabel})</div><h1 style="color:var(--good);">${money(totalCollected)}</h1><p class="small" style="margin:0;">Money received during ${period==='year'?'the whole year (all 3 terms)':'this term'}${isAll?' across all classes':` in ${esc(cls.name)}`}.</p></div>
+    <div class="card"><div class="small">TOTAL OUTSTANDING</div><h1 style="color:var(--danger);">${money(totalOutstanding)}</h1><p class="small" style="margin:0;">Remaining fees as of the end of ${period==='year'?'the year':'this term'}, including any unpaid balance carried forward from earlier ${period==='year'?'years':'terms'}.</p></div>
+  </div>`;
+
+  if(isAll){
+    const byClass = DB.classes.map(c=>{
+      const inClass = rows.filter(r=>r.s.classId===c.id);
+      return { c, collected: inClass.reduce((a,x)=>a+x.paid,0), outstanding: inClass.reduce((a,x)=>a+x.cum,0), count: inClass.length };
+    }).filter(x=>x.count>0);
+    out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Class</h3><table class="data-table"><tr><th>Class</th><th>Students</th><th>Collected</th><th>Outstanding</th></tr>${byClass.map(x=>`<tr><td>${esc(x.c.name)}</td><td>${x.count}</td><td>${money(x.collected)}</td><td>${money(x.outstanding)}</td></tr>`).join('') || '<tr><td colspan="4">No students yet.</td></tr>'}</table></div>`;
+  }
+
+  out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Student${isAll?'':` — ${esc(cls.name)}`}</h3><table class="data-table"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Paid This ${periodWord}</th><th>This ${periodWord} Balance</th><th>Total Outstanding (all-time)</th></tr>${rows.map(({s,paid,ownBalance,cum})=>{ const clx=DB.classes.find(c=>c.id===s.classId); return `<tr><td>${esc(s.admNo)}</td><td>${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${money(paid)}</td><td>${money(ownBalance)}</td><td style="${cum>0?'color:var(--danger);font-weight:700;':'color:var(--good);font-weight:700;'}">${cum>0?money(cum):'Cleared'}</td></tr>`; }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}</table></div>`;
+
+  return out;
+}
+// School Requirements Analysis — the Requirements-tab counterpart of School Fees
+// Analysis above. IMPORTANT difference from Fees: requirements are demanded per
+// CLASS, not per term/year (see studentDemandReqs), and once cleared, stay cleared
+// with no per-term reset — so there is no genuine "as of end of last term" snapshot
+// to compute the way there is for fees. "Outstanding"/"Cleared" below therefore
+// always reflect the CURRENT status, regardless of which period is selected. The
+// one figure that IS genuinely period-specific is cash collected in place of a
+// requirement, because those payments are always recorded with a term/year (see
+// reqCashRecords) — so the End of Term / End of Year selector governs that figure.
+function requirementsAnalysisView(d){
+  const period = VIEW.params.anPeriod==='year' ? 'year' : 'term';
+  const term = VIEW.params.anTerm || DB.info.currentTerm;
+  const year = VIEW.params.anYear || DB.info.currentYear;
+  const scope = VIEW.params.anScope || 'all';
+  const isAll = scope==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===scope);
+  const periodLabel = period==='year' ? `${esc(String(year))} (full year)` : `${esc(term)} ${esc(String(year))}`;
+
+  let out = `<div class="flex" style="justify-content:space-between;align-items:center;"><h3 style="margin:0;">📋 School Requirements Analysis</h3></div>
+  <div class="card">
+    <label>Period (for cash collected below)</label>
+    <select onchange="setAnalysisParam('anPeriod', this.value)">
+      <option value="term" ${period==='term'?'selected':''}>End of Term</option>
+      <option value="year" ${period==='year'?'selected':''}>End of Year</option>
+    </select>
+    <div class="grid2" style="margin-top:10px;">
+      ${period==='term'?`<div><label>Term</label><select onchange="setAnalysisParam('anTerm', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${term===t?'selected':''}>${t}</option>`).join('')}</select></div>`:'<div></div>'}
+      <div><label>Year</label><input value="${esc(String(year))}" onchange="setAnalysisParam('anYear', this.value)"></div>
+    </div>
+    <label style="margin-top:10px;">Scope</label>
+    <select onchange="setAnalysisParam('anScope', this.value)">
+      <option value="all" ${isAll?'selected':''}>School-wide (all classes)</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${scope===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+    <p class="small" style="margin:10px 0 0;">Requirements are demanded per class (not per term), and a cleared requirement stays cleared — so "Still Outstanding"/"Cleared" below always show the CURRENT status. Only the cash-collected figure is specific to the period chosen above.</p>
+  </div>`;
+
+  if(!isAll && !cls){ out += `<p class="small">That class no longer exists — pick another scope above.</p>`; return out; }
+
+  const studentsInScope = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===scope)));
+  const rows = studentsInScope.map(s=>{
+    const reqs = studentDemandReqs(s, d);
+    const outstanding = reqs.filter(r=>!reqStatusFor(r.id, s.id, d));
+    return { s, reqs, outstanding };
+  });
+  const totalDemanded = rows.reduce((a,x)=>a+x.reqs.length, 0);
+  const totalOutstandingItems = rows.reduce((a,x)=>a+x.outstanding.length, 0);
+  const studentsWithOutstanding = rows.filter(x=>x.outstanding.length>0).length;
+
+  const cashInScope = reqCashRecords(d).filter(c=>{
+    const st = DB.students.find(x=>x.id===c.studentId);
+    if(!st || st.status==='left') return false;
+    if(!isAll && st.classId!==scope) return false;
+    if(period==='year') return Number(c.year)===Number(year);
+    return c.term===term && Number(c.year)===Number(year);
+  });
+  const cashCollected = cashInScope.reduce((a,c)=>a+Number(c.amount||0), 0);
+
+  out += `<div class="grid3">
+    <div class="card"><div class="small">ITEMS DEMANDED</div><h1>${totalDemanded}</h1><p class="small" style="margin:0;">Across ${rows.length} student${rows.length===1?'':'s'}${isAll?'':` in ${esc(cls.name)}`}.</p></div>
+    <div class="card"><div class="small">STILL OUTSTANDING</div><h1 style="color:var(--danger);">${totalOutstandingItems}</h1><p class="small" style="margin:0;">${studentsWithOutstanding} student${studentsWithOutstanding===1?'':'s'} with at least one item outstanding.</p></div>
+    <div class="card"><div class="small">CASH COLLECTED (${periodLabel})</div><h1 style="color:var(--good);">${money(cashCollected)}</h1><p class="small" style="margin:0;">Requirement cash-equivalent payments recorded in this period.</p></div>
+  </div>`;
+
+  if(isAll){
+    const byClass = DB.classes.map(c=>{
+      const inClass = rows.filter(r=>r.s.classId===c.id);
+      return { c, demanded: inClass.reduce((a,x)=>a+x.reqs.length,0), outstanding: inClass.reduce((a,x)=>a+x.outstanding.length,0), count: inClass.length };
+    }).filter(x=>x.count>0);
+    out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Class</h3><table class="data-table"><tr><th>Class</th><th>Students</th><th>Items Demanded</th><th>Still Outstanding</th></tr>${byClass.map(x=>`<tr><td>${esc(x.c.name)}</td><td>${x.count}</td><td>${x.demanded}</td><td>${x.outstanding}</td></tr>`).join('') || '<tr><td colspan="4">No students yet.</td></tr>'}</table></div>`;
+  }
+
+  out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Student${isAll?'':` — ${esc(cls.name)}`}</h3><table class="data-table"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Demanded</th><th>Status</th></tr>${rows.map(({s,reqs,outstanding})=>{
+    const clx = DB.classes.find(c=>c.id===s.classId);
+    const status = !reqs.length ? '—' : (!outstanding.length ? '<span style="color:var(--good);font-weight:700;">Cleared</span>' : `<span style="color:var(--danger);font-weight:700;" title="${esc(outstanding.map(r=>r.name).join(', '))}">${outstanding.length} outstanding</span>`);
+    return `<tr><td>${esc(s.admNo)}</td><td>${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${reqs.length}</td><td>${status}</td></tr>`;
+  }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}</table></div>`;
+
+  return out;
+}
+// The Requirement Types catalog (add/edit/delete a requirement, quick-add from
+// common defaults) — collapsed into a <details> block since, day to day, an
+// admin mostly just wants the class's tick-table below, not the catalog. It
+// pops open automatically the first time (no requirements yet) or whenever an
+// edit is in progress, so it's never hidden right when it's needed.
+function requirementTypesCatalogHTML(d, active){
+  const editReq = VIEW.params.editReqId ? d.requirements.find(r=>r.id===VIEW.params.editReqId) : null;
+  const cancelLink = `<a href="#" class="btn-outline" data-action="nav:finance" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel edit</a>`;
+  const classOptions = (selectedScope)=> `<option value="all" ${(!selectedScope||selectedScope==='all')?'selected':''}>All classes</option>` +
+    DB.classes.map(c=>`<option value="${c.id}" ${selectedScope===c.id?'selected':''}>${esc(c.name)} only</option>`).join('');
+  const openAttr = (editReq || !d.requirements.length) ? ' open' : '';
+  return `<details class="card"${openAttr}><summary style="cursor:pointer;font-weight:800;">Manage Requirement Types${d.requirements.length?` (${d.requirements.length})`:''}</summary>
+    <div style="margin-top:14px;">
+    ${(()=>{ const existingNames=new Set(d.requirements.map(r=>r.name.trim().toLowerCase())); const notAdded=DEFAULT_REQUIREMENTS.filter(x=>!existingNames.has(x.name.toLowerCase()));
+      return notAdded.length ? `<form data-form="addDefaultRequirements" style="border:1px dashed var(--border,#cfd9e3);padding:10px;border-radius:8px;margin-bottom:14px;">
+        <label>Quick-add from common requirements</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;">${notAdded.map(x=>`<label style="display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;"><input type="checkbox" name="item" value="${esc(x.name)}|${esc(x.category)}" style="width:auto;">${esc(x.name)}</label>`).join('')}</div>
+        <button type="submit" class="btn-outline">Add selected</button>
+      </form>` : ''; })()}
+    <form data-form="${editReq?'editRequirement':'addRequirement'}" ${editReq?`data-id="${editReq.id}"`:''}>
+      <label>Requirement Item</label><input name="name" required value="${editReq?esc(editReq.name):''}">
+      <div class="grid2">
+        <div><label>Category</label><select name="category">${['Admission Document','Uniform','Boarding','Academic','Medical','Identity','Other'].map(c=>`<option ${editReq&&editReq.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+        <div><label>Applies to</label><select name="scope">${classOptions(editReq?editReq.scope:'all')}</select></div>
+      </div>
+      <div class="flex" style="margin-top:12px;"><button class="btn">${editReq?'Save changes':'Add Requirement'}</button>${editReq?cancelLink:''}</div>
+    </form>
+    ${d.requirements.length?`<table class="data-table"><tr><th>Requirement</th><th>Category</th><th>Applies to</th><th>Submitted</th><th>Action</th></tr>${d.requirements.map(r=>{const rcls=DB.classes.find(c=>c.id===r.scope);const eligible=active.filter(s=>financeItemAppliesToStudent(r,s));const submitted=eligible.filter(s=>isReqSubmitted(r.id,s.id,d)).length;return `<tr><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${rcls?esc(rcls.name):'All classes'}</td><td>${submitted} / ${eligible.length}</td><td class="flex"><button class="btn-outline" data-action="editRequirement:${r.id}">Edit</button><button class="btn-danger" data-action="delRequirement:${r.id}">Delete</button></td></tr>`;}).join('')}</table>`:'<p class="small">No requirements configured yet — add some above.</p>'}
+    </div>
+  </details>`;
+}
+// Step shown right after a class is chosen, before any tick-table appears: a
+// checklist of every requirement type eligible for this class (see
+// classReqAvailable) so the admin explicitly picks which ones the school is
+// actually demanding here. Nothing is saved until "Save Selection" is
+// pressed, so browsing this screen never silently changes anything.
+function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured){
+  const avail = classReqAvailable(finClassId, d);
+  const saved = d.classReqSelections[finClassId];
+  // First time through, default every eligible item to ticked (least surprise —
+  // matches how the old unscoped table behaved); once a selection exists, reflect
+  // exactly what was saved, including a deliberate "everything unticked".
+  const checkedSet = new Set(saved!==undefined ? saved : avail.map(r=>r.id));
+  if(!avail.length){
+    return `<div class="card"><h3>Select Requirements — ${esc(clsLabel)}</h3><p class="small">No requirement types are eligible for this class yet. Add some under "Manage Requirement Types" below (or set an existing one's "Applies to" to this class), then come back here to pick which ones are demanded.</p></div>`;
+  }
+  return `<div class="card"><h3>Select Requirements Demanded — ${esc(clsLabel)}</h3>
+    <p class="small">Tick every requirement the school demands for this class. Only the ticked ones will appear as columns in the table below.</p>
+    <form data-form="saveClassReqSelection" data-classid="${esc(finClassId)}">
+      <div style="display:flex;flex-wrap:wrap;gap:8px 18px;margin:10px 0;">
+        ${avail.map(r=>`<label style="display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;"><input type="checkbox" name="reqIds" value="${r.id}" style="width:auto;" ${checkedSet.has(r.id)?'checked':''}>${esc(r.name)} <span class="small">(${esc(r.category)})</span></label>`).join('')}
+      </div>
+      <div class="flex"><button class="btn">Save Selection</button>${alreadyConfigured?`<a href="#" class="btn-outline" data-action="reqCancelSelection" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}</div>
+    </form>
+  </div>`;
+}
+// Requirements tab, once a class (or "all") has been chosen. Flow: pick which
+// requirement types are demanded for this class (reqSelectionFormHTML, only
+// shown until a selection is saved, or when explicitly reopened); then a
+// single table with one column per demanded requirement where admission staff
+// simply tick/untick a box per student per requirement, plus a per-student
+// action to print that student's demand note. The full requirement-type
+// catalog (add/edit/delete types) lives in a collapsed section underneath.
+function requirementsClassView(d, term, year){
+  const finClassId = VIEW.params.finClassId;
+  const isAll = finClassId==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===finClassId);
+  if(!isAll && !cls) return classPickerHTML();
+  const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
+  const clsLabel = isAll ? 'All Students' : cls.name;
+
+  let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
+    <h3 style="margin:0;">${esc(clsLabel)} — Requirements</h3>
+    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
+  </div>`;
+
+  const already = d.classReqSelections[finClassId];
+  const alreadyConfigured = already!==undefined;
+  const selecting = VIEW.params.reqSelecting || !alreadyConfigured;
+
+  if(selecting){
+    out += reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured);
+    out += requirementTypesCatalogHTML(d, active);
+    return out;
+  }
+
+  const avail = classReqAvailable(finClassId, d);
+  const selectedIds = new Set(already);
+  const selectedReqs = avail.filter(r=>selectedIds.has(r.id));
+
+  out += `<div class="card"><div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <p class="small" style="margin:0;">Demanded for ${esc(clsLabel)}: ${selectedReqs.length?selectedReqs.map(r=>esc(r.name)).join(', '):'<i>None selected</i>'}</p>
+    <a href="#" class="btn-outline" data-action="reqChangeSelection" style="text-decoration:none;display:inline-flex;align-items:center;">Change requirements</a>
+  </div></div>`;
+
+  const reqSelectedCount = active.filter(s=>SELECTED_REQ_NOTES.has(s.id)).length;
+  const allReqVisibleSelected = active.length>0 && active.every(s=>SELECTED_REQ_NOTES.has(s.id));
+  out += `<div class="card">
+    <p class="small" style="margin-top:0;">Tick students below to print or download just their demand notes — each note covers both their fees balance and any outstanding requirements.</p>
+    <div class="flex" style="align-items:center;flex-wrap:wrap;gap:10px;">
+      <span class="small" style="margin:0;text-transform:none;font-weight:700;">${reqSelectedCount} selected</span>
+      <button type="button" class="btn-outline" ${reqSelectedCount?'':'disabled'} onclick="printSelectedDemandNotes(SELECTED_REQ_NOTES)">🖨 Print selected</button>
+      <button type="button" class="btn-outline" ${reqSelectedCount?'':'disabled'} onclick="runDownloadSelectedDemandNotesPdf(this, SELECTED_REQ_NOTES)">⬇ Download selected as PDF</button>
+      ${reqSelectedCount?`<button type="button" class="btn-outline" onclick="clearReqNoteSelection()">Clear selection</button>`:''}
+    </div>
+  </div>`;
+
+  const reqFileName = `${clsLabel.replace(/\s+/g,'_')}_requirements_${term.replace(/\s+/g,'_')}_${year}.pdf`;
+  out += `<div class="card">
+    <p class="small" style="margin-top:0;">Export or print this whole table, exactly as shown below.</p>
+    <div class="flex">
+      <button type="button" class="btn-outline" onclick="printFinanceTable('reqTableExport')">🖨 Print Table</button>
+      <button type="button" class="btn-outline" onclick="runDownloadFinanceTablePdf(this, 'reqTableExport', '${reqFileName}')">⬇ Download Table as PDF</button>
+    </div>
+  </div>
+
+  <div id="reqTableExport"><div class="card">
+  <h3 style="margin-top:0;">${esc(clsLabel)} — Requirements — ${esc(term)} ${esc(String(year))}</h3>
+  <label>Search</label><input placeholder="Search by name or admission number…" oninput="filterFinanceRows(this.value)">
+  <div style="overflow-x:auto;"><table class="data-table" id="financeStudentTable"><tr><th><input type="checkbox" style="width:auto;" ${allReqVisibleSelected?'checked':''} onchange="toggleReqNoteSelectAll('${finClassId}', this.checked)"></th><th>Admission No.</th><th>Last Term Balance</th><th>Student</th>${isAll?'<th>Class</th>':''}${selectedReqs.map(r=>`<th>${esc(r.name)}</th>`).join('')}<th>Action</th></tr>
+  ${active.map(st=>{
+    const clx = DB.classes.find(c=>c.id===st.classId);
+    const cells = selectedReqs.map(r=>{
+      if(!financeItemAppliesToStudent(r, st)) return `<td>—</td>`;
+      const stat = reqStatusFor(r.id, st.id, d);
+      const checked = !!stat;
+      const title = stat ? (stat.method==='cash' ? `Cash paid (${money(stat.amount||0)})` : 'Submitted') : 'Not yet';
+      return `<td title="${esc(title)}"><input type="checkbox" style="width:auto;" ${checked?'checked':''} onchange="toggleRequirementSubmitted('${r.id}','${st.id}',this.checked,this)"></td>`;
+    }).join('');
+    const lastBalCell = requirementLastTermBalanceCell(st, d);
+    return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td><input type="checkbox" style="width:auto;" ${SELECTED_REQ_NOTES.has(st.id)?'checked':''} onchange="toggleReqNoteSelect('${st.id}')"></td><td>${esc(st.admNo)}</td>${lastBalCell}<td>${esc(st.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}${cells}<td class="flex"><button type="button" class="btn-outline" data-action="financeStudent:${st.id}">View</button> <button type="button" class="btn-outline" data-action="printReqDemandNote:${st.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${st.id}">⬇ Download</button></td></tr>`;
+  }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}
+  </table></div></div></div>`;
+
+  out += requirementTypesCatalogHTML(d, active);
+  return out;
+}
+// Everything below is the original full Finance & Requirements toolkit,
+// unchanged, now reached via the "Advanced finance tools" link above.
+function financeAdvancedView(){
   const d = financeData();
   const active = sortByName(DB.students.filter(s=>s.status!=='left'));
   const totals = active.reduce((a,s)=>{ const sum=studentFinanceSummary(s,d); a.due+=sum.due; a.paid+=sum.paid; a.balance+=sum.balance; return a; }, {due:0,paid:0,balance:0});
@@ -3967,7 +4889,7 @@ function financeRequirementsView(){
   const excludeStudentsOptions = (selectedIds)=>{ const sel=new Set(selectedIds||[]); return active.map(s=>`<option value="${s.id}" ${sel.has(s.id)?'selected':''}>${esc(s.name)} — ${esc(s.admNo)}</option>`).join(''); };
   const termOptions = (selTerm)=> ['Term 1','Term 2','Term 3'].map(t=>`<option ${(selTerm||DB.info.currentTerm)===t?'selected':''}>${t}</option>`).join('');
 
-  return `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS</h2><p class="small">Live follow-up using students already registered in the system. Balances here are the same "Fees balance" shown on each student's report card — kept automatically in sync.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>
+  return `<p class="small" style="margin-bottom:10px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p><div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS — Advanced Tools</h2><p class="small">Live follow-up using students already registered in the system. Balances here are the same "Fees balance" shown on each student's report card — kept automatically in sync.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>
   <div class="grid3">
     <div class="card"><div class="small">ACTIVE STUDENTS</div><h1>${active.length}</h1></div>
     <div class="card"><div class="small">TOTAL PAID</div><h1>${money(totals.paid)}</h1></div>
@@ -4201,8 +5123,43 @@ function financeStudentView(studentId){
   const myPayments = d.payments.filter(p=>p.studentId===s.id).slice().reverse();
   const myFees = isCurrentPeriod ? studentInvoicedFees(s,d) : studentInvoicedFeesFor(s, viewTerm, viewYear, d);
   const myReqs = studentRequirements(s,d);
+  const agreedTerm = DB.info.currentTerm, agreedYear = DB.info.currentYear;
+  const agreedSum = studentAgreedSummary(s, agreedTerm, agreedYear, d);
+  const editingAgreed = VIEW.params.editAgreedStudentId===s.id;
+  const agreedBlock = editingAgreed
+    ? `<form data-form="setStudentAgreedFee" data-studentid="${s.id}" class="flex" style="align-items:flex-end;gap:8px;flex-wrap:wrap;">
+        <div><label>Agreed Fees</label><input name="amount" type="number" min="0" step="0.01" value="${agreedSum.agreed}" required></div>
+        <button class="btn">Save</button>
+        <a href="#" class="btn-outline" data-action="cancelEditAgreedStudent" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>
+      </form>`
+    : `<div class="flex" style="justify-content:space-between;align-items:center;"><h1 style="margin:4px 0;">${money(agreedSum.agreed)}</h1><button type="button" class="btn-outline" data-action="editStudentAgreedFee:${s.id}">Edit</button></div>`;
+  const agreedFeesSection = `<div class="card"><h3>Fees Follow-up — ${esc(agreedTerm)} ${esc(String(agreedYear))}</h3>
+    <div class="grid3">
+      <div><div class="small">AGREED FEES</div>${agreedBlock}</div>
+      <div class="card" style="margin:0;"><div class="small">TOTAL PAID</div><h1>${money(agreedSum.paid)}</h1></div>
+      <div class="card" style="margin:0;"><div class="small">BALANCE</div><h1 style="color:${agreedSum.balance>0?'var(--danger)':'var(--good)'};">${money(agreedSum.balance)}</h1></div>
+    </div>
+    <h4 style="margin-top:16px;">Installments</h4>
+    ${agreedSum.installments.length?`<table class="data-table"><tr><th>#</th><th>Amount</th><th>Date</th><th>Payer</th></tr>${agreedSum.installments.map((inst,i)=>`<tr><td>${ordinal(i+1)}</td><td>${money(inst.amount)}</td><td>${esc(fmtDate(inst.date))}</td><td>${payerLine(inst)}</td></tr>`).join('')}</table>`:'<p class="small">No installments recorded yet for this term.</p>'}
+    <h4 style="margin-top:16px;">Add Installment</h4>
+    <form data-form="addInstallment" data-studentid="${s.id}">
+      <div class="grid2">
+        <div><label>Amount Paid</label><input name="amount" type="number" min="0" step="0.01" required></div>
+        <div><label>Date</label><input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Payer Name</label><input name="payerName" placeholder="e.g. Jane Nakato"></div>
+        <div><label>Relationship to Student</label><select name="payerRelationship">${payerRelationshipOptions('')}</select></div>
+      </div>
+      <label>Payer Contact</label><input name="payerContact" placeholder="Phone number">
+      <div class="flex" style="margin-top:12px;"><button class="btn">Save Installment</button></div>
+    </form>
+    <div class="flex" style="margin-top:16px;"><button type="button" class="btn-outline" onclick="window.print()">🖨 Print Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download Demand Note</button></div>
+  </div>
+  <div id="printArea">${demandNoteHTML(s, cl, d, agreedTerm, agreedYear)}</div>`;
   return `<h2>${esc(s.name)} — Financial &amp; Requirements Follow-up</h2>
   <p class="small">${esc(s.admNo)} · ${cl?esc(cl.name):'—'}</p>
+  ${agreedFeesSection}
   <div class="card"><h3>View as of</h3>
   <div class="grid2">
     <div><label>Term</label><select onchange="setAnalysisParam('finTerm', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${viewTerm===t?'selected':''}>${t}</option>`).join('')}</select></div>
@@ -4255,7 +5212,7 @@ function financeStudentView(studentId){
       return `<tr><td>${esc(r.name)}</td><td>${esc(r.category)}</td><td>${statusCell}</td><td class="flex">${actionCell}</td></tr>`;
     }).join('')}</table>`; })()}
   </div>
-  <button class="btn-outline" data-action="nav:finance">Back to Finance & Requirements</button>`;
+  <button class="btn-outline" data-action="finBackToStudentTable">← Back</button>`;
 }
 
 function adminDashboard(){
@@ -5901,6 +6858,95 @@ function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: val
 // Note: Class Analysis is exported as a PDF only (see downloadElementAsPdf / the
 // "dlClassAnalysisPdf" action) — no CSV export is offered for this view by design.
 
+/* ---------- Project Assessment: class + subject picker, then per-student project
+   scores for the school's currently active term. Same "Admin sees every class, a
+   Teacher only sees classes they're the Class Teacher of" visibility rule as Class
+   Analysis / Master Mark Sheet above (see CLASS_TEACHER_VIEWS) — but here BOTH
+   Admin and that class's own Class Teacher can also ENTER scores, not just view.
+   Scores live in their own ledger (projectData(), see above) and never touch the
+   regular subject-scoring pipeline or report cards. ---------- */
+function projectAssessmentView(){
+  const isAdmin = CUR.role==='admin';
+  const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
+  if(!visibleClasses.length) return `<h2>Project Assessment</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
+  const sel = VIEW.params;
+  const classId = (sel.pjClassId && visibleClasses.some(c=>c.id===sel.pjClassId)) ? sel.pjClassId : visibleClasses[0].id;
+  const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
+  const canEnterScores = isAdmin || cls.classTeacher===CUR.username;
+  const subjects = classSubjectsFor(cls);
+  const subject = (sel.pjSubject && subjects.includes(sel.pjSubject)) ? sel.pjSubject : (subjects[0]||null);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const d = projectData();
+  const bands = projectBands();
+  const comments = projectGradeComments();
+
+  const students = subject ? sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===cls.id && studentSubjects(s,cls).includes(subject))) : [];
+
+  const rowsHtml = students.map(s=>{
+    const rec = projectScoreRecord(s.id, cls.id, subject, term, year, d);
+    const scoreVal = (rec && rec.score!=null) ? rec.score : '';
+    const grade = (rec && rec.score!=null) ? projectGradeFor(Number(rec.score)) : null;
+    const gradeCell = grade ? `<b style="color:${gradeColorFor(grade)};">${grade}</b> — ${esc(comments[grade]||'')}` : '—';
+    const scoreCell = canEnterScores
+      ? `<form data-form="setProjectScore" data-studentid="${s.id}" data-classid="${cls.id}" data-subject="${esc(subject)}" class="flex" style="gap:4px;flex-wrap:nowrap;justify-content:center;">
+          <input name="score" type="number" min="0" max="100" step="0.1" value="${scoreVal}" style="width:80px;">
+          <button class="btn-outline" style="padding:4px 8px;">Save</button>
+        </form>`
+      : (scoreVal!==''?esc(String(scoreVal)):'—');
+    return `<tr><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td><td>${scoreCell}</td><td>${gradeCell}</td></tr>`;
+  }).join('');
+
+  const editingGrading = isAdmin && VIEW.params.editProjectGrading;
+  const gradingRowsHtml = ['A','B','C','D','E'].map(g=>{
+    const band = bands[g]||[0,0];
+    if(editingGrading){
+      return `<tr>
+        <td><b>${g}</b></td>
+        <td><input name="min_${g}" type="number" min="0" max="100" value="${band[0]}" style="width:65px;"></td>
+        <td><input name="max_${g}" type="number" min="0" max="100" value="${band[1]}" style="width:65px;"></td>
+        <td><input name="comment_${g}" value="${esc(comments[g]||'')}"></td>
+      </tr>`;
+    }
+    return `<tr><td><b>${g}</b></td><td colspan="2">${band[0]}–${band[1]}%</td><td>${esc(comments[g]||'')}</td></tr>`;
+  }).join('');
+  const gradingTable = `<table class="data-table"><tr><th>Grade</th><th colspan="2">Range (%)</th><th>Comment</th></tr>${gradingRowsHtml}</table>`;
+
+  return `
+  <h2>Project Assessment</h2>
+  <div class="card">
+    <div class="grid3">
+      <div><label>Class</label><select onchange="setProjectParam('pjClassId', this.value)">
+        ${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select></div>
+      <div><label>Subject</label><select onchange="setProjectParam('pjSubject', this.value)">
+        ${subjects.length?subjects.map(su=>`<option value="${esc(su)}" ${su===subject?'selected':''}>${esc(su)}</option>`).join(''):'<option value="">No subjects yet</option>'}
+      </select></div>
+      <div><label>Term</label><div style="padding:9px 0;font-weight:700;">${esc(term)}, ${esc(String(year))}</div></div>
+    </div>
+    ${!canEnterScores?'<p class="small" style="margin-top:8px;">You can view this class\'s project scores, but only an Admin or this class\'s own Class Teacher can enter them.</p>':''}
+  </div>
+
+  ${subject ? `
+  <div class="card" style="overflow:auto;">
+    <h3>${esc(cls.name)} — ${esc(subject)} Project — ${esc(term)}, ${esc(String(year))}</h3>
+    <p class="small">Score each student's project out of 100 — the grade and comment are worked out automatically from the Project Grading Scale below.</p>
+    <table class="data-table">
+      <tr><th>Adm No.</th><th>Student</th><th>Score (/100)</th><th>Grade &amp; Comment</th></tr>
+      ${rowsHtml || `<tr><td colspan="4">No students take this subject in this class.</td></tr>`}
+    </table>
+  </div>` : `<div class="card"><p class="small">This class has no subjects on record yet.</p></div>`}
+
+  <div class="card">
+    <div class="flex" style="justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Project Grading Scale</h3>
+      ${isAdmin?`<button type="button" class="btn-outline" data-action="${editingGrading?'cancelEditProjectGrading':'editProjectGrading'}">${editingGrading?'Cancel':'Edit scale'}</button>`:''}
+    </div>
+    <p class="small">Defaults to the same A–E scale and descriptors used for O-Level subjects. ${isAdmin?'Adjust it below':'Only an Admin can adjust it'} — changes here apply to Project Assessment only and never affect subject grading.</p>
+    ${editingGrading ? `<form data-form="setProjectGrading">${gradingTable}<div class="flex" style="margin-top:10px;"><button class="btn">Save Grading Scale</button></div></form>` : gradingTable}
+  </div>`;
+}
+function setProjectParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
+
 /* ---------- Master Mark Sheet (admin): every student x every subject, one class ----------
    One wide table for a whole class/term/year: every subject the class takes as its own
    column group (with a sub-column per paper for subjects that have more than one paper,
@@ -6609,6 +7655,11 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const isA = cls.level==='A';
   const isP = cls.level==='P';
   const isO = cls.level==='O';
+  // Project Work: only populated (and thus only shown — see the table below) when
+  // this student has at least one Project Assessment score on file for THIS class/
+  // term/year. A class where no project scores were ever entered yields an empty
+  // array here for every one of its students, so the table never appears for them.
+  const projectRows = projectData().scores.filter(x=>x.studentId===s.id && x.classId===cls.id && x.term===term && Number(x.year)===Number(year) && x.score!=null);
   // Previous Position (Primary only): the student's rank in the term immediately
   // before the one being viewed, following the school calendar's own rotation —
   // Term 1 looks back to Term 3 of the PRIOR year, Term 2 looks back to Term 1 of
@@ -6927,7 +7978,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
     ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
-    <div class="rc-topline"><span>${s.feesCode?`FEES CODE: ${esc(s.feesCode)}`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
+    <div class="rc-topline"><span>${s.feesCode?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
 
     <div class="rc-title-block"${DB.info.logo?' data-has-logo="1"':''}>
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo" alt="School logo">`:''}
@@ -6982,6 +8033,14 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${isP?'':`<td>${totalPaperAvgTxt}</td>`}<td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
     </table>
     </div>
+
+    ${projectRows.length ? `
+    <div class="rc-section-title">Project Work</div>
+    <table class="rc-project-table">
+      <colgroup><col style="width:34%"><col style="width:18%"><col style="width:14%"><col style="width:34%"></colgroup>
+      <tr><th>Subject Assessed</th><th>Score</th><th>Grade</th><th>Descriptor</th></tr>
+      ${projectRows.map(pr=>{ const g = projectGradeFor(Number(pr.score)); return `<tr><td>${esc(pr.subject)}</td><td>${Number(pr.score)}</td><td><b>${g}</b></td><td>${esc(projectGradeComments()[g]||'')}</td></tr>`; }).join('')}
+    </table>` : ''}
 
     <div class="rc-section-title">Performance Summary</div>
     <table class="rc-summary-table">
@@ -7056,11 +8115,12 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </div>
     </div>
 
+    <div class="legend-strip">
+      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?('UGX '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?('UGX '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
+    </div>
+
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
 
-    <div class="legend-strip">
-      <span>Fees balance: ${s.feesBalance!=null?('UGX '+Number(s.feesBalance).toLocaleString()):'—'} · Next term fees: ${s.nextTermFees!=null?('UGX '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
-    </div>
     <div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>
     </div>
   </div>${bareCard ? '' : '</div>'}`;
@@ -7103,6 +8163,8 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const isA = cls.level==='A';
   const isP = cls.level==='P';
   const isO = cls.level==='O';
+  // Project Work: see the identical note in reportCardHTML() above.
+  const projectRows = projectData().scores.filter(x=>x.studentId===s.id && x.classId===cls.id && x.term===term && Number(x.year)===Number(year) && x.score!=null);
 
   let prevPeriod = null, prevPosition = null;
   if(isP){
@@ -7235,6 +8297,10 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     student: s, cls, term, year, isA, isP, isO,
     cfg, showCW, showEOT, cwTests, useCwTestCols,
     subjectEntries,
+    // Project Work: same "only if this student has a score on file" rule as the
+    // on-screen version (reportCardHTML) — an empty array here means the table
+    // is simply skipped by drawReportCardPage below.
+    projectRows: projectRows.map(pr=>{ const g = projectGradeFor(Number(pr.score)); return { subject: pr.subject, scoreTxt: String(Number(pr.score)), grade: g, descriptor: projectGradeComments()[g] || '' }; }),
     // O'/A' Level only: rows for the compact Grading Key table shown right below
     // Performance Summary. The descriptor sentence is fixed standard wording; the short
     // label ("Exceptional", etc.) still comes from the school's own gradeCommentsFor().
@@ -7316,7 +8382,7 @@ function drawReportCardPage(pdf, data, gapBoost){
 
   // ---- 3. Topline: fees code + printed date ----
   pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
-  if(data.feesCode) pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy);
+  if(data.feesCode){ pdf.setFont('courier','bold'); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy); pdf.setFont('courier','normal'); setC(muted); }
   pdf.text(`Printed ${fmtDate(Date.now())}`, contentX+contentW, cy, {align:'right'});
   cy += 10;
 
@@ -7569,6 +8635,32 @@ function drawReportCardPage(pdf, data, gapBoost){
   { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize); }
   cy += totRowH + 14 + gapBoost;
 
+  // ---- 6b. Project Work table — only drawn when this student has at least one
+  // Project Assessment score on file (see buildReportCardData's projectRows) ----
+  if(data.projectRows && data.projectRows.length){
+    leftText('PROJECT WORK', contentX, cy, 9, 'bold', navy);
+    line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
+    cy += 12;
+    const pwColW = [0.34, 0.18, 0.14, 0.34].map(f=>contentW*f);
+    const pwColX = [contentX, contentX+pwColW[0], contentX+pwColW[0]+pwColW[1], contentX+pwColW[0]+pwColW[1]+pwColW[2]];
+    const pwHeaders = ['SUBJECT ASSESSED','SCORE','GRADE','DESCRIPTOR'];
+    const pwHeadH = 14;
+    setDrawC([29,78,137]); pdf.setFillColor(29,78,137);
+    pwColX.forEach((x,i)=>{ pdf.rect(x, cy, pwColW[i], pwHeadH, 'F'); pdf.setLineWidth(0.6); pdf.rect(x, cy, pwColW[i], pwHeadH); });
+    pwHeaders.forEach((h,i)=>centerText(h, pwColX[i], pwColW[i], cy+pwHeadH-5, 7.5, 'bold', [255,255,255]));
+    cy += pwHeadH;
+    data.projectRows.forEach(pr=>{
+      const rh = 15;
+      pwColX.forEach((x,i)=>{ pdf.setLineWidth(0.6); pdf.rect(x, cy, pwColW[i], rh); });
+      centerText(pr.subject, pwColX[0], pwColW[0], cy+rh-5, bodySize);
+      centerText(pr.scoreTxt, pwColX[1], pwColW[1], cy+rh-5, bodySize);
+      centerText(pr.grade, pwColX[2], pwColW[2], cy+rh-5, bodySize, 'bold');
+      centerText(pr.descriptor, pwColX[3], pwColW[3], cy+rh-5, bodySize);
+      cy += rh;
+    });
+    cy += 14 + gapBoost;
+  }
+
   // ---- 7. Performance Summary table (3 label/value pairs x 2 rows) ----
   leftText('PERFORMANCE SUMMARY', contentX, cy, 9, 'bold', navy);
   line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
@@ -7759,10 +8851,10 @@ function drawReportCardPage(pdf, data, gapBoost){
   }
   cy += 28;
 
-  // ---- 11. Motto, fees legend, scoring note ----
+  // ---- 11. Fees legend, motto, scoring note ----
+  const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?('UGX '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?('UGX '+Number(data.nextTermFees).toLocaleString()):'—'}`;
+  centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 8.5, 'italic', navy); cy += 12; }
-  const feesTxt = `Fees balance: ${data.feesBalance!=null?('UGX '+Number(data.feesBalance).toLocaleString()):'—'}  ·  Next term fees: ${data.nextTermFees!=null?('UGX '+Number(data.nextTermFees).toLocaleString()):'—'}`;
-  centerText(feesTxt, contentX, contentW, cy, 7.5, 'normal', muted); cy += 10;
   centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
 
   // Fit the finished content exactly between the top and bottom insets of the
@@ -7889,8 +8981,10 @@ document.addEventListener('click', async (e)=>{
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
+    'printDemandNote','downloadDemandNote','editClassAgreedFee','editStudentAgreedFee',
     'settleShortfallFull','delShortfallSettlement','delShortfall',
-    'editExpenseType','delExpenseType','editExpense','delExpense','reqMarkItem','reqUndoStatus','reqShowCashForm','reqCancelCashForm']);
+    'editExpenseType','delExpenseType','editExpense','delExpense','reqMarkItem','reqUndoStatus','reqShowCashForm','reqCancelCashForm',
+    'reqChangeSelection','reqCancelSelection','printReqDemandNote']);
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
@@ -8338,7 +9432,23 @@ Continue?`);
       render();
       break;
     }
-    case 'financeStudent': VIEW = {name:'financestudent', params:{studentId:arg}}; render(); break;
+    case 'financeStudent': VIEW = {name:'financestudent', params:{studentId:arg, finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId}}; render(); break;
+    case 'finBackToStudentTable': VIEW = {name:'finance', params:{finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId}}; render(); break;
+    case 'printDemandNote': printDemandNoteFor(arg); break;
+    case 'downloadDemandNote': await downloadDemandNoteFor(arg); break;
+    case 'finTab': VIEW.params = {finTab: arg}; render(); break;
+    case 'finBackToTabs': VIEW.params = {}; render(); break;
+    case 'finClass': VIEW.params = {...VIEW.params, finClassId: arg, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false}; render(); break;
+    case 'finBackToClass': VIEW.params = {...VIEW.params, finClassId: null, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false}; render(); break;
+    case 'reqChangeSelection': VIEW.params = {...VIEW.params, reqSelecting: true}; render(); break;
+    case 'reqCancelSelection': VIEW.params = {...VIEW.params, reqSelecting: false}; render(); break;
+    case 'printReqDemandNote': printDemandNoteFor(arg); break;
+    case 'editClassAgreedFee': VIEW.params = {...VIEW.params, editClassAgreed: true}; render(); break;
+    case 'cancelEditClassAgreed': VIEW.params = {...VIEW.params, editClassAgreed: false}; render(); break;
+    case 'editProjectGrading': VIEW.params = {...VIEW.params, editProjectGrading: true}; render(); break;
+    case 'cancelEditProjectGrading': VIEW.params = {...VIEW.params, editProjectGrading: false}; render(); break;
+    case 'editStudentAgreedFee': VIEW.params = {...VIEW.params, editAgreedStudentId: arg}; render(); break;
+    case 'cancelEditAgreedStudent': VIEW.params = {...VIEW.params, editAgreedStudentId: null}; render(); break;
     case 'editExpenseType': VIEW.params = {...VIEW.params, editExpenseTypeId: arg}; render(); break;
     case 'delExpenseType': {
       if(!confirm('Delete this expense category? Past expense records already saved under it are kept and unaffected.')) break;
@@ -8989,7 +10099,8 @@ document.addEventListener('submit', async (e)=>{
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
-    'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild']);
+    'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
+    'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
@@ -9134,6 +10245,55 @@ document.addEventListener('submit', async (e)=>{
       VIEW.params = {...VIEW.params, reqCashTarget:null};
       render(); return;
     }
+    else if(type==='setClassAgreedFee'){
+      const d = financeData();
+      const classId = form.dataset.classid;
+      const cls = DB.classes.find(c=>c.id===classId);
+      if(!cls){ alert('Class not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>=0)){ alert('Please enter a valid amount.'); return; }
+      let rec = classAgreedRecord(classId, DB.info.currentTerm, DB.info.currentYear, d);
+      if(rec) rec.amount = amount;
+      else d.classAgreed.push({id:uid('cagree'), classId, term:DB.info.currentTerm, year:DB.info.currentYear, amount});
+      // A classwide amount change affects every student in the class who isn't
+      // individually overridden — resync all of them so their report cards
+      // (feesBalance / nextTermFees) reflect the new Agreed Fees figure right away.
+      DB.students.filter(s=>s.classId===classId).forEach(s=>syncStudentFinance(s.id,d));
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editClassAgreed:false};
+      render(); return;
+    }
+    else if(type==='setStudentAgreedFee'){
+      const d = financeData();
+      const studentId = form.dataset.studentid;
+      const stu = DB.students.find(s=>s.id===studentId);
+      if(!stu){ alert('Student not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>=0)){ alert('Please enter a valid amount.'); return; }
+      let rec = studentAgreedRecord(studentId, DB.info.currentTerm, DB.info.currentYear, d);
+      if(rec) rec.amount = amount;
+      else d.studentAgreed.push({id:uid('sagree'), studentId, term:DB.info.currentTerm, year:DB.info.currentYear, amount});
+      syncStudentFinance(studentId, d); // reflect the new agreed amount on this student's report card immediately
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editAgreedStudentId:null};
+      render(); return;
+    }
+    else if(type==='addInstallment'){
+      const d = financeData();
+      const studentId = form.dataset.studentid;
+      const stu = DB.students.find(s=>s.id===studentId);
+      if(!stu){ alert('Student not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>0)){ alert('Please enter an installment amount greater than zero.'); return; }
+      const date = fd.get('date')||'';
+      if(!date){ alert('Please enter the payment date.'); return; }
+      d.installments.push({id:uid('inst'), studentId, term:DB.info.currentTerm, year:DB.info.currentYear, amount, date,
+        payerName:(fd.get('payerName')||'').trim(), payerRelationship:fd.get('payerRelationship')||'', payerContact:(fd.get('payerContact')||'').trim(),
+        recordedBy:CUR.username, createdAt:new Date().toISOString()});
+      syncStudentFinance(studentId, d); // an installment reduces the balance — keep the report card's figure current
+      await saveInfo();
+      render(); return;
+    }
     else if(type==='addRequirement' || type==='editRequirement'){
       const name=(fd.get('name')||'').trim();
       if(!name){ alert('Please enter a requirement name.'); return; }
@@ -9147,6 +10307,53 @@ document.addEventListener('submit', async (e)=>{
       }
       await saveInfo();
       VIEW.params = {...VIEW.params, editReqId:null};
+      render(); return;
+    }
+    else if(type==='saveClassReqSelection'){
+      const classId = form.dataset.classid;
+      const ids = fd.getAll('reqIds');
+      const d = financeData();
+      d.classReqSelections[classId] = ids;
+      await saveInfo();
+      VIEW.params = {...VIEW.params, reqSelecting:false};
+      render(); return;
+    }
+    else if(type==='setProjectScore'){
+      const studentId = form.dataset.studentid, classId = form.dataset.classid, subject = form.dataset.subject;
+      const stu = DB.students.find(s=>s.id===studentId);
+      const cls = DB.classes.find(c=>c.id===classId);
+      if(!stu || !cls){ alert('Student or class not found.'); return; }
+      // Same "Admin, or the Class Teacher of THIS class" rule as viewing the page —
+      // enforced here too since a form's data-* attributes could in principle be
+      // tampered with client-side.
+      if(!(CUR.role==='admin' || (CUR.role==='teacher' && cls.classTeacher===CUR.username))){
+        alert('Only an Admin, or this class\'s Class Teacher, can enter project scores.'); return;
+      }
+      const raw = fd.get('score');
+      const score = raw===''||raw==null ? null : Number(raw);
+      if(score!==null && !(score>=0 && score<=100)){ alert('Please enter a score between 0 and 100.'); return; }
+      const d = projectData();
+      let rec = projectScoreRecord(studentId, classId, subject, DB.info.currentTerm, DB.info.currentYear, d);
+      if(score===null){
+        if(rec) d.scores = d.scores.filter(x=>x!==rec);
+      } else if(rec){
+        rec.score = score; rec.teacher = CUR.username; rec.recordedAt = new Date().toISOString();
+      } else {
+        d.scores.push({id:uid('projscore'), studentId, classId, subject, term:DB.info.currentTerm, year:DB.info.currentYear, score, teacher:CUR.username, recordedAt:new Date().toISOString()});
+      }
+      await saveInfo();
+      render(); return;
+    }
+    else if(type==='setProjectGrading'){
+      const bands = {}, comments = {};
+      ['A','B','C','D','E'].forEach(g=>{
+        bands[g] = [Number(fd.get('min_'+g)||0), Number(fd.get('max_'+g)||0)];
+        comments[g] = (fd.get('comment_'+g)||'').trim() || (DEFAULT_O_GRADE_COMMENTS[g]);
+      });
+      const d = projectData();
+      d.bands = bands; d.comments = comments;
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editProjectGrading:false};
       render(); return;
     }
     else if(type==='founderSetup'){
