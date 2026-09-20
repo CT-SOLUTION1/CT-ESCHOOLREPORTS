@@ -135,6 +135,13 @@ img{max-width:100%;height:auto;}
 .sidebar a{display:block;padding:12px 22px;color:#dce8f5;text-decoration:none;font-size:14px;font-weight:600;border-left:4px solid transparent;}
 .sidebar a.active,.sidebar a:hover{background:rgba(255,255,255,.08);border-left:4px solid var(--gold);}
 .main{flex:1;min-width:280px;padding:26px;max-width:1150px;}
+/* Global Back button (see NAVIGATION HISTORY below) */
+.nav-back-bar{margin:0 0 14px;}
+.nav-back-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;line-height:1.2;max-width:100%;text-align:left;}
+.nav-back-btn:hover{background:var(--blue);color:#fff;}
+.nav-back-btn .nav-back-to{font-weight:600;opacity:.85;}
+.nav-back-btn.auth-back{position:absolute;top:14px;left:14px;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.25);}
+@media print{.nav-back-bar,.nav-back-btn{display:none !important;}}
 table{border-collapse:collapse;width:100%;background:#fff;}
 table.report-table, table.data-table{border:2px solid var(--blue);}
 table.report-table th, table.report-table td, table.data-table th, table.data-table td{border:1px solid var(--blue);padding:7px 9px;font-size:13px;text-align:center;}
@@ -207,12 +214,12 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 
 /* ---- Dashboard icon tiles: tap-to-open feature grid, sized to fit a phone screen ---- */
 .tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:10px;margin:6px 0 22px;}
-.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#fff;
-  border:1px solid #cfd9e3;border-radius:12px;padding:14px 6px;box-shadow:0 1px 4px rgba(10,42,74,.06);
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#e6f7ea;
+  border:1px solid #a9dbb6;border-radius:12px;padding:14px 6px;box-shadow:0 1px 4px rgba(10,42,74,.06);
   text-align:center;font-family:inherit;transition:box-shadow .12s ease,border-color .12s ease,transform .12s ease;}
-.tile:hover, .tile:active{border-color:var(--blue);box-shadow:0 3px 12px rgba(10,42,74,.14);transform:translateY(-1px);}
+.tile:hover, .tile:active{border-color:#2f8a4c;background:#d9f2df;box-shadow:0 3px 12px rgba(10,42,74,.14);transform:translateY(-1px);}
 .tile-icon{font-size:26px;line-height:1;}
-.tile-label{font-size:11.5px;font-weight:700;color:var(--navy);line-height:1.25;}
+.tile-label{font-size:11.5px;font-weight:700;color:#0f3d1f;line-height:1.25;}
 
 /* ---- Delivered-command toast: brief confirmation that a Submit tap went through ---- */
 #deliveredToast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--good);color:#fff;
@@ -972,6 +979,32 @@ function gradeCommentsFor(level){
   if(key && DB.info && DB.info[key]) return {...(level==='A'?DEFAULT_A_GRADE_COMMENTS:DEFAULT_O_GRADE_COMMENTS), ...DB.info[key]};
   return level==='A' ? DEFAULT_A_GRADE_COMMENTS : level==='O' ? DEFAULT_O_GRADE_COMMENTS : GRADE_COMMENT;
 }
+// ---- School Grade (Primary vs Secondary) ----
+// A school is either a Primary School (Primary classes/features only) or a Secondary
+// School (O'-Level and A'-Level classes/features only — the two levels ship together
+// as one grade). The admin picks exactly one on the School Info page; every class-level
+// picker, the Grading Setup bands, and the subject-setup screens all key off this so the
+// grade the school didn't pick is deactivated throughout rather than merely hidden in one place.
+// Legacy schools that registered before this setting existed have schoolGrade===undefined —
+// treated as "not yet chosen", so nothing is restricted until the admin explicitly sets it.
+function schoolGrade(){ return (DB.info && DB.info.schoolGrade) || null; }
+function isPrimarySchool(){ return schoolGrade()==='primary'; }
+function isSecondarySchool(){ return schoolGrade()==='secondary'; }
+// Which class levels ('P','O','A') the admin is currently allowed to create/keep —
+// null (grade not yet chosen) means no restriction, matching legacy behaviour.
+function allowedClassLevels(){
+  const g = schoolGrade();
+  if(g==='primary') return ['P'];
+  if(g==='secondary') return ['O','A'];
+  return ['P','O','A'];
+}
+// Display label for the combined Extra Subjects setup page/tile — drops the
+// deactivated grade's wording once a School Grade has been chosen for this school.
+function extraSubjectsPageLabel(){
+  if(isPrimarySchool()) return 'Primary Extra Subjects';
+  if(isSecondarySchool()) return "A-Level & O-Level Extra Subjects";
+  return 'A-Level, O-Level & Primary Extra Subjects';
+}
 function passFailGrades(){ return {...DEFAULT_PASS_FAIL_GRADES, ...((DB.info&&DB.info.passFailGrades)||{})}; }
 function passFailComments(){ return {...DEFAULT_PASS_FAIL_COMMENTS, ...((DB.info&&DB.info.passFailComments)||{})}; }
 // A-Level principal subjects use the configured A-E grading scale. General Paper and subsidiaries
@@ -1333,6 +1366,144 @@ function syncStatusBanner(key){
 }
 let AUTH_VIEW = 'login';
 let loginRole = null;
+
+/* ============================================================
+   NAVIGATION HISTORY + BACK BUTTON
+   Every page a signed-in (or signed-out) user opens is remembered in order, per
+   session. The Back button returns to the page opened immediately before the current
+   one — including report cards, mark sheets, profiles and the sign-in / sign-up screens
+   — and each further tap keeps stepping back through that same user's own trail.
+   History is cleared whenever the session changes (login, logout, founder entering a
+   school), so one person's trail is never shown to, or replayed for, another.
+   Only "which page" counts as a new page: filters, search boxes, pagination, the report
+   card's Viewing-period picker and edit/confirm modes stay on the same page.
+   ============================================================ */
+const NAV_HISTORY = { sess:null, sig:null, cur:null, stack:[], going:false };
+const NAV_HISTORY_MAX = 60;
+// Which params say "a different item" for the views that open a specific item.
+const NAV_ID_KEYS = {
+  teacherprofile:['username'], studentprofile:['studentId'], classedit:['classId'],
+  integratedmarksheet:['classId','subject'], reportcard:['studentId'], financestudent:['studentId'],
+  ascores:['assignId','paper','kind','label'], tscores:['assignId','paper','kind','label']
+};
+const NAV_DETAIL_LABELS = {
+  teacherprofile:'Teacher Profile', studentprofile:'Student Profile', classedit:'Class Details',
+  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', reportcard:'Report Card',
+  financestudent:'Student Follow-up', fschoollogins:'School Logins', password:'Other Settings'
+};
+const NAV_FOUNDER_LABELS = {
+  fdash:'Dashboard', fpending:'Pending School Approvals', fschools:'All Schools',
+  fsnapshots:'System Backups & Snapshots', fpassword:'Change Password'
+};
+const NAV_AUTH_LABELS = {
+  createSchool:'Create School', signupTeacher:'Teacher Sign-up', signupParent:'Parent Sign-up',
+  founderLogin:'Founder Sign-in', founderRecovery:'Founder Recovery', schoolRecovery:'Password Recovery'
+};
+function navCloneParams(p){ try{ return JSON.parse(JSON.stringify(p||{})); }catch(e){ return {}; } }
+function navSessionKey(){
+  return CUR ? [CUR.role, CUR.username||'', SCHOOL_ID||'', FOUNDER_IMPERSONATING_SCHOOL||''].join('|') : 'anon';
+}
+function navSig(name, params){
+  const keys = NAV_ID_KEYS[name], p = params||{};
+  return name + (keys ? '|'+keys.map(k=>String(p[k]==null?'':p[k])).join('|') : '');
+}
+// Called on every render with the screen about to be shown.
+function navTrack(snap, sig){
+  const H = NAV_HISTORY, sess = navSessionKey();
+  if(H.sess!==sess){ H.sess=sess; H.stack=[]; H.cur=snap; H.sig=sig; H.going=false; return; }
+  if(H.sig!==sig){
+    if(H.going) H.going=false;                       // arrived via Back: already popped
+    else if(H.cur) { H.stack.push(H.cur); if(H.stack.length>NAV_HISTORY_MAX) H.stack.shift(); }
+    H.cur=snap; H.sig=sig;
+  } else {
+    H.cur=snap;                                      // same page: keep its latest filters/state
+  }
+}
+function navTrackView(view){
+  navTrack({name:view, params:navCloneParams(VIEW.params)}, navSig(view, VIEW.params));
+}
+function navLabel(s){
+  if(!s) return 'previous page';
+  if(s.auth){
+    if(s.authView==='login') return s.loginRole ? 'Sign in' : 'Home';
+    return NAV_AUTH_LABELS[s.authView] || 'previous page';
+  }
+  if(NAV_DETAIL_LABELS[s.name]) return NAV_DETAIL_LABELS[s.name];
+  if(NAV_FOUNDER_LABELS[s.name]) return NAV_FOUNDER_LABELS[s.name];
+  try{ const hit = navByRole(CUR.role).find(n=>n[0]===s.name); if(hit) return hit[1]; }catch(e){}
+  return 'previous page';
+}
+function navBackButtonHTML(extraClass){
+  const H = NAV_HISTORY;
+  if(!H.stack.length) return '';
+  const label = navLabel(H.stack[H.stack.length-1]);
+  return `<button type="button" class="nav-back-btn${extraClass?' '+extraClass:''}" data-action="navBack" title="Back to ${esc(label)}" aria-label="Back to ${esc(label)}">← Back<span class="nav-back-to">to ${esc(label)}</span></button>`;
+}
+function navBackBar(){
+  const b = navBackButtonHTML('');
+  return b ? `<div class="nav-back-bar">${b}</div>` : '';
+}
+// Sign-in / sign-up / recovery screens: same trail, button floats top-left.
+function navWrapAuth(html){
+  navTrack({auth:true, authView:AUTH_VIEW, loginRole:loginRole}, 'auth|'+AUTH_VIEW+'|'+(loginRole||''));
+  const btn = navBackButtonHTML('auth-back');
+  if(!btn) return html;
+  return html.replace('<div class="auth-wrap">', ()=>'<div class="auth-wrap">'+btn);
+}
+function navGoBack(){
+  const H = NAV_HISTORY;
+  if(!H.stack.length) return;
+  const prev = H.stack.pop();
+  H.going = true;
+  if(prev.auth){ AUTH_VIEW = prev.authView; loginRole = prev.loginRole; }
+  else { VIEW = {name:prev.name, params:navCloneParams(prev.params)}; }
+  render();
+  H.going = false;
+  if(prev.auth) return;
+  const name = VIEW.name;
+  const fit = ()=>{ const r = document.getElementById('mainArea'); if(r && (name==='reportcard'||name==='preport')) fitOnePage(r); };
+  fit();
+  // Same background catch-up the sidebar does for score-based pages, so a report card or
+  // mark sheet reached via Back is as fresh as one opened normally.
+  if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet','reportcard'].includes(name)){
+    const token = NAV_TOKEN;
+    const p = name==='mastermarksheet' ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
+    Promise.resolve(p).then(()=>{
+      if(NAV_TOKEN!==token || FORM_DIRTY) return;
+      render(); fit();
+    }).catch(e=>console.error(e));
+  }
+}
+
+/* ---- Phone / browser Back button (hardware Back, swipe-back, browser Back) ----
+   The app is one HTML page, so the phone's Back button would normally leave the app.
+   To make it step back through the same trail as the on-screen button, the browser
+   history always holds one "guard" entry on top of a "base" entry. Pressing Back lands
+   on base: if there is an earlier page in this user's trail we show it and put the
+   guard back; if there isn't (first page), we let Back carry on and leave the app.
+   The guard is (re)added on taps because browsers ignore history entries created
+   without a user gesture. */
+function navArmPhoneBack(){
+  try{
+    const st = history.state;
+    if(st && st.ctEBack) return;
+    if(!st || !st.ctEBase) history.replaceState({ctEBase:true}, '');
+    history.pushState({ctEBack:true}, '');
+  }catch(e){}
+}
+document.addEventListener('click', navArmPhoneBack, true);
+document.addEventListener('touchend', navArmPhoneBack, true);
+window.addEventListener('popstate', (ev)=>{
+  const st = ev.state;
+  if(st && st.ctEBack) return;                 // moved onto the guard entry itself
+  if(NAV_HISTORY.stack.length){
+    NAV_TOKEN++;
+    navGoBack();
+    try{ history.pushState({ctEBack:true}, ''); }catch(e){}
+  } else {
+    try{ history.back(); }catch(e){}           // first page: let Back leave the app
+  }
+});
 // PWA install prompt: captured as soon as the browser makes it available so the
 // login screen can offer an immediate, one-tap install/download-style button.
 let DEFERRED_INSTALL_PROMPT = null;
@@ -3167,7 +3338,7 @@ function render(){
   else if(SYSTEM_OWNER===null) nextHtml = banner + renderFounderSetup();
   else if(CUR && CUR.role==='founder') nextHtml = banner + renderFounderShell();
   else if(SCHOOL_ID && CUR) nextHtml = banner + renderShell();
-  else nextHtml = banner + renderPlatformAuth();
+  else nextHtml = banner + navWrapAuth(renderPlatformAuth());
   // Avoid destroying and rebuilding an unchanged screen. This preserves browser work
   // and makes repeated state notifications cheaper, while real data/view changes still render normally.
   if(app.innerHTML !== nextHtml) app.innerHTML = nextHtml;
@@ -3220,6 +3391,7 @@ function renderFounderShell(){
   const nav = [['fdash','Dashboard'],['fpending','Pending School Approvals'],['fschools','All Schools'],['fsnapshots','System Backups & Snapshots'],['fpassword','Change Password']];
   const extraViews = ['fschoollogins'];
   const view = (VIEW.name==='boot'||!(nav.some(n=>n[0]===VIEW.name)||extraViews.includes(VIEW.name))) ? 'fdash' : VIEW.name;
+  navTrackView(view);
   return `
   <div class="topbar">
     <div class="brand">CT-E <span>SOLUTIONS</span> <span class="small" style="color:#cfe0f2;font-weight:400;">— Founder Panel</span>
@@ -3231,7 +3403,7 @@ function renderFounderShell(){
   </div>
   <div class="layout">
     <div class="sidebar">${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
-    <div class="main">${renderFounderView(view)}</div>
+    <div class="main">${navBackBar()}${renderFounderView(view)}</div>
   </div>`;
 }
 function formatBytes(n){
@@ -3646,29 +3818,45 @@ function renderParentSignupSlot(){
    ============================================================ */
 // Shared nav config per role: [key, label, icon]. Used for both the sidebar
 // links and the tap-to-open icon tiles shown on each role's dashboard.
-const NAV_BY_ROLE = {
-  admin: [
-    ['dashboard','Dashboard','🏠'],['schoolinfo','School Info & Logo','🏫'],['classes','Classes','📚'],
-    ['accounts','Staff & Parent Accounts','👥'],['students','Students','🎓'],['oldstudents','Old Students','🎒'],['assignsubjects','Assign Subjects','📌'],
-    ['olevel','A-Level, O-Level & Primary Extra Subjects','📖'],['grading','Grading Setup','⚙️'],['promote','Year, Term & Promotion','⬆️'],
-    ['ascores','Enter / Download Scores','✍️'],['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
-    ['projects','Project Assessment','🧪'],
-    ['reports','Report Cards','📄'],['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️']
-  ],
-  teacher: [
-    ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
-    ['classanalysis','Class Analysis','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','Master Mark Sheet','🗂️'],
-    ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
-  ],
-  parent: [
-    ['pdash','My Children','🏠'],['preport','Report Card','📄'],['pfinance','Fees & Requirements','💰'],['otherSettings','Other Settings','⚙️']
-  ]
-};
+// admin's list is computed fresh each call so the one grade-spanning tile
+// (Extra Subjects) can relabel itself to match whichever grade this school
+// has chosen — the deactivated grade's wording drops out of view entirely
+// for this school, while a school that picked the other grade still sees
+// its own full wording, since schoolGrade() is read per-school from DB.info.
+function navByRole(role){
+  if(role==='admin'){
+    const extraSubjectsLabel = extraSubjectsPageLabel();
+    return [
+      ['dashboard','Dashboard','🏠'],['schoolinfo','School Info & Logo','🏫'],['promote','Year, Term & Promotion','⬆️'],
+      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','Students','🎓'],
+      ['assignsubjects','Assign Subjects','📌'],['olevel',extraSubjectsLabel,'📖'],
+      ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
+      ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
+      ['parentaccounts','Parents','👪'],['oldstudents','Old Students','🎒'],
+      ['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
+      ['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️'],
+      ['reports','Report Cards','📄']
+    ];
+  }
+  if(role==='teacher'){
+    return [
+      ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
+      ['classanalysis','Class Analysis','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','Master Mark Sheet','🗂️'],
+      ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
+    ];
+  }
+  if(role==='parent'){
+    return [
+      ['pdash','My Children','🏠'],['preport','Report Card','📄'],['pfinance','Fees & Requirements','💰'],['otherSettings','Other Settings','⚙️']
+    ];
+  }
+  return [];
+}
 // A tap/click grid of icon tiles for a role's dashboard — one tile per feature,
 // sized to fit comfortably on a phone screen. excludeKey leaves off the
 // dashboard's own tile since the user is already there.
 function featureTilesHTML(role, excludeKey){
-  const items = (NAV_BY_ROLE[role]||[]).filter(([k])=>k!==excludeKey);
+  const items = navByRole(role).filter(([k])=>k!==excludeKey);
   if(!items.length) return '';
   return `<div class="tile-grid">${items.map(([k,l,icon])=>`
     <button type="button" class="tile" data-action="nav:${k}">
@@ -3677,8 +3865,9 @@ function featureTilesHTML(role, excludeKey){
     </button>`).join('')}</div>`;
 }
 function renderShell(){
-  const nav = NAV_BY_ROLE[CUR.role];
+  const nav = navByRole(CUR.role);
   const view = (VIEW.name==='boot' || (!nav.some(n=>n[0]===VIEW.name) && !DETAIL_VIEWS.has(VIEW.name))) ? nav[0][0] : VIEW.name;
+  navTrackView(view);
   return `
   <div class="topbar">
     <div class="brand" style="text-align:center;">
@@ -3694,14 +3883,14 @@ function renderShell(){
   </div>
   <div class="layout">
     <div class="sidebar">${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
-    <div class="main" id="mainArea">${renderView(view)}</div>
+    <div class="main" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
 // Views that touch student/teacher bio data, account credentials, subject assignment,
 // or grading configuration are admin-only. This guard is a hard backstop — the sidebar
 // already hides these links from non-admins, but this makes it impossible to reach them
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
-const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','accounts','students','oldstudents','assignsubjects','olevel','grading','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems']);
+const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','staffaccounts','parentaccounts','students','oldstudents','assignsubjects','olevel','grading','examsetup','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems']);
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
@@ -3724,7 +3913,8 @@ function renderView(view){
       case 'schoolinfo': return schoolInfoView();
       case 'classes': return classesView();
       case 'classedit': return classEditView(VIEW.params.classId);
-      case 'accounts': return accountsView();
+      case 'staffaccounts': return staffAccountsView();
+      case 'parentaccounts': return parentAccountsView();
       case 'students': return studentsView();
       case 'oldstudents': return oldStudentsView();
       case 'assignsubjects': return assignSubjectsView();
@@ -3733,6 +3923,7 @@ function renderView(view){
       case 'olevel': return oLevelSubjectsView();
       case 'restoreitems': return restoreItemsView();
       case 'grading': return gradingView(VIEW.params.gcClassId);
+      case 'examsetup': return examSetupView(VIEW.params.gcClassId);
       case 'promote': return promoteView();
       case 'reports': return reportsListView();
       case 'finance': return financeRequirementsView();
@@ -5481,6 +5672,15 @@ function schoolInfoView(){
   return `
   <h2>School Info & Logo</h2>
   <div class="card">
+    <h3>School Grade</h3>
+    <p class="small">Choose which grade of school this is. Pick <b>Primary School</b> if you only run Primary, or <b>Secondary School</b> if you run O'-Level and/or A'-Level (the two ship together as one grade). Whichever grade you don't pick is deactivated throughout the system — its class level, grading bands, and subject setup stop appearing. You can only choose one${i.schoolGrade?'':' — nothing is restricted until you choose'}.</p>
+    <form data-form="schoolGrade">
+      <label class="flex" style="gap:8px;align-items:center;"><input type="radio" name="schoolGrade" value="primary" style="width:auto;" ${i.schoolGrade==='primary'?'checked':''} required> <span><b>Primary School</b></span></label>
+      <label class="flex" style="gap:8px;align-items:center;margin-top:8px;"><input type="radio" name="schoolGrade" value="secondary" style="width:auto;" ${i.schoolGrade==='secondary'?'checked':''} required> <span><b>Secondary School</b> — O' and A' Level</span></label>
+      <button class="btn" style="margin-top:14px;">Save school grade</button>
+    </form>
+  </div>
+  <div class="card">
     <form data-form="schoolInfo">
       <div class="flex">
         ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" class="photo-thumb" style="width:80px;height:80px;">`:''}
@@ -5513,6 +5713,7 @@ function schoolInfoView(){
 function classesView(){
   return `
   <h2>Classes</h2>
+  ${!schoolGrade() ? `<div class="note" style="margin-bottom:14px;">Set your <a href="#" data-action="nav:schoolinfo">School Grade</a> first (Primary or Secondary) — it decides which class levels you can add here.</div>` : ''}
   <div class="note" style="margin-bottom:14px;">If some students were entered before the current admission-number rule was introduced, use <b>Adjust existing admission numbers</b> below. It applies the same current rule to students already in the school, class by class, while keeping their existing class/enrollment order and assigning the permanent sequence from 001 upward.</div>
   <div class="card" style="margin-bottom:14px;">
     <button class="btn-gold" data-action="repairAdmissionNumbers"><b>Adjust existing admission numbers to current rule</b></button>
@@ -5521,7 +5722,7 @@ function classesView(){
     <form data-form="addClass">
       <div class="grid3">
         <div><label>Class name</label><input name="name" placeholder="e.g. S.3 East" required></div>
-        <div><label>Level</label><select name="level" id="clsLevel"><option value="O">O-Level</option><option value="A">A-Level</option><option value="P">Primary</option></select></div>
+        <div><label>Level</label><select name="level" id="clsLevel">${['O','A','P'].filter(l=>allowedClassLevels().includes(l)).map(l=>`<option value="${l}">${l==='O'?'O-Level':l==='A'?'A-Level':'Primary'}</option>`).join('')}</select></div>
         <div id="formWrap"><label>Form</label><select name="form" id="clsForm"><option>S.1</option><option>S.2</option><option>S.3</option><option>S.4</option></select></div>
       </div>
       <div class="grid2">
@@ -5567,9 +5768,7 @@ function classEditView(classId){
       <div class="grid3">
         <div><label>Class name</label><input name="name" value="${esc(cls.name)}" placeholder="e.g. S.3 East" required></div>
         <div><label>Level</label><select name="level" id="clsLevel">
-          <option value="O" ${cls.level==='O'?'selected':''}>O-Level</option>
-          <option value="A" ${cls.level==='A'?'selected':''}>A-Level</option>
-          <option value="P" ${cls.level==='P'?'selected':''}>Primary</option>
+          ${[['O','O-Level'],['A','A-Level'],['P','Primary']].filter(([l])=>allowedClassLevels().includes(l) || l===cls.level).map(([l,label])=>`<option value="${l}" ${cls.level===l?'selected':''}>${label}${!allowedClassLevels().includes(l)?' (other grade)':''}</option>`).join('')}
         </select></div>
         <div id="formWrap"><label>Form</label><select name="form" id="clsForm">
           ${forms.map(f=>`<option ${f===cls.form?'selected':''}>${f}</option>`).join('')}
@@ -5590,28 +5789,21 @@ function classEditView(classId){
 }
 
 /* ---------- Admin: Accounts ---------- */
-function accountsView(){
-  const pending = DB.accounts.filter(a=>a.role!=='admin' && a.status==='pending');
-  const others = DB.accounts.filter(a=>a.role!=='admin' && a.status!=='pending');
+function staffAccountsView(){
+  const pending = DB.accounts.filter(a=>a.role==='teacher' && a.status==='pending');
+  const others = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending');
   return `
-  <h2>Staff & Parent Accounts</h2>
+  <h2>Teaching Staff</h2>
   <div class="note">Self sign-ups land here as <b>pending</b> until you approve them with your private owner code. You can also close any account at any time.</div>
   <div class="card" style="margin-top:14px;">
-    <h3>Create account directly (auto-active)</h3>
+    <h3>Create staff account directly (auto-active)</h3>
     <form data-form="createAccount">
+      <input type="hidden" name="role" value="teacher">
       <div class="grid2">
-        <div><label>Role</label><select name="role" id="roleSel"><option value="teacher">Teacher</option><option value="parent">Parent</option></select></div>
         <div><label>Full name</label><input name="name" required></div>
-      </div>
-      <div class="grid2">
         <div><label>Username</label><input name="username" required></div>
-        <div><label>Password</label><input name="password" type="password" required minlength="4"></div>
       </div>
-      <div id="parentLinkWrap"><label>Link to student(s) (for parents)</label>
-        <select name="studentIds" multiple size="4">
-        ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select>
-        <p class="small" style="margin:4px 0 0;">Hold Ctrl/Cmd to select more than one child — useful for siblings sharing one parent account.</p>
-      </div>
+      <label>Password</label><input name="password" type="password" required minlength="4">
       <div id="teacherRecoveryWrap"><label>Recovery code (optional)</label><input name="recovery">
         <p class="small">Lets this teacher reset their own password later without going through you.</p>
       </div>
@@ -5624,7 +5816,7 @@ function accountsView(){
     <div class="flex">
       <button type="button" class="btn-outline" data-action="dlStaffTemplate">Download staff template (CSV)</button>
     </div>
-    <p class="small" style="margin-top:10px;"><b>Class Name</b> must exactly match a class already on your <a href="#" data-action="nav:classes">Classes</a> page. <b>Subject</b> must exactly match one of your subject names (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">A-Level, O-Level & Primary Extra Subjects</a> for the full list) — subject names are not case-sensitive, they'll be upper-cased automatically. <b>Papers</b> is a comma-separated list, e.g. <code>1,2</code>.</p>
+    <p class="small" style="margin-top:10px;"><b>Class Name</b> must exactly match a class already on your <a href="#" data-action="nav:classes">Classes</a> page. <b>Subject</b> must exactly match one of your subject names (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a> for the full list) — subject names are not case-sensitive, they'll be upper-cased automatically. <b>Papers</b> is a comma-separated list, e.g. <code>1,2</code>.</p>
     <form data-form="uploadStaffTemplate" style="margin-top:10px;">
       <label>Upload filled staff template (CSV)</label>
       <input type="file" name="staffFile" accept=".csv,text/csv" required>
@@ -5632,38 +5824,10 @@ function accountsView(){
     </form>
   </div>
   <div class="card"><h3>Pending approval (${pending.length})</h3>
-    <table class="data-table"><tr><th>Name</th><th>Username</th><th>Role</th><th>Linked</th><th>Action</th></tr>
-    ${pending.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td><td>${a.role}</td>
-      <td>${a.role==='parent'?(()=>{ const kids=parentChildren(a); const parts=[]; if(kids.length) parts.push(esc(kids.map(k=>k.name).join(', '))); if(a.pendingAdmNo) parts.push(`<span style="color:var(--danger);">no match "${esc(a.pendingAdmNo)}"</span>`); return parts.join(' + ') || '—'; })():'—'}</td>
-      <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="5">No pending requests.</td></tr>'}
+    <table class="data-table"><tr><th>Name</th><th>Username</th><th>Action</th></tr>
+    ${pending.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
+      <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="3">No pending requests.</td></tr>'}
     </table>
-  </div>
-  <div class="card"><h3>Parent Accounts</h3>
-    ${others.some(a=>a.role==='parent') ? `
-    <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
-      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
-        <input type="checkbox" id="parentSelectAllCb" style="width:auto;" onchange="toggleAllParentCheckboxes(this)">
-        <span id="parentSelCount">0 selected</span>
-      </label>
-      <div class="flex">
-        <button type="button" class="btn-danger" onclick="deleteSelectedParents(this)">Delete selected parents</button>
-        <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllParents(this)">Delete ALL parents (${others.filter(a=>a.role==='parent').length})</button>
-      </div>
-    </div>` : ''}
-    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Linked Children</th><th>Action</th></tr>
-    ${others.filter(a=>a.role==='parent').map(a=>{ const kids=parentChildren(a); return `<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
-      <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
-      <td>${kids.length? kids.map(k=>`${esc(k.name)} <button type="button" class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkParentChild('${esc(a.username)}','${k.id}')">✕</button>`).join('<br>') : '—'}</td>
-      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
-    </table>
-    ${others.some(a=>a.role==='parent') ? `<form data-form="linkParentChild" style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px;">
-      <label>Link an additional child to an existing parent account</label>
-      <div class="grid2">
-        <div><select name="username" required><option value="">-- select parent --</option>${others.filter(a=>a.role==='parent').map(a=>`<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})</option>`).join('')}</select></div>
-        <div><select name="studentId" required><option value="">-- select student --</option>${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select></div>
-      </div>
-      <button class="btn-outline" style="margin-top:10px;">Link child</button>
-    </form>` : ''}
   </div>
   <div class="card"><h3>Staff Accounts</h3>
     <label>Select a class to view its teachers</label>
@@ -5702,6 +5866,65 @@ function accountsView(){
   </div>`;
 }
 function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
+
+function parentAccountsView(){
+  const pending = DB.accounts.filter(a=>a.role==='parent' && a.status==='pending');
+  const others = DB.accounts.filter(a=>a.role==='parent' && a.status!=='pending');
+  return `
+  <h2>Parents</h2>
+  <div class="note">Self sign-ups land here as <b>pending</b> until you approve them with your private owner code. You can also close any account at any time.</div>
+  <div class="card" style="margin-top:14px;">
+    <h3>Create parent account directly (auto-active)</h3>
+    <form data-form="createAccount">
+      <input type="hidden" name="role" value="parent">
+      <div class="grid2">
+        <div><label>Full name</label><input name="name" required></div>
+        <div><label>Username</label><input name="username" required></div>
+      </div>
+      <label>Password</label><input name="password" type="password" required minlength="4">
+      <div id="parentLinkWrap"><label>Link to student(s)</label>
+        <select name="studentIds" multiple size="4">
+        ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select>
+        <p class="small" style="margin:4px 0 0;">Hold Ctrl/Cmd to select more than one child — useful for siblings sharing one parent account.</p>
+      </div>
+      <button class="btn" style="margin-top:14px;">Submit — create account</button>
+    </form>
+  </div>
+  <div class="card"><h3>Pending approval (${pending.length})</h3>
+    <table class="data-table"><tr><th>Name</th><th>Username</th><th>Linked</th><th>Action</th></tr>
+    ${pending.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
+      <td>${(()=>{ const kids=parentChildren(a); const parts=[]; if(kids.length) parts.push(esc(kids.map(k=>k.name).join(', '))); if(a.pendingAdmNo) parts.push(`<span style="color:var(--danger);">no match "${esc(a.pendingAdmNo)}"</span>`); return parts.join(' + ') || '—'; })()}</td>
+      <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="4">No pending requests.</td></tr>'}
+    </table>
+  </div>
+  <div class="card"><h3>Parent Accounts</h3>
+    ${others.length ? `
+    <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
+      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
+        <input type="checkbox" id="parentSelectAllCb" style="width:auto;" onchange="toggleAllParentCheckboxes(this)">
+        <span id="parentSelCount">0 selected</span>
+      </label>
+      <div class="flex">
+        <button type="button" class="btn-danger" onclick="deleteSelectedParents(this)">Delete selected parents</button>
+        <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllParents(this)">Delete ALL parents (${others.length})</button>
+      </div>
+    </div>` : ''}
+    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Linked Children</th><th>Action</th></tr>
+    ${others.map(a=>{ const kids=parentChildren(a); return `<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
+      <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
+      <td>${kids.length? kids.map(k=>`${esc(k.name)} <button type="button" class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkParentChild('${esc(a.username)}','${k.id}')">✕</button>`).join('<br>') : '—'}</td>
+      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
+    </table>
+    ${others.length ? `<form data-form="linkParentChild" style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px;">
+      <label>Link an additional child to an existing parent account</label>
+      <div class="grid2">
+        <div><select name="username" required><option value="">-- select parent --</option>${others.map(a=>`<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})</option>`).join('')}</select></div>
+        <div><select name="studentId" required><option value="">-- select student --</option>${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select></div>
+      </div>
+      <button class="btn-outline" style="margin-top:10px;">Link child</button>
+    </form>` : ''}
+  </div>`;
+}
 // Bulk delete for Teacher accounts only (parents are untouched here). Mirrors the
 // single 'delAcc' action's own safeguards exactly:
 // the admin's private owner code is required once for the whole batch (not per
@@ -6035,9 +6258,12 @@ function oLevelSubjectsView(){
   const extra = DB.info.oExtraSubjects || [];
   const pExtra = DB.info.pExtraSubjects || [];
   const aExtra = DB.info.aExtraSubjects || [];
+  const showSecondary = !isPrimarySchool();
+  const showPrimary = !isSecondarySchool();
   return `
-  <h2>A-Level, O-Level & Primary Extra Subjects</h2>
+  <h2>${extraSubjectsPageLabel()}</h2>
   <div class="note">Base subjects for each level are fixed to the syllabus you specified. Add any additional subjects your school offers below.</div>
+  ${!showSecondary ? '' : `
   <div class="card" style="margin-top:14px;">
     <h3>A-Level</h3>
     <form data-form="addASubject" class="flex">
@@ -6089,7 +6315,8 @@ function oLevelSubjectsView(){
     <h3>Base optional</h3><p>${O_OPTIONAL_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Your added subjects</h3>
     <p>${extra.length? extra.map(s=>`<span class="chip">${esc(s)} <span data-action="delOSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
-  </div>
+  </div>`}
+  ${!showPrimary ? '' : `
   <div class="card">
     <h3>Compulsory (core) subjects</h3>
     <p class="small">Ticked subjects are automatically included on every Primary student's report card — no roster tick needed from the subject teacher. Anything left unticked is optional: only students a subject teacher ticks into their own class roster will show it. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
@@ -6113,7 +6340,7 @@ function oLevelSubjectsView(){
     <h3>Base optional</h3><p>${P_OPTIONAL_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Your added subjects</h3>
     <p>${pExtra.length? pExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delPSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
-  </div>`;
+  </div>`}`;
 }
 
 /* ---------- Admin: Assign subjects ---------- */
@@ -6162,7 +6389,7 @@ function assignSubjectsView(){
 /* ---------- Admin: Edit Teacher Profile (subjects / classes / papers) ---------- */
 function teacherProfileView(username){
   const t = DB.accounts.find(a=>a.username===username && a.role==='teacher');
-  if(!t) return `<h2>Edit Teacher Profile</h2><div class="card"><p>Teacher not found.</p><button class="btn-outline" data-action="nav:accounts">Back to Staff & Parent Accounts</button></div>`;
+  if(!t) return `<h2>Edit Teacher Profile</h2><div class="card"><p>Teacher not found.</p><button class="btn-outline" data-action="nav:staffaccounts">Back to Teaching Staff</button></div>`;
   const mine = DB.assignments.filter(a=>a.teacherUsername===username);
   const firstCls = DB.classes[0];
   const firstIsPrimary = !!(firstCls && firstCls.level==='P');
@@ -6219,7 +6446,7 @@ function teacherProfileView(username){
     }).join('') || '<tr><td colspan="4">No assignments yet for this teacher — add one above.</td></tr>'}
     </table>
   </div>
-  <button class="btn-outline" data-action="nav:accounts">Back to Staff & Parent Accounts</button>`;
+  <button class="btn-outline" data-action="nav:staffaccounts">Back to Teaching Staff</button>`;
 }
 
 /* ---------- Admin: Edit Student Profile (subjects / sex / class / etc.) ---------- */
@@ -6273,12 +6500,16 @@ function studentProfileView(studentId){
 /* ---------- Admin: Grading setup ---------- */
 function gradingView(gcClassId){
   const b = DB.bands||DEFAULT_A_BANDS, ob = DB.obands||DEFAULT_O_BANDS, pb = DB.pbands||DEFAULT_P_BANDS;
+  const showSecondary = !isPrimarySchool();
+  const showPrimary = !isSecondarySchool();
   return `
   <h2>Grading Setup</h2>
-  <div class="note">A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper is pass/fail (O=1 point, F=0) —
+  <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper is pass/fail (O=1 point, F=0) —
   <b>O if the average is 50% and above, F if below 50%</b> — the exact same condition used for Subsidiary Mathematics and Subsidiary Computer.
-  O-Level has no points, only A–E descriptors. Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects).
+  O-Level has no points, only A–E descriptors. `:''}${showPrimary?`Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects). `:''}
   All banding tables below are editable.</div>
+  ${!showSecondary && !showPrimary ? `<div class="card" style="margin-top:14px;"><p>Set your <a href="#" data-action="nav:schoolinfo">School Grade</a> first to see the relevant grading bands here.</p></div>` : ''}
+  ${!showSecondary ? '' : `
   <div class="card" style="margin-top:14px;">
     <h3>A-Level bands</h3>
     <p class="small">Each row is one grade — min/max %, points, and its descriptor all edit together. Points default to the standard A-Level scale (A=5, B=4, C=3, D=2, E=1) but can be changed below.</p>
@@ -6327,7 +6558,8 @@ function gradingView(gcClassId){
       </table>
       <button class="btn" style="margin-top:14px;">Submit — save O-Level bands</button>
     </form>
-  </div>
+  </div>`}
+  ${!showPrimary ? '' : `
   <div class="card">
     <h3>Primary bands — per subject (PLE scale)</h3>
     <p class="small">Each subject is graded D1–F9 off its final average — no points or descriptor at this level, just the min/max % per row. The 4 PLE-core subjects (English, Mathematics, Science, Social Studies) also feed the Division on the report card: Division 1 = aggregate 4–12, Division 2 = 13–23, Division 3 = 24–29, Division 4 = 30–34, Division U = 35–36.</p>
@@ -6353,8 +6585,27 @@ function gradingView(gcClassId){
       </table>
       <button class="btn" style="margin-top:14px;">Submit — save Primary bands</button>
     </form>
-  </div>
-  <div class="card">
+  </div>`}
+  ${!showSecondary ? '' : `
+  <div class="card"><h3>O/A-Level comment key</h3>
+    <table class="data-table"><tr>${['A','B','C','D','E'].map(g=>`<th>${g}</th>`).join('')}</tr>
+    <tr>${['A','B','C','D','E'].map(g=>`<td>${esc(gradeCommentsFor('O')[g])}</td>`).join('')}</tr></table>
+    <p class="small" style="margin:8px 0 4px;"><b>A-Level:</b> ${['A','B','C','D','E'].map(g=>`${g} — ${esc(gradeCommentsFor('A')[g])}`).join(' &nbsp; | &nbsp; ')}</p>
+    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> ${esc(passFailGrades().Pass)} — ${esc(passFailComments().Pass)}; ${esc(passFailGrades().Fail)} — ${esc(passFailComments().Fail)}</p>
+  </div>`}
+  ${!showPrimary ? '' : `
+  <div class="card"><h3>Primary (PLE) comment key</h3>
+    <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
+    <tr>${PLE_GRADES.map(g=>`<td>${PLE_GRADE_COMMENT[g]}</td>`).join('')}</tr></table>
+  </div>`}`;
+}
+
+/* ---------- Admin: Exam setup (assessment weighting, tests, per-class overrides) ---------- */
+function examSetupView(gcClassId){
+  return `
+  <h2>Exam Setup</h2>
+  <div class="note">This is where the exam structure itself is set — separate from the grade bands in <a href="#" data-action="nav:grading">Grading Setup</a>.</div>
+  <div class="card" style="margin-top:14px;">
     <h3>Assessment weighting — Exam Type Setup</h3>
     <p class="small">This is the only place the exam structure is set. Decide how much <b>Course Work</b> (continuous assessment / tests) and <b>End of Term</b> are each worth, and switch either off if it isn't in use yet. Teachers still just enter the raw mark out of whatever a test was actually marked out of — the system automatically rescales it onto whichever percentage you set here. If you switch a component off (or no teacher has entered marks for it yet), its column won't appear on report cards until it's on and has marks — the report card grades automatically off whatever is entered so far.</p>
     <form data-form="saveExamConfig">
@@ -6457,16 +6708,6 @@ function gradingView(gcClassId){
         </form>
       </div>`;
     })()}
-  </div>
-  <div class="card"><h3>O/A-Level comment key</h3>
-    <table class="data-table"><tr>${['A','B','C','D','E'].map(g=>`<th>${g}</th>`).join('')}</tr>
-    <tr>${['A','B','C','D','E'].map(g=>`<td>${esc(gradeCommentsFor('O')[g])}</td>`).join('')}</tr></table>
-    <p class="small" style="margin:8px 0 4px;"><b>A-Level:</b> ${['A','B','C','D','E'].map(g=>`${g} — ${esc(gradeCommentsFor('A')[g])}`).join(' &nbsp; | &nbsp; ')}</p>
-    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> ${esc(passFailGrades().Pass)} — ${esc(passFailComments().Pass)}; ${esc(passFailGrades().Fail)} — ${esc(passFailComments().Fail)}</p>
-  </div>
-  <div class="card"><h3>Primary (PLE) comment key</h3>
-    <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
-    <tr>${PLE_GRADES.map(g=>`<td>${PLE_GRADE_COMMENT[g]}</td>`).join('')}</tr></table>
   </div>`;
 }
 
@@ -9207,6 +9448,7 @@ document.addEventListener('click', async (e)=>{
       if(wasFounder && SYSTEM_OWNER){ SYSTEM_OWNER.sessionToken = genSessionToken(); await saveSystemOwner(); }
       render(); break;
     }
+    case 'navBack': playUISound('open'); navGoBack(); break;
     case 'nav': {
       VIEW = {name:arg, params:{}};
       playUISound('open');
@@ -9956,7 +10198,7 @@ Continue?`)) break;
 });
 function renderShellWithContent(innerHtml){
   const shell = renderShell();
-  return shell.replace(/<div class="main"[^>]*>[\s\S]*<\/div>\s*<\/div>\s*$/, `<div class="main" id="mainArea">${innerHtml}</div></div>`);
+  return shell.replace(/<div class="main"[^>]*>[\s\S]*<\/div>\s*<\/div>\s*$/, ()=>`<div class="main" id="mainArea">${navBackBar()}${innerHtml}</div></div>`);
 }
 // Called from the "Viewing period" dropdown on a report card to switch which
 // term/year is displayed, without losing any of the data underneath it.
@@ -10251,7 +10493,7 @@ document.addEventListener('submit', async (e)=>{
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
-    'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading']);
+    'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
@@ -10949,6 +11191,19 @@ document.addEventListener('submit', async (e)=>{
       if(FOUNDER_LOGINS && FOUNDER_LOGINS.schoolId===schoolId){ await openFounderLogins(schoolId); return; }
       alert('Restore complete.'); render();
     }
+    else if(type==='schoolGrade'){
+      const g = fd.get('schoolGrade');
+      if(g!=='primary' && g!=='secondary'){ alert('Please choose a school grade.'); return; }
+      const mismatched = DB.classes.filter(c=> g==='primary' ? c.level!=='P' : c.level==='P');
+      if(mismatched.length){
+        const ok = confirm(`${mismatched.length} existing class${mismatched.length===1?'':'es'} (${mismatched.map(c=>c.name).join(', ')}) belong to the grade you're switching away from. They will stay exactly as they are, but you won't be able to add any more classes of that grade until you switch back. Continue?`);
+        if(!ok) return;
+      }
+      DB.info.schoolGrade = g;
+      await saveInfo();
+      showDeliveredToast('School grade saved');
+      render();
+    }
     else if(type==='schoolInfo'){
       const file = fd.get('logo');
       if(file && file.size>0){
@@ -10989,6 +11244,7 @@ document.addEventListener('submit', async (e)=>{
       render();
     }
     else if(type==='addClass'){
+      if(!allowedClassLevels().includes(fd.get('level'))){ alert('That class level is not available for your school\'s current grade setting.'); return; }
       DB.classes.push({id:uid('cls'), name:fd.get('name'), level:fd.get('level'), form: fd.get('form')||null,
         stream:fd.get('stream')||'', classTeacher:fd.get('classTeacher')||null, nextAdmSeq:0});
       await saveClasses(); form.reset(); render();
@@ -10998,8 +11254,10 @@ document.addEventListener('submit', async (e)=>{
       if(!cls){ alert('Class not found.'); return; }
       const name = (fd.get('name')||'').trim();
       if(!name){ alert('Enter a class name.'); return; }
+      const newLevel = fd.get('level');
+      if(newLevel!==cls.level && !allowedClassLevels().includes(newLevel)){ alert('That class level is not available for your school\'s current grade setting.'); return; }
       cls.name = name;
-      cls.level = fd.get('level');
+      cls.level = newLevel;
       cls.form = fd.get('form')||null;
       cls.stream = fd.get('stream')||'';
       cls.classTeacher = fd.get('classTeacher')||null;
