@@ -315,6 +315,12 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .dn-title-block .dn-meta{font-size:10.5px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:3px;font-weight:700;}
 .dn-title-block .dn-subtitle{display:inline-block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 @media print{ #printArea .dn-card{width:190mm !important;max-width:190mm !important;box-shadow:none !important;} }
+/* Frame for every printed / saved-as-PDF document other than report cards (which carry their own). */
+@media print{
+  body.print-frame::after{content:"";position:fixed;top:0;left:0;right:0;bottom:0;border:2px solid #0A2A4A;box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 4px #0A2A4A;visibility:visible !important;pointer-events:none;z-index:9999;}
+  body.print-frame #printArea{padding:8mm !important;box-sizing:border-box;}
+  body.print-frame #printArea .dn-card{width:172mm !important;max-width:172mm !important;}
+}
 
 /* The bio photo now lives INSIDE rc-info-table (as a rowspan cell) instead of
    sitting beside it in a flex row — that old layout shrank the table's own
@@ -3844,13 +3850,13 @@ function navByRole(role){
     const extraSubjectsLabel = extraSubjectsPageLabel();
     return [
       ['dashboard','Dashboard','🏠'],['schoolinfo','School Info & Logo','🏫'],['promote','Year, Term & Promotion','⬆️'],
-      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','Students','🎓'],
+      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','Register new or view students','🎓'],
       ['assignsubjects','Assign Subjects','📌'],['olevel',extraSubjectsLabel,'📖'],
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','Parents','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
-      ['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['otherSettings','Other Settings','⚙️'],
+      ['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
   }
@@ -3906,7 +3912,7 @@ function renderShell(){
 // or grading configuration are admin-only. This guard is a hard backstop — the sidebar
 // already hides these links from non-admins, but this makes it impossible to reach them
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
-const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','staffaccounts','parentaccounts','students','oldstudents','assignsubjects','olevel','grading','examsetup','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems']);
+const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','staffaccounts','parentaccounts','students','oldstudents','assignsubjects','olevel','grading','examsetup','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems','databackup']);
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
@@ -3938,6 +3944,7 @@ function renderView(view){
       case 'studentprofile': return studentProfileView(VIEW.params.studentId);
       case 'olevel': return oLevelSubjectsView();
       case 'restoreitems': return restoreItemsView();
+      case 'databackup': return dataBackupPlanView();
       case 'grading': return gradingView(VIEW.params.gcClassId);
       case 'examsetup': return examSetupView(VIEW.params.gcClassId);
       case 'promote': return promoteView();
@@ -3976,10 +3983,10 @@ function daysSince(iso){ if(!iso) return null; const ms = Date.now() - new Date(
 function backupReminderBanner(){
   const days = daysSince(DB.info.lastBackupAt);
   if(days===null){
-    return `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>You've never downloaded a backup.</b> Go to "Backup & Restore" below and download one now — it only takes a second.</div>`;
+    return `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>You've never downloaded a backup.</b> Open <a href="#" data-action="nav:databackup">Data Backup Plan</a> and download one now — it only takes a second.</div>`;
   }
   if(days>=BACKUP_REMINDER_DAYS){
-    return `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>It's been ${days} days since your last backup</b> (${fmtDate(DB.info.lastBackupAt)}). Download a fresh copy in "Backup & Restore" below.</div>`;
+    return `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>It's been ${days} days since your last backup</b> (${fmtDate(DB.info.lastBackupAt)}). Download a fresh copy in <a href="#" data-action="nav:databackup">Data Backup Plan</a>.</div>`;
   }
   return '';
 }
@@ -4462,7 +4469,7 @@ function printDemandNoteFor(studentId){
   const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
   window.addEventListener('afterprint', cleanup);
   setTimeout(cleanup, 15000); // fallback in case a browser never fires afterprint
-  setTimeout(()=>window.print(), 150);
+  setTimeout(()=>printFramed(), 150);
 }
 // Renders a Demand Note (or any similar half-page card) off-screen and captures it
 // as a single-page PDF via html2canvas — the note keeps its natural half-page size
@@ -4485,11 +4492,12 @@ async function downloadDemandNoteElement(html, filename){
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
       const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW - 40;
+      const imgW = pageW - PDF_FRAME_CONTENT*2;
       const imgH = imgW * canvas.height / canvas.width;
-      const finalH = Math.min(imgH, pageH-40);
+      const finalH = Math.min(imgH, pageH-PDF_FRAME_CONTENT*2);
       const finalW = finalH===imgH ? imgW : imgW*(finalH/imgH);
-      pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(pageW-finalW)/2, 20, finalW, finalH);
+      drawPdfFrame(pdf);
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(pageW-finalW)/2, PDF_FRAME_CONTENT, finalW, finalH);
       openOrSavePdf(pdf, filename, {openPreviewTab:false});
     } finally { holder.remove(); }
   } finally { setAppBusy(false); }
@@ -4524,7 +4532,7 @@ function printSelectedDemandNotes(selectedSet){
   const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
   window.addEventListener('afterprint', cleanup);
   setTimeout(cleanup, 15000);
-  setTimeout(()=>window.print(), 150);
+  setTimeout(()=>printFramed(), 150);
 }
 // Downloads every ticked student's Demand Note as ONE combined PDF, one note per
 // page — the download counterpart of printSelectedDemandNotes above.
@@ -4554,12 +4562,13 @@ async function downloadSelectedDemandNotesPdf(selectedSet){
         const inner = holder.firstElementChild;
         inner.id = 'dnCaptureArea';
         const canvas = await html2canvas(inner, {scale:2, backgroundColor:'#ffffff'});
-        const imgW = pageW - 40;
+        const imgW = pageW - PDF_FRAME_CONTENT*2;
         const imgH = imgW * canvas.height / canvas.width;
-        const finalH = Math.min(imgH, pageH-40);
+        const finalH = Math.min(imgH, pageH-PDF_FRAME_CONTENT*2);
         const finalW = finalH===imgH ? imgW : imgW*(finalH/imgH);
         if(i>0) pdf.addPage();
-        pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(pageW-finalW)/2, 20, finalW, finalH);
+        drawPdfFrame(pdf);
+        pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(pageW-finalW)/2, PDF_FRAME_CONTENT, finalW, finalH);
       }
     } finally { holder.remove(); }
     const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_demand_notes`;
@@ -5536,7 +5545,7 @@ function financeStudentView(studentId){
       <label>Payer Contact</label><input name="payerContact" placeholder="Phone number">
       <div class="flex" style="margin-top:12px;"><button class="btn">Save Installment</button></div>
     </form>
-    <div class="flex" style="margin-top:16px;"><button type="button" class="btn-outline" onclick="window.print()">🖨 Print Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download Demand Note</button></div>
+    <div class="flex" style="margin-top:16px;"><button type="button" class="btn-outline" onclick="printFramed()">🖨 Print Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download Demand Note</button></div>
   </div>
   <div id="printArea">${demandNoteHTML(s, cl, d, agreedTerm, agreedYear)}</div>`;
   return `<h2>${esc(s.name)} — Financial &amp; Requirements Follow-up</h2>
@@ -5636,9 +5645,15 @@ function adminDashboard(){
     <h3>Year, Term & Promotion</h3>
     <p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b>. Term/Year settings, score deadlines, and promoting students to their next class have been combined into one place.</p>
     <button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button>
-  </div>
+  </div>`;
+}
+
+/* ---------- Admin: Data Backup Plan (backups + automatic snapshots + restore, one tile) ---------- */
+function dataBackupPlanView(){
+  return `
+  <h2>Data Backup Plan</h2>
+  ${backupReminderBanner()}
   <div class="card">
-    <h3>Backup & Restore</h3>
     <p class="small">Your data lives in a shared online database, not in this browser — but it's still smart to keep your own copy. Download a full backup file regularly (e.g. weekly, or right after entering a big batch of scores) and keep it somewhere safe, like email-to-self, Google Drive, or a USB stick.</p>
     <p class="small">Last backup: <b>${DB.info.lastBackupAt ? fmtDate(DB.info.lastBackupAt) : 'never'}</b></p>
     <button class="btn-outline" data-action="exportBackup">Download full backup (.json)</button>
@@ -5669,7 +5684,7 @@ function adminDashboard(){
 /* ---------- Admin: selectively restore individual items from a backup ---------- */
 function restoreItemsView(){
   if(!RESTORE_BROWSE){
-    return `<h2>Restore Individual Items</h2><div class="card"><p class="small">No backup file loaded yet. Go to the Dashboard's "Backup & Restore" card and choose a file to browse first.</p><button class="btn-outline" data-action="nav:dashboard">Back to Dashboard</button></div>`;
+    return `<h2>Restore Individual Items</h2><div class="card"><p class="small">No backup file loaded yet. Open Data Backup Plan and choose a file to browse first.</p><button class="btn-outline" data-action="nav:databackup">Back to Data Backup Plan</button></div>`;
   }
   const d = RESTORE_BROWSE.data;
   const curStudentIds = new Set(DB.students.map(s=>s.id));
@@ -5705,7 +5720,7 @@ function restoreItemsView(){
       <label class="flex" style="gap:8px;"><input type="checkbox" name="restoreSettings" value="1" style="width:auto;"><span>Restore school settings from this file</span></label>
     </div>
     <button class="btn" style="margin-top:6px;">Restore ticked items</button>
-    <button type="button" class="btn-outline" style="margin-top:6px;" data-action="nav:dashboard">Cancel</button>
+    <button type="button" class="btn-outline" style="margin-top:6px;" data-action="nav:databackup">Cancel</button>
   </form>`;
 }
 
@@ -6081,7 +6096,7 @@ async function unlinkParentChild(username, studentId){
 /* ---------- Admin: Students ---------- */
 function studentsView(){
   return `
-  <h2>Students</h2>
+  <h2>Register new or view students</h2>
   <div class="card">
     <h3>Add student</h3>
     <form data-form="addStudent">
@@ -7700,9 +7715,6 @@ function scoresEntryView(mine){
       studentRows = `
       <div class="card">
         <h3>${esc(a.subject)} — ${esc(cls.name)} — Select your students</h3>
-        <p class="small">${compulsory
-          ? `${esc(a.subject)} is compulsory for every student in ${esc(cls.name)}, so tick <b>"Select all students"</b> below to add everyone in one go — or untick just the box for anyone who genuinely shouldn't be included. This is saved so you won't be asked again, but you can always come back and edit your list.`
-          : `Every student in ${esc(cls.name)} is listed below. Tick only the ones who take ${esc(a.subject)} with you — only ticked students count as taking this subject and will appear for scoring. This is saved so you won't be asked again, but you can always come back and edit your list — for example if a student was missed, or a new one is registered by the admin.`}</p>
         <form data-form="saveRoster" data-assign="${a.id}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           ${compulsory && eligible.length ? `
           <label style="display:flex;gap:8px;align-items:center;padding:5px 2px 10px;font-weight:600;text-transform:none;">
@@ -7718,19 +7730,17 @@ function scoresEntryView(mine){
           <button class="btn" style="margin-top:14px;">Submit — save my student list</button>
         </form>
       </div>
-      <div class="card">
+      ${CUR.role==='admin' ? `<div class="card">
         <h3>Student new to the school / class</h3>
-        ${CUR.role==='admin' ? `
-        <p class="small">Not on the class list at all yet? Add them here with just their name and sex — they'll be created in ${esc(cls.name)} with an admission number assigned automatically, included in your marking list for ${esc(a.subject)} right away, and will appear normally for any other subject teacher too. You'll still need to tick them into any other subject you'd like them included in.</p>
         <form data-form="quickAddStudent" data-assign="${a.id}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           <div class="grid2">
             <div><label>Full name</label><input name="name" required></div>
             <div><label>Gender</label><select name="gender"><option>Male</option><option>Female</option></select></div>
           </div>
           <button class="btn" style="margin-top:10px;">Submit — add student & include in my list</button>
-        </form>` : `
-        <p class="small">Not on the class list at all yet? New students must be registered by an Admin first (name, admission number, sex, class). Once the Admin has added them to ${esc(cls.name)}, they'll appear in the "Select your students" list above for you to tick into your marking list — you don't need to create them yourself.</p>`}
-      </div>`;
+        </form>
+      </div>` : ''}
+      `;
     } else {
       // FIX: a student who's been promoted to a different class stays on this
       // teacher's saved roster (a.studentIds) forever unless explicitly removed — that
@@ -7810,7 +7820,7 @@ function scoresEntryView(mine){
           <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
           <button type="button" class="btn-outline" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit these scores</button>
         </div>
-        <p class="small">Read-only view of what's currently on record for <b>${currentColLabel}</b>, out of <b>${sel.maxScore||100}</b>. Click "Edit these scores" above if you need to correct or add to these.</p>
+
         <table class="data-table"><tr><th>Student</th><th>${currentColLabel}</th></tr>
         ${students.map(s=>{
           const existingRow = existingScoreFor(s.id);
@@ -7827,7 +7837,7 @@ function scoresEntryView(mine){
           <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(esc(cfgHere.cwLabel)+': '+esc(sel.label||'')):esc(cfgHere.eotLabel)} — ${esc(cls.name)}</h3>
           <a href="#" class="small" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit my student list</a>
         </div>
-        <p class="small">You're entering <b>${currentColLabel}</b>, marked out of <b>${sel.maxScore||100}</b> — that's the highlighted column below. ${otherCols.length?`For context, every other ${esc(a.subject)} test or exam already recorded this term is also shown alongside it, so you can see each learner's full record so far before entering this one. <b>Click any of those column headings to switch straight into editing that test's scores instead.</b>`:''} The report card will automatically convert this test to ${sel.kind==='AOI'?`${esc(cfgHere.cwLabel)}'s /${cfgHere.cwPercent} scale`:`${esc(cfgHere.eotLabel)}'s /${cfgHere.eotPercent} scale`}. Click a box and type marks, then hit Submit below to save &amp; send. <b>You can leave a box empty for a student who was absent or missing</b> — it will simply be skipped, and everyone else's marks will still be saved. Already-submitted marks for the highlighted test are pre-filled below too, so editing and resubmitting a score is as simple as changing the number and hitting Submit again.</p>
+
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
           <table class="data-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
@@ -7846,7 +7856,7 @@ function scoresEntryView(mine){
             return `<tr><td style="text-align:left;">${esc(s.name)}${conflictBadge}</td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">Remove from list</button></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length+3}">No students on your list yet. Use "Edit my student list" above.</td></tr>`}
           </table>
-          <p class="small">"Delete score" removes just this test's saved mark for a student (it disappears from the mark sheet and their report card immediately) without taking them off your marking list. "Remove from list" takes them off your list entirely but keeps any scores already saved.</p>
+
           <button class="btn" style="margin-top:14px;" ${scoresLocked?'disabled title="Deadline has passed — ask your admin to reopen entry for you"':''}>Submit — save & send scores</button>
           ${syncStatusBanner(scoreSyncKey(a.id, sel.paper, sel.kind, sel.label||''))}
         </form>
@@ -7854,7 +7864,7 @@ function scoresEntryView(mine){
       ${isPastPeriod ? `
       <div class="card">
         <h3>Add a student who isn't listed above</h3>
-        <p class="small">Useful for a student who has since been promoted into a different class, or moved to Old Students — they won't show automatically for a past period unless added here. They'll be added to this mark sheet only, for ${esc(term)}, ${esc(String(year))}, and this won't change which class they're currently in.</p>
+
         <div class="flex" style="align-items:center;">
           <select id="extraStudentSel_${a.id}" style="flex:1;min-width:220px;">
             <option value="">-- choose a student --</option>
@@ -7868,7 +7878,7 @@ function scoresEntryView(mine){
       </div>` : ''}
       <div class="card">
         <h3>Mark sheet tools</h3>
-        <p class="small">Prefer marking on paper? Download a blank mark sheet as a <b>PDF</b> to print. Prefer a spreadsheet? Download the CSV version, fill in the Marks column, and upload it back here — the CSV is only used for that fill-in-and-re-upload step. You can also view every test/exam recorded for this subject in one table.</p>
+
         <div class="flex">
           <button class="btn-outline" data-action="dlMarksheetPdf:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b>Download blank mark sheet (PDF)</b></button>
           <button class="btn-outline" data-action="dlMarksheet:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Download for spreadsheet re-upload (CSV)</button>
@@ -7878,7 +7888,7 @@ function scoresEntryView(mine){
         <form data-form="uploadMarksheet" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${esc(a.subject)}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           <label>Upload a filled mark sheet (CSV)</label>
           <input type="file" name="marksheetFile" accept=".csv,text/csv" required>
-          <p class="small">Keep the Admission No column unchanged; only the Marks column needs filling in. Rows that don't match a student on your list, or are left blank, are skipped.</p>
+
           <button class="btn" style="margin-top:10px;">Submit — import marks from this file</button>
         </form>
       </div>`;
@@ -7937,7 +7947,7 @@ function scoresEntryView(mine){
           </select>` : `
           <input type="hidden" name="label" value="${esc(examConfig().cwLabel)}">
           ${CUR.role==='admin' ? `<label>${esc(examConfig().cwLabel)}</label>
-          <p class="small" style="margin-top:6px;">No named ${esc(examConfig().cwLabel)} tests yet — add one under Settings → Grading Setup if you want separate columns (e.g. Test 1, Test 2). Until then, scores are recorded under a single "${esc(examConfig().cwLabel)}" bucket.</p>` : ''}`}
+` : ''}`}
         </div>
       </div>
       ${!isAdmin ? `
@@ -7947,10 +7957,10 @@ function scoresEntryView(mine){
         </select></div>
         <div><label>School's current term</label><input type="text" value="${esc(DB.info.currentTerm)}" disabled></div>
       </div>
-      <p class="small">Double-check the term before loading the list — as a Teacher you can only enter or edit scores for the school's <b>current</b> term (${esc(DB.info.currentTerm)}, ${esc(String(DB.info.currentYear))}). If you need a past term corrected, ask your Admin.</p>` : ''}
+` : ''}
       <label>What was this test/exam marked out of? <span style="color:var(--danger);">*compulsory</span></label>
       <input name="maxScore" id="maxScoreInput" type="number" min="1" step="1" value="" placeholder="Type the maximum mark here — required" required>
-      <p class="small">You must type this in yourself every time, even if it looks like it matches a test the admin already set up — it isn't pre-filled. Enter students' raw marks below exactly as marked (e.g. out of 30, out of 50 — whatever this test's maximum was). Whatever maximum you set here, the system automatically converts the average onto the report card's uniform scale set by the admin: ${esc(examConfig().cwLabel)} out of ${examConfig().cwPercent}, ${esc(examConfig().eotLabel)} out of ${examConfig().eotPercent}.</p>
+
       <button class="btn" style="margin-top:14px;">Submit — load student list</button>
     </form>
   </div>`;
@@ -7958,7 +7968,7 @@ function scoresEntryView(mine){
   const periodPickerCard = isAdmin ? `
   <div class="card" style="margin-top:14px;${isPastPeriod?'background:#fff8e6;border:1px solid #e8d38a;':''}">
     <h3 style="margin-top:0;">Scoring period</h3>
-    <p class="small">Defaults to the school's current Term/Year set on the Dashboard. Only change this to enter or correct scores for a <b>past</b> term/year — teachers never see this option, and always enter scores for the current period only.</p>
+
     <div class="grid2">
       <div><label>Term</label><select onchange="setScorePeriodParam('pTerm', this.value)">
         ${['Term 1','Term 2','Term 3'].map(t=>`<option value="${t}" ${periodTerm===t?'selected':''}>${t}</option>`).join('')}
@@ -7970,7 +7980,6 @@ function scoresEntryView(mine){
   <div class="note" style="border-color:var(--danger);color:var(--danger);margin-top:14px;">⚠ You're entering/editing scores for <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the school's current period (${esc(DB.info.currentTerm)}, ${esc(String(DB.info.currentYear))}). Use this only to complete or correct a historical record.</div>` : '';
   return `
   <h2>${CUR.role==='admin'?'Enter / Download Scores':'Enter Scores'}</h2>
-  <div class="note">${CUR.role==='admin'?'As Admin, you can select <b>any</b> subject/class assignment below — for any teacher — and enter or edit scores directly on their behalf. The dropdown shows the teacher\'s name next to each assignment. ':''}Step 1: choose the subject/class ${CUR.role==='admin'?'and teacher':'you\'re assigned'}, the paper, and whether this is an AOI test or the End of Term score. Step 2: click below to load the students and type marks. Step 3: click <b>Save &amp; send</b>.</div>
   ${periodPickerCard}${pastPeriodBanner}
   ${pickerCard}${pickerSummaryBar}
   ${studentRows}`;
@@ -11255,7 +11264,7 @@ document.addEventListener('submit', async (e)=>{
       }
       RESTORE_BROWSE = null;
       alert(`Restored: ${summary.join(', ')||'nothing'}.`);
-      VIEW = {name:'dashboard', params:{}}; render();
+      VIEW = {name:'databackup', params:{}}; render();
     }
     else if(type==='founderRestoreBackup'){
       if(!CUR || CUR.role!=='founder'){ alert('Only the founder can do that.'); return; }
@@ -12145,6 +12154,28 @@ function toPngDataUrl(dataUrl){
 // a new tab where Share ▸ Save to Files works. Either way, one tap is all it
 // takes, and we surface our own confirmation via the toast instead of relying on
 // "did a new tab visibly appear" as the signal.
+/* ---------- Page frame for downloaded / printed documents ----------
+   Every generated document gets the same navy double-line boundary the report cards have
+   (outer 1.6pt + inner 0.6pt line), with the content held inside it. Report cards draw
+   their own frame in drawReportCardPage(), so they are not framed a second time here.
+   PDF_FRAME_CONTENT is the distance from the page edge to where content may start —
+   the same inset the report cards use (26pt card margin + 16pt padding). */
+const PDF_FRAME_M = 26;
+const PDF_FRAME_CONTENT = 42;
+function drawPdfFrame(pdf){
+  const w = pdf.internal.pageSize.getWidth(), h = pdf.internal.pageSize.getHeight(), M = PDF_FRAME_M;
+  pdf.setDrawColor(10,42,74);
+  pdf.setLineWidth(1.6); pdf.rect(M+4, M+4, w-M*2-8, h-M*2-8);
+  pdf.setLineWidth(0.6); pdf.rect(M+7, M+7, w-M*2-14, h-M*2-14);
+}
+// Browser Print / Save-as-PDF: same frame on every printed page (see body.print-frame CSS).
+function printFramed(){
+  document.body.classList.add('print-frame');
+  const done = ()=>{ document.body.classList.remove('print-frame'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  setTimeout(done, 20000); // fallback in case a browser never fires afterprint
+  window.print();
+}
 function openOrSavePdf(pdf, filename, opts={} ){
   const openPreviewTab = opts.openPreviewTab !== false;
   try{
@@ -12214,7 +12245,7 @@ function printLandscape(){
   st.id = 'landscapePrintOverride';
   st.textContent = '@page{ size: A4 landscape; margin:10mm; }';
   document.head.appendChild(st);
-  window.print();
+  printFramed();
   setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
 }
 async function downloadElementAsPdf(elementId, filename, opts={}){
@@ -12298,9 +12329,10 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
   // top-to-bottom) as needed at that legible size — every column still ends up in the
   // PDF, it just spans more pages for very wide classes.
   const MIN_SCALE = 0.55;
-  const naturalScale = pageW / canvas.width;
+  const naturalScale = (pageW - PDF_FRAME_CONTENT*2) / canvas.width;
   const scale = Math.max(naturalScale, MIN_SCALE);
-  const pxPerPageW = pageW / scale, pxPerPageH = pageH / scale;
+  const innerW = pageW - PDF_FRAME_CONTENT*2, innerH = pageH - PDF_FRAME_CONTENT*2; // area inside the frame
+  const pxPerPageW = innerW / scale, pxPerPageH = innerH / scale;
   const cols = Math.max(1, Math.ceil(canvas.width / pxPerPageW));
   const rows = Math.max(1, Math.ceil(canvas.height / pxPerPageH));
   const multiPage = cols>1 || rows>1;
@@ -12318,10 +12350,11 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
       const img = tile.toDataURL('image/jpeg',0.95);
       if(!first) pdf.addPage();
       first = false;
-      pdf.addImage(img,'JPEG',0,0, sw*scale, sh*scale);
+      drawPdfFrame(pdf);
+      pdf.addImage(img,'JPEG',PDF_FRAME_CONTENT,PDF_FRAME_CONTENT, sw*scale, sh*scale);
       if(multiPage){
         pdf.setFontSize(7); pdf.setTextColor(150);
-        pdf.text(`sheet section — row ${r+1}/${rows}, column ${c+1}/${cols}`, 6, pageH-4);
+        pdf.text(`sheet section — row ${r+1}/${rows}, column ${c+1}/${cols}`, PDF_FRAME_CONTENT, pageH-14);
       }
     }
   }
@@ -12350,7 +12383,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
   const pdf = new jsPDF(orientation==='portrait'?'p':'l', 'pt', 'a4');
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const margin = 20;
+  const margin = PDF_FRAME_CONTENT; // keeps every table inside the page frame
   const usableW = pageW - margin*2;
   const usableH = pageH - margin*2;
 
@@ -12450,6 +12483,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       const h = Math.min(canvas.height*usableW/canvas.width, usableH);
       if(!firstPageOverall) pdf.addPage();
       firstPageOverall = false;
+      drawPdfFrame(pdf);
       pdf.addImage(img, 'JPEG', margin, margin, w, h);
     }
   }
