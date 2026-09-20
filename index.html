@@ -5491,14 +5491,13 @@ function oldStudentsFinanceSectionHTML(d){
     <div class="flex" style="margin-top:12px;"><button class="btn">Save Settlement</button><a href="#" class="btn-outline" data-action="nav:finance" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a></div>
   </form>` : '';
   return `<div class="card"><h3>6. Old Students Finance (Shortfalls)</h3>
-  <p class="small">When a student is marked "left" with an outstanding fees balance, that shortfall as a result of leaving before completing their level is captured here automatically and kept permanently — separate from the two-term Old Students window — so it stays visible and followable even after their student profile is eventually purged. Old Students' figures no longer appear in the live sections above; this is where their finance record gets balanced.</p>
   <div class="grid3">
     <div class="card"><div class="small">OLD STUDENTS OWING</div><h1>${outstanding.length}</h1></div>
     <div class="card"><div class="small">TOTAL OUTSTANDING</div><h1>${money(totalShortfall)}</h1></div>
     <div class="card"><div class="small">FULLY BALANCED</div><h1>${balanced.length}</h1></div>
   </div>
   ${settleForm}
-  ${d.shortfalls.length? `<table class="data-table"><tr><th>Name</th><th>Adm No.</th><th>Last Class</th><th>Left In</th><th>Balance at Departure</th><th>Settled</th><th>Remaining</th><th>Action</th></tr>${outstanding.map(row).join('')}${balanced.map(row).join('')}</table>` : '<p class="small">No shortfall records yet — these appear here only when a student leaves while still owing a balance.</p>'}
+  ${d.shortfalls.length? `<table class="data-table"><tr><th>Name</th><th>Adm No.</th><th>Last Class</th><th>Left In</th><th>Balance at Departure</th><th>Settled</th><th>Remaining</th><th>Action</th></tr>${outstanding.map(row).join('')}${balanced.map(row).join('')}</table>` : '<p class="small">No shortfall records yet.</p>'}
   </div>`;
 }
 function financeStudentView(studentId){
@@ -5635,7 +5634,6 @@ function adminDashboard(){
   </div>
   <div class="card">
     <h3>Old Students</h3>
-    <p class="small">Students marked "left" are no longer counted under Students, Enrollment by class, or Total enrollment above. They're kept, in full, for two terms after the term they left in before being permanently removed.</p>
     <div class="grid3">
       <div class="card"><div class="small">TOTAL OLD STUDENTS</div><h1 style="margin:4px 0;">${DB.students.filter(s=>s.status==='left').length}</h1></div>
     </div>
@@ -5778,7 +5776,6 @@ function schoolInfoView(){
 function classesView(){
   return `
   <h2>Classes</h2>
-  <div class="note" style="margin-bottom:14px;">If some students were entered before the current admission-number rule was introduced, use <b>Adjust existing admission numbers</b> below. It applies the same current rule to students already in the school, class by class, while keeping their existing class/enrollment order and assigning the permanent sequence from 001 upward.</div>
   <div class="card" style="margin-bottom:14px;">
     <button class="btn-gold" data-action="repairAdmissionNumbers"><b>Adjust existing admission numbers to current rule</b></button>
   </div>
@@ -5795,7 +5792,6 @@ function classesView(){
           ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('')}
         </select></div>
       </div>
-      <p class="small">There's no "year of admission" to set here anymore — it's no longer something typed in once for the whole class. Every student's admission year is now worked out individually, the moment they're added, by looking back from this school's current year (${esc(String((DB.info&&DB.info.currentYear)||new Date().getFullYear()))}) based on the level/form they're joining. That way it stays correct even if this same class name gets reused for a different intake next year.</p>
       <button class="btn" style="margin-top:12px;">Submit — add class</button>
     </form>
   </div>
@@ -5826,7 +5822,6 @@ function classEditView(classId){
   const count = DB.students.filter(s=>s.classId===cls.id).length;
   return `
   <h2>Edit Class</h2>
-  <div class="note">Renaming a class, changing its level/form/stream, or reassigning its class teacher here does <b>not</b> affect its students, subjects, scores, or assessment-type setup — everything stays linked to the class, just under the updated details.</div>
   <div class="card" style="margin-top:14px;">
     <form data-form="updateClass" data-id="${cls.id}">
       <div class="grid3">
@@ -5844,7 +5839,6 @@ function classEditView(classId){
           ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}" ${t.username===cls.classTeacher?'selected':''}>${esc(t.name)}</option>`).join('')}
         </select></div>
       </div>
-      <p class="small">Admission year is no longer set on the class itself — it's calculated individually for each student the moment they're added, based on the level/form they're joining and this school's current year. A student added into this class right now would look back to <b>${esc(String(computeLookbackAdmissionYear(cls.level,cls.form)))}</b>. Students already in this class keep the admission number they were already given, unaffected by anything here.</p>
       <p class="small" style="margin-top:6px;">${count} student${count===1?'':'s'} currently in this class.</p>
       <button class="btn" style="margin-top:12px;">Submit — save class details</button>
     </form>
@@ -6303,7 +6297,6 @@ function oldStudentsView(){
   const left = sortByName(DB.students.filter(s=>s.status==='left'));
   return `
   <h2>Old Students</h2>
-  <div class="note">Students marked "left" here are kept, in full, for two terms after the term they left in — then their profile, photo, scores, and any linked parent account are permanently deleted. Restore a student back to Students at any time before that happens.</div>
   <div class="card" style="margin-top:14px;">
     <table class="data-table"><tr><th>Name</th><th>Adm No</th><th>Last Class</th><th>Left In</th><th>Terms Left Until Deletion</th><th>Action</th></tr>
     ${left.map(s=>{
@@ -7943,7 +7936,7 @@ function scoresEntryView(mine){
         <div id="labelWrap" style="display:none;">${examConfig().cwTests.length ? `
           <label>${esc(examConfig().cwLabel)} test</label>
           <select name="label" id="cwTestSel">
-            ${examConfig().cwTests.map(t=>`<option value="${esc(t.name)}" data-max="${t.max}">${esc(t.name)} (out of ${t.max})</option>`).join('')}
+            ${cwTestOptionsHtml(examConfig())}
           </select>` : `
           <input type="hidden" name="label" value="${esc(examConfig().cwLabel)}">
           ${CUR.role==='admin' ? `<label>${esc(examConfig().cwLabel)}</label>
@@ -9604,6 +9597,16 @@ Continue?`);
       break;
     }
     case 'delClass': {
+      // Always ask first — removing a class is destructive (its subject/teacher
+      // assignments go with it), so nothing is deleted unless the admin confirms.
+      const _delCls = DB.classes.find(c=>c.id===arg);
+      if(!_delCls) break;
+      const _delStudents = DB.students.filter(s=>s.classId===arg && s.status!=='left').length;
+      const _delAssigns = DB.assignments.filter(a=>a.classId===arg).length;
+      if(!confirm(`Delete the class "${_delCls.name}"?`
+        + (_delAssigns ? `\n\nIts ${_delAssigns} subject/teacher assignment${_delAssigns===1?'':'s'} will also be removed.` : '')
+        + (_delStudents ? `\n${_delStudents} student${_delStudents===1?' is':'s are'} currently in this class.` : '')
+        + `\n\nThis cannot be undone.`)) break;
       // Deleting a class used to leave behind any subject/teacher assignments that
       // pointed at it — those orphaned assignments had no matching class on lookup,
       // which crashed the Enter Scores page ("Cannot read properties of undefined
@@ -10351,6 +10354,25 @@ async function loadStudentListFromWord(input){
 // labels, the Course Work test dropdown, and the suggested max score) to match the
 // exam config that actually applies to a given class — the school-wide default, or
 // that class's own override if the admin has set one under Grading Setup.
+// Options for the Course Work test dropdown on the score-entry picker. When the admin has
+// set up SEVERAL tests, no test is pre-selected: a "choose test" placeholder comes first so
+// the admin/teacher must pick one on purpose (marks can't land on the wrong test by default).
+// With only one test there's nothing to choose between, so it stays as the default.
+function cwTestOptionsHtml(cfg){
+  const tests = (cfg && cfg.cwTests) || [];
+  const opts = tests.map(t=>`<option value="${esc(t.name)}" data-max="${t.max}">${esc(t.name)} (out of ${t.max})</option>`).join('');
+  return tests.length>1 ? `<option value="">-- choose ${esc(cfg.cwLabel)} test --</option>${opts}` : opts;
+}
+// The test dropdown is only compulsory while it is actually visible (assessment type = Course
+// Work) and has a "choose test" placeholder — a hidden required field would block submitting.
+function syncCwTestRequired(form){
+  const kindSel = form.querySelector('#kindSel');
+  const testSel = form.querySelector('#cwTestSel');
+  if(!testSel) return;
+  const hasPlaceholder = testSel.options.length && testSel.options[0].value==='';
+  testSel.required = !!(hasPlaceholder && kindSel && kindSel.value==='AOI');
+}
+
 function refreshAssessmentTypeUI(form, classId){
   const cfg = examConfig(classId);
   const kindSel = form.querySelector('#kindSel');
@@ -10364,12 +10386,13 @@ function refreshAssessmentTypeUI(form, classId){
     labelWrap.innerHTML = cfg.cwTests.length ? `
       <label>${esc(cfg.cwLabel)} test</label>
       <select name="label" id="cwTestSel">
-        ${cfg.cwTests.map(t=>`<option value="${esc(t.name)}" data-max="${t.max}">${esc(t.name)} (out of ${t.max})</option>`).join('')}
+        ${cwTestOptionsHtml(cfg)}
       </select>` : `
       <input type="hidden" name="label" value="${esc(cfg.cwLabel)}">
       ${CUR.role==='admin' ? `<label>${esc(cfg.cwLabel)}</label>
       <p class="small" style="margin-top:6px;">No named ${esc(cfg.cwLabel)} tests yet — add one under Settings → Grading Setup if you want separate columns (e.g. Test 1, Test 2). Until then, scores are recorded under a single "${esc(cfg.cwLabel)}" bucket.</p>` : ''}`;
     labelWrap.style.display = (kindSel && kindSel.value==='AOI') ? 'block' : 'none';
+    syncCwTestRequired(form);
   }
   // The maximum-mark field is compulsory and must be typed in fresh by the teacher
   // every time — it is never pre-filled, even when the newly-selected class has a
@@ -10425,6 +10448,11 @@ document.addEventListener('change', (e)=>{
   if(e.target.id==='kindSel'){
     const wrap = document.getElementById('labelWrap');
     if(wrap) wrap.style.display = e.target.value==='AOI' ? 'block':'none';
+    // With several tests configured, always start from "-- choose test --" whenever
+    // Course Work is (re)selected, and only require a pick while that dropdown is showing.
+    const _cwSel = document.getElementById('cwTestSel');
+    if(_cwSel && e.target.value==='AOI' && _cwSel.options.length && _cwSel.options[0].value==='') _cwSel.selectedIndex = 0;
+    syncCwTestRequired(e.target.closest('form') || document);
     // Compulsory field — never pre-filled or suggested, even from a named test's known
     // max. The teacher must type it in themselves every time before they can submit.
     const maxInput = document.getElementById('maxScoreInput');
@@ -11847,6 +11875,12 @@ document.addEventListener('submit', async (e)=>{
       const _pickCls = _pickA ? DB.classes.find(c=>c.id===_pickA.classId) : null;
       if(!(_pickCls && _pickCls.level==='P') && !fd.get('paper')){ alert('Please choose a paper.'); return; }
       if(!fd.get('kind')){ alert('Please choose an assessment type.'); return; }
+      // Course Work with several tests set up: a specific test must be chosen — none is assumed.
+      const _pickKind = fd.get('kind');
+      const _pickTestSel = form.querySelector('#cwTestSel');
+      if(_pickKind==='AOI' && _pickTestSel && !fd.get('label')){
+        alert(`Please choose a ${examConfig(_pickA ? _pickA.classId : null).cwLabel} test.`); return;
+      }
       const maxRaw = fd.get('maxScore');
       const maxScore = Number(maxRaw);
       if(!maxRaw || !Number.isFinite(maxScore) || maxScore<1){
@@ -11866,7 +11900,7 @@ document.addEventListener('submit', async (e)=>{
           return;
         }
       }
-      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:fd.get('label')||'', maxScore}}; render();
+      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:(_pickKind==='AOI' ? (fd.get('label')||'') : ''), maxScore}}; render();
     }
     else if(type==='saveRoster'){
       const assignId = form.dataset.assign;
