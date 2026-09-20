@@ -7920,7 +7920,6 @@ function scoresEntryView(mine){
     const firstA = mine[0];
     const firstCls = firstA ? DB.classes.find(c=>c.id===firstA.classId) : null;
     const firstIsPrimary = !!(firstCls && firstCls.level==='P');
-    const firstPaperOptions = firstA ? firstA.papers.map(p=>`<option value="${esc(String(p))}">Paper ${esc(String(p))}</option>`).join('') : '';
     return `
   <div class="card" style="margin-top:14px;">
     <form data-form="pickPaper">
@@ -7933,14 +7932,15 @@ function scoresEntryView(mine){
               return `<option value="${a.id}">${esc(a.subject)} — ${c?esc(c.name):''}${teacherBit}</option>`; }).join('') || '<option value="">-- no subject assignments yet --</option>'}
           </select>
         </div>
-        <div id="paperFieldWrap" style="${firstIsPrimary?'display:none;':''}"><label>Paper</label><select name="paper" ${firstIsPrimary?'':'required'} id="paperSelect">${firstPaperOptions}</select></div>
+        <div id="paperFieldWrap" style="${firstIsPrimary?'display:none;':''}"><label>Paper</label><select name="paper" ${firstIsPrimary?'':'required'} id="paperSelect"><option value="">-- choose paper --</option></select></div>
       </div>
       <div class="grid2">
-        <div><label>Assessment type</label><select name="kind" id="kindSel">
+        <div><label>Assessment type</label><select name="kind" id="kindSel" required>
+          <option value="">-- choose assessment type --</option>
           <option value="AOI">${esc(examConfig().cwLabel)} (continuous assessment test)</option>
           <option value="EOT">${esc(examConfig().eotLabel)}</option>
         </select></div>
-        <div id="labelWrap">${examConfig().cwTests.length ? `
+        <div id="labelWrap" style="display:none;">${examConfig().cwTests.length ? `
           <label>${esc(examConfig().cwLabel)} test</label>
           <select name="label" id="cwTestSel">
             ${examConfig().cwTests.map(t=>`<option value="${esc(t.name)}" data-max="${t.max}">${esc(t.name)} (out of ${t.max})</option>`).join('')}
@@ -10354,9 +10354,10 @@ async function loadStudentListFromWord(input){
 function refreshAssessmentTypeUI(form, classId){
   const cfg = examConfig(classId);
   const kindSel = form.querySelector('#kindSel');
-  if(kindSel && kindSel.options.length>=2){
-    kindSel.options[0].textContent = `${cfg.cwLabel} (continuous assessment test)`;
-    kindSel.options[1].textContent = cfg.eotLabel;
+  if(kindSel){
+    const oA = kindSel.querySelector('option[value="AOI"]'), oE = kindSel.querySelector('option[value="EOT"]');
+    if(oA) oA.textContent = `${cfg.cwLabel} (continuous assessment test)`;
+    if(oE) oE.textContent = cfg.eotLabel;
   }
   const labelWrap = form.querySelector('#labelWrap');
   if(labelWrap){
@@ -10368,7 +10369,7 @@ function refreshAssessmentTypeUI(form, classId){
       <input type="hidden" name="label" value="${esc(cfg.cwLabel)}">
       ${CUR.role==='admin' ? `<label>${esc(cfg.cwLabel)}</label>
       <p class="small" style="margin-top:6px;">No named ${esc(cfg.cwLabel)} tests yet — add one under Settings → Grading Setup if you want separate columns (e.g. Test 1, Test 2). Until then, scores are recorded under a single "${esc(cfg.cwLabel)}" bucket.</p>` : ''}`;
-    labelWrap.style.display = (kindSel && kindSel.value==='EOT') ? 'none' : 'block';
+    labelWrap.style.display = (kindSel && kindSel.value==='AOI') ? 'block' : 'none';
   }
   // The maximum-mark field is compulsory and must be typed in fresh by the teacher
   // every time — it is never pre-filled, even when the newly-selected class has a
@@ -10440,12 +10441,17 @@ document.addEventListener('change', (e)=>{
     const mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(a=>a.teacherUsername===CUR.username);
     const a = mine.find(x=>x.id===e.target.value);
     const paperSel = form.querySelector('#paperSelect');
-    if(a && paperSel){ paperSel.innerHTML = a.papers.map(p=>`<option value="${p}">Paper ${p}</option>`).join(''); }
     // Primary has no concept of papers (always a single implicit paper), so the Paper
     // field is hidden entirely on the score-entry form once a Primary class/subject
     // assignment is chosen — nothing for the teacher to pick.
     const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
     const isPrimaryAssign = !!(assignedCls && assignedCls.level==='P');
+    // No paper is pre-selected: the teacher must choose one (Primary keeps its single implicit paper).
+    if(paperSel){
+      const paperOpts = a ? a.papers.map(p=>`<option value="${p}">Paper ${p}</option>`).join('') : '';
+      paperSel.innerHTML = isPrimaryAssign ? paperOpts : '<option value="">-- choose paper --</option>' + paperOpts;
+      paperSel.required = !isPrimaryAssign;
+    }
     const paperFieldWrap = form.querySelector('#paperFieldWrap');
     if(paperFieldWrap) paperFieldWrap.style.display = isPrimaryAssign ? 'none' : 'block';
     // The chosen class may have its own custom assessment type (Settings → Grading
@@ -11837,6 +11843,10 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='pickPaper'){
       // Compulsory field, defended here too (not just via the HTML5 "required"
       // attribute) — no silent fallback to 100 if it's ever empty or invalid.
+      const _pickA = DB.assignments.find(x=>x.id===fd.get('assignId'));
+      const _pickCls = _pickA ? DB.classes.find(c=>c.id===_pickA.classId) : null;
+      if(!(_pickCls && _pickCls.level==='P') && !fd.get('paper')){ alert('Please choose a paper.'); return; }
+      if(!fd.get('kind')){ alert('Please choose an assessment type.'); return; }
       const maxRaw = fd.get('maxScore');
       const maxScore = Number(maxRaw);
       if(!maxRaw || !Number.isFinite(maxScore) || maxScore<1){
