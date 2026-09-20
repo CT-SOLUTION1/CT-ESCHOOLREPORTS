@@ -213,13 +213,18 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .chip{display:inline-flex;align-items:center;gap:4px;background:var(--blue-light);color:var(--blue);border-radius:14px;padding:3px 10px;font-size:12px;margin:2px;}
 
 /* ---- Dashboard icon tiles: tap-to-open feature grid, sized to fit a phone screen ---- */
-.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:10px;margin:6px 0 22px;}
+.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));grid-auto-rows:minmax(92px,auto);gap:10px;margin:6px 0 22px;}
 .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#e6f7ea;
   border:1px solid #a9dbb6;border-radius:12px;padding:14px 6px;box-shadow:0 1px 4px rgba(10,42,74,.06);
   text-align:center;font-family:inherit;transition:box-shadow .12s ease,border-color .12s ease,transform .12s ease;}
 .tile:hover, .tile:active{border-color:#2f8a4c;background:#d9f2df;box-shadow:0 3px 12px rgba(10,42,74,.14);transform:translateY(-1px);}
 .tile-icon{font-size:26px;line-height:1;}
 .tile-label{font-size:11.5px;font-weight:700;color:#0f3d1f;line-height:1.25;}
+/* The Report Cards tile is the feature people reach for most, so it is made twice as tall as the
+   others (it spans two grid rows) while keeping the same width as every other tile. */
+.tile-tall{grid-row:span 2;gap:10px;}
+.tile-tall .tile-icon{font-size:42px;}
+.tile-tall .tile-label{font-size:13px;}
 
 /* ---- Delivered-command toast: brief confirmation that a Submit tap went through ---- */
 #deliveredToast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--good);color:#fff;
@@ -841,18 +846,21 @@ async function ensureSchoolAuthIdentity(schoolId, email){
    ============================================================
    Separate from the manual "Download full backup" feature (which relies on
    someone remembering to click a button), the app also takes its own backup
-   copies in the background — no download, no action required. Every time a
-   school's data loads (and then every few minutes while the app stays open) and
-   it's been at least AUTO_SNAPSHOT_MIN_GAP_HOURS since the last one, a full
-   snapshot of that school's data is written into
+   copies in the background — no download, no action required. Two things
+   trigger one: (1) the moment the first person from a school (admin or teacher,
+   on any device) opens the system on a given day — by signing in or by
+   reopening a saved session — and (2) whenever the app is in use and it's been
+   at least AUTO_SNAPSHOT_MIN_GAP_HOURS since the last snapshot. Either way, a
+   full snapshot of that school's data is captured exactly as it was at that
+   moment and written into
    Firestore itself, under its own keys (never overwriting live data). The
    last AUTO_SNAPSHOT_KEEP snapshots are kept; older ones are deleted
    automatically so storage doesn't grow forever. An Admin can restore any
    of these from the "Backup & Restore" card, the same way they'd restore
    from a downloaded file.
    ============================================================ */
-const AUTO_SNAPSHOT_MIN_GAP_HOURS = 6;   // a new automatic snapshot every 6 hours
-const AUTO_SNAPSHOT_KEEP = 2;            // only the 2 most recent snapshots are kept
+const AUTO_SNAPSHOT_MIN_GAP_HOURS = 6;   // besides the first open of each day, one more every 6 hours of use
+const AUTO_SNAPSHOT_KEEP = 2;            // only the 2 most recent snapshots are kept; older ones are deleted permanently
 const AUTO_SNAPSHOT_CHECK_MS = 10 * 60 * 1000; // how often an open app checks whether one is due
 
 /* ============================================================
@@ -1020,6 +1028,49 @@ function extraSubjectsPageLabel(){
 }
 function passFailGrades(){ return {...DEFAULT_PASS_FAIL_GRADES, ...((DB.info&&DB.info.passFailGrades)||{})}; }
 function passFailComments(){ return {...DEFAULT_PASS_FAIL_COMMENTS, ...((DB.info&&DB.info.passFailComments)||{})}; }
+// General Paper & subsidiary level bands — the same idea as the principal-subject A–E table
+// (min %, max %, grade and descriptor on every row), except that each level is either a PASS
+// level (worth 1 point) or a FAIL level (worth 0). Stored in DB.info.aPassFailLevels as
+// [{min,max,grade,comment,pass}]. Until an admin saves their own table, the defaults are: every
+// level from 0 up to below the pass mark (50%) is Fail, every level at or above it is Pass —
+// reusing whatever Pass/Fail wording the school had already configured.
+function defaultPassFailLevels(){
+  const pm = Math.max(0, Math.min(100, Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)));
+  const g = passFailGrades(), c = passFailComments();
+  const P = r=>({min:r[0], max:r[1], grade:g.Pass, comment:c.Pass, pass:true});
+  const F = r=>({min:r[0], max:r[1], grade:g.Fail, comment:c.Fail, pass:false});
+  if(pm===DEFAULT_A_PASS_MARK){
+    const d = DEFAULT_A_BANDS; // same five level ranges as the principal-subject table
+    return [P(d.A), P(d.B), P(d.C), P(d.D), F(d.E)];
+  }
+  // A school that had already moved its pass mark keeps exactly that behaviour: one Pass level, one Fail level.
+  const out = [P([pm,100])];
+  if(pm>0) out.push(F([0, Number.isInteger(pm) ? pm-1 : Math.round((pm-0.1)*10)/10]));
+  return out;
+}
+function passFailLevels(){
+  const saved = DB.info && DB.info.aPassFailLevels;
+  if(Array.isArray(saved)){
+    const g = passFailGrades(), c = passFailComments();
+    const ok = saved.filter(l=>l && Number.isFinite(Number(l.min)) && Number.isFinite(Number(l.max)))
+      .map(l=>({min:Number(l.min), max:Number(l.max), pass:!!l.pass,
+                grade:String(l.grade||'').trim() || (l.pass?g.Pass:g.Fail),
+                comment:String(l.comment||'').trim() || (l.pass?c.Pass:c.Fail)}))
+      .sort((a,b)=>b.min-a.min);
+    if(ok.length) return ok;
+  }
+  return defaultPassFailLevels();
+}
+// The level a General Paper / subsidiary average falls in (highest Min % not above the average,
+// the same way the principal-subject table picks a grade); below every level → the lowest one.
+function passFailLevelFor(avg){
+  const lv = passFailLevels();
+  return lv.find(l=>avg>=l.min) || lv[lv.length-1];
+}
+function passFailDescriptor(avg, grade){
+  const lv = (avg!==null && avg!==undefined && Number.isFinite(Number(avg))) ? passFailLevelFor(Number(avg)) : null;
+  return (lv && lv.comment) ? lv.comment : passFailComments()[grade==='O'?'Pass':'Fail'];
+}
 // A-Level principal subjects use the configured A-E grading scale. General Paper and subsidiaries
 // use a separate Pass/Fail scale with 1/0 points; their labels and descriptors are admin-configurable.
 const DEFAULT_A_PASS_MARK = 50;
@@ -2053,6 +2104,10 @@ async function loadAll(){
       if(acc && acc.status==='active'){ CUR = acc; SCHOOL_ID = sess.schoolId; }
     }
   }
+  // First open of the day for this school (or 6+ hours since its last snapshot)? Capture the
+  // snapshot right now — before the migration below or anything else can change the data. The data copy is taken instantly;
+  // the rest happens quietly in the background, so it never blocks the first screen.
+  if(SCHOOL_ID && CUR){ maybeTakeAutoSnapshot().catch(e=>console.error(e)); }
   // Repair old admission numbers after the first screen is rendered so a large
   // school's sign-in is not held up by rewriting its entire student list.
   if(SCHOOL_ID && CUR && (DB.info.admSchemaVersion||0) < ADM_SCHEMA_VERSION){
@@ -2060,9 +2115,6 @@ async function loadAll(){
     migrateAdmissionSystem().then(()=>{ if(SCHOOL_ID===migrationSchoolId) render(); })
       .catch(e=>console.error('Admission-number migration failed',e));
   }
-  // Fire-and-forget: don't block the initial render on this. If a snapshot is
-  // due, it happens quietly in the background and the UI updates when it's done.
-  if(SCHOOL_ID && CUR){ maybeTakeAutoSnapshot().catch(e=>console.error(e)); }
 }
 async function loadSchoolData(id){
   // These 9 reads are all independent documents — awaiting them one at a time
@@ -2425,74 +2477,109 @@ async function purgeExpiredAutoSnapshots(schoolId){
     if(SCHOOL_ID === schoolId) DB.autoSnapshots = kept;
   }catch(e){ console.error('Snapshot cleanup failed', e); }
 }
-// Actually takes a snapshot right now and stores it, trimming anything beyond
-// AUTO_SNAPSHOT_KEEP (deleting the dropped snapshots' data too, not just the index entry).
-async function takeAutoSnapshotNow(allScores){
+// Calendar-day key (e.g. "2026-09-21") for a timestamp, in this device's own time zone, so
+// "once a day" means once per calendar day as the school experiences it.
+function localDayKey(ms){
+  const d = new Date(ms);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// A deep copy of the school's data exactly as it is right now (everything except scores, which
+// are loaded separately because a normal login leaves them unloaded). Taken synchronously the
+// instant a snapshot is found due, so the snapshot shows the school as it was when the day's
+// first person opened the system — not as it is by the time the slower score load has finished.
+function freezeSchoolDataForSnapshot(){
+  const copy = v => (v===null || v===undefined) ? v : JSON.parse(JSON.stringify(v));
+  const now = new Date().toISOString();
+  const info = copy(DB.info); info.lastAutoSnapshotAt = now;
+  return {
+    app:'CT-E SOLUTIONS backup', schemaVersion: BACKUP_SCHEMA_VERSION, schoolId: SCHOOL_ID,
+    exportedAt: now, exportedBy:'auto-snapshot',
+    info, accounts: copy(DB.accounts), classes: copy(DB.classes), students: copy(DB.students),
+    assignments: copy(DB.assignments), bands: copy(DB.bands), obands: copy(DB.obands), pbands: copy(DB.pbands)
+  };
+}
+// Stores a snapshot, then trims the list to the AUTO_SNAPSHOT_KEEP most recent — every older
+// snapshot is deleted permanently, its data document and its index entry both. If two devices
+// raced and both took a snapshot within moments of each other, this one replaces the other
+// instead of counting as an extra (which would push out a genuinely earlier snapshot).
+// `frozen` is the copy from freezeSchoolDataForSnapshot(); without it the snapshot is built
+// from the data as it is now.
+const AUTO_SNAPSHOT_RACE_MS = 5 * 60 * 1000;
+async function takeAutoSnapshotNow(allScores, frozen){
   if(!SCHOOL_ID || !DB.info) return null;
-  const ts = Date.now();
-  const data = currentSchoolBackupPayload('auto-snapshot', allScores);
+  const data = frozen ? {...frozen, scores: allScores || DB.scores} : currentSchoolBackupPayload('auto-snapshot', allScores);
+  const ts = frozen ? Date.parse(frozen.exportedAt) : Date.now();
   await setShared(`sch_${SCHOOL_ID}_autosnap_${ts}`, data);
-  const priorIndex = await getShared(`sch_${SCHOOL_ID}_autosnaps_index`, []);
-  const merged = [{ts, takenAt: data.exportedAt}, ...priorIndex];
+  const priorRaw = await getShared(`sch_${SCHOOL_ID}_autosnaps_index`, []);
+  const priorIndex = Array.isArray(priorRaw) ? priorRaw : [];
+  const raced = priorIndex.filter(e=>Math.abs(ts-Number(e.ts)) < AUTO_SNAPSHOT_RACE_MS);
+  const others = priorIndex.filter(e=>Math.abs(ts-Number(e.ts)) >= AUTO_SNAPSHOT_RACE_MS);
+  const merged = [{ts, takenAt: data.exportedAt}, ...others].sort((x,y)=>Number(y.ts)-Number(x.ts));
   const kept = merged.slice(0, AUTO_SNAPSHOT_KEEP);
-  const dropped = merged.slice(AUTO_SNAPSHOT_KEEP);
+  const dropped = [...raced, ...merged.slice(AUTO_SNAPSHOT_KEEP)].filter(e=>Number(e.ts)!==ts);
   await setShared(`sch_${SCHOOL_ID}_autosnaps_index`, kept);
   await Promise.all(dropped.map(e=>deleteSharedQuiet(`sch_${SCHOOL_ID}_autosnap_${e.ts}`)));
   DB.autoSnapshots = kept;
   return ts;
 }
-// Called after a school's data loads, and again every AUTO_SNAPSHOT_CHECK_MS while the app
-// stays open. If it's been at least AUTO_SNAPSHOT_MIN_GAP_HOURS since the last automatic
-// snapshot (or none exists yet), takes one — silently, in the background. Marks
-// lastAutoSnapshotAt optimistically before the snapshot finishes so two devices loading
-// at the same moment don't both fire.
+// Called the moment a school user signs in or reopens a saved session, again whenever an open
+// tab returns to the foreground, and every AUTO_SNAPSHOT_CHECK_MS while the app stays open.
+// A snapshot is due if none exists yet today (the first open of the day) OR the last one is at
+// least AUTO_SNAPSHOT_MIN_GAP_HOURS old. It happens silently, in the background. The stored
+// index is the source of truth for "what's already been taken", so a teacher opening the system
+// after the admin already did that morning does nothing. A snapshot is only marked as done AFTER
+// it is safely stored, so a failed attempt is retried on the next check.
 let AUTO_SNAPSHOT_RUNNING = false;
 let AUTO_SNAPSHOT_PURGED_FOR = null; // school whose expired snapshots were cleaned up this session
 async function maybeTakeAutoSnapshot(){
   if(!SCHOOL_ID || !DB.info || AUTO_SNAPSHOT_RUNNING) return;
   const schoolAtStart = SCHOOL_ID;
   const gapMs = AUTO_SNAPSHOT_MIN_GAP_HOURS * 3600000;
+  // A snapshot at `ts` means none is due right now if it is from today AND younger than the gap.
+  const coversNow = ts => !!ts && localDayKey(ts) === localDayKey(Date.now()) && (Date.now() - ts) < gapMs;
   const infoTs = DB.info.lastAutoSnapshotAt ? new Date(DB.info.lastAutoSnapshotAt).getTime() : 0;
-  const dueByClock = !(infoTs && Date.now() - infoTs < gapMs);
+  const dueByClock = !coversNow(infoTs);
   const needsPurge = AUTO_SNAPSHOT_PURGED_FOR !== schoolAtStart;
   if(!dueByClock && !needsPurge) return;
   AUTO_SNAPSHOT_RUNNING = true;
   try{
-    // Once per session: permanently delete any expired snapshots still in storage so only
-    // the latest AUTO_SNAPSHOT_KEEP remain, even if no new snapshot is due yet.
-    if(needsPurge){
+    let tookNew = false;
+    if(dueByClock){
+      // Freeze the data FIRST, before any await, so the snapshot is the state at the moment it was due.
+      const frozen = freezeSchoolDataForSnapshot();
+      const idx = await getShared(`sch_${schoolAtStart}_autosnaps_index`, []);
+      const idxTs = (Array.isArray(idx) && idx.length) ? Number(idx[0].ts)||0 : 0;
+      if(coversNow(idxTs)){
+        // Someone (this or another device) already took the snapshot that is due.
+        DB.info.lastAutoSnapshotAt = new Date(idxTs).toISOString();
+        DB.autoSnapshots = idx.slice(0, AUTO_SNAPSHOT_KEEP);
+      } else {
+        // The normal school login intentionally keeps scores unloaded for speed. A backup
+        // must never capture an empty score set, so load every score shard for the snapshot
+        // (into a local copy — this must not swap what the screen currently has loaded).
+        // If that load fails, skip this round rather than saving a snapshot without scores.
+        const allScores = await loadAllScores(schoolAtStart);
+        if(SCHOOL_ID !== schoolAtStart) return;
+        await takeAutoSnapshotNow(allScores, frozen);
+        tookNew = true;
+        DB.info.lastAutoSnapshotAt = frozen.exportedAt;
+        await saveInfo();
+      }
+    }
+    // Once per session (and after each new snapshot): permanently delete any expired
+    // snapshots still in storage so only the latest AUTO_SNAPSHOT_KEEP remain.
+    if((needsPurge || tookNew) && SCHOOL_ID === schoolAtStart){
       await purgeExpiredAutoSnapshots(schoolAtStart);
       AUTO_SNAPSHOT_PURGED_FOR = schoolAtStart;
-      if(VIEW && VIEW.name==='databackup') render();
     }
-    if(!dueByClock || SCHOOL_ID !== schoolAtStart) return;
-    // Another device may already have taken one since this page loaded — check the stored
-    // index (the source of truth) before writing a duplicate.
-    const idx = await getShared(`sch_${schoolAtStart}_autosnaps_index`, []);
-    const idxTs = (Array.isArray(idx) && idx.length) ? Number(idx[0].ts)||0 : 0;
-    if(idxTs && Date.now() - idxTs < gapMs){
-      DB.info.lastAutoSnapshotAt = new Date(idxTs).toISOString();
-      if(Array.isArray(idx)) DB.autoSnapshots = idx.slice(0, AUTO_SNAPSHOT_KEEP);
-      return;
-    }
-    // The normal school login intentionally keeps scores unloaded for speed. A backup
-    // must never capture an empty score set, so load every score shard for the snapshot
-    // (into a local copy — this must not swap what the screen currently has loaded).
-    // If that load fails, skip this round rather than saving a snapshot without scores.
-    const allScores = await loadAllScores(schoolAtStart);
-    if(SCHOOL_ID !== schoolAtStart) return;
-    DB.info.lastAutoSnapshotAt = new Date().toISOString();
-    await saveInfo();
-    await takeAutoSnapshotNow(allScores);
-    await purgeExpiredAutoSnapshots(schoolAtStart); // sweep anything else left over
     // Only redraw if the backup card is what's on screen — a redraw anywhere else could
     // wipe something the user is in the middle of typing.
     if(VIEW && VIEW.name==='databackup') render();
   }catch(e){ console.error('Automatic snapshot failed', e); }
   finally{ AUTO_SNAPSHOT_RUNNING = false; }
 }
-// While the app stays open (signed in), keep checking so a snapshot is taken every 6 hours
-// even without a page reload; also re-check when a phone/tab comes back to the foreground,
+// While the app stays open (signed in), keep checking so the day's first snapshot and the
+// every-6-hours ones are taken even without a page reload; also re-check when a phone/tab comes back to the foreground,
 // since background timers get paused there.
 setInterval(()=>{ if(SCHOOL_ID && CUR) maybeTakeAutoSnapshot().catch(e=>console.error(e)); }, AUTO_SNAPSHOT_CHECK_MS);
 document.addEventListener('visibilitychange', ()=>{
@@ -3096,8 +3183,8 @@ function gradeFor(subject, avg, level){
   // A-Level principal subjects use the school's configured A-E grading scale.
   // General Paper and subsidiaries retain their separate administrator-defined Pass/Fail boundary.
   if(subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject)){
-    const passMark = Math.max(0, Math.min(100, Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)));
-    return avg >= passMark ? 'O' : 'F';
+    // Their own level table (see passFailLevels): a pass level is 'O' (1 point), a fail level is 'F' (0).
+    return passFailLevelFor(avg).pass ? 'O' : 'F';
   }
   const b = DB.bands || DEFAULT_A_BANDS;
   return pickGradeByThreshold(b, ['A','B','C','D','E'], 'E')(avg);
@@ -3137,11 +3224,15 @@ function gradeColorFor(grade){
   if(['E','O','P7','P8'].includes(grade)) return '#8a6d00';
   return 'var(--navy)'; // B, C, D, C3-C6
 }
-function gradeDisplay(subject, grade, level){
-  // General Paper and A-Level subsidiaries are displayed as the administrator's
-  // configured Pass/Fail labels. Internally they remain O/F solely so their
-  // 1/0 points and existing calculations continue to work.
+function gradeDisplay(subject, grade, level, avg){
+  // General Paper and A-Level subsidiaries are displayed as the grade label of the level the
+  // subject's average falls in (administrator's level table). Internally they remain O/F solely
+  // so their 1/0 points and existing calculations continue to work.
   if(level==='A' && (subject==='GENERAL PAPER' || SUBSIDIARIES.includes(subject))){
+    if((grade==='O' || grade==='F') && avg!==null && avg!==undefined && Number.isFinite(Number(avg))){
+      const lv = passFailLevelFor(Number(avg));
+      if(lv && lv.grade) return lv.grade;
+    }
     if(grade==='O') return passFailGrades().Pass;
     if(grade==='F') return passFailGrades().Fail;
   }
@@ -3982,8 +4073,10 @@ function navByRole(role){
 function featureTilesHTML(role, excludeKey){
   const items = navByRole(role).filter(([k])=>k!==excludeKey);
   if(!items.length) return '';
+  // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-height.
+  const TALL_TILE_KEYS = ['reports','treports','preport'];
   return `<div class="tile-grid">${items.map(([k,l,icon])=>`
-    <button type="button" class="tile" data-action="nav:${k}">
+    <button type="button" class="tile${TALL_TILE_KEYS.includes(k)?' tile-tall':''}" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${l}</span>
     </button>`).join('')}</div>`;
@@ -5759,7 +5852,7 @@ function dataBackupPlanView(){
     <button class="btn-outline" data-action="exportBackup">Download full backup (.json)</button>
     <hr style="margin:18px 0;border:none;border-top:1px solid var(--line);">
     <h4 style="margin:0 0 6px;">Automatic snapshots</h4>
-    <p class="small">In addition to the backups above, the app quietly saves a full snapshot of your data by itself every ${AUTO_SNAPSHOT_MIN_GAP_HOURS} hours while it's in use (only the ${AUTO_SNAPSHOT_KEEP} most recent are kept) — no download or action needed. This is a safety net for "we forgot to back up," not a replacement for keeping your own downloaded copy somewhere safe.</p>
+    <p class="small">In addition to the backups above, the app quietly saves a full snapshot of your school's data by itself the first time anyone from your school (admin or teacher) opens the system each day, and again every ${AUTO_SNAPSHOT_MIN_GAP_HOURS} hours while it's in use — each one capturing the data as it was at that moment (only the ${AUTO_SNAPSHOT_KEEP} most recent are kept; older ones are deleted permanently) — no download or action needed. This is a safety net for "we forgot to back up," not a replacement for keeping your own downloaded copy somewhere safe.</p>
     ${(DB.autoSnapshots&&DB.autoSnapshots.length) ? `
     <table class="data-table"><tr><th>Taken</th><th>Action</th></tr>
       ${DB.autoSnapshots.map(s=>`<tr><td>${fmtDateTime(s.takenAt)}</td><td><button class="btn-outline" style="padding:4px 10px;" data-action="restoreAutoSnapshot:${s.ts}">Restore this snapshot</button></td></tr>`).join('')}
@@ -6663,8 +6756,8 @@ function gradingView(gcClassId){
   const showPrimary = !isSecondarySchool();
   return `
   <h2>Grading Setup</h2>
-  <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper is pass/fail (O=1 point, F=0) —
-  <b>O if the average is 50% and above, F if below 50%</b> — the exact same condition used for Subsidiary Mathematics and Subsidiary Computer.
+  <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper is pass/fail (pass=1 point, fail=0) —
+  <b>pass if the average reaches the pass mark (default 50%), fail below it</b> — the same rule for Subsidiary Mathematics and Subsidiary Computer. General Paper and the subsidiaries have their own table of levels below (pass levels default to Pass, fail levels to Fail).
   O-Level has no points, only A–E descriptors. `:''}${showPrimary?`Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects). `:''}
   All banding tables below are editable.</div>
   ${!showSecondary && !showPrimary ? `<div class="card" style="margin-top:14px;"><p>Set your <a href="#" data-action="nav:schoolinfo">School Grade</a> first to see the relevant grading bands here.</p></div>` : ''}
@@ -6683,21 +6776,20 @@ function gradingView(gcClassId){
           <td><input name="aComment_${g}" value="${esc(gradeCommentsFor('A')[g])}" required></td>
         </tr>`).join('')}
       </table>
-      <h4 style="margin:16px 0 8px;">General Paper &amp; Subsidiaries — Pass/Fail</h4>
-      <p class="small" style="margin-top:-4px;">At or above the pass mark below = the configured Pass grade (1 point); below it = the configured Fail grade (0 points). Same row layout: label, fixed points, and descriptor together.</p>
+      <h4 style="margin:16px 0 8px;">General Paper &amp; Subsidiaries — level bands</h4>
+      <p class="small" style="margin-top:-4px;">Same layout as the principal-subject table above: each row is one level — min/max %, grade and descriptor. Levels from 0 up to below the pass mark default to <b>Fail</b>; levels at or above it default to <b>Pass</b>. Points are fixed: 1 for a pass level, 0 for a fail level. Edit any row (e.g. rename the grade or reword the descriptor), then save — the levels and the pass mark must line up, so no level may run across the pass mark.</p>
       <div style="max-width:260px;margin-bottom:10px;"><label>Pass mark (%)</label><input name="aPassMark" type="number" min="0" max="100" step="0.1" value="${Number(DB.info?.aPassMark ?? DEFAULT_A_PASS_MARK)}"></div>
+      <input type="hidden" name="pfCount" value="${passFailLevels().length}">
       <table class="data-table" style="width:100%;">
-        <tr><th>Grade label</th><th>Points</th><th>Descriptor / comment</th></tr>
-        <tr>
-          <td><input name="passGrade" value="${esc(passFailGrades().Pass)}" required style="text-align:center;"></td>
-          <td>1</td>
-          <td><input name="passComment" value="${esc(passFailComments().Pass)}" required></td>
-        </tr>
-        <tr>
-          <td><input name="failGrade" value="${esc(passFailGrades().Fail)}" required style="text-align:center;"></td>
-          <td>0</td>
-          <td><input name="failComment" value="${esc(passFailComments().Fail)}" required></td>
-        </tr>
+        <tr><th>Level</th><th>Min %</th><th>Max %</th><th>Points</th><th>Grade</th><th>Descriptor / comment</th></tr>
+        ${passFailLevels().map((l,i)=>`<tr>
+          <td><b>${i+1}</b></td>
+          <td><input name="pfMin_${i}" value="${l.min}" style="text-align:center;"></td>
+          <td><input name="pfMax_${i}" value="${l.max}" style="text-align:center;"></td>
+          <td style="text-align:center;">${l.pass?1:0}</td>
+          <td><input name="pfGrade_${i}" value="${esc(l.grade)}" required style="text-align:center;min-width:64px;"></td>
+          <td><input name="pfComment_${i}" value="${esc(l.comment)}" required></td>
+        </tr>`).join('')}
       </table>
       <button class="btn" style="margin-top:14px;">Submit — save A-Level bands</button>
     </form>
@@ -6750,7 +6842,7 @@ function gradingView(gcClassId){
     <table class="data-table"><tr>${['A','B','C','D','E'].map(g=>`<th>${g}</th>`).join('')}</tr>
     <tr>${['A','B','C','D','E'].map(g=>`<td>${esc(gradeCommentsFor('O')[g])}</td>`).join('')}</tr></table>
     <p class="small" style="margin:8px 0 4px;"><b>A-Level:</b> ${['A','B','C','D','E'].map(g=>`${g} — ${esc(gradeCommentsFor('A')[g])}`).join(' &nbsp; | &nbsp; ')}</p>
-    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> ${esc(passFailGrades().Pass)} — ${esc(passFailComments().Pass)}; ${esc(passFailGrades().Fail)} — ${esc(passFailComments().Fail)}</p>
+    <p class="small" style="margin:4px 0 0;"><b>General Paper / Subsidiaries:</b> ${passFailLevels().map(l=>`${l.min}–${l.max}%: ${esc(l.grade)} — ${esc(l.comment)}`).join(' &nbsp; | &nbsp; ')}</p>
   </div>`}
   ${!showPrimary ? '' : `
   <div class="card"><h3>Primary (PLE) comment key</h3>
@@ -8352,7 +8444,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const rowsHtml = rows.map((r,i)=>{
     r_subject = r.subject;
     const bd = breakdowns[i];
-    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((r.grade==='O'||r.grade==='F') ? passFailComments()[r.grade==='O'?'Pass':'Fail'] : (commentMap[r.grade] || '—')));
+    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((r.grade==='O'||r.grade==='F') ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     // Multi-paper subject (e.g. Paper 1 & Paper 2 of the same subject): show a row per
     // paper, but only for papers that actually have a score entered so far — a paper
     // with nothing on record yet simply doesn't get a row at all. The subject name,
@@ -8429,7 +8521,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
           mergedTd(esc(r.subject))+
           `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
           mergedTd(r.avg==null?'-':r.avg.toFixed(1))+
-          mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-', 'rc-td-grade')+
+          mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level, r.avg)) : '-', 'rc-td-grade')+
           (isA?mergedTd(r.avg==null?0:r.pts):'')+
           mergedTd(esc(descriptor))+
           `<td>${initTxt}</td></tr>`;
@@ -8438,7 +8530,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         mergedTd(esc(r.subject))+
         `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
         mergedTd(r.avg==null?'-':r.avg.toFixed(1))+
-        mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level)) : '-', 'rc-td-grade')+
+        mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level, r.avg)) : '-', 'rc-td-grade')+
         (isA?mergedTd(r.avg==null?0:r.pts):'')+
         mergedTd(esc(descriptor))+
         `<td>${initTxt}</td></tr>`;
@@ -8781,7 +8873,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   // record (paperRows), matching exactly how reportCardHTML decides rowspans.
   const subjectEntries = rows.map((r,i)=>{
     const bd = breakdowns[i];
-    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((r.grade==='O'||r.grade==='F') ? passFailComments()[r.grade==='O'?'Pass':'Fail'] : (commentMap[r.grade] || '—')));
+    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((r.grade==='O'||r.grade==='F') ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
     const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
@@ -8817,7 +8909,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     return {
       subject: r.subject,
       finalAvgTxt: r.avg==null?'-':r.avg.toFixed(1),
-      gradeTxt: r.grade ? gradeDisplay(r.subject, r.grade, cls.level) : '-',
+      gradeTxt: r.grade ? gradeDisplay(r.subject, r.grade, cls.level, r.avg) : '-',
       pointsVal: isA ? (r.avg==null?0:r.pts) : null,
       descriptorTxt: descriptor,
       paperRows: rowsOut
@@ -11221,6 +11313,8 @@ document.addEventListener('submit', async (e)=>{
         ]);
         CUR=foundAcc; SCHOOL_ID=foundSchoolId;
         await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u});
+        // First person from this school to open the system today? Take the daily snapshot now.
+        maybeTakeAutoSnapshot().catch(e=>console.error(e));
         render();
       }
     }
@@ -11270,6 +11364,7 @@ document.addEventListener('submit', async (e)=>{
       ]);
       CUR = foundAcc; SCHOOL_ID = foundSchoolId;
       await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u});
+      maybeTakeAutoSnapshot().catch(e=>console.error(e));
       alert('Password has been reset. You are now signed in.');
       render();
     }
@@ -11766,16 +11861,44 @@ document.addEventListener('submit', async (e)=>{
       await saveStudents(); alertOk('Student profile updated.'); render();
     }
     else if(type==='saveBands'){
+      // Check the General Paper / subsidiary level table FIRST, so a bad row never leaves the save half-done.
+      const _pmRaw = String(fd.get('aPassMark')===null?'':fd.get('aPassMark')).trim(), _pmNum = Number(_pmRaw);
+      const pfPassMark = (_pmRaw!=='' && Number.isFinite(_pmNum)) ? Math.max(0,Math.min(100,_pmNum)) : DEFAULT_A_PASS_MARK;
+      const pfCount = Math.max(0, parseInt(fd.get('pfCount'),10) || 0);
+      const pfLevels = [];
+      for(let i=0;i<pfCount;i++){
+        const rawMin = String(fd.get('pfMin_'+i)===null?'':fd.get('pfMin_'+i)).trim(), rawMax = String(fd.get('pfMax_'+i)===null?'':fd.get('pfMax_'+i)).trim();
+        const min = Number(rawMin), max = Number(rawMax);
+        if(rawMin==='' || rawMax==='' || !Number.isFinite(min) || !Number.isFinite(max) || min<0 || max>100 || min>max){
+          alert(`General Paper & Subsidiaries, level ${i+1}: enter a Min % and a Max % between 0 and 100, with Min not above Max.`); return;
+        }
+        const pass = min >= pfPassMark;
+        if(!pass && max >= pfPassMark){
+          alert(`General Paper & Subsidiaries, level ${i+1} (${min}–${max}%) runs across the pass mark (${pfPassMark}%). Change the ranges so that the pass mark is where a level starts.`); return;
+        }
+        pfLevels.push({min, max, pass,
+          grade:(fd.get('pfGrade_'+i)||'').trim() || (pass?passFailGrades().Pass:passFailGrades().Fail),
+          comment:(fd.get('pfComment_'+i)||'').trim() || (pass?passFailComments().Pass:passFailComments().Fail)});
+      }
+      if(new Set(pfLevels.map(l=>l.min)).size !== pfLevels.length){
+        alert('Two General Paper & Subsidiaries levels start at the same Min %. Give each level its own starting mark.'); return;
+      }
       const b={...(DB.bands||DEFAULT_A_BANDS)}; ['A','B','C','D','E'].forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
       DB.bands=b;
       if(DB.info){
-        DB.info.aPassMark=Math.max(0,Math.min(100,Number(fd.get('aPassMark')) || DEFAULT_A_PASS_MARK));
+        DB.info.aPassMark=pfPassMark;
         DB.info.aPoints={...(DB.info.aPoints||DEFAULT_A_POINTS)};
         ['A','B','C','D','E'].forEach(g=>{ const v=Number(fd.get('aPoints_'+g)); DB.info.aPoints[g]=Number.isFinite(v)?v:DEFAULT_A_POINTS[g]; });
         DB.info.aGradeComments={...(DB.info.aGradeComments||DEFAULT_A_GRADE_COMMENTS)};
         ['A','B','C','D','E'].forEach(g=>{ DB.info.aGradeComments[g]=(fd.get('aComment_'+g)||'').trim() || DEFAULT_A_GRADE_COMMENTS[g]; });
-        DB.info.passFailGrades={...(DB.info.passFailGrades||DEFAULT_PASS_FAIL_GRADES), Pass:(fd.get('passGrade')||'').trim()||DEFAULT_PASS_FAIL_GRADES.Pass, Fail:(fd.get('failGrade')||'').trim()||DEFAULT_PASS_FAIL_GRADES.Fail};
-        DB.info.passFailComments={...(DB.info.passFailComments||DEFAULT_PASS_FAIL_COMMENTS), Pass:(fd.get('passComment')||'').trim()||DEFAULT_PASS_FAIL_COMMENTS.Pass, Fail:(fd.get('failComment')||'').trim()||DEFAULT_PASS_FAIL_COMMENTS.Fail};
+        if(pfLevels.length){
+          pfLevels.sort((a,b)=>b.min-a.min);
+          DB.info.aPassFailLevels = pfLevels;
+          // Keep the single Pass / Fail wording in step with the table (lowest pass level, highest fail level).
+          const lowestPass = [...pfLevels].reverse().find(l=>l.pass), topFail = pfLevels.find(l=>!l.pass);
+          DB.info.passFailGrades={...(DB.info.passFailGrades||DEFAULT_PASS_FAIL_GRADES), ...(lowestPass?{Pass:lowestPass.grade}:{}), ...(topFail?{Fail:topFail.grade}:{})};
+          DB.info.passFailComments={...(DB.info.passFailComments||DEFAULT_PASS_FAIL_COMMENTS), ...(lowestPass?{Pass:lowestPass.comment}:{}), ...(topFail?{Fail:topFail.comment}:{})};
+        }
         await saveInfo();
       }
       await saveBands(); render();
