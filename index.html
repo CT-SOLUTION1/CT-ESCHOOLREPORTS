@@ -842,16 +842,18 @@ async function ensureSchoolAuthIdentity(schoolId, email){
    Separate from the manual "Download full backup" feature (which relies on
    someone remembering to click a button), the app also takes its own backup
    copies in the background — no download, no action required. Every time a
-   school's data loads and it's been at least AUTO_SNAPSHOT_MIN_GAP_DAYS
-   since the last one, a full snapshot of that school's data is written into
+   school's data loads (and then every few minutes while the app stays open) and
+   it's been at least AUTO_SNAPSHOT_MIN_GAP_HOURS since the last one, a full
+   snapshot of that school's data is written into
    Firestore itself, under its own keys (never overwriting live data). The
    last AUTO_SNAPSHOT_KEEP snapshots are kept; older ones are deleted
    automatically so storage doesn't grow forever. An Admin can restore any
    of these from the "Backup & Restore" card, the same way they'd restore
    from a downloaded file.
    ============================================================ */
-const AUTO_SNAPSHOT_MIN_GAP_DAYS = 7;
-const AUTO_SNAPSHOT_KEEP = 6; // ~6 weeks of history at the default weekly cadence
+const AUTO_SNAPSHOT_MIN_GAP_HOURS = 6;   // a new automatic snapshot every 6 hours
+const AUTO_SNAPSHOT_KEEP = 2;            // only the 2 most recent snapshots are kept
+const AUTO_SNAPSHOT_CHECK_MS = 10 * 60 * 1000; // how often an open app checks whether one is due
 
 /* ============================================================
    1B. BACKUP SCHEMA VERSIONING & MIGRATION
@@ -2354,48 +2356,148 @@ async function savePBands(){ await setShared(`sch_${SCHOOL_ID}_pbands`, DB.pband
 /* ---------- Automatic snapshots (see section 1A above) ---------- */
 // Builds the same shape as a manual/founder backup file, for whichever school is
 // currently loaded.
-function currentSchoolBackupPayload(exportedBy){
+function currentSchoolBackupPayload(exportedBy, scoresOverride){
   return {
     app:'CT-E SOLUTIONS backup', schemaVersion: BACKUP_SCHEMA_VERSION, schoolId: SCHOOL_ID,
     exportedAt: new Date().toISOString(), exportedBy: exportedBy||'auto-snapshot',
     info: DB.info, accounts: DB.accounts, classes: DB.classes, students: DB.students,
-    assignments: DB.assignments, scores: DB.scores, bands: DB.bands, obands: DB.obands, pbands: DB.pbands
+    assignments: DB.assignments, scores: scoresOverride || DB.scores, bands: DB.bands, obands: DB.obands, pbands: DB.pbands
   };
+}
+// Quiet delete used by the background snapshot cleanup: unlike deleteShared() it never pops
+// up a full-screen error if a delete fails — it just reports success/failure, and the next
+// cleanup pass retries.
+async function deleteSharedQuiet(key){
+  try{
+    if(DEMO_MODE){ localStorage.removeItem('cte_demo_'+key); return true; }
+    if(AUTH_READY) await AUTH_READY;
+    await db.collection(COLLECTION).doc(key).delete();
+    return true;
+  }catch(e){ console.error('Snapshot cleanup: could not delete', key, e); return false; }
+}
+// Keys of every stored automatic-snapshot document for a school (never the index document —
+// "autosnap_" does not match "autosnaps_index").
+async function listAutoSnapshotKeys(schoolId){
+  const prefix = `sch_${schoolId}_autosnap_`;
+  const keys = [];
+  if(DEMO_MODE){
+    const localPrefix = 'cte_demo_'+prefix;
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.indexOf(localPrefix)===0) keys.push(k.slice('cte_demo_'.length));
+    }
+    return keys;
+  }
+  if(AUTH_READY) await AUTH_READY;
+  const snap = await db.collection(COLLECTION)
+    .where(firebase.firestore.FieldPath.documentId(), '>=', prefix)
+    .where(firebase.firestore.FieldPath.documentId(), '<=', prefix + '\uf8ff')
+    .get();
+  snap.forEach(doc=>keys.push(doc.id));
+  return keys;
+}
+// Permanently removes every expired automatic snapshot from storage, leaving only the
+// AUTO_SNAPSHOT_KEEP most recent: (1) trims the snapshot list, then (2) deletes the data of
+// the dropped entries, then (3) sweeps for stray snapshot data that is no longer in the list
+// at all (e.g. left behind by an interrupted save or by an earlier, longer retention rule).
+// The list is always shortened BEFORE data is deleted, so the Restore list never points at
+// a snapshot that is already gone. Snapshots newer than 15 minutes are never swept, because
+// another device may still be in the middle of saving one.
+async function purgeExpiredAutoSnapshots(schoolId){
+  if(!schoolId) return;
+  try{
+    const raw = await getShared(`sch_${schoolId}_autosnaps_index`, []);
+    const index = (Array.isArray(raw) ? raw : []).slice().sort((a,b)=>Number(b.ts)-Number(a.ts));
+    const kept = index.slice(0, AUTO_SNAPSHOT_KEEP);
+    const expired = index.slice(AUTO_SNAPSHOT_KEEP);
+    if(expired.length){
+      await setShared(`sch_${schoolId}_autosnaps_index`, kept);
+      await Promise.all(expired.map(e=>deleteSharedQuiet(`sch_${schoolId}_autosnap_${e.ts}`)));
+    }
+    const keepKeys = new Set(kept.map(e=>`sch_${schoolId}_autosnap_${e.ts}`));
+    const cutoff = Date.now() - 15*60*1000;
+    const stray = (await listAutoSnapshotKeys(schoolId)).filter(k=>{
+      if(keepKeys.has(k)) return false;
+      const ts = Number(k.slice(`sch_${schoolId}_autosnap_`.length));
+      return !Number.isFinite(ts) || ts < cutoff;
+    });
+    if(stray.length) await Promise.all(stray.map(deleteSharedQuiet));
+    if(SCHOOL_ID === schoolId) DB.autoSnapshots = kept;
+  }catch(e){ console.error('Snapshot cleanup failed', e); }
 }
 // Actually takes a snapshot right now and stores it, trimming anything beyond
 // AUTO_SNAPSHOT_KEEP (deleting the dropped snapshots' data too, not just the index entry).
-async function takeAutoSnapshotNow(){
+async function takeAutoSnapshotNow(allScores){
   if(!SCHOOL_ID || !DB.info) return null;
   const ts = Date.now();
-  const data = currentSchoolBackupPayload('auto-snapshot');
+  const data = currentSchoolBackupPayload('auto-snapshot', allScores);
   await setShared(`sch_${SCHOOL_ID}_autosnap_${ts}`, data);
   const priorIndex = await getShared(`sch_${SCHOOL_ID}_autosnaps_index`, []);
   const merged = [{ts, takenAt: data.exportedAt}, ...priorIndex];
   const kept = merged.slice(0, AUTO_SNAPSHOT_KEEP);
   const dropped = merged.slice(AUTO_SNAPSHOT_KEEP);
   await setShared(`sch_${SCHOOL_ID}_autosnaps_index`, kept);
-  await Promise.all(dropped.map(e=>deleteShared(`sch_${SCHOOL_ID}_autosnap_${e.ts}`)));
+  await Promise.all(dropped.map(e=>deleteSharedQuiet(`sch_${SCHOOL_ID}_autosnap_${e.ts}`)));
   DB.autoSnapshots = kept;
   return ts;
 }
-// Called after a school's data loads. If it's been long enough since the last
-// automatic snapshot (or none exists yet), takes one — silently, in the
-// background. Marks lastAutoSnapshotAt optimistically before the snapshot
-// finishes so two devices loading at the same moment don't both fire.
+// Called after a school's data loads, and again every AUTO_SNAPSHOT_CHECK_MS while the app
+// stays open. If it's been at least AUTO_SNAPSHOT_MIN_GAP_HOURS since the last automatic
+// snapshot (or none exists yet), takes one — silently, in the background. Marks
+// lastAutoSnapshotAt optimistically before the snapshot finishes so two devices loading
+// at the same moment don't both fire.
+let AUTO_SNAPSHOT_RUNNING = false;
+let AUTO_SNAPSHOT_PURGED_FOR = null; // school whose expired snapshots were cleaned up this session
 async function maybeTakeAutoSnapshot(){
-  if(!SCHOOL_ID || !DB.info) return;
-  const days = daysSince(DB.info.lastAutoSnapshotAt);
-  if(DB.info.lastAutoSnapshotAt && days < AUTO_SNAPSHOT_MIN_GAP_DAYS) return;
-  // The normal school login intentionally keeps scores unloaded for speed. A backup
-  // must never capture an empty score set, so load the score shards before snapshotting.
-  await refreshScores();
-  DB.info.lastAutoSnapshotAt = new Date().toISOString();
+  if(!SCHOOL_ID || !DB.info || AUTO_SNAPSHOT_RUNNING) return;
+  const schoolAtStart = SCHOOL_ID;
+  const gapMs = AUTO_SNAPSHOT_MIN_GAP_HOURS * 3600000;
+  const infoTs = DB.info.lastAutoSnapshotAt ? new Date(DB.info.lastAutoSnapshotAt).getTime() : 0;
+  const dueByClock = !(infoTs && Date.now() - infoTs < gapMs);
+  const needsPurge = AUTO_SNAPSHOT_PURGED_FOR !== schoolAtStart;
+  if(!dueByClock && !needsPurge) return;
+  AUTO_SNAPSHOT_RUNNING = true;
   try{
+    // Once per session: permanently delete any expired snapshots still in storage so only
+    // the latest AUTO_SNAPSHOT_KEEP remain, even if no new snapshot is due yet.
+    if(needsPurge){
+      await purgeExpiredAutoSnapshots(schoolAtStart);
+      AUTO_SNAPSHOT_PURGED_FOR = schoolAtStart;
+      if(VIEW && VIEW.name==='databackup') render();
+    }
+    if(!dueByClock || SCHOOL_ID !== schoolAtStart) return;
+    // Another device may already have taken one since this page loaded — check the stored
+    // index (the source of truth) before writing a duplicate.
+    const idx = await getShared(`sch_${schoolAtStart}_autosnaps_index`, []);
+    const idxTs = (Array.isArray(idx) && idx.length) ? Number(idx[0].ts)||0 : 0;
+    if(idxTs && Date.now() - idxTs < gapMs){
+      DB.info.lastAutoSnapshotAt = new Date(idxTs).toISOString();
+      if(Array.isArray(idx)) DB.autoSnapshots = idx.slice(0, AUTO_SNAPSHOT_KEEP);
+      return;
+    }
+    // The normal school login intentionally keeps scores unloaded for speed. A backup
+    // must never capture an empty score set, so load every score shard for the snapshot
+    // (into a local copy — this must not swap what the screen currently has loaded).
+    // If that load fails, skip this round rather than saving a snapshot without scores.
+    const allScores = await loadAllScores(schoolAtStart);
+    if(SCHOOL_ID !== schoolAtStart) return;
+    DB.info.lastAutoSnapshotAt = new Date().toISOString();
     await saveInfo();
-    await takeAutoSnapshotNow();
-    render(); // update the "Backup & Restore" card if it's on screen
+    await takeAutoSnapshotNow(allScores);
+    await purgeExpiredAutoSnapshots(schoolAtStart); // sweep anything else left over
+    // Only redraw if the backup card is what's on screen — a redraw anywhere else could
+    // wipe something the user is in the middle of typing.
+    if(VIEW && VIEW.name==='databackup') render();
   }catch(e){ console.error('Automatic snapshot failed', e); }
+  finally{ AUTO_SNAPSHOT_RUNNING = false; }
 }
+// While the app stays open (signed in), keep checking so a snapshot is taken every 6 hours
+// even without a page reload; also re-check when a phone/tab comes back to the foreground,
+// since background timers get paused there.
+setInterval(()=>{ if(SCHOOL_ID && CUR) maybeTakeAutoSnapshot().catch(e=>console.error(e)); }, AUTO_SNAPSHOT_CHECK_MS);
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden && SCHOOL_ID && CUR) maybeTakeAutoSnapshot().catch(e=>console.error(e));
+});
 // Restores the school's current data from one of its own automatic snapshots.
 async function restoreAutoSnapshot(ts){
   const raw = await getShared(`sch_${SCHOOL_ID}_autosnap_${ts}`, null);
@@ -5657,7 +5759,7 @@ function dataBackupPlanView(){
     <button class="btn-outline" data-action="exportBackup">Download full backup (.json)</button>
     <hr style="margin:18px 0;border:none;border-top:1px solid var(--line);">
     <h4 style="margin:0 0 6px;">Automatic snapshots</h4>
-    <p class="small">In addition to the backups above, the app quietly saves a full snapshot of your data by itself roughly once a week (${AUTO_SNAPSHOT_KEEP} most recent kept) — no download or action needed. This is a safety net for "we forgot to back up," not a replacement for keeping your own downloaded copy somewhere safe.</p>
+    <p class="small">In addition to the backups above, the app quietly saves a full snapshot of your data by itself every ${AUTO_SNAPSHOT_MIN_GAP_HOURS} hours while it's in use (only the ${AUTO_SNAPSHOT_KEEP} most recent are kept) — no download or action needed. This is a safety net for "we forgot to back up," not a replacement for keeping your own downloaded copy somewhere safe.</p>
     ${(DB.autoSnapshots&&DB.autoSnapshots.length) ? `
     <table class="data-table"><tr><th>Taken</th><th>Action</th></tr>
       ${DB.autoSnapshots.map(s=>`<tr><td>${fmtDateTime(s.takenAt)}</td><td><button class="btn-outline" style="padding:4px 10px;" data-action="restoreAutoSnapshot:${s.ts}">Restore this snapshot</button></td></tr>`).join('')}
