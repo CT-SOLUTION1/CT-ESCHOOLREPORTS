@@ -988,6 +988,11 @@ function gradeCommentsFor(level){
 // Legacy schools that registered before this setting existed have schoolGrade===undefined —
 // treated as "not yet chosen", so nothing is restricted until the admin explicitly sets it.
 function schoolGrade(){ return (DB.info && DB.info.schoolGrade) || null; }
+// The grade is compulsory for the school's Admin, saved once, and after that only the Founder
+// (working inside the school through the Founder Panel) can change it.
+function schoolGradeGateActive(){ return !!(CUR && CUR.role==='admin' && !FOUNDER_IMPERSONATING_SCHOOL && !schoolGrade()); }
+function schoolGradeLocked(){ return !!schoolGrade() && !FOUNDER_IMPERSONATING_SCHOOL; }
+function keepLockedGrade(prev){ if(prev && !FOUNDER_IMPERSONATING_SCHOOL && DB.info) DB.info.schoolGrade = prev; }
 function isPrimarySchool(){ return schoolGrade()==='primary'; }
 function isSecondarySchool(){ return schoolGrade()==='secondary'; }
 // Which class levels ('P','O','A') the admin is currently allowed to create/keep —
@@ -2392,7 +2397,8 @@ async function restoreAutoSnapshot(ts){
   const data = migrateBackupData(raw);
   const sure = confirm(`This will REPLACE all current school data with the automatic snapshot from ${data.exportedAt?new Date(data.exportedAt).toLocaleString():'that time'}.\n\nStudents in snapshot: ${data.students.length}\nCurrent students: ${DB.students.length}\n\nThis cannot be undone. Continue?`);
   if(!sure) return;
-  DB.info = data.info; DB.accounts = data.accounts; DB.classes = data.classes;
+  const _prevGrade = schoolGrade();
+  DB.info = data.info; keepLockedGrade(_prevGrade); DB.accounts = data.accounts; DB.classes = data.classes;
   DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores;
   DB.bands = data.bands; DB.obands = data.obands; DB.pbands = data.pbands;
   await Promise.all([saveInfo(), saveAccounts(), saveClasses(), saveStudents(), saveAssignments(), saveScores(), saveBands(), saveOBands(), savePBands()]);
@@ -3557,6 +3563,16 @@ function renderFounderView(view){
         <button class="btn-outline" data-action="foundResetOwnerCode:${FOUNDER_LOGINS.schoolId}">Reset owner code</button>
       </div>
     </div>
+    <div class="card" style="margin-top:14px;border-left:4px solid var(--gold);">
+      <h3>Finance & Requirements Password</h3>
+      <div style="background:#fff7e0;border:1px solid var(--gold);border-radius:8px;padding:12px;margin-top:10px;">
+        <div class="small">CURRENT FINANCE PASSWORD</div>
+        <div style="font-family:monospace;font-size:20px;font-weight:800;margin-top:4px;letter-spacing:1px;">${esc((FOUNDER_LOGINS.info&&FOUNDER_LOGINS.info.financePassword)||'Not set')}</div>
+      </div>
+      <div class="flex" style="margin-top:12px;">
+        <button class="btn-outline" data-action="foundChangeFinancePw:${FOUNDER_LOGINS.schoolId}">${(FOUNDER_LOGINS.info&&FOUNDER_LOGINS.info.financePassword)?'Change finance password':'Set finance password'}</button>
+      </div>
+    </div>
     <div class="card" style="margin-top:14px;overflow:auto;"><table class="data-table"><tr><th>Name</th><th>Role</th><th>Username</th><th>Password</th><th>Status</th><th>Action</th></tr>
     ${accounts.map(a=>`<tr>
         <td>${esc(a.name||'')}</td>
@@ -3866,7 +3882,7 @@ function featureTilesHTML(role, excludeKey){
 }
 function renderShell(){
   const nav = navByRole(CUR.role);
-  const view = (VIEW.name==='boot' || (!nav.some(n=>n[0]===VIEW.name) && !DETAIL_VIEWS.has(VIEW.name))) ? nav[0][0] : VIEW.name;
+  const view = schoolGradeGateActive() ? 'schoolinfo' : ((VIEW.name==='boot' || (!nav.some(n=>n[0]===VIEW.name) && !DETAIL_VIEWS.has(VIEW.name))) ? nav[0][0] : VIEW.name);
   navTrackView(view);
   return `
   <div class="topbar">
@@ -3968,6 +3984,7 @@ function backupReminderBanner(){
   return '';
 }
 let FINANCE_UNLOCKED = false;
+let FINANCE_FORGOT = false; // showing the owner-code recovery form on the Finance lock screen
 function money(n){ return Number(n||0).toLocaleString(); }
 // Payer details are deliberately limited to just these three fields — name,
 // relationship to the student, and a contact number — nothing else. Used for both
@@ -4700,14 +4717,23 @@ function filterFinanceRows(q){
 // full original toolkit (itemized fee catalog, expenses, income, old students,
 // control) kept intact in financeAdvancedView() further down.
 function financeRequirementsView(){
-  if(!FINANCE_UNLOCKED){ const first=!DB.info.financePassword; return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Finance & Requirements password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}"><label>Finance Password</label><input name="password" type="password" minlength="4" required autofocus>${first?'<p class="small">Must be different from your own login password.</p>':''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Finance Section'}</button></form>${FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock" style="margin-top:14px;">🛟 Founder Emergency Access</button>`:''}</div>`; }
-  const lockHeader = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS</h2><p class="small">Choose Fees, Requirements, or one of the Analysis screens to get started.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>`;
+  if(!FINANCE_UNLOCKED){
+    const first=!DB.info.financePassword;
+    const founderBtn = FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock" style="margin-top:14px;">🛟 Founder Emergency Access</button>`:'';
+    if(!first && FINANCE_FORGOT){
+      if(!DB.info.ownerCode) return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">No owner code has been set for this school, so the Finance password can't be recovered here. Please contact ${esc(FOUNDER_CONTACT)}.</p><button type="button" class="btn-outline" data-action="finForgotBack">← Back</button>${founderBtn}</div>`;
+      return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><h3>Forgot Finance Password</h3><form data-form="finRecoverPassword"><label>Owner Code</label><input name="ownerCode" type="password" required autofocus autocomplete="off"><label>New Finance Password</label><input name="password" type="password" minlength="4" required autocomplete="new-password"><p class="small">Must be different from your own login password.</p><button class="btn" style="margin-top:14px;">Reset Finance Password</button></form><button type="button" class="btn-outline" data-action="finForgotBack" style="margin-top:10px;">← Back</button>${founderBtn}</div>`;
+    }
+    return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Finance & Requirements password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}"><label>Finance Password</label><input name="password" type="password" minlength="4" required autofocus>${first?'<p class="small">Must be different from your own login password.</p>':''}${first && !DB.info.ownerCode ? '<label>Owner Code</label><input name="ownerCode" minlength="4" required autocomplete="off"><p class="small">Used to recover the Finance password if it is forgotten.</p>' : ''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Finance Section'}</button></form>${!first?`<p class="small" style="margin-top:12px;"><a href="#" data-action="finForgotPw">Forgot password?</a></p>`:''}${founderBtn}</div>`;
+  }
+  const lockHeader = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS</h2><p class="small">Choose Fees, Requirements, or one of the Analysis screens to get started.</p></div><div class="flex" style="gap:8px;"><button class="btn-outline" data-action="finTab:security">🔑 Passwords</button><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div></div>`;
   const finTab = VIEW.params.finTab;
   if(!finTab) return lockHeader + finTabChooserHTML();
   if(finTab==='advanced') return financeAdvancedView();
   const d = financeData();
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const backTabs = `<p class="small" style="margin:8px 0 14px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p>`;
+  if(finTab==='security') return lockHeader + backTabs + financePasswordsView();
   if(finTab==='analysis') return lockHeader + backTabs + feesAnalysisView(d);
   if(finTab==='reqanalysis') return lockHeader + backTabs + requirementsAnalysisView(d);
   if(finTab==='fees'){
@@ -4719,6 +4745,23 @@ function financeRequirementsView(){
     return lockHeader + backTabs + requirementsClassView(d, term, year);
   }
   return lockHeader + finTabChooserHTML();
+}
+// Change the Finance password and the Owner Code at any time (the section is already unlocked,
+// so no old value is needed). Used by the "Passwords" page and the Finance Control card.
+function financeSecurityFormsHTML(){
+  return `<form data-form="setFinancePassword"><h3>Finance Password</h3>
+      <label>New Finance password</label><input name="password" type="password" minlength="4" required autocomplete="new-password">
+      <label>Confirm new Finance password</label><input name="confirmPassword" type="password" minlength="4" required autocomplete="new-password">
+      <p class="small">Must be different from your own login password.</p>
+      <button class="btn" style="margin-top:10px;">Save Finance Password</button></form>
+    <hr style="margin:20px 0;border:none;border-top:1px solid #cfd9e3;">
+    <form data-form="setOwnerCode"><h3>Owner Code</h3>
+      <label>${DB.info.ownerCode?'New Owner Code':'Owner Code'}</label><input name="ownerCode" minlength="4" required autocomplete="off" placeholder="At least 4 characters">
+      <label>Confirm Owner Code</label><input name="confirmCode" minlength="4" required autocomplete="off">
+      <button class="btn" style="margin-top:10px;">Save Owner Code</button></form>`;
+}
+function financePasswordsView(){
+  return `<div class="card">${financeSecurityFormsHTML()}</div>`;
 }
 // Tile chooser shown right after unlocking: Fees or Requirements first, as
 // requested, with a quiet link through to the original full toolkit.
@@ -5375,7 +5418,7 @@ function financeAdvancedView(){
   <div class="card"><h3>8. Finance Control</h3>
   <button type="button" class="btn-outline" data-action="resyncFinance">Recompute all balances now</button>
   <p class="small">Balances are kept in sync automatically as fees and payments are recorded — use this only if something looks out of date after a bulk change.</p>
-  <form data-form="setFinancePassword" style="margin-top:14px;"><label>Change Separate Finance Password</label><input name="password" type="password" minlength="4" required><p class="small">Must be different from your own login password.</p><button class="btn-outline" style="margin-top:12px;">Save Finance Password</button></form></div>`;
+  <div style="margin-top:14px;">${financeSecurityFormsHTML()}</div></div>`;
 }
 // A wide, printable register of every student's Invoiced / Paid / Balance figures
 // for a chosen Class + Term + Year — lets an admin flip through one class/term at a
@@ -5669,17 +5712,24 @@ function restoreItemsView(){
 /* ---------- Admin: School info ---------- */
 function schoolInfoView(){
   const i = DB.info;
-  return `
-  <h2>School Info & Logo</h2>
+  const gradeName = i.schoolGrade==='primary' ? 'Primary School' : i.schoolGrade==='secondary' ? "Secondary School — O' and A' Level" : '';
+  const gradeCard = schoolGradeLocked() ? `
   <div class="card">
     <h3>School Grade</h3>
-    <p class="small">Choose which grade of school this is. Pick <b>Primary School</b> if you only run Primary, or <b>Secondary School</b> if you run O'-Level and/or A'-Level (the two ship together as one grade). Whichever grade you don't pick is deactivated throughout the system — its class level, grading bands, and subject setup stop appearing. You can only choose one${i.schoolGrade?'':' — nothing is restricted until you choose'}.</p>
+    <div style="font-weight:700;">🔒 ${gradeName}</div>
+  </div>` : `
+  <div class="card">
+    <h3>School Grade</h3>
     <form data-form="schoolGrade">
       <label class="flex" style="gap:8px;align-items:center;"><input type="radio" name="schoolGrade" value="primary" style="width:auto;" ${i.schoolGrade==='primary'?'checked':''} required> <span><b>Primary School</b></span></label>
       <label class="flex" style="gap:8px;align-items:center;margin-top:8px;"><input type="radio" name="schoolGrade" value="secondary" style="width:auto;" ${i.schoolGrade==='secondary'?'checked':''} required> <span><b>Secondary School</b> — O' and A' Level</span></label>
       <button class="btn" style="margin-top:14px;">Save school grade</button>
     </form>
-  </div>
+  </div>`;
+  // Compulsory first step: until the grade is saved, nothing else on this page (or any other) is available.
+  if(schoolGradeGateActive()) return `<h2>School Info & Logo</h2>${gradeCard}`;
+  return `
+  <h2>School Info & Logo</h2>${gradeCard}
   <div class="card">
     <form data-form="schoolInfo">
       <div class="flex">
@@ -5713,7 +5763,6 @@ function schoolInfoView(){
 function classesView(){
   return `
   <h2>Classes</h2>
-  ${!schoolGrade() ? `<div class="note" style="margin-bottom:14px;">Set your <a href="#" data-action="nav:schoolinfo">School Grade</a> first (Primary or Secondary) — it decides which class levels you can add here.</div>` : ''}
   <div class="note" style="margin-bottom:14px;">If some students were entered before the current admission-number rule was introduced, use <b>Adjust existing admission numbers</b> below. It applies the same current rule to students already in the school, class by class, while keeping their existing class/enrollment order and assigning the permanent sequence from 001 upward.</div>
   <div class="card" style="margin-bottom:14px;">
     <button class="btn-gold" data-action="repairAdmissionNumbers"><b>Adjust existing admission numbers to current rule</b></button>
@@ -9376,7 +9425,7 @@ document.addEventListener('click', async (e)=>{
     'printDemandNote','downloadDemandNote','editClassAgreedFee','editStudentAgreedFee',
     'settleShortfallFull','delShortfallSettlement','delShortfall',
     'editExpenseType','delExpenseType','editExpense','delExpense','reqMarkItem','reqUndoStatus','reqShowCashForm','reqCancelCashForm',
-    'reqChangeSelection','reqCancelSelection','printReqDemandNote']);
+    'reqChangeSelection','reqCancelSelection','printReqDemandNote','finForgotPw','finForgotBack']);
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
@@ -9392,6 +9441,8 @@ document.addEventListener('click', async (e)=>{
   switch(action){
     case 'installApp': installPWA(); break;
     case 'financeLock': FINANCE_UNLOCKED=false; render(); break;
+    case 'finForgotPw': FINANCE_FORGOT=true; render(); break;
+    case 'finForgotBack': FINANCE_FORGOT=false; render(); break;
     case 'founderFinanceUnlock': {
       if(!FOUNDER_IMPERSONATING_SCHOOL){ alert('Founder emergency access is only available while you are inside a school via the Founder Panel.'); break; }
       const code = prompt('Enter your founder code to unlock Finance & Requirements for this school:');
@@ -9450,6 +9501,7 @@ document.addEventListener('click', async (e)=>{
     }
     case 'navBack': playUISound('open'); navGoBack(); break;
     case 'nav': {
+      if(schoolGradeGateActive() && arg!=='schoolinfo'){ alert('Please select your school grade to continue.'); break; }
       VIEW = {name:arg, params:{}};
       playUISound('open');
       // Render immediately with whatever's already in memory — DB.scores is
@@ -10177,6 +10229,24 @@ Continue?`)) break;
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_info`, info);
       alertOk(`Owner code reset successfully for ${info.schoolName||'this school'}. The new owner code is: ${trimmed}`);
       render(); break; }
+    case 'foundChangeFinancePw': { if(!CUR || CUR.role!=='founder'){ alert('Only the Founder can do that.'); break; } const code=prompt('Enter your founder code to change this school\'s Finance password:'); if(code===null) break;
+      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!FOUNDER_LOGINS || FOUNDER_LOGINS.schoolId!==arg){ break; }
+      const info = FOUNDER_LOGINS.info || {};
+      const current = info.financePassword || '';
+      const newPw = prompt(`Enter the new Finance password for ${info.schoolName||'this school'} (at least 4 characters):`, current);
+      if(newPw===null) break;
+      const trimmed = newPw.trim();
+      if(trimmed.length<4){ alert('The Finance password must be at least 4 characters.'); break; }
+      if(trimmed===current){ alert('That is already the current Finance password. No change was made.'); break; }
+      if(!confirm(`Change the Finance password for ${info.schoolName||'this school'}?\n\nThe school's Admin will need to use the new password to open Finance & Requirements.\n\nContinue?`)) break;
+      // Re-read so nothing the school saved since this page was opened is overwritten.
+      const fresh = await getShared(`sch_${FOUNDER_LOGINS.schoolId}_info`, null) || info;
+      fresh.financePassword = trimmed;
+      FOUNDER_LOGINS.info = fresh;
+      await setShared(`sch_${FOUNDER_LOGINS.schoolId}_info`, fresh);
+      alertOk(`Finance password changed for ${fresh.schoolName||'this school'}. The new password is: ${trimmed}`);
+      render(); break; }
     case 'foundDeleteSchool': { const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
       const code=prompt(`Enter your founder code to PERMANENTLY delete "${r.name}":`); if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
@@ -10491,15 +10561,30 @@ document.addEventListener('submit', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
     'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
-    'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
+    'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
     'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
     }
-    if(type==='financeUnlock'){ if(!DB.info.financePassword){ alert('No Finance password has been set. Ask the Admin to create one from this section.'); return; } if(fd.get('password')!==DB.info.financePassword){ alert('Incorrect Finance password.'); return; } FINANCE_UNLOCKED=true; render(); return; }
-    else if(type==='setFinancePassword'){ const pw=fd.get('password'); if(CUR && CUR.password && pw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; } DB.info.financePassword=pw; await saveInfo(); alert('Finance password saved.'); return; }
+    if(type==='financeUnlock'){ if(!DB.info.financePassword){ alert('No Finance password has been set. Ask the Admin to create one from this section.'); return; } if(fd.get('password')!==DB.info.financePassword){ alert('Incorrect Finance password.'); return; } FINANCE_UNLOCKED=true; FINANCE_FORGOT=false; render(); return; }
+    else if(type==='finRecoverPassword'){
+      if(!DB.info.ownerCode){ alert('No owner code has been set for this school. Please contact the Founder.'); return; }
+      if(fd.get('ownerCode')!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+      const npw=fd.get('password');
+      if(CUR && CUR.password && npw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; }
+      DB.info.financePassword=npw; await saveInfo();
+      FINANCE_FORGOT=false; FINANCE_UNLOCKED=true;
+      alert('Finance password reset. You are now in Finance & Requirements.'); render(); return;
+    }
+    else if(type==='setOwnerCode'){
+      const nc=(fd.get('ownerCode')||'').trim();
+      if(fd.has('confirmCode') && (fd.get('confirmCode')||'').trim()!==nc){ alert('The two owner codes do not match.'); return; }
+      if(nc.length<4){ alert('Owner code must be at least 4 characters.'); return; }
+      DB.info.ownerCode=nc; await saveInfo(); alert('Owner code saved.'); render(); return;
+    }
+    else if(type==='setFinancePassword'){ const pw=fd.get('password'); if(fd.has('confirmPassword') && fd.get('confirmPassword')!==pw){ alert('The two Finance passwords do not match.'); return; } if(CUR && CUR.password && pw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; } if(!DB.info.ownerCode && fd.has('ownerCode')){ const oc=(fd.get('ownerCode')||'').trim(); if(oc.length<4){ alert('Owner code must be at least 4 characters.'); return; } DB.info.ownerCode=oc; } DB.info.financePassword=pw; await saveInfo(); alert('Finance password saved.'); render(); return; }
     else if(type==='addFinanceFee' || type==='editFinanceFee'){
       const name=(fd.get('name')||'').trim();
       if(!name){ alert('Please enter a fee/charge name.'); return; }
@@ -11095,7 +11180,8 @@ document.addEventListener('submit', async (e)=>{
       const data = migrateBackupData(raw);
       const sure = confirm(`This will REPLACE all current school data with the backup from ${data.exportedAt?new Date(data.exportedAt).toLocaleString():'this file'}.\n\nStudents in file: ${data.students.length}\nCurrent students: ${DB.students.length}\n\nThis cannot be undone. Continue?`);
       if(!sure) return;
-      DB.info = data.info; DB.accounts = data.accounts; DB.classes = data.classes;
+      const _prevGrade = schoolGrade();
+      DB.info = data.info; keepLockedGrade(_prevGrade); DB.accounts = data.accounts; DB.classes = data.classes;
       DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores;
       DB.bands = data.bands; DB.obands = data.obands; DB.pbands = data.pbands;
       await Promise.all([saveInfo(), saveAccounts(), saveClasses(), saveStudents(), saveAssignments(), saveScores(), saveBands(), saveOBands(), savePBands()]);
@@ -11161,7 +11247,8 @@ document.addEventListener('submit', async (e)=>{
         await saveAccounts(); summary.push(`${n} staff account(s)`);
       }
       if(restoreSettings){
-        DB.info = {...d.info};
+        const _prevGrade = schoolGrade();
+        DB.info = {...d.info}; keepLockedGrade(_prevGrade);
         DB.bands = d.bands; DB.obands = d.obands; DB.pbands = d.pbands;
         await Promise.all([saveInfo(), saveBands(), saveOBands(), savePBands()]);
         summary.push('school settings');
@@ -11193,7 +11280,9 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='schoolGrade'){
       const g = fd.get('schoolGrade');
+      if(schoolGradeLocked()){ alert('The school grade has already been saved. Only the Founder can change it.'); return; }
       if(g!=='primary' && g!=='secondary'){ alert('Please choose a school grade.'); return; }
+      if(!FOUNDER_IMPERSONATING_SCHOOL && !confirm(`Save ${g==='primary'?'Primary School':'Secondary School'} as your school grade?\n\nOnce saved it cannot be changed by the school — only the Founder can change it.`)) return;
       const mismatched = DB.classes.filter(c=> g==='primary' ? c.level!=='P' : c.level==='P');
       if(mismatched.length){
         const ok = confirm(`${mismatched.length} existing class${mismatched.length===1?'':'es'} (${mismatched.map(c=>c.name).join(', ')}) belong to the grade you're switching away from. They will stay exactly as they are, but you won't be able to add any more classes of that grade until you switch back. Continue?`);
@@ -11202,6 +11291,7 @@ document.addEventListener('submit', async (e)=>{
       DB.info.schoolGrade = g;
       await saveInfo();
       showDeliveredToast('School grade saved');
+      VIEW = {name:'schoolinfo', params:{}};
       render();
     }
     else if(type==='schoolInfo'){
