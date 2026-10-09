@@ -6113,11 +6113,11 @@ function staffAccountsView(){
   </div>
   <div class="card">
     <h3>Bulk register staff from a template</h3>
-    <p class="small">Download a CSV template, send it to staff (or fill it in yourself) offline, then upload it back here. Each row is one <b>class + subject</b> a teacher takes — use the same Username/Password on every row for the same teacher and they'll be registered once and assigned to every listed class, subject, and paper automatically.</p>
+    <p class="small">Download a CSV template, send it to staff (or fill it in yourself) offline, then upload it back here. Only <b>Full Name, Username and Password</b> are required — you can capture just those and add the recovery code, classes and subjects later from <b>Edit profile</b>. To assign subjects during upload, add one row per <b>class + subject</b> and repeat the same Username/Password on every row for that teacher.</p>
     <div class="flex">
       <button type="button" class="btn-outline" data-action="dlStaffTemplate">Download staff template (CSV)</button>
     </div>
-    <p class="small" style="margin-top:10px;"><b>Class Name</b> must exactly match a class already on your <a href="#" data-action="nav:classes">Classes</a> page. <b>Subject</b> must exactly match one of your subject names (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a> for the full list) — subject names are not case-sensitive, they'll be upper-cased automatically. <b>Papers</b> is a comma-separated list, e.g. <code>1,2</code>.</p>
+    <p class="small" style="margin-top:10px;">If you fill them in, <b>Class Name</b> must exactly match a class already on your <a href="#" data-action="nav:classes">Classes</a> page. <b>Subject</b> must exactly match one of your subject names (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a> for the full list) — subject names are not case-sensitive, they'll be upper-cased automatically. <b>Papers</b> is a comma-separated list, e.g. <code>1,2</code>.</p>
     <form data-form="uploadStaffTemplate" style="margin-top:10px;">
       <label>Upload filled staff template (CSV)</label>
       <input type="file" name="staffFile" accept=".csv,text/csv" required>
@@ -6130,22 +6130,37 @@ function staffAccountsView(){
       <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="3">No pending requests.</td></tr>'}
     </table>
   </div>
-  <div class="card"><h3>Staff Accounts</h3>
-    <label>Select a class to view its teachers</label>
+  <div class="card"><h3>All Staff List</h3>
+    <label>Showing staff — filter by class if needed</label>
     <select onchange="filterStaffByClass(this.value)">
-      <option value="">-- select class --</option>
+      <option value="">All staff</option>
+      <option value="__unassigned" ${VIEW.params.staffClassFilter==='__unassigned'?'selected':''}>Not yet assigned to any class/subject</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.staffClassFilter===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
     </select>
-    ${!VIEW.params.staffClassFilter ? `<p class="small" style="margin-top:10px;">Select a class above to see the teachers assigned to it.</p>` : (()=>{
-      const cls = DB.classes.find(c=>c.id===VIEW.params.staffClassFilter);
-      if(!cls) return '<p class="small" style="margin-top:10px;">That class no longer exists.</p>';
+    ${(()=>{
+      const f = VIEW.params.staffClassFilter || '__all';
+      const isSpecial = (f==='__all' || f==='__unassigned');
+      const cls = isSpecial ? null : DB.classes.find(c=>c.id===f);
+      if(!isSpecial && !cls) return '<p class="small" style="margin-top:10px;">That class no longer exists.</p>';
       const roleFor = new Map();
-      if(cls.classTeacher) roleFor.set(cls.classTeacher, ['Class Teacher']);
-      DB.assignments.filter(x=>x.classId===cls.id).forEach(x=>{
-        const arr = roleFor.get(x.teacherUsername) || [];
-        arr.push(`Subject Teacher: ${x.subject}`);
-        roleFor.set(x.teacherUsername, arr);
-      });
+      if(isSpecial){
+        const isClassTeacher = u => DB.classes.some(c=>c.classTeacher===u);
+        others.filter(a=>a.role==='teacher').forEach(a=>{
+          const asg = DB.assignments.filter(x=>x.teacherUsername===a.username);
+          const roles = [];
+          if(isClassTeacher(a.username)) roles.push('Class Teacher');
+          asg.forEach(x=>{ const c=DB.classes.find(k=>k.id===x.classId); roles.push(`${c?c.name+': ':''}${x.subject}`); });
+          if(f==='__unassigned' && roles.length) return;
+          roleFor.set(a.username, roles.length ? roles : ['Not assigned yet']);
+        });
+      } else {
+        if(cls.classTeacher) roleFor.set(cls.classTeacher, ['Class Teacher']);
+        DB.assignments.filter(x=>x.classId===cls.id).forEach(x=>{
+          const arr = roleFor.get(x.teacherUsername) || [];
+          arr.push(`Subject Teacher: ${x.subject}`);
+          roleFor.set(x.teacherUsername, arr);
+        });
+      }
       const rows = [...roleFor.keys()].map(username=>others.find(a=>a.username===username && a.role==='teacher')).filter(Boolean);
       return `
       ${rows.length ? `
@@ -6158,10 +6173,10 @@ function staffAccountsView(){
           <button type="button" class="btn-danger" onclick="deleteSelectedTeachers(this)">Delete selected teachers</button>
         </div>
       </div>` : ''}
-      <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Role(s) in this class</th><th>Status</th><th>Action</th></tr>
+      <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Role(s)</th><th>Status</th><th>Action</th></tr>
       ${rows.map(a=>`<tr><td><input type="checkbox" class="teacherSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateTeacherSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td><td>${esc(roleFor.get(a.username).join(', '))}</td>
         <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
-        <td class="flex"><button class="btn-outline" data-action="editTeacherProfile:${a.username}"><b>Edit profile</b></button> ${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-outline" data-action="resetAccPw:${a.username}">Reset password</button> <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No teachers assigned to this class yet.</td></tr>'}
+        <td class="flex"><button class="btn-outline" data-action="editTeacherProfile:${a.username}"><b>Edit profile</b></button> ${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-outline" data-action="resetAccPw:${a.username}">Reset password</button> <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No teachers to show here yet.</td></tr>'}
       </table>`;
     })()}
   </div>`;
@@ -6711,6 +6726,9 @@ function teacherProfileView(username){
           <p class="small">Shown on the Signature line of this teacher's report cards whenever they're the Class Teacher — sized to fit that space automatically, so it never shifts or displaces anything else on the layout. A signature scanned/photographed against a plain white background (or a transparent PNG) looks best. ${t.signature?`<a href="#" data-action="removeTeacherSignature:${esc(username)}">Remove signature</a>`:''}</p>
         </div>
       </div>
+      <label>Recovery code (optional)</label>
+      <input name="recovery" value="${esc(t.recovery||'')}" placeholder="${t.recovery?'':'Not set yet — add one so this teacher can reset their own password'}">
+      <p class="small" style="margin-top:4px;">Lets this teacher reset their own password later without going through you. Leave blank to clear it.</p>
       <label>New password (optional)</label>
       <input name="password" placeholder="Leave blank to keep the current password" autocomplete="new-password">
       <p class="small" style="margin-top:4px;">Changing the username or password here requires your owner code and will not sign this teacher out of any device already logged in — let them know the new details directly.</p>
@@ -6723,11 +6741,12 @@ function teacherProfileView(username){
       <input type="hidden" name="teacherUsername" value="${esc(username)}">
       <div class="grid2">
         <div><label>Class</label><select name="classId" id="assignClassSel" required>
-          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('') || '<option value="">-- add a class first --</option>'}
+          <option value="">-- select class --</option>
+          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('')}
         </select></div>
-        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
+        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
       </div>
-      <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
+      <div id="papersWrap"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="" required></div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
     </form>
   </div>
@@ -7408,8 +7427,9 @@ function generateStaffTemplateRows(){
   const sampleClass = DB.classes[0];
   const sampleSubject = sampleClass && sampleClass.level==='A' ? 'MATHEMATICS' : sampleClass && sampleClass.level==='P' ? 'ENGLISH' : 'MATHEMATICS';
   const example = ['Jane Nakato','jnakato','pass1234','', sampleClass?sampleClass.name:'S.3 East', sampleSubject, '1,2'];
-  const note = ['# One row per class+subject a teacher teaches — repeat the same Username/Password on every row for the same teacher. Delete this row and the example row above before uploading.'];
-  return [header, example, note];
+  const exampleMin = ['John Okello','jokello','pass5678','','','',''];
+  const note = ['# Only Full Name, Username and Password are required. Recovery Code, Class Name, Subject and Papers can be left blank and added later from Edit profile. To assign subjects here, use one row per class+subject and repeat the same Username/Password on every row for the same teacher. Delete these example rows before uploading.'];
+  return [header, example, exampleMin, note];
 }
 function downloadStaffTemplate(){
   downloadCsv(`${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_staff_template.csv`, generateStaffTemplateRows());
@@ -10679,23 +10699,31 @@ document.addEventListener('change', (e)=>{
     if(wrap) wrap.style.display = isPrimary ? 'none' : 'block';
     if(input){
       input.required = !isPrimary;
-      if(isPrimary) input.value = '1';
+      input.value = isPrimary ? '1' : '';
     }
     // Narrow the Subject (and, on "Assign Subjects to Teachers", Teacher) dropdowns to
     // match the newly selected class's level, instead of leaving every subject/teacher
     // from every level listed regardless of what's actually relevant here.
+    if(!level){
+      const f0 = e.target.closest('form');
+      const s0 = f0 && f0.querySelector('#assignSubjectSel');
+      if(s0){ s0.innerHTML = '<option value="">-- select a class first --</option>'; s0.disabled = true; }
+      const t0 = f0 && f0.querySelector('#assignTeacherSel');
+      if(t0){ t0.innerHTML = '<option value="">-- select a class first --</option>'; t0.disabled = true; }
+      if(input) input.value = '';
+    }
     if(level){
       const form = e.target.closest('form');
       const subjSel = form ? form.querySelector('#assignSubjectSel') : null;
       if(subjSel){
         const subs = subjectsForLevel(level);
-        subjSel.innerHTML = subs.map(s=>`<option value="${s}">${s}</option>`).join('') || '<option value="">-- no subjects available --</option>';
+        subjSel.innerHTML = subs.length ? '<option value="">-- select subject --</option>' + subs.map(s=>`<option value="${s}">${s}</option>`).join('') : '<option value="">-- no subjects available --</option>';
         subjSel.disabled = subs.length === 0;
       }
       const teachSel = form ? form.querySelector('#assignTeacherSel') : null;
       if(teachSel){
         const teachers = teachersForLevel(level);
-        teachSel.innerHTML = teachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') || '<option value="">-- no matching teacher yet --</option>';
+        teachSel.innerHTML = teachers.length ? '<option value="">-- select teacher --</option>' + teachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') : '<option value="">-- no matching teacher yet --</option>';
         teachSel.disabled = teachers.length === 0;
       }
     }
@@ -11691,24 +11719,47 @@ document.addEventListener('submit', async (e)=>{
       const classByName = new Map(DB.classes.map(c=>[c.name.trim().toLowerCase(), c]));
       const rowsByUser = new Map(); // username(lower) -> {name, username, password, recovery}
       const pendingAssignments = []; // {teacherUsername, classId, subject, papers}
-      let skippedRows=0, badClass=0, badSubject=0;
+      let skippedRows=0, badClass=0, badSubject=0, noAssignRows=0;
+      // Column positions. Default = template order; if the file has a header row we
+      // map columns by their names instead, so a simple Name/Username/Password file works too.
+      let col = {name:0, username:1, password:2, recovery:3, className:4, subject:5, papers:6};
+      const norm = v => (v||'').replace(/^\uFEFF/,'').trim().toLowerCase().replace(/[^a-z]/g,'');
+      const findCol = (parts, keys) => parts.findIndex(p=>keys.includes(norm(p)));
       for(const line of lines){
         const parts = parseCsvLine(line);
-        const first = (parts[0]||'').trim();
-        if(!first || first.startsWith('#') || first.toLowerCase()==='full name') continue; // blank / instructions / header
-        const [name, username, password, recovery, className, subjectRaw, papersRaw] = parts;
-        if(!name || !username || !password || !className || !subjectRaw){ skippedRows++; continue; }
+        const first = (parts[0]||'').replace(/^\uFEFF/,'').trim();
+        if(!first || first.startsWith('#')) continue; // blank / instructions
+        const hName = findCol(parts, ['fullname','name','names','staffname','teachername']);
+        const hUser = findCol(parts, ['username','user','usernames','loginname']);
+        if(hName>-1 && hUser>-1){ // header row
+          const pw = findCol(parts, ['password','pass','passwords']);
+          const rc = parts.findIndex(p=>norm(p).startsWith('recovery'));
+          const cn = findCol(parts, ['classname','class']);
+          const sj = findCol(parts, ['subject','subjects']);
+          const pp = parts.findIndex(p=>norm(p).startsWith('papers'));
+          col = {name:hName, username:hUser, password:pw, recovery:rc, className:cn, subject:sj, papers:pp};
+          continue;
+        }
+        const get = i => i>-1 ? (parts[i]||'').trim() : '';
+        const name = get(col.name), username = get(col.username), password = get(col.password);
+        const recovery = get(col.recovery), className = get(col.className), subjectRaw = get(col.subject), papersRaw = get(col.papers);
+        // Only Name, Username and Password are required.
+        if(!name || !username || !password){ skippedRows++; continue; }
+        const uname = username.trim();
+        const uLower = uname.toLowerCase();
+        if(!rowsByUser.has(uLower)) rowsByUser.set(uLower, {name:name.trim(), username:uname, password:password.trim(), recovery:recovery||null});
+        else if(recovery && !rowsByUser.get(uLower).recovery) rowsByUser.get(uLower).recovery = recovery;
+        // Class/Subject/Papers are optional. If both are blank, just register the account.
+        if(!className && !subjectRaw){ noAssignRows++; continue; }
+        if(!className || !subjectRaw){ skippedRows++; continue; } // account is still created; only the half-filled assignment is skipped
         const cls = classByName.get(className.trim().toLowerCase());
         if(!cls){ badClass++; continue; }
         const subject = subjectRaw.trim().toUpperCase();
         if(!subjectSet.has(subject)){ badSubject++; continue; }
         const papers = (papersRaw||'1').split(/[,\s]+/).map(p=>p.trim()).filter(Boolean);
-        const uname = username.trim();
-        const uLower = uname.toLowerCase();
-        if(!rowsByUser.has(uLower)) rowsByUser.set(uLower, {name:name.trim(), username:uname, password:password.trim(), recovery:(recovery||'').trim()||null});
         pendingAssignments.push({teacherUsername:uname, classId:cls.id, subject, papers});
       }
-      if(!rowsByUser.size){ alert('No valid staff rows found in that file. Check that Class Name matches a class exactly, Subject matches a known subject, and Name/Username/Password are all filled in.'); return; }
+      if(!rowsByUser.size){ alert('No valid staff rows found in that file. Each row needs a Name, Username and Password.'); return; }
 
       let created=0, existingAcc=0, conflicts=0;
       for(const u of rowsByUser.values()){
@@ -11745,7 +11796,8 @@ document.addEventListener('submit', async (e)=>{
         `Already existed (left unchanged): ${existingAcc}\n`+
         (conflicts?`Skipped — username/password already used elsewhere: ${conflicts}\n`:'')+
         `Subject assignments added: ${assignsAdded}${assignsMerged?`, updated with extra papers: ${assignsMerged}`:''}\n`+
-        (skippedRows?`Rows skipped (missing Name/Username/Password/Class/Subject): ${skippedRows}\n`:'')+
+        (noAssignRows?`Rows registered without class/subject (assign later from Edit profile): ${noAssignRows}\n`:'')+
+        (skippedRows?`Rows skipped (missing Name/Username/Password, or only one of Class/Subject filled): ${skippedRows}\n`:'')+
         (badClass?`Rows skipped (class name not found): ${badClass}\n`:'')+
         (badSubject?`Rows skipped (subject not recognized): ${badSubject}\n`:''));
       render();
@@ -11838,7 +11890,11 @@ document.addEventListener('submit', async (e)=>{
       // Primary has no papers concept — regardless of what the (possibly hidden) Papers
       // field contains, a Primary-class assignment always gets a single implicit paper.
       const assignCls = DB.classes.find(c=>c.id===fd.get('classId'));
-      const papers = (assignCls && assignCls.level==='P') ? ['1'] : fd.get('papers').split(',').map(p=>p.trim()).filter(Boolean);
+      if(!assignCls){ alert('Please select a class.'); return; }
+      if(!(fd.get('teacherUsername')||'').trim()){ alert('Please select a teacher.'); return; }
+      if(!(fd.get('subject')||'').trim()){ alert('Please select a subject.'); return; }
+      const papers = (assignCls && assignCls.level==='P') ? ['1'] : (fd.get('papers')||'').split(',').map(p=>p.trim()).filter(Boolean);
+      if(!papers.length){ alert('Please enter the papers taught, e.g. 1,2'); return; }
       DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
       await saveAssignments(); form.reset(); render();
     }
@@ -11890,6 +11946,7 @@ document.addEventListener('submit', async (e)=>{
         if(changedScores.length) await upsertScores(changedScores);
       }
       if(passwordChanged) t.password = newPassword;
+      t.recovery = ((fd.get('recovery')||'').trim()) || null;
       await saveAccounts();
       alertOk('Teacher profile updated.'); render();
     }
