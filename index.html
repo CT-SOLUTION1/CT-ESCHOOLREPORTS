@@ -685,6 +685,22 @@ table.rc-perf.primary-report-card, .primary-report-card table.rc-perf{table-layo
 .report-card th, .report-card thead th, .rc-perf th, table.report-table th{font-weight:900!important;}
 .rc-th-init{white-space:nowrap;line-height:1.05;font-weight:900!important;}
 .rc-th-init br{display:block;}
+
+/* Assign Subjects to Teachers: teacher-first, tick subjects then classes */
+.as-subj{border:1px solid #cfd9e3;border-radius:8px;margin:8px 0;background:#fff;}
+.as-subj>label.as-head{display:flex;align-items:center;gap:10px;margin:0;padding:11px 14px;font-size:15px;font-weight:700;color:var(--navy);text-transform:none;letter-spacing:0;cursor:pointer;}
+.as-subj>label.as-head input{width:auto;margin:0;}
+.as-subj .as-count{margin-left:auto;font-size:12px;font-weight:600;color:var(--muted);}
+.as-subj .as-body{display:none;border-top:1px dashed #cfd9e3;padding:10px 14px 12px;background:#fbfdff;}
+.as-subj>input.as-subj-cb:checked~.as-body{display:block;}
+.as-subj:has(>input.as-subj-cb:checked){border-color:var(--blue);}
+.as-subj>input.as-subj-cb{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;}
+.as-classes{display:flex;flex-wrap:wrap;gap:8px 18px;margin:6px 0 10px;}
+label.as-cls{display:flex;align-items:center;gap:6px;font-weight:normal;width:auto;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);}
+label.as-cls input{width:auto;margin:0;}
+label.as-cls.as-done{color:var(--muted);}
+label.as-cls .as-tag{font-size:11px;font-weight:700;color:#1b7a3a;}
+.as-papers{max-width:260px;}
 </style>
 <style id="cte-watermark-style">
 html,body{position:relative;min-height:100%;}
@@ -1439,6 +1455,7 @@ let STORAGE_ESTIMATE = null;
 // start of every fresh loadAll() so a later successful load recovers automatically.
 let DATA_LOAD_FAILED = false;
 let VIEW = { name:'boot' };
+let ASSIGN_TEACHER = ''; // teacher currently picked on "Assign Subjects to Teachers"
 // Bumped on every click-driven action (see the delegated click listener below).
 // Screens that kick off a background data refresh (see 'nav'/'viewReport')
 // capture the token before the refresh starts and only re-render with the
@@ -2799,6 +2816,16 @@ if('speechSynthesis' in window){
 // Live-save voice controls inside Other Settings. They are deliberately device-local
 // because available speech voices come from the browser/phone, not the shared school database.
 document.addEventListener('change', (e)=>{
+  if(e.target.id==='assignTeacherPick'){
+    ASSIGN_TEACHER = e.target.value || '';
+    render();
+    return;
+  }
+  if(e.target.classList && e.target.classList.contains('as-all')){
+    const body = e.target.closest('.as-body');
+    if(body) body.querySelectorAll('input[name="cls"]:not(:disabled)').forEach(cb=>{ cb.checked = e.target.checked; });
+    return;
+  }
   if(e.target && e.target.id==='voiceSelect'){
     const opt=e.target.selectedOptions && e.target.selectedOptions[0];
     VOICE_SETTINGS.voiceURI=e.target.value||'';
@@ -6128,8 +6155,9 @@ function staffAccountsView(){
     </div>
     <p class="small" style="margin-top:10px;">If you fill them in, <b>Class Name</b> must exactly match a class already on your <a href="#" data-action="nav:classes">Classes</a> page. <b>Subject</b> must exactly match one of your subject names (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a> for the full list) — subject names are not case-sensitive, they'll be upper-cased automatically. <b>Papers</b> is a comma-separated list, e.g. <code>1,2</code>.</p>
     <form data-form="uploadStaffTemplate" style="margin-top:10px;">
-      <label>Upload filled staff template (CSV)</label>
-      <input type="file" name="staffFile" accept=".csv,text/csv" required>
+      <label>Upload filled staff template (CSV or Word .docx)</label>
+      <input type="file" name="staffFile" accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+      <p class="small" style="margin-top:4px;">A Word file works too: put the staff in a <b>table</b> with the same columns as the template (Full Name, Username, Password, and optionally Recovery Code, Class Name, Subject, Papers), with or without a header row. If there is no table, use one line per row with the values separated by commas.</p>
       <button class="btn" style="margin-top:10px;">Submit — register staff from this file</button>
     </form>
   </div>
@@ -6685,33 +6713,60 @@ function oLevelSubjectsView(){
 
 /* ---------- Admin: Assign subjects ---------- */
 function assignSubjectsView(){
-  // The assignment workflow deliberately starts with Class. Teacher and Subject are
-  // populated only after a class is selected, so the class determines the correct
-  // level first (Primary vs O/A-Level).
-  const firstCls = null;
-  const firstIsPrimary = false;
-  const firstLevel = null;
-  const subs = [];
-  const levelTeachers = [];
+  // Teacher first -> tick the subjects they teach -> tick the classes for each subject
+  // -> one save. Anything already assigned shows ticked and locked, so a teacher can
+  // be topped up with more subjects/classes in later rounds without creating duplicates.
+  const teachers = DB.accounts.filter(a=>a.role==='teacher').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  if(ASSIGN_TEACHER && !teachers.some(t=>t.username===ASSIGN_TEACHER)) ASSIGN_TEACHER = '';
+  const tch = teachers.find(t=>t.username===ASSIGN_TEACHER) || null;
+  let pickerHtml = '';
+  if(tch){
+    const mine = DB.assignments.filter(a=>a.teacherUsername===tch.username);
+    const has = new Set(mine.map(a=>a.subject+'||'+a.classId));
+    const byLevel = {};
+    const subjectList = [];
+    DB.classes.forEach(c=>{
+      if(!byLevel[c.level]) byLevel[c.level] = subjectsForLevel(c.level);
+      byLevel[c.level].forEach(sj=>{ if(!subjectList.includes(sj)) subjectList.push(sj); });
+    });
+    const blocks = subjectList.map((sj,i)=>{
+      const cls = DB.classes.filter(c=>byLevel[c.level].includes(sj));
+      if(!cls.length) return '';
+      const done = cls.filter(c=>has.has(sj+'||'+c.id)).length;
+      const anyNonPrimary = cls.some(c=>c.level!=='P');
+      const prev = mine.find(a=>a.subject===sj && Array.isArray(a.papers) && a.papers.length && (DB.classes.find(c=>c.id===a.classId)||{}).level!=='P');
+      const free = cls.length - done;
+      return `<div class="as-subj">
+        <input type="checkbox" class="as-subj-cb" id="asSubj${i}" name="subj" value="${esc(sj)}">
+        <label class="as-head" for="asSubj${i}"><span>${esc(sj)}</span><span class="as-count">${done?`${done} of ${cls.length} classes assigned`:`${cls.length} class${cls.length===1?'':'es'} available`}</span></label>
+        <div class="as-body">
+          ${free? `<label class="as-cls" style="font-weight:700;margin-bottom:4px;"><input type="checkbox" class="as-all"> Select all available classes</label>`:''}
+          <div class="as-classes">
+            ${cls.map(c=>{
+              const d = has.has(sj+'||'+c.id);
+              return `<label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked disabled':''}> ${esc(c.name)}${d?' <span class="as-tag">✓ assigned</span>':''}</label>`;
+            }).join('')}
+          </div>
+          ${anyNonPrimary? `<div class="as-papers"><label>Papers taught (e.g. 1,2) <span class="small">— for the classes ticked above</span></label><input class="as-papers-input" data-subject="${esc(sj)}" placeholder="1,2" value="${prev?esc(prev.papers.join(',')):''}" autocomplete="off"></div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+    pickerHtml = `
+      <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick the classes for each. Anything already assigned shows locked — you can come back later and add more.</p>
+      ${blocks || '<p class="small">No classes or subjects have been set up yet.</p>'}
+      <button class="btn" style="margin-top:14px;">Submit — save all assignments</button>`;
+  }
   return `
   <h2>Assign Subjects to Teachers</h2>
-  <div class="note">A teacher can be assigned many subjects, many papers, and many classes. The Teacher and Subject lists below narrow down to whichever level the selected Class belongs to.</div>
+  <div class="note">Pick a teacher, tick every subject they teach, then tick the classes for each subject and save everything in one go. You can return to the same teacher later to add more subjects or classes.</div>
   <div class="card" style="margin-top:14px;">
-    <form data-form="assignSubject" autocomplete="off">
-      <div class="grid2">
-        <div><label>Class <span class="small">(select first)</span></label><select name="classId" id="assignClassSel" required>
-          <option value="">-- select class first --</option>
-          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('')}
-        </select></div>
-        <div><label>Teacher</label><select name="teacherUsername" id="assignTeacherSel" required disabled>
-          <option value="">-- select a class first --</option>
-        </select></div>
-      </div>
-      <div class="grid2">
-        <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
-        <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="" value="" autocomplete="off" ${firstIsPrimary?'':'required'}></div>
-      </div>
-      <button class="btn" style="margin-top:14px;">Submit — assign</button>
+    <form data-form="assignBulk" autocomplete="off">
+      <label>Teacher <span class="small">(select first)</span></label>
+      <select name="teacherUsername" id="assignTeacherPick" required>
+        <option value="">-- select teacher --</option>
+        ${teachers.map(t=>`<option value="${esc(t.username)}" ${t.username===ASSIGN_TEACHER?'selected':''}>${esc(t.name)}</option>`).join('')}
+      </select>
+      ${pickerHtml}
     </form>
   </div>
   <div class="card">
@@ -10958,7 +11013,7 @@ document.addEventListener('submit', async (e)=>{
   showActionProgress('Saving your changes…', actionButton);
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
-  const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
+  const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
     'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
@@ -11781,9 +11836,37 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='uploadStaffTemplate'){
       const file = fd.get('staffFile');
-      if(!file || file.size===0){ alert('Please choose a CSV file first.'); return; }
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+      if(!file || file.size===0){ alert('Please choose a CSV or Word (.docx) file first.'); return; }
+      let lines;
+      if(/\.docx$/i.test(file.name)){
+        // Word file: read the table rows (or plain lines) and turn each into a CSV line,
+        // so the same parsing/validation below handles both file types.
+        try{
+          await loadMammothLib();
+          const result = await mammoth.convertToHtml({arrayBuffer: await file.arrayBuffer()});
+          const parsed = new DOMParser().parseFromString(result.value, 'text/html');
+          const q = v => /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+          lines = [];
+          const trs = parsed.querySelectorAll('table tr');
+          if(trs.length){
+            trs.forEach(tr=>{
+              const cells = Array.from(tr.querySelectorAll('td,th')).map(td=>td.textContent.replace(/\s+/g,' ').trim());
+              if(cells.length && cells.some(c=>c!=='')) lines.push(cells.map(q).join(','));
+            });
+          } else {
+            parsed.querySelectorAll('p, li').forEach(el=>{
+              const t = el.textContent.replace(/\s+/g,' ').trim();
+              if(t) lines.push(t);
+            });
+          }
+        }catch(err){
+          console.error(err);
+          alert('Could not read that Word document: '+err.message); return;
+        }
+      } else {
+        const text = await file.text();
+        lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+      }
       if(!lines.length){ alert('That file appears to be empty.'); return; }
       const subjectSet = new Set(allSubjects());
       const classByName = new Map(DB.classes.map(c=>[c.name.trim().toLowerCase(), c]));
@@ -12047,6 +12130,40 @@ document.addEventListener('submit', async (e)=>{
       if(!papers.length){ alert('Please enter the papers taught, e.g. 1,2'); return; }
       DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
       await saveAssignments(); form.reset(); render();
+    }
+    else if(type==='assignBulk'){
+      const tUser = (fd.get('teacherUsername')||'').trim();
+      if(!tUser){ alert('Please select a teacher.'); return; }
+      const subjTicked = new Set(fd.getAll('subj'));
+      if(!subjTicked.size){ alert('Tick at least one subject this teacher teaches.'); return; }
+      const papersBySubj = {};
+      form.querySelectorAll('input.as-papers-input').forEach(inp=>{
+        papersBySubj[inp.dataset.subject] = (inp.value||'').split(',').map(x=>x.trim()).filter(Boolean);
+      });
+      const picks = []; // new (subject, class) pairs
+      const noClass = [];
+      for(const sj of subjTicked){
+        const mine = fd.getAll('cls').map(v=>v.split('||')).filter(a=>a[0]===sj).map(a=>a[1]);
+        if(!mine.length){ noClass.push(sj); continue; }
+        mine.forEach(cid=>picks.push({subject:sj, classId:cid}));
+      }
+      if(noClass.length){ alert('Tick at least one new class for: '+noClass.join(', ')+'.\n\n(Untick a subject you do not want to add this round.)'); return; }
+      for(const pk of picks){
+        const c = DB.classes.find(x=>x.id===pk.classId);
+        if(c && c.level!=='P' && !(papersBySubj[pk.subject]||[]).length){ alert('Please enter the papers taught for '+pk.subject+' (e.g. 1,2).'); return; }
+      }
+      let added = 0, skipped = 0;
+      picks.forEach(pk=>{
+        const c = DB.classes.find(x=>x.id===pk.classId);
+        if(!c) return;
+        if(DB.assignments.some(a=>a.teacherUsername===tUser && a.classId===pk.classId && a.subject===pk.subject)){ skipped++; return; }
+        const papers = c.level==='P' ? ['1'] : papersBySubj[pk.subject].slice();
+        DB.assignments.push({id:uid('asn'), teacherUsername:tUser, classId:pk.classId, subject:pk.subject, papers});
+        added++;
+      });
+      if(added) await saveAssignments();
+      showDeliveredToast(added ? `${added} assignment${added===1?'':'s'} saved${skipped?` (${skipped} already existed)`:''}` : 'Nothing new to save');
+      render();
     }
     else if(type==='updateTeacherProfile'){
       const oldUsername = form.dataset.username;
