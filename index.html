@@ -416,12 +416,12 @@ table.rc-grading-scale-table tr:nth-child(2) td:not(:first-child){width:auto;}
    sentence) placed right below Performance Summary. Kept deliberately small (tight padding,
    small font) so it adds only a little vertical space; fitOnePage()/the PDF engine still
    scale the whole card to the fixed A4 frame, so this never pushes content off the page. */
-table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:#E9F1FA !important;color-scheme:light;forced-color-adjust:none;}
-table.rc-grading-key-table tr{background:#E9F1FA !important;}
-table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;color-scheme:light;forced-color-adjust:none;}
-table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;font-weight:900;background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
-table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
-table.rc-grading-key-table td.gk-desc{background:#E9F1FA !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
+table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:var(--blue-light,#E9F1FA) !important;color-scheme:light;forced-color-adjust:none;}
+table.rc-grading-key-table tr{background:var(--blue-light,#E9F1FA) !important;}
+table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;color-scheme:light;forced-color-adjust:none;}
+table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;font-weight:900;background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
+table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
+table.rc-grading-key-table td.gk-desc{background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table td{font-size:7.5px !important;padding:2px 4px !important;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
@@ -6115,7 +6115,7 @@ function classEditView(classId){
       <div class="grid2">
         <div><label>Stream (optional)</label><input name="stream" value="${esc(cls.stream||'')}" placeholder="e.g. East"></div>
         <div><label>Class teacher</label><select name="classTeacher"><option value="">-- none yet --</option>
-          ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}" ${t.username===cls.classTeacher?'selected':''}>${esc(t.name)}</option>`).join('')}
+          ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${esc(t.username)}" ${t.username===cls.classTeacher?'selected':''}>${esc(t.name)}</option>`).join('')}
         </select></div>
       </div>
       <p class="small" style="margin-top:6px;">${count} student${count===1?'':'s'} currently in this class.</p>
@@ -6164,7 +6164,7 @@ function staffAccountsView(){
   <div class="card"><h3>Pending approval (${pending.length})</h3>
     <table class="data-table"><tr><th>Name</th><th>Username</th><th>Action</th></tr>
     ${pending.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
-      <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="3">No pending requests.</td></tr>'}
+      <td class="flex"><button class="btn" data-action="approveAcc:${esc(a.username)}">Approve</button><button class="btn-danger" data-action="rejectAcc:${esc(a.username)}">Reject</button></td></tr>`).join('') || '<tr><td colspan="3">No pending requests.</td></tr>'}
     </table>
   </div>
   <div class="card"><h3>All Staff List</h3>
@@ -6213,9 +6213,63 @@ function staffAccountsView(){
       <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Role(s)</th><th>Status</th><th>Action</th></tr>
       ${rows.map(a=>`<tr><td><input type="checkbox" class="teacherSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateTeacherSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td><td>${esc(roleFor.get(a.username).join(', '))}</td>
         <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
-        <td class="flex"><button class="btn-outline" data-action="editTeacherProfile:${a.username}"><b>Edit profile</b></button> ${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-outline" data-action="resetAccPw:${a.username}">Reset password</button> <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No teachers to show here yet.</td></tr>'}
+        <td class="flex"><button class="btn-outline" data-action="editTeacherProfile:${esc(a.username)}"><b>Edit profile</b></button> ${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${esc(a.username)}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${esc(a.username)}">Close</button>`} <button class="btn-outline" data-action="resetAccPw:${esc(a.username)}">Reset password</button> <button class="btn-danger" data-action="delTeacherAny:${DB.accounts.indexOf(a)}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No teachers to show here yet.</td></tr>'}
       </table>`;
     })()}
+  </div>
+  ${unrecognisedTeachersCard()}`;
+}
+function unrecognisedTeachersCard(){
+  const known = new Set(DB.accounts.map(a=>a.username));
+  const map = new Map();
+  const note = (u,key)=>{ if(u===undefined||u===null||u==='') return; if(known.has(u)) return; const e=map.get(u)||{assign:0,cls:0}; e[key]++; map.set(u,e); };
+  DB.assignments.forEach(x=>note(x.teacherUsername,'assign'));
+  DB.classes.forEach(c=>note(c.classTeacher,'cls'));
+  if(!map.size) return '';
+  return `<div class="card"><h3>Unrecognised teacher names (${map.size})</h3>
+    <p class="small">These names are attached to classes or subjects but have no teacher account (for example a name or link entered by mistake). Remove any you don't want.</p>
+    <table class="data-table"><tr><th>Name / entry</th><th>Subject assignments</th><th>Class teacher of</th><th>Action</th></tr>
+    ${[...map.entries()].map(([u,e])=>`<tr><td style="word-break:break-all;">${esc(u)}</td><td>${e.assign}</td><td>${e.cls}</td><td><button class="btn-danger" data-action="delOrphanTeacher:${esc(encodeURIComponent(u))}">Remove</button></td></tr>`).join('')}
+    </table></div>`;
+}
+// Removes teacher(s) from accounts, subject assignments and class-teacher slots, whatever their name looks like.
+async function purgeTeachers(usernames, accountObjs){
+  const set = new Set(usernames);
+  const objs = new Set(accountObjs||[]);
+  DB.accounts = DB.accounts.filter(a=>!objs.has(a) && !(a.role==='teacher' && set.has(a.username)));
+  DB.assignments = DB.assignments.filter(x=>!set.has(x.teacherUsername));
+  let clsChanged=false;
+  DB.classes.forEach(c=>{ if(set.has(c.classTeacher)){ c.classTeacher=''; clsChanged=true; } });
+  await Promise.all([saveAccounts(), saveAssignments(), clsChanged?saveClasses():Promise.resolve()]);
+}
+function rcShadeStyle(){
+  const c = DB.info && DB.info.rcShade;
+  return (typeof c==='string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? `--blue-light:${c};` : '';
+}
+const RC_SHADE_PRESETS = [
+  ['', 'Custom (current light blue)'], ['#E6F4EA','Light green'], ['#FFF6D6','Light yellow'], ['#FDE8EF','Light pink'],
+  ['#EEE8FA','Light lavender'], ['#FFE9DB','Light peach'], ['#DFF3F3','Light teal'], ['#EDEFF2','Light grey']
+];
+async function setRcShade(v){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  DB.info.rcShade = (/^#[0-9a-fA-F]{6}$/.test(v||'')) ? v : '';
+  await saveInfo(); render();
+}
+function rcShadeCard(){
+  const cur = (DB.info.rcShade||'').toLowerCase();
+  const isPreset = RC_SHADE_PRESETS.some(([v])=>v.toLowerCase()===cur);
+  const pickerVal = /^#[0-9a-f]{6}$/.test(cur) ? cur : '#e9f1fa';
+  return `<div class="card">
+    <h3>Table shading colour</h3>
+    <p class="small">Colour used to shade table headings and highlighted cells on every report card. <b>Custom (current light blue)</b> keeps the existing look. Light colours read best.</p>
+    <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+      ${RC_SHADE_PRESETS.map(([v,label])=>`<button type="button" class="${cur===v.toLowerCase()?'btn':'btn-outline'}" onclick="setRcShade('${v}')"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #1D4E89;vertical-align:-2px;margin-right:6px;background:${v||'#E9F1FA'};"></span>${label}</button>`).join('')}
+    </div>
+    <div class="flex" style="margin-top:10px;gap:10px;align-items:center;">
+      <label style="margin:0;text-transform:none;">Pick your own:</label>
+      <input type="color" id="rcShadePicker" value="${pickerVal}" style="width:56px;height:36px;padding:0;">
+      <button type="button" class="${(!isPreset)?'btn':'btn-outline'}" onclick="setRcShade(document.getElementById('rcShadePicker').value)">Use this colour</button>
+    </div>
   </div>`;
 }
 function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
@@ -6247,7 +6301,7 @@ function parentAccountsView(){
     <table class="data-table"><tr><th>Name</th><th>Username</th><th>Linked</th><th>Action</th></tr>
     ${pending.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
       <td>${(()=>{ const kids=parentChildren(a); const parts=[]; if(kids.length) parts.push(esc(kids.map(k=>k.name).join(', '))); if(a.pendingAdmNo) parts.push(`<span style="color:var(--danger);">no match "${esc(a.pendingAdmNo)}"</span>`); return parts.join(' + ') || '—'; })()}</td>
-      <td class="flex"><button class="btn" data-action="approveAcc:${a.username}">Approve</button><button class="btn-danger" data-action="rejectAcc:${a.username}">Reject</button></td></tr>`).join('') || '<tr><td colspan="4">No pending requests.</td></tr>'}
+      <td class="flex"><button class="btn" data-action="approveAcc:${esc(a.username)}">Approve</button><button class="btn-danger" data-action="rejectAcc:${esc(a.username)}">Reject</button></td></tr>`).join('') || '<tr><td colspan="4">No pending requests.</td></tr>'}
     </table>
   </div>
   <div class="card"><h3>Parent Accounts</h3>
@@ -6266,7 +6320,7 @@ function parentAccountsView(){
     ${others.map(a=>{ const kids=parentChildren(a); return `<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
       <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
       <td>${kids.length? kids.map(k=>`${esc(k.name)} <button type="button" class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkParentChild('${esc(a.username)}','${k.id}')">✕</button>`).join('<br>') : '—'}</td>
-      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${a.username}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${a.username}">Close</button>`} <button class="btn-danger" data-action="delAcc:${a.username}" style="background:#5a1414;">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
+      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${esc(a.username)}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${esc(a.username)}">Close</button>`} <button class="btn-danger" data-action="delAcc:${esc(a.username)}" style="background:#5a1414;">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
     </table>
     ${others.length ? `<form data-form="linkParentChild" style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px;">
       <label>Link an additional child to an existing parent account</label>
@@ -6306,10 +6360,7 @@ async function performBulkTeacherDelete(usernames, btn){
   if(!confirm(`Delete ${usernames.length} teacher account${usernames.length===1?'':'s'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) return;
   showActionProgress('Deleting…', btn);
   try{
-    const unameSet = new Set(usernames);
-    DB.accounts = DB.accounts.filter(a=>!unameSet.has(a.username));
-    DB.assignments = DB.assignments.filter(x=>!unameSet.has(x.teacherUsername));
-    await Promise.all([saveAccounts(), saveAssignments()]);
+    await purgeTeachers(usernames);
     showActionSuccess(`Deleted ${usernames.length} teacher account${usernames.length===1?'':'s'}`, btn, true);
   }catch(e){
     showActionFailure('Could not delete — please try again.', btn);
@@ -7215,6 +7266,7 @@ function reportsListView(){
   return `
   <h2>Report Cards</h2>
   ${teacherAccessCard}
+  ${isAdmin ? rcShadeCard() : ''}
   <div class="card">
     <label>Filter by class</label>
     <select onchange="filterClass(this.value)">
@@ -8781,7 +8833,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   <button class="btn-outline" data-action="dlReportCardPdf:${s.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>`:''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
-  ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
+  ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${rcShadeStyle()}${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
     ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
     <div class="rc-topline"><span>${s.feesCode?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
@@ -9784,7 +9836,7 @@ document.addEventListener('click', async (e)=>{
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
-    'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
+    'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
     'printDemandNote','downloadDemandNote','editClassAgreedFee','editStudentAgreedFee',
@@ -9794,7 +9846,7 @@ document.addEventListener('click', async (e)=>{
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
-  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
+  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','delTeacherAny','delOrphanTeacher','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
   // These are destructive/irreversible actions (deletes, account closures, etc.), so
   // the progress banner must stay anchored to the button (el) and always resolve to
   // success or failure — never leave "Processing…" on screen once the command is
@@ -10546,6 +10598,19 @@ Continue?`);
       if(conflict.exactMatch){ alert('That username and password combination is already used by another account. Please choose a different password.'); break; }
       acc.password = newPw.trim(); await saveAccounts();
       alert(`Password reset for ${acc.name}. Share the new password with them directly.`); render(); break; }
+    case 'delTeacherAny': { const acc = DB.accounts[parseInt(arg,10)]; if(!acc) break;
+      const label = (acc.name||'').toString() + (acc.username?` (${acc.username})`:'');
+      const code=prompt(`Enter your private owner code to permanently delete ${label||'this teacher'}:`); if(code===null) break;
+      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!confirm(`Delete ${label||'this teacher'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) break;
+      await purgeTeachers([acc.username],[acc]);
+      showActionSuccess('Teacher deleted successfully.', el, true); render(); break; }
+    case 'delOrphanTeacher': { let u; try{ u=decodeURIComponent(arg); }catch(e){ u=arg; }
+      const code=prompt(`Enter your private owner code to remove "${u}":`); if(code===null) break;
+      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!confirm(`Remove "${u}" from all subject assignments and class-teacher slots? This cannot be undone.`)) break;
+      await purgeTeachers([u]);
+      showActionSuccess('Entry removed.', el, true); render(); break; }
     case 'delAcc': { const acc = DB.accounts.find(a=>a.username===arg); if(!acc) break;
       const code=prompt(`Enter your private owner code to permanently delete ${acc.name} (${acc.username}):`); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
