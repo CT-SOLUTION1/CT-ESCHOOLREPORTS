@@ -4086,7 +4086,15 @@ function renderParentSignupSlot(){
 // has chosen — the deactivated grade's wording drops out of view entirely
 // for this school, while a school that picked the other grade still sees
 // its own full wording, since schoolGrade() is read per-school from DB.info.
+// Admin decides whether teachers can open report cards at all (default: allowed, as before).
+function teachersMayViewReports(){ return !(DB.info && DB.info.teachersCanViewReports===false); }
 function navByRole(role){
+  if(role==='teacher' && !teachersMayViewReports()){
+    return navByRoleRaw(role).filter(([k])=>k!=='treports');
+  }
+  return navByRoleRaw(role);
+}
+function navByRoleRaw(role){
   if(role==='admin'){
     const extraSubjectsLabel = extraSubjectsPageLabel();
     return [
@@ -4204,13 +4212,14 @@ function renderView(view){
       case 'mastermarksheet': return masterMarkSheetView();
       case 'tdash': return teacherDashboard();
       case 'tscores': return scoresEntryView(liveAssignments(DB.assignments.filter(a=>a.teacherUsername===CUR.username)));
-      case 'treports': return reportsListView();
+      case 'treports': return (CUR.role==='teacher' && !teachersMayViewReports()) ? '<p>Report cards have been switched off for teachers by the Admin.</p>' : reportsListView();
       case 'pdash': return parentDashboard();
       case 'preport': return parentReportView();
       case 'pfinance': return parentFinanceView();
       case 'reportcard': {
         const sid = VIEW.params.studentId;
         if(CUR.role==='parent' && !parentStudentIds(CUR).includes(sid)) return '<p>You can only view your own child\'s report card.</p>';
+        if(CUR.role==='teacher' && !teachersMayViewReports()) return '<p>Report cards have been switched off for teachers by the Admin.</p>';
         const stu = DB.students.find(x=>x.id===sid);
         if(!stu || stu.status==='left') return '<p>This student is in Old Students and is not included among current report cards.</p>';
         return reportCardHTML(sid, false, VIEW.params.viewTerm, VIEW.params.viewYear);
@@ -6374,18 +6383,34 @@ function studentsView(){
   </div>
   <div class="card">
     <h3>Bulk upload a class list</h3>
-    <p class="small">Upload a Word document (.docx) or paste a list — either way, every student here is added to the <b>one class</b> you pick below with just their name and sex. Admission numbers are assigned automatically, in order, starting at 001 for that class. Subjects are never set here — each subject teacher ticks their own students in once they open their class list, so the same upload works no matter what combination of subjects the students end up taking.</p>
-    <form data-form="bulkAddStudents">
+    <p class="small">Upload a Word document (.docx) or CSV, or paste a list — every student is added to the <b>one class</b> you pick below. Only the <b>Name</b> is required. Add whatever else you already have — <b>Sex, Fees Pay Code, Fees Balance, Next Term Fees</b> — and leave the rest blank; anything missing can be completed later under <b>Edit student bio-data</b>. Admission numbers are assigned automatically, in order, starting at 001 for that class. Subjects are never set here — each subject teacher ticks their own students in once they open their class list.</p>
+    <form data-form="bulkAddStudents" autocomplete="off">
       <label>Class</label>
       <select name="classId" id="bulkClassSel" required><option value="">-- select --</option>
       ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
       </select>
-      <label>Upload Word document (.docx)</label>
-      <input type="file" name="wordFile" id="bulkWordFile" accept=".docx">
-      <p class="small" id="bulkWordStatus">Works best with a table of two columns — <b>Name</b>, <b>Sex</b> — one student per row (also accepts a plain list, one student per line, e.g. "Nakato Sarah, F"). The document is read on this device only, then loaded into the editable list below for you to check before submitting. A header row like "Name / Sex" is skipped automatically.</p>
-      <label>Student list ${'\u2014'} paste directly, or let it fill in from the Word document above</label>
-      <textarea name="bulkList" id="bulkListArea" rows="8" placeholder="Nakato Sarah, F&#10;Okello James, M&#10;Amina Nabirye, F" required></textarea>
+      <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlBulkStudentTemplate">Download template (CSV)</button>
+      <label>Upload Word document (.docx) or CSV file</label>
+      <input type="file" name="wordFile" id="bulkWordFile" accept=".docx,.csv,text/csv">
+      <p class="small" id="bulkWordStatus">Columns, in this order: <b>Name, Sex, Fees Pay Code, Fees Balance, Next Term Fees</b> — one student per row. If the first row has headings (e.g. Name / Sex / Fees Pay Code), columns are matched by heading instead, so any order works and unwanted columns are ignored. The file is read on this device only, then loaded into the editable list below for you to check before submitting.</p>
+      <label>Student list ${'\u2014'} paste directly, or let it fill in from the file above</label>
+      <textarea name="bulkList" id="bulkListArea" rows="8" placeholder="" required></textarea>
       <button class="btn" style="margin-top:10px;">Submit — add all students</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Fees pay codes (download &amp; upload)</h3>
+    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
+    <label>Class</label>
+    <select id="feesCodeClassSel">
+      <option value="">-- select class --</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
+    </select>
+    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
+    <form data-form="uploadFeesCodes" style="margin-top:12px;">
+      <label>Upload filled list (CSV)</label>
+      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
+      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
     </form>
   </div>
   <div class="card">
@@ -6672,7 +6697,7 @@ function assignSubjectsView(){
   <h2>Assign Subjects to Teachers</h2>
   <div class="note">A teacher can be assigned many subjects, many papers, and many classes. The Teacher and Subject lists below narrow down to whichever level the selected Class belongs to.</div>
   <div class="card" style="margin-top:14px;">
-    <form data-form="assignSubject">
+    <form data-form="assignSubject" autocomplete="off">
       <div class="grid2">
         <div><label>Class <span class="small">(select first)</span></label><select name="classId" id="assignClassSel" required>
           <option value="">-- select class first --</option>
@@ -6684,7 +6709,7 @@ function assignSubjectsView(){
       </div>
       <div class="grid2">
         <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
-        <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="${firstIsPrimary?'1':''}" ${firstIsPrimary?'':'required'}></div>
+        <div id="papersWrap" style="${firstIsPrimary?'display:none;':''}"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="" value="" autocomplete="off" ${firstIsPrimary?'':'required'}></div>
       </div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
     </form>
@@ -6737,7 +6762,7 @@ function teacherProfileView(username){
   </div>
   <div class="card">
     <h3>Assign a new class + subject</h3>
-    <form data-form="assignSubject">
+    <form data-form="assignSubject" autocomplete="off">
       <input type="hidden" name="teacherUsername" value="${esc(username)}">
       <div class="grid2">
         <div><label>Class</label><select name="classId" id="assignClassSel" required>
@@ -6746,7 +6771,7 @@ function teacherProfileView(username){
         </select></div>
         <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
       </div>
-      <div id="papersWrap"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="1,2" value="" required></div>
+      <div id="papersWrap"><label>Papers taught (e.g. 1,2)</label><input name="papers" id="papersInput" placeholder="" value="" autocomplete="off" required></div>
       <button class="btn" style="margin-top:14px;">Submit — assign</button>
     </form>
   </div>
@@ -6787,6 +6812,7 @@ function studentProfileView(studentId){
         <div><label>Full name</label><input name="name" value="${esc(s.name)}" required></div>
         <div><label>Admission number</label><input value="${esc(s.admNo)}" disabled style="background:#eef2f6;"></div>
         <div><label>Sex</label><select name="gender">
+          <option value="" ${!s.gender?'selected':''}>-- not set --</option>
           <option value="Male" ${s.gender==='Male'?'selected':''}>Male</option>
           <option value="Female" ${s.gender==='Female'?'selected':''}>Female</option>
         </select></div>
@@ -7124,8 +7150,16 @@ function reportsListView(){
   const myAssignments = isTeacher ? DB.assignments.filter(a=>a.teacherUsername===CUR.username) : DB.assignments;
   const classIds = [...new Set(myAssignments.map(a=>a.classId))];
   const visibleClasses = isTeacher ? DB.classes.filter(c=>classIds.includes(c.id)) : DB.classes;
+  const tAllowed = teachersMayViewReports();
+  const teacherAccessCard = isAdmin ? `
+  <div class="card">
+    <h3>Teacher access to report cards</h3>
+    <p class="small">Teachers can currently <b>${tAllowed?'view':'not view'}</b> report cards${tAllowed?'':' — the "View Report Cards" option is hidden from every teacher'}. Printing and downloading is always Admin only.</p>
+    <button type="button" class="${tAllowed?'btn-danger':'btn'}" data-action="toggleTeacherReports">${tAllowed?'Switch OFF teacher access':'Switch ON teacher access'}</button>
+  </div>` : '';
   return `
   <h2>Report Cards</h2>
+  ${teacherAccessCard}
   <div class="card">
     <label>Filter by class</label>
     <select onchange="filterClass(this.value)">
@@ -7430,6 +7464,25 @@ function generateStaffTemplateRows(){
   const exampleMin = ['John Okello','jokello','pass5678','','','',''];
   const note = ['# Only Full Name, Username and Password are required. Recovery Code, Class Name, Subject and Papers can be left blank and added later from Edit profile. To assign subjects here, use one row per class+subject and repeat the same Username/Password on every row for the same teacher. Delete these example rows before uploading.'];
   return [header, example, exampleMin, note];
+}
+function downloadFeesCodeList(){
+  const sel = document.getElementById('feesCodeClassSel');
+  const classId = sel ? sel.value : '';
+  const cls = DB.classes.find(c=>c.id===classId);
+  if(!cls){ alert('Please select a class first.'); return; }
+  const list = sortByName(DB.students.filter(s=>s.classId===cls.id && s.status!=='left'));
+  if(!list.length){ alert('There are no students in that class.'); return; }
+  const rows = [['Admission No','Name','Class','Fees Pay Code']];
+  list.forEach(s=>rows.push([s.admNo, s.name, cls.name, s.feesCode||'']));
+  rows.push(['# Fill in the Fees Pay Code column only. Do not change Admission No - it is used to match each code to the right student. Rows left blank are not changed.']);
+  downloadCsv(`${cls.name.replace(/\s+/g,'_')}_fees_pay_codes.csv`, rows);
+}
+function downloadBulkStudentTemplate(){
+  downloadCsv(`${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_students_template.csv`, [
+    ['Name','Sex','Fees Pay Code','Fees Balance','Next Term Fees'],
+    ['Nakato Sarah','F','','',''],
+    ['Okello James','M','','','']
+  ]);
 }
 function downloadStaffTemplate(){
   downloadCsv(`${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_staff_template.csv`, generateStaffTemplateRows());
@@ -9818,6 +9871,7 @@ document.addEventListener('click', async (e)=>{
     case 'editStudentProfile': VIEW = {name:'studentprofile', params:{studentId:arg}}; render(); break;
     case 'editClass': VIEW = {name:'classedit', params:{classId:arg}}; render(); break;
     case 'viewReport': {
+      if(CUR.role==='teacher' && !teachersMayViewReports()){ alert('The Admin has switched off report card viewing for teachers.'); break; }
       if(CUR.role==='parent' && !parentStudentIds(CUR).includes(arg)){ alert("You can only view your own child's report card."); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       VIEW = {name:'reportcard', params:{studentId:arg}};
@@ -10043,6 +10097,15 @@ Continue?`);
       showDeliveredToast('Score deleted'); render(); break;
     }
     case 'dlStaffTemplate': downloadStaffTemplate(); break;
+    case 'toggleTeacherReports': {
+      if(CUR.role!=='admin'){ alert('Only an Admin can do that.'); break; }
+      DB.info.teachersCanViewReports = !teachersMayViewReports();
+      await saveInfo();
+      showActionSuccess(DB.info.teachersCanViewReports ? 'Teachers can now view report cards' : 'Teachers can no longer view report cards', el, true);
+      render(); break;
+    }
+    case 'dlFeesCodeList': downloadFeesCodeList(); break;
+    case 'dlBulkStudentTemplate': downloadBulkStudentTemplate(); break;
     case 'exportBackup': {
       showActionProgress('Preparing full backup…', el);
       await refreshScores();
@@ -10588,6 +10651,14 @@ async function loadStudentListFromWord(input){
   if(!file) return;
   if(status) status.textContent = 'Reading document…';
   try{
+    if(/\.csv$/i.test(file.name) || file.type==='text/csv'){
+      const txt = (await file.text()).replace(/^\uFEFF/,'');
+      const csvLines = txt.split(/\r?\n/).filter(l=>l.trim()!=='' && l.replace(/[,\t]/g,'').trim()!=='' && !l.trim().startsWith('#'));
+      if(!csvLines.length){ if(status) status.textContent = 'That CSV file appears to be empty.'; return; }
+      if(ta){ const ex = ta.value.trim(); ta.value = ex ? ex + '\n' + csvLines.join('\n') : csvLines.join('\n'); }
+      if(status) status.textContent = `Loaded ${csvLines.length} row(s) from the CSV into the list below — check them, then click "Submit — add all students".`;
+      return;
+    }
     await loadMammothLib();
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.convertToHtml({arrayBuffer});
@@ -10600,7 +10671,6 @@ async function loadStudentListFromWord(input){
           const cells = Array.from(tr.querySelectorAll('td,th')).map(td=>td.textContent.replace(/\s+/g,' ').trim());
           if(!cells.length || cells.every(c=>c==='')) return;
           const joined = cells.join(' ').toLowerCase();
-          if(joined.includes('name') && (joined.includes('sex') || joined.includes('gender') || joined.includes('admission'))) return; // header row
           lines.push(cells.join('\t'));
         });
       });
@@ -10699,7 +10769,7 @@ document.addEventListener('change', (e)=>{
     if(wrap) wrap.style.display = isPrimary ? 'none' : 'block';
     if(input){
       input.required = !isPrimary;
-      input.value = isPrimary ? '1' : '';
+      input.value = '';
     }
     // Narrow the Subject (and, on "Assign Subjects to Teachers", Teacher) dropdowns to
     // match the newly selected class's level, instead of leaving every subject/teacher
@@ -10889,7 +10959,7 @@ document.addEventListener('submit', async (e)=>{
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','bulkAddStudents',
-    'createAccount','uploadStaffTemplate','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
+    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
     'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
@@ -11802,6 +11872,50 @@ document.addEventListener('submit', async (e)=>{
         (badSubject?`Rows skipped (subject not recognized): ${badSubject}\n`:''));
       render();
     }
+    else if(type==='uploadFeesCodes'){
+      const file = fd.get('feesCodeFile');
+      if(!file || file.size===0){ alert('Please choose a CSV file first.'); return; }
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+      if(!lines.length){ alert('That file appears to be empty.'); return; }
+      const norm = v => (v||'').replace(/^\uFEFF/,'').trim().toLowerCase().replace(/[^a-z]/g,'');
+      let col = {adm:0, code:3};
+      const byAdm = new Map(DB.students.map(s=>[String(s.admNo||'').trim().toLowerCase(), s]));
+      const seenCodes = new Map(); // code(lower) -> admNo in this file
+      let updated=0, unchanged=0, blank=0, notFound=0, dupInFile=0, usedElsewhere=0;
+      const changes = [];
+      for(const line of lines){
+        const parts = parseCsvLine(line);
+        const first = (parts[0]||'').replace(/^\uFEFF/,'').trim();
+        if(!first || first.startsWith('#')) continue;
+        const hAdm = parts.findIndex(p=>['admissionno','admno','admissionnumber','admnumber'].includes(norm(p)));
+        const hCode = parts.findIndex(p=>norm(p).includes('feescode')||norm(p).includes('feespaycode')||norm(p)==='paycode'||norm(p)==='code');
+        if(hAdm>-1 && hCode>-1){ col={adm:hAdm, code:hCode}; continue; }
+        const adm = (parts[col.adm]||'').trim();
+        const code = (parts[col.code]||'').trim();
+        if(!code){ blank++; continue; }
+        const st = byAdm.get(adm.toLowerCase());
+        if(!st){ notFound++; continue; }
+        const cl = code.toLowerCase();
+        if(seenCodes.has(cl) && seenCodes.get(cl)!==st.id){ dupInFile++; continue; }
+        const other = DB.students.find(x=>x.id!==st.id && x.feesCode && String(x.feesCode).trim().toLowerCase()===cl);
+        if(other && !changes.some(c=>c.st.id===other.id)){ usedElsewhere++; continue; }
+        seenCodes.set(cl, st.id);
+        if((st.feesCode||'')===code){ unchanged++; continue; }
+        changes.push({st, code});
+      }
+      changes.forEach(c=>{ c.st.feesCode = c.code; updated++; });
+      if(updated) await saveStudents();
+      form.reset();
+      alert(`Fees pay codes upload complete.\n`+
+        `Codes assigned: ${updated}\n`+
+        (unchanged?`Already had the same code: ${unchanged}\n`:'')+
+        (blank?`Rows with blank code (left unchanged): ${blank}\n`:'')+
+        (notFound?`Rows skipped - Admission No not found: ${notFound}\n`:'')+
+        (dupInFile?`Rows skipped - same code used twice in the file: ${dupInFile}\n`:'')+
+        (usedElsewhere?`Rows skipped - code already belongs to another student: ${usedElsewhere}\n`:''));
+      render();
+    }
     else if(type==='addOSubject'){
       const name = (fd.get('subjectName')||'').trim().toUpperCase();
       if(!name) return;
@@ -11861,30 +11975,66 @@ document.addEventListener('submit', async (e)=>{
       const clsSel = form.querySelector('#bulkClassSel');
       const cls = DB.classes.find(c=>c.id===clsSel.value);
       if(!cls){ alert('Please select a class.'); return; }
-      const lines = (fd.get('bulkList')||'').split('\n').map(l=>l.trim()).filter(Boolean);
-      let added=0, skipped=0;
+      const lines = (fd.get('bulkList')||'').split('\n').map(l=>l.replace(/\r$/,'')).filter(l=>l.trim()!=='');
+      const norm = v => (v||'').replace(/^\uFEFF/,'').trim().toLowerCase().replace(/[^a-z]/g,'');
+      const splitRow = l => l.includes('\t') ? l.split('\t').map(x=>x.trim()) : parseCsvLine(l);
+      const isSex = v => /^(m|f|male|female)$/i.test((v||'').trim());
+      const toSex = v => /^f/i.test(v.trim()) ? 'Female' : 'Male';
+      const toNum = v => { const n = parseFloat(String(v||'').replace(/[,\s]/g,'')); return isFinite(n) ? n : null; };
+      let col = null; // header-based mapping, when a heading row is present
+      const usedCodes = new Set(DB.students.map(x=>String(x.feesCode||'').trim().toLowerCase()).filter(Boolean));
+      let added=0, skipped=0, codeSkipped=0, badNum=0, withSex=0, withCode=0;
       for(const line of lines){
-        const parts = line.split(/\t|,/).map(p=>p.trim()).filter(p=>p!=='');
-        if(!parts.length) continue;
-        const name = parts[0];
-        // Sex may be anywhere after the name (some pasted lists still carry an old
-        // admission-number column in between) — take the first token that looks
-        // like Male/Female and ignore everything else.
-        const genderPart = parts.slice(1).find(p=>/^(m|f)/i.test(p));
-        const gender = genderPart ? (/^f/i.test(genderPart) ? 'Female' : 'Male') : null;
+        const parts = splitRow(line);
+        if(!parts.some(p=>p!=='')) continue;
+        if((parts[0]||'').startsWith('#')) continue;
+        const hName = parts.findIndex(p=>['name','names','fullname','studentname','learnername','pupilname','learner','student','pupil'].includes(norm(p)));
+        if(hName>-1){ // heading row
+          const find = fn => parts.findIndex(p=>fn(norm(p)));
+          col = {name:hName,
+            sex: find(n=>n==='sex'||n==='gender'),
+            code: find(n=>n.includes('feescode')||n.includes('feespaycode')||n==='paycode'||n==='code'),
+            bal: find(n=>n==='feesbalance'||n==='balance'),
+            next: find(n=>n.includes('nexttermfees')||n==='nextterm')};
+          continue;
+        }
+        let name, gender=null, code='', balRaw='', nextRaw='';
+        if(col){
+          const g = i => i>-1 ? (parts[i]||'').trim() : '';
+          name = g(col.name); const sx = g(col.sex); gender = sx ? (isSex(sx)?toSex(sx):null) : null;
+          code = g(col.code); balRaw = g(col.bal); nextRaw = g(col.next);
+        } else {
+          name = (parts[0]||'').trim();
+          const rest = parts.slice(1);
+          const sxIdx = rest.findIndex(isSex);
+          if(sxIdx>-1) gender = toSex(rest[sxIdx]);
+          const others = rest.filter((_,i)=>i!==sxIdx);
+          code = (others[0]||'').trim(); balRaw = (others[1]||'').trim(); nextRaw = (others[2]||'').trim();
+        }
         if(!name){ skipped++; continue; }
-        // Bio-data only, same as single Add student — subjects come later from each
-        // subject teacher's own roster tick, never from this upload. Admission
-        // number is always auto-assigned, never taken from the pasted list.
+        let feesBalance = null, nextTermFees = null;
+        if(balRaw){ feesBalance = toNum(balRaw); if(feesBalance===null) badNum++; }
+        if(nextRaw){ nextTermFees = toNum(nextRaw); if(nextTermFees===null) badNum++; }
+        let feesCode = null;
+        if(code){
+          const cl = code.toLowerCase();
+          if(usedCodes.has(cl)) codeSkipped++; else { feesCode = code; usedCodes.add(cl); }
+        }
+        // Admission number is always auto-assigned, never taken from the uploaded list.
+        // Anything not supplied stays blank and can be completed under Edit student bio-data.
         const admNo = nextAdmissionNumber(cls);
-        const bulkStu = {id:uid('std'), name, admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo:null, gender, feesBalance:null, nextTermFees:null, status:'active'};
+        const bulkStu = {id:uid('std'), name, admNo, admSeq:cls.nextAdmSeq, classId:cls.id, photo:null, gender, feesBalance, nextTermFees, feesCode, status:'active'};
         noteClassPlacement(bulkStu, cls.id, DB.info.currentTerm, DB.info.currentYear);
         DB.students.push(bulkStu);
-        added++;
+        added++; if(gender) withSex++; if(feesCode) withCode++;
       }
       await Promise.all([saveStudents(), saveClasses()]); form.reset(); render();
       speak(`${added} student${added===1?' has':'s have'} been added successfully${skipped?`, ${skipped} skipped`:''}.`);
-      alertOk(`Bulk upload complete: ${added} student(s) added${skipped?`, ${skipped} skipped (missing name)`:''}.`);
+      alertOk(`Bulk upload complete: ${added} student(s) added${skipped?`, ${skipped} skipped (missing name)`:''}.`+
+        `\nWith sex: ${withSex}, with fees pay code: ${withCode}.`+
+        (added-withSex>0?`\n${added-withSex} student(s) have no sex recorded yet — complete under Edit student bio-data.`:'')+
+        (codeSkipped?`\nFees pay code left blank for ${codeSkipped} student(s) — code already used by another student.`:'')+
+        (badNum?`\n${badNum} fee amount(s) weren't numbers and were left blank.`:''));
     }
     else if(type==='assignSubject'){
       // Primary has no papers concept — regardless of what the (possibly hidden) Papers
