@@ -701,6 +701,19 @@ label.as-cls input{width:auto;margin:0;}
 label.as-cls.as-done{color:var(--muted);}
 label.as-cls .as-tag{font-size:11px;font-weight:700;color:#1b7a3a;}
 .as-papers{max-width:260px;}
+
+/* ---- Bold tables & rules in downloaded / printed PDFs ---- */
+.pdf-bold table{border-collapse:collapse;}
+.pdf-bold table.report-table,.pdf-bold table.data-table{border-width:3.5px !important;}
+.pdf-bold table th,.pdf-bold table td{border-width:2.5px !important;}
+.pdf-bold hr{border-top-width:3px !important;}
+.pdf-bold .rc-title-block,.pdf-bold .dn-title-block,.pdf-bold .rc-section-title{border-bottom-width:4px !important;}
+.pdf-bold tr.total td{border-top-width:4px !important;}
+@media print{
+  body.print-frame table th, body.print-frame table td{border-width:2.5px !important;}
+  body.print-frame table.report-table, body.print-frame table.data-table{border-width:3.5px !important;}
+  body.print-frame .rc-title-block, body.print-frame .dn-title-block, body.print-frame .rc-section-title{border-bottom-width:4px !important;}
+}
 </style>
 <style id="cte-watermark-style">
 html,body{position:relative;min-height:100%;}
@@ -3201,6 +3214,20 @@ function subjectPaperBreakdown(studentId, subject, cls, term, year){
   const allEntered = perPaper.every(p=>p.hasAny);
   return {papers: perPaper, allEntered};
 }
+// Which paper label(s) the report card should show for a subject. Built from the papers
+// actually picked while entering scores (read off the saved score rows) plus the papers
+// assigned to the subject, so the Papers cell is never blank — even if the subject has two
+// papers but only one has been entered, or nothing has been entered yet.
+function reportPaperLabels(studentId, subject, cls, term, year){
+  const assigned = subjectPapersFor(subject, cls);
+  const entered = [];
+  rawScores(studentId, subject, term, year).forEach(r=>{
+    const pv = (r.paper===null||r.paper===undefined) ? '' : String(r.paper).trim();
+    if(pv && !entered.some(x=>String(x)===pv)) entered.push(pv);
+  });
+  entered.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
+  return {assigned, entered};
+}
 // Which teacher actually entered the scores for one paper of a subject (falls back to
 // "any paper" when paper is null) — read straight off the score rows themselves (each
 // carries the username of whoever saved it), so this stays accurate even when several
@@ -4769,7 +4796,7 @@ async function downloadDemandNoteElement(html, filename){
     inner.id = 'dnCaptureArea';
     document.body.appendChild(holder);
     try{
-      const canvas = await html2canvas(inner, {scale:2, backgroundColor:'#ffffff'});
+      const canvas = await html2canvasBold(inner, {scale:2, backgroundColor:'#ffffff'});
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
       const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
@@ -4842,7 +4869,7 @@ async function downloadSelectedDemandNotesPdf(selectedSet){
         holder.innerHTML = demandNoteHTML(s, cl, d, term, year);
         const inner = holder.firstElementChild;
         inner.id = 'dnCaptureArea';
-        const canvas = await html2canvas(inner, {scale:2, backgroundColor:'#ffffff'});
+        const canvas = await html2canvasBold(inner, {scale:2, backgroundColor:'#ffffff'});
         const imgW = pageW - PDF_FRAME_CONTENT*2;
         const imgH = imgW * canvas.height / canvas.width;
         const finalH = Math.min(imgH, pageH-PDF_FRAME_CONTENT*2);
@@ -8693,18 +8720,23 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
     // Only split into per-paper rows once at least one paper actually has a score on
     // record — until then (or for a single-paper subject) it stays one combined row.
-    const useSubrows = papersList.length>=2 && enteredPapers.length===papersList.length;
+    // Split into per-paper rows as soon as 2+ papers have scores; with just one paper entered
+    // (even if the subject has two), keep a single row but label it with the paper picked.
+    const useSubrows = enteredPapers.length>=2;
+    const _pl = reportPaperLabels(s.id, r.subject, cls, term, year);
+    const singleLabel = _pl.entered.length ? _pl.entered.join(', ') : (_pl.assigned.length ? _pl.assigned.join(', ') : '');
+    const singleLookup = _pl.entered.length===1 ? _pl.entered[0] : (papersList.length===1 ? papersList[0] : null);
     const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg}];
     const spanCount = paperRows.length;
 
     return paperRows.map((p, idx)=>{
-      const paperForLookup = useSubrows ? p.paper : (papersList.length===1 ? papersList[0] : null);
+      const paperForLookup = useSubrows ? p.paper : singleLookup;
       const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
       const initTxt = (!teacherInit || teacherInit==='--') ? '&nbsp;' : esc(teacherInit);
       // Primary has no concept of papers (single, unlabeled paper per subject), so the
       // Papers column/cell is omitted entirely on Primary report cards — see isP checks
       // around this cell and in the header row.
-      const papersTxt = useSubrows ? esc(String(p.paper)) : (papersList.length===1 ? esc(String(papersList[0])) : '—');
+      const papersTxt = useSubrows ? esc(String(p.paper)) : (singleLabel ? esc(singleLabel) : '—');
       const papersTd = isP ? '' : `<td>${papersTxt}</td>`;
       const cwHtml = cwCellsFor(paperForLookup, p.aoiAvg);
       let eotHtml = '';
@@ -9113,14 +9145,17 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
     const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
-    const useSubrows = papersList.length>=2 && enteredPapers.length===papersList.length;
+    const useSubrows = enteredPapers.length>=2;
+    const _pl = reportPaperLabels(s.id, r.subject, cls, term, year);
+    const singleLabel = _pl.entered.length ? _pl.entered.join(', ') : (_pl.assigned.length ? _pl.assigned.join(', ') : '');
+    const singleLookup = _pl.entered.length===1 ? _pl.entered[0] : (papersList.length===1 ? papersList[0] : null);
     const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg}];
 
     const rowsOut = paperRows.map(p=>{
-      const paperForLookup = useSubrows ? p.paper : (papersList.length===1 ? papersList[0] : null);
+      const paperForLookup = useSubrows ? p.paper : singleLookup;
       const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
       const initTxt = (!teacherInit || teacherInit==='--') ? '' : teacherInit;
-      const papersTxt = useSubrows ? String(p.paper) : (papersList.length===1 ? String(papersList[0]) : '—');
+      const papersTxt = useSubrows ? String(p.paper) : (singleLabel ? singleLabel : '—');
       let cwTestVals = [];
       let cwAvgTxt = '—';
       if(showCW){
@@ -9194,7 +9229,15 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 }
 
 // Step 2: draw one full report card page onto an already-created jsPDF document.
+// Line-weight multiplier for every table border / rule drawn into downloaded report-card PDFs.
+const PDF_LINE_BOLD = 2.4;
 function drawReportCardPage(pdf, data, gapBoost){
+  const _origSetLineWidth = pdf.setLineWidth;
+  pdf.setLineWidth = function(w){ return _origSetLineWidth.call(pdf, (w||0.5) * PDF_LINE_BOLD); };
+  try{ return _drawReportCardPageCore(pdf, data, gapBoost); }
+  finally{ pdf.setLineWidth = _origSetLineWidth; }
+}
+function _drawReportCardPageCore(pdf, data, gapBoost){
   // gapBoost (points): extra breathing room inserted ONLY between the card's
   // distinct tables/sections (info table -> Academic Performance -> Performance
   // Summary -> Grading Scale (Primary) -> Comments). It never touches row
@@ -9240,8 +9283,8 @@ function drawReportCardPage(pdf, data, gapBoost){
 
   // ---- 2. Outer decorative double border ----
   setDrawC(navy);
-  pdf.setLineWidth(1.6); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
-  pdf.setLineWidth(0.6); pdf.rect(cardX+7, cardY+7, cardW-14, cardH-14);
+  pdf.setLineWidth(1.2); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
+  pdf.setLineWidth(0.5); pdf.rect(cardX+8.5, cardY+8.5, cardW-17, cardH-17);
 
   // Keep the decorative frame outside the content transform so it always
   // remains fixed on the A4 page. The generated content is wrapped in a
@@ -12931,13 +12974,21 @@ function toPngDataUrl(dataUrl){
    their own frame in drawReportCardPage(), so they are not framed a second time here.
    PDF_FRAME_CONTENT is the distance from the page edge to where content may start —
    the same inset the report cards use (26pt card margin + 16pt padding). */
+
+// html2canvas wrapper: temporarily marks the captured root with .pdf-bold so tables and rules
+// are rendered with heavy borders in the downloaded PDF (the on-screen look is unchanged).
+async function html2canvasBold(el, opts){
+  el.classList.add('pdf-bold');
+  try{ return await html2canvas(el, opts); }
+  finally{ el.classList.remove('pdf-bold'); }
+}
 const PDF_FRAME_M = 26;
 const PDF_FRAME_CONTENT = 42;
 function drawPdfFrame(pdf){
   const w = pdf.internal.pageSize.getWidth(), h = pdf.internal.pageSize.getHeight(), M = PDF_FRAME_M;
   pdf.setDrawColor(10,42,74);
-  pdf.setLineWidth(1.6); pdf.rect(M+4, M+4, w-M*2-8, h-M*2-8);
-  pdf.setLineWidth(0.6); pdf.rect(M+7, M+7, w-M*2-14, h-M*2-14);
+  pdf.setLineWidth(2.8); pdf.rect(M+4, M+4, w-M*2-8, h-M*2-8);
+  pdf.setLineWidth(1.2); pdf.rect(M+8.5, M+8.5, w-M*2-17, h-M*2-17);
 }
 // Browser Print / Save-as-PDF: same frame on every printed page (see body.print-frame CSS).
 function printFramed(){
@@ -13088,7 +13139,7 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
 
   let canvas;
   try{
-    canvas = await html2canvas(el, {scale:captureScale, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY});
+    canvas = await html2canvasBold(el, {scale:captureScale, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY});
   } finally {
     restore.forEach(r=>{ r.node.style.overflow=r.overflow; r.node.style.overflowX=r.overflowX; r.node.style.overflowY=r.overflowY; r.node.style.maxWidth=r.maxWidth; });
   }
@@ -13248,7 +13299,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       holder.innerHTML = '';
       holder.appendChild(pageWrap);
 
-      const canvas = await html2canvas(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
+      const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
       const img = canvas.toDataURL('image/jpeg', 0.95);
       const w = usableW;
       const h = Math.min(canvas.height*usableW/canvas.width, usableH);
