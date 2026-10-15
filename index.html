@@ -2434,8 +2434,10 @@ async function syncUsernameIndexForSchool(schoolId, accounts){
   }
   (accounts||[]).forEach(a=>{
     if(!a.username || !a.role) return;
+    if(typeof a.username!=='string') return;
     const key = a.username.trim().toLowerCase();
-    if(!key) return;
+    // skip unreadable/garbled or oversized usernames (e.g. from a wrongly uploaded Excel file)
+    if(!key || key.length>120 || /[\uFFFD\u0000-\u001F\/]/.test(key)) return;
     if(!idx[key]) idx[key]=[];
     idx[key].push({schoolId, role:a.role});
   });
@@ -2457,7 +2459,7 @@ async function removeSchoolFromUsernameIndex(schoolId){
 }
 async function saveSystemOwner(){ await setShared('system_owner', SYSTEM_OWNER); }
 async function saveInfo(){ await setShared(`sch_${SCHOOL_ID}_info`, DB.info); }
-async function saveAccounts(){ await setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts); await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }
+async function saveAccounts(){ await setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
 async function saveClasses(){ await setShared(`sch_${SCHOOL_ID}_classes`, DB.classes); }
 async function saveStudents(){ await setShared(`sch_${SCHOOL_ID}_students`, DB.students); }
 async function saveAssignments(){ await setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments); }
@@ -6217,7 +6219,20 @@ function staffAccountsView(){
       </table>`;
     })()}
   </div>
+  ${corruptedTeachersCard()}
   ${unrecognisedTeachersCard()}`;
+}
+function isCorruptTeacher(a){
+  if(a.role!=='teacher') return false;
+  const n=String(a.name===undefined||a.name===null?'':a.name), u=String(a.username===undefined||a.username===null?'':a.username);
+  return /[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(n+u) || u.length>60 || n.length>80 || (u==='' && n==='');
+}
+function corruptedTeachersCard(){
+  const bad = DB.accounts.filter(isCorruptTeacher);
+  if(!bad.length) return '';
+  return `<div class="card"><h3>Garbled / invalid teacher entries (${bad.length})</h3>
+    <p class="small">These look like unreadable junk (usually from uploading an Excel or other non-CSV file as a staff list). You can remove them all at once.</p>
+    <button type="button" class="btn-danger" data-action="delCorruptTeachers">Delete all ${bad.length} garbled entries</button></div>`;
 }
 function unrecognisedTeachersCard(){
   const known = new Set(DB.accounts.map(a=>a.username));
@@ -9836,7 +9851,7 @@ document.addEventListener('click', async (e)=>{
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
-    'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
+    'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
     'printDemandNote','downloadDemandNote','editClassAgreedFee','editStudentAgreedFee',
@@ -9846,7 +9861,7 @@ document.addEventListener('click', async (e)=>{
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
-  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','delTeacherAny','delOrphanTeacher','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
+  const MUTATING_ACTIONS = new Set(['delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
   // These are destructive/irreversible actions (deletes, account closures, etc.), so
   // the progress banner must stay anchored to the button (el) and always resolve to
   // success or failure — never leave "Processing…" on screen once the command is
@@ -10598,6 +10613,12 @@ Continue?`);
       if(conflict.exactMatch){ alert('That username and password combination is already used by another account. Please choose a different password.'); break; }
       acc.password = newPw.trim(); await saveAccounts();
       alert(`Password reset for ${acc.name}. Share the new password with them directly.`); render(); break; }
+    case 'delCorruptTeachers': { const bad = DB.accounts.filter(isCorruptTeacher); if(!bad.length) break;
+      const code=prompt(`Enter your private owner code to permanently delete ${bad.length} garbled teacher entr${bad.length===1?'y':'ies'}:`); if(code===null) break;
+      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!confirm(`Delete ${bad.length} garbled entr${bad.length===1?'y':'ies'} for good, with any assignments attached? This cannot be undone.`)) break;
+      await purgeTeachers(bad.map(a=>a.username).filter(u=>typeof u==='string'), bad);
+      showActionSuccess('Garbled entries deleted.', el, true); render(); break; }
     case 'delTeacherAny': { const acc = DB.accounts[parseInt(arg,10)]; if(!acc) break;
       const label = (acc.name||'').toString() + (acc.username?` (${acc.username})`:'');
       const code=prompt(`Enter your private owner code to permanently delete ${label||'this teacher'}:`); if(code===null) break;
@@ -11929,7 +11950,9 @@ document.addEventListener('submit', async (e)=>{
           alert('Could not read that Word document: '+err.message); return;
         }
       } else {
+        if(/\.(xlsx|xls|zip|pdf)$/i.test(file.name)){ alert('That looks like an Excel/binary file. Please save it as CSV (or use a Word .docx table) and upload again.'); return; }
         const text = await file.text();
+        if(/\uFFFD/.test(text.slice(0,4000)) || text.startsWith('PK')){ alert('That file is not a plain CSV (it looks like an Excel or other binary file), so nothing was registered. Save it as CSV and try again.'); return; }
         lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
       }
       if(!lines.length){ alert('That file appears to be empty.'); return; }
