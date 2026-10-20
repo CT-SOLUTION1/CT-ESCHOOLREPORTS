@@ -132,7 +132,7 @@ img{max-width:100%;height:auto;}
 .topbar .brand span{color:var(--gold);}
 .layout{display:flex;min-height:calc(100vh - 60px);flex-wrap:wrap;}
 .sidebar{width:230px;background:var(--navy);color:#dce8f5;padding:16px 0;}
-.sidebar a{display:block;padding:12px 22px;color:#dce8f5;text-decoration:none;font-size:14px;font-weight:600;border-left:4px solid transparent;}
+.sidebar a{display:block;padding:12px 22px;color:#dce8f5;text-decoration:none;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;border-left:4px solid transparent;}
 .sidebar a.active,.sidebar a:hover{background:rgba(255,255,255,.08);border-left:4px solid var(--gold);}
 .main{flex:1;min-width:280px;padding:26px;max-width:1150px;}
 /* Global Back button (see NAVIGATION HISTORY below) */
@@ -213,13 +213,13 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .chip{display:inline-flex;align-items:center;gap:4px;background:var(--blue-light);color:var(--blue);border-radius:14px;padding:3px 10px;font-size:12px;margin:2px;}
 
 /* ---- Dashboard icon tiles: tap-to-open feature grid, sized to fit a phone screen ---- */
-.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));grid-auto-flow:row dense;gap:10px;margin:6px 0 22px;}
+.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));grid-auto-flow:row dense;gap:10px;margin:6px 0 22px;}
 .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#e6f7ea;
   border:1px solid #a9dbb6;border-radius:12px;padding:14px 6px;box-shadow:0 1px 4px rgba(10,42,74,.06);
   text-align:center;font-family:inherit;transition:box-shadow .12s ease,border-color .12s ease,transform .12s ease;}
 .tile:hover, .tile:active{border-color:#2f8a4c;background:#d9f2df;box-shadow:0 3px 12px rgba(10,42,74,.14);transform:translateY(-1px);}
 .tile-icon{font-size:26px;line-height:1;}
-.tile-label{font-size:11.5px;font-weight:700;color:#0f3d1f;line-height:1.25;}
+.tile-label{font-size:10px;font-weight:800;color:#0f3d1f;line-height:1.25;text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere;}
 /* The Report Cards tile is the feature people reach for most, so it is made twice as long as the
    others: it spans two tile-widths on the same row (same height as every other tile). The grid
    packs densely, so a wide tile that doesn't fit at the end of a row never leaves a gap behind. */
@@ -642,20 +642,23 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
 /* Boot splash — shown only until the very first render() call replaces #app's
    contents, so it never needs to be manually hidden or torn down. */
 .boot-splash{
-  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-  background:var(--navy);
+  min-height:100vh;min-height:100dvh;width:100%;box-sizing:border-box;padding:24px 5vw;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(14px,3.2vmin,36px);
+  background:var(--navy);text-align:center;
 }
 .boot-splash-icon{
-  width:84px;height:84px;border-radius:20px;box-shadow:0 6px 24px rgba(0,0,0,.35);
+  width:clamp(150px,34vmin,380px);height:clamp(150px,34vmin,380px);border-radius:clamp(32px,7.5vmin,84px);box-shadow:0 8px 32px rgba(0,0,0,.4);
   animation:boot-spin 1.1s cubic-bezier(.5,0,.5,1) infinite;
 }
 @keyframes boot-spin{
   0%{transform:rotate(0deg);}
   100%{transform:rotate(360deg);}
 }
-.boot-splash-brand{font-family:Georgia,'Playfair Display',serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:.02em;}
-.boot-splash-brand span{color:var(--gold);}
-.boot-splash-sub{font-size:13px;color:#cfe0f2;letter-spacing:.04em;}
+.boot-splash-brand{font-family:Georgia,'Playfair Display',serif;font-size:clamp(22px,5.2vmin,60px);line-height:1.2;font-weight:800;color:#fff;letter-spacing:.08em;max-width:94vw;}
+.boot-splash-brand span{display:block;color:var(--gold);font-size:clamp(40px,11vmin,130px);line-height:1.1;letter-spacing:.03em;margin-top:.1em;}
+.boot-splash-rule{width:clamp(80px,22vmin,260px);height:4px;border-radius:4px;background:var(--gold);opacity:.9;}
+.boot-splash-tel{font-size:clamp(22px,5.4vmin,60px);line-height:1.25;font-weight:800;color:#fff;letter-spacing:.05em;max-width:94vw;}
+.boot-splash-sub{font-size:clamp(18px,4.2vmin,46px);line-height:1.35;color:#cfe0f2;letter-spacing:.04em;max-width:92vw;}
 
 /* Keep long subject names inside the SUBJECTS column: wrap to two lines where possible,
    then reduce the text slightly for exceptionally long names instead of crossing into PPs. */
@@ -738,11 +741,11 @@ body>*{position:relative;z-index:1;}
 <div id="app">
   <div class="boot-splash">
     <img loading="lazy" decoding="async" src="icon-192.png" alt="" class="boot-splash-icon">
-    <div class="boot-splash-brand">CT-E <span>SOLUTIONS</span></div>
-    <div class="boot-splash-sub" style="margin-bottom:2px;">Check your internet connection or data</div>
-    <div class="boot-splash-sub" style="margin-bottom:2px;">Call : TONTE CHARLES or help lines</div>
-    <div class="boot-splash-sub" style="margin-bottom:2px;">Tel: 0757132542 / 0786814513</div>
-    <div class="boot-splash-sub">Loading…</div>
+    <div class="boot-splash-brand">THANKS FOR USING <span>CT-SOLUTIONS</span></div>
+    <div class="boot-splash-rule"></div>
+    <div class="boot-splash-sub">For inquiries and help call:</div>
+    <div class="boot-splash-tel">0757132542 / 0786814513</div>
+    <div class="boot-splash-sub" style="font-size:clamp(14px,2.6vmin,28px);opacity:.8;">Loading…</div>
   </div>
 </div>
 
@@ -1531,12 +1534,12 @@ const NAV_HISTORY_MAX = 60;
 // Which params say "a different item" for the views that open a specific item.
 const NAV_ID_KEYS = {
   teacherprofile:['username'], studentprofile:['studentId'], classedit:['classId'],
-  integratedmarksheet:['classId','subject'], reportcard:['studentId'], financestudent:['studentId'],
+  integratedmarksheet:['classId','subject'], blankmarksheet:['classId','subject'], reportcard:['studentId'], financestudent:['studentId'],
   ascores:['assignId','paper','kind','label'], tscores:['assignId','paper','kind','label']
 };
 const NAV_DETAIL_LABELS = {
   teacherprofile:'Teacher Profile', studentprofile:'Student Profile', classedit:'Class Details',
-  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', reportcard:'Report Card',
+  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', blankmarksheet:'Blank Mark Sheet', reportcard:'Report Card',
   financestudent:'Student Follow-up', fschoollogins:'School Logins', password:'Other Settings'
 };
 const NAV_FOUNDER_LABELS = {
@@ -4285,7 +4288,7 @@ function navByRoleRaw(role){
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','Parents','👪'],['oldstudents','Old Students','🎒'],
-      ['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
+      ['marksheets','Mark Sheets','📋'],['classanalysis','RESULT ANALYSIS','📈'],
       ['finance','Finance & Requirements','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
@@ -4293,7 +4296,7 @@ function navByRoleRaw(role){
   if(role==='teacher'){
     return [
       ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
-      ['classanalysis','Class Analysis','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],
+      ['classanalysis','RESULT ANALYSIS','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],
       ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
     ];
   }
@@ -4353,7 +4356,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet','projects']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','reportcard','financestudent']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','reportcard','financestudent']);
 function renderView(view){
   try{
     if(ADMIN_ONLY_VIEWS.has(view) && (!CUR || CUR.role!=='admin')){
@@ -4388,6 +4391,7 @@ function renderView(view){
       case 'ascores': return CUR.role==='admin' ? scoresEntryView(liveAssignments(DB.assignments)) : '<p>You don\'t have permission to view this page.</p>';
       case 'marksheets': return marksheetsListView();
       case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
+      case 'blankmarksheet': return blankMarksheetView(VIEW.params.classId, VIEW.params.subject);
       case 'classanalysis': return classAnalysisView();
       case 'projects': return projectAssessmentView();
       case 'mastermarksheet': return masterMarkSheetView();
@@ -7448,10 +7452,10 @@ function reportsListView(){
     ${isAdmin ? `<div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>
       <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open GENERAL MARKSHEETS AND RANK LISTS</b></button>
-      <button class="btn-outline" data-action="nav:classanalysis"><b>Open Class Analysis</b></button>
+      <button class="btn-outline" data-action="nav:classanalysis"><b>Open RESULT ANALYSIS</b></button>
     </div>` : (isTeacher && classTeacherClassIds().length) ? `<div class="flex" style="margin-top:12px;">
       <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open GENERAL MARKSHEETS AND RANK LISTS</b></button>
-      <button class="btn-outline" data-action="nav:classanalysis"><b>Open Class Analysis</b></button>
+      <button class="btn-outline" data-action="nav:classanalysis"><b>Open RESULT ANALYSIS</b></button>
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
   <div class="card">
@@ -7614,6 +7618,76 @@ function marksheetsListView(){
       return `<tr><td>${cls?esc(cls.name):'—'}</td><td>${esc(g.subject)}</td><td><button class="btn-outline" data-action="openMarksheet:${g.classId}:${encodeURIComponent(g.subject)}">Open mark sheet</button></td></tr>`;
     }).join('') || `<tr><td colspan="3">${CUR.role==='admin'?'No subject assignments yet.':"You haven't been assigned any subjects yet."}</td></tr>`}
     </table>
+  </div>
+  ${blankMarksheetsCard(pool)}`;
+}
+// ---- Blank Mark Sheets: one printable empty sheet per class + subject, listing only the
+// students enrolled for that subject (studentSubjects already puts every student on a
+// compulsory subject's sheet, and only the takers on an optional one).
+function blankSheetStudents(classId, subject){
+  const cls = DB.classes.find(c=>c.id===classId);
+  if(!cls) return [];
+  return sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
+}
+function blankMarksheetsCard(pool){
+  const isAdmin = CUR.role==='admin';
+  const poolGroups = marksheetGroups(pool);
+  const classes = isAdmin ? DB.classes : DB.classes.filter(c=>poolGroups.some(g=>g.classId===c.id));
+  if(!classes.length) return `<h3 style="margin-top:22px;">Blank Mark Sheets</h3><div class="card"><p class="small">${isAdmin?'No classes yet — add a class first.':"You haven't been assigned any subjects yet."}</p></div>`;
+  const sel = VIEW.params && VIEW.params.blankClassId;
+  const cls = classes.find(c=>c.id===sel) || classes[0];
+  const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject);
+  const subs = [...new Set(subjects)].sort((a,b)=>a.localeCompare(b));
+  const rows = subs.map(subj=>{
+    const n = blankSheetStudents(cls.id, subj).length;
+    const compulsory = isCompulsorySubjectFor(subj, cls);
+    return `<tr><td style="text-align:left;">${esc(subj)}</td><td>${compulsory?'Compulsory — all students':'Optional — enrolled students only'}</td><td>${n}</td><td><button class="btn-outline" data-action="openBlankMarksheet:${cls.id}:${encodeURIComponent(subj)}">Open blank sheet</button></td></tr>`;
+  }).join('');
+  return `
+  <h3 style="margin-top:22px;">Blank Mark Sheets</h3>
+  <div class="note">A blank mark sheet is an empty, printable score sheet for one subject in one class. It lists only the students enrolled for that subject — every student for a compulsory subject — with empty columns to fill in by hand.</div>
+  <div class="card" style="margin-top:14px;">
+    <label>Class</label>
+    <select onchange="setBlankSheetClass(this.value)" style="max-width:320px;">
+      ${classes.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+    <table class="data-table" style="margin-top:12px;"><tr><th>Subject</th><th>Who is listed</th><th>Students</th><th>Action</th></tr>
+    ${rows || `<tr><td colspan="4">No subjects on record for this class yet.</td></tr>`}
+    </table>
+  </div>`;
+}
+function setBlankSheetClass(id){ VIEW.params = {...VIEW.params, blankClassId:id}; render(); }
+function blankMarksheetView(classId, subject){
+  if(!classId || !subject) return '<p>Choose a class and subject from Mark Sheets.</p>';
+  const cls = DB.classes.find(c=>c.id===classId);
+  if(!cls) return '<p>Class not found.</p>';
+  const students = blankSheetStudents(classId, subject);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const BLANK_COLS = 8;
+  const blankHead = Array.from({length:BLANK_COLS},()=>'<th style="min-width:54px;">&nbsp;</th>').join('');
+  const blankCells = Array.from({length:BLANK_COLS},()=>'<td style="height:30px;">&nbsp;</td>').join('');
+  const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${blankCells}<td style="min-width:90px;">&nbsp;</td></tr>`).join('');
+  const compulsory = isCompulsorySubjectFor(subject, cls);
+  return `
+  <h2>Blank Mark Sheet</h2>
+  <div class="card">
+    <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}${compulsory?' (compulsory — all students)':''}</div>
+      <div class="flex">
+        <button class="btn-outline" data-action="dlBlankPdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
+        <button class="btn" onclick="printLandscape()">Print / Save as PDF</button>
+        <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
+      </div>
+    </div>
+  </div>
+  <div id="printArea">
+  <div class="card" style="overflow:auto;">
+    <h3>${esc(cls.name)} — ${esc(subject)} — Blank Mark Sheet</h3>
+    <p class="small">${esc(term||'')}, ${esc(String(year||''))} — Test / Exam: ______________________ &nbsp; Date: ______________ &nbsp; Out of: ________</p>
+    <table class="data-table"><tr><th>No.</th><th>Student</th><th>Adm No</th>${blankHead}<th>Remarks</th></tr>
+    ${rowsHtml || `<tr><td colspan="${4+BLANK_COLS}">No students are enrolled for this subject yet.</td></tr>`}
+    </table>
+  </div>
   </div>`;
 }
 // Every teacher assigned to a class+subject may keep their own roster (a.studentIds).
@@ -7867,6 +7941,31 @@ function subjectClassStats(cls, subject, term, year){
   const avg = scored.length ? sum/scored.length : null;
   return {enrolled: students.length, sat: scored.length, avg, max, min, grades};
 }
+function levelClasses(level){ return DB.classes.filter(c=>c.level===level); }
+function levelSubjectsFor(level){
+  const set = new Set();
+  levelClasses(level).forEach(c=> classSubjectsFor(c).forEach(su=>set.add(su)));
+  return [...set];
+}
+// Level-wise: pools every student in every class of the same level (e.g. all O-Level
+// forms together) for a subject, then works out the same stats as the class-wise table.
+function subjectLevelStats(level, subject, term, year){
+  const grades = {A:0,B:0,C:0,D:0,E:0,O:0,F:0};
+  let enrolled=0, sat=0, sum=0, max=null, min=null;
+  levelClasses(level).forEach(cls=>{
+    DB.students.filter(s=>s.status!=='left' && s.classId===cls.id && studentSubjects(s,cls).includes(subject)).forEach(s=>{
+      enrolled++;
+      const avg = subjectAverage(s.id, subject, term, year);
+      if(avg===null) return;
+      sat++; sum+=avg;
+      const g = gradeFor(subject, avg, level);
+      grades[g] = (grades[g]||0)+1;
+      if(max===null || avg>max) max=avg;
+      if(min===null || avg<min) min=avg;
+    });
+  });
+  return {enrolled, sat, avg: sat? sum/sat : null, max, min, grades};
+}
 function classStudentStats(cls, term, year){
   const students = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
   const isA = cls.level==='A';
@@ -7882,7 +7981,7 @@ function classStudentStats(cls, term, year){
 function classAnalysisView(){
   const isAdmin = CUR.role==='admin';
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
-  if(!visibleClasses.length) return `<h2>Class Analysis</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
+  if(!visibleClasses.length) return `<h2>RESULT ANALYSIS</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
   const sel = VIEW.params;
   const classId = (sel.classId && visibleClasses.some(c=>c.id===sel.classId)) ? sel.classId : visibleClasses[0].id;
   const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
@@ -7893,6 +7992,14 @@ function classAnalysisView(){
   const studentStats = classStudentStats(cls, term, year);
   const subjectStats = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
+
+  const levelStats = levelSubjectsFor(cls.level).map(subj=>({subject:subj, ...subjectLevelStats(cls.level, subj, term, year)}))
+    .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
+  const levelClassNames = levelClasses(cls.level).map(c=>c.name).join(', ');
+  const levelRowsHtml = levelStats.map(r=>{
+    const gradeCells = gradeColsFor(cls.level).map(g=>`<td>${r.grades[g]||0}</td>`).join('');
+    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
+  }).join('');
 
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
@@ -7907,7 +8014,7 @@ function classAnalysisView(){
   }).join('');
 
   return `
-  <h2>Class Analysis</h2>
+  <h2>RESULT ANALYSIS</h2>
   <div class="card">
     <div class="grid3">
       <div><label>Class</label><select onchange="setAnalysisParam('classId', this.value)">
@@ -7932,10 +8039,17 @@ function classAnalysisView(){
     </table>
   </div>
   <div class="card" style="overflow:auto;">
-    <h3>Subject Performance</h3>
-    <p class="small">How each subject was done across the whole class this term — average, spread, and grade distribution.</p>
+    <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
+    <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
     <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${gradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
     ${subjectRowsHtml || `<tr><td colspan="${5+gradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    </table>
+  </div>
+  <div class="card" style="overflow:auto;">
+    <h3>Subject Performance — LEVEL-WISE — ${esc(levelLabel({level:cls.level,form:''}).trim())}</h3>
+    <p class="small">How each subject was done across all ${esc(levelLabel({level:cls.level,form:''}).trim())} classes combined this term (${esc(levelClassNames)}).</p>
+    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${gradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    ${levelRowsHtml || `<tr><td colspan="${5+gradeCols.length}">No subjects on record for this level yet.</td></tr>`}
     </table>
   </div>
   </div>`;
@@ -10878,6 +10992,22 @@ Continue?`);
       render();
       break;
     }
+    case 'openBlankMarksheet': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      VIEW = {name:'blankmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):''}};
+      render();
+      break;
+    }
+    case 'dlBlankPdf': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      const cls = DB.classes.find(c=>c.id===classId);
+      const subject = subjEnc?decodeURIComponent(subjEnc):'';
+      const term = DB.info.currentTerm, year = DB.info.currentYear;
+      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
+        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`
+      });
+      break;
+    }
     case 'imsPage': {
       const [classId, subjEnc, pageNum] = (arg||'').split(':');
       VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage: Number(pageNum)||1}};
@@ -10934,7 +11064,7 @@ Continue?`);
       // Class Analysis always exports landscape with every column intact — see
       // downloadTablesAsPdf for why this uses a dedicated row-paginating export
       // instead of the generic canvas-tiling one used by wide mark sheets.
-      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_class_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
+      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_result_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
       break;
     }
     case 'dlReportCardPdf': {
