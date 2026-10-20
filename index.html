@@ -701,6 +701,13 @@ label.as-cls input{width:auto;margin:0;}
 label.as-cls.as-done{color:var(--muted);}
 label.as-cls .as-tag{font-size:11px;font-weight:700;color:#1b7a3a;}
 .as-papers{max-width:360px;}
+.as-tbl-wrap{overflow-x:auto;margin:6px 0 10px;}
+table.as-table{border-collapse:collapse;width:auto;min-width:200px;}
+table.as-table th,table.as-table td{border:1px solid #cfd9e3;padding:6px 12px;text-align:center;font-size:14px;}
+table.as-table th{background:#eef3f8;font-weight:700;color:var(--navy);}
+table.as-table th:first-child,table.as-table td:first-child{text-align:left;}
+table.as-table td input[type=checkbox]{width:auto;margin:0;}
+table.as-table tr.as-done td{color:var(--muted);}
 .as-paper-ticks{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:4px;}
 
 /* ---- Bold tables & rules in downloaded / printed PDFs ---- */
@@ -2833,6 +2840,11 @@ if('speechSynthesis' in window){
 }
 // Live-save voice controls inside Other Settings. They are deliberately device-local
 // because available speech voices come from the browser/phone, not the shared school database.
+// Assign Subjects table: a class's paper boxes are only tickable while that class is ticked.
+function asSyncRow(cb){
+  const tr = cb.closest('tr'); if(!tr) return;
+  tr.querySelectorAll('input.as-paper-cb').forEach(p=>{ p.disabled = !cb.checked; if(!cb.checked) p.checked = false; });
+}
 document.addEventListener('change', (e)=>{
   if(e.target.id==='assignTeacherPick'){
     ASSIGN_TEACHER = e.target.value || '';
@@ -2841,9 +2853,10 @@ document.addEventListener('change', (e)=>{
   }
   if(e.target.classList && e.target.classList.contains('as-all')){
     const body = e.target.closest('.as-body');
-    if(body) body.querySelectorAll('input[name="cls"]:not(:disabled)').forEach(cb=>{ cb.checked = e.target.checked; });
+    if(body) body.querySelectorAll('input[name="cls"]:not(:disabled)').forEach(cb=>{ cb.checked = e.target.checked; asSyncRow(cb); });
     return;
   }
+  if(e.target && e.target.name==='cls' && e.target.closest('.as-table')){ asSyncRow(e.target); return; }
   if(e.target && e.target.id==='voiceSelect'){
     const opt=e.target.selectedOptions && e.target.selectedOptions[0];
     VOICE_SETTINGS.voiceURI=e.target.value||'';
@@ -4267,20 +4280,20 @@ function navByRoleRaw(role){
     const extraSubjectsLabel = extraSubjectsPageLabel();
     return [
       ['dashboard','Dashboard','🏠'],['schoolinfo','School Info & Logo','🏫'],['promote','Year, Term & Promotion','⬆️'],
-      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','Register new or view students','🎓'],
+      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','ADD NEW and VIEW ALL STUDENTS','🎓'],
       ['assignsubjects','Assign Subjects','📌'],['olevel',extraSubjectsLabel,'📖'],
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','Parents','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','Mark Sheets','📋'],['classanalysis','Class Analysis','📈'],
-      ['finance','Finance & Requirements','💰'],['mastermarksheet','Master Mark Sheet','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
+      ['finance','Finance & Requirements','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
   }
   if(role==='teacher'){
     return [
       ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
-      ['classanalysis','Class Analysis','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','Master Mark Sheet','🗂️'],
+      ['classanalysis','Class Analysis','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],
       ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
     ];
   }
@@ -6590,7 +6603,7 @@ async function unlinkParentChild(username, studentId){
 /* ---------- Admin: Students ---------- */
 function studentsView(){
   return `
-  <h2>Register new or view students</h2>
+  <h2>ADD NEW and VIEW ALL STUDENTS</h2>
   <div class="card">
     <h3>Add student</h3>
     <form data-form="addStudent">
@@ -6947,23 +6960,22 @@ function assignSubjectsView(){
         <label class="as-head" for="asSubj${i}"><span>${esc(sj)}</span><span class="as-count">${done?`${done} of ${cls.length} classes assigned`:`${cls.length} class${cls.length===1?'':'es'} available`}</span></label>
         <div class="as-body">
           ${free? `<label class="as-cls" style="font-weight:700;margin-bottom:4px;"><input type="checkbox" class="as-all"> Select all available classes</label>`:''}
-          <div class="as-classes">
-            ${cls.map(c=>{
-              const d = has.has(sj+'||'+c.id);
-              return `<label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked disabled':''}> ${esc(c.name)}${d?' <span class="as-tag">✓ assigned</span>':''}</label>`;
-            }).join('')}
-          </div>
-          ${anyNonPrimary? (()=>{
-            const prevPapers = prev ? prev.papers.map(String) : [];
+          ${(()=>{
             const opts = ['1','2'];
-            prevPapers.forEach(pp=>{ if(!opts.includes(pp)) opts.push(pp); });
-            return `<div class="as-papers"><label>Papers taught <span class="small">— for the classes ticked above (tick 1, 2 or both)</span></label><div class="as-paper-ticks" data-subject="${esc(sj)}">${opts.map(pp=>`<label class="as-cls"><input type="checkbox" class="as-paper-cb" data-subject="${esc(sj)}" value="${esc(pp)}" ${prevPapers.includes(pp)?'checked':''}> Paper ${esc(pp)}</label>`).join('')}</div></div>`;
-          })() : ''}
+            mine.filter(x=>x.subject===sj && Array.isArray(x.papers)).forEach(x=>x.papers.map(String).forEach(pp=>{ if(!opts.includes(pp)) opts.push(pp); }));
+            opts.sort();
+            return `<div class="as-tbl-wrap"><table class="as-table"><tr><th>Class</th>${anyNonPrimary? opts.map(pp=>`<th>Paper ${esc(pp)}</th>`).join('') : ''}</tr>${cls.map(c=>{
+              const asg = mine.find(x=>x.subject===sj && x.classId===c.id);
+              const d = !!asg;
+              const dp = asg && Array.isArray(asg.papers) ? asg.papers.map(String) : [];
+              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked disabled':''}> ${esc(c.name)}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> c.level==='P' ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked ':'')+'disabled':'disabled'}></td>`).join('') : ''}</tr>`;
+            }).join('')}</table></div>`;
+          })()}
         </div>
       </div>`;
     }).join('');
     pickerHtml = `
-      <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick the classes for each. Anything already assigned shows locked — you can come back later and add more.</p>
+      <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick each class and its papers. Anything already assigned shows locked — you can come back later and add more.</p>
       ${blocks || '<p class="small">No classes or subjects have been set up yet.</p>'}
       <button class="btn" style="margin-top:14px;">Submit — save all assignments</button>`;
   }
@@ -7435,10 +7447,10 @@ function reportsListView(){
     </select>
     ${isAdmin ? `<div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>
-      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open Master Mark Sheet</b></button>
+      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open GENERAL MARKSHEETS AND RANK LISTS</b></button>
       <button class="btn-outline" data-action="nav:classanalysis"><b>Open Class Analysis</b></button>
     </div>` : (isTeacher && classTeacherClassIds().length) ? `<div class="flex" style="margin-top:12px;">
-      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open Master Mark Sheet</b></button>
+      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open GENERAL MARKSHEETS AND RANK LISTS</b></button>
       <button class="btn-outline" data-action="nav:classanalysis"><b>Open Class Analysis</b></button>
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
@@ -8060,7 +8072,7 @@ function toggleProjectSubject(su, on){
 function masterMarkSheetView(forExport){
   const isAdmin = CUR.role==='admin';
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
-  if(!visibleClasses.length) return `<h2>Master Mark Sheet</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
+  if(!visibleClasses.length) return `<h2>GENERAL MARKSHEETS AND RANK LISTS</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
   const sel = VIEW.params;
   const classId = (sel.mmClassId && visibleClasses.some(c=>c.id===sel.mmClassId)) ? sel.mmClassId : visibleClasses[0].id;
   const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
@@ -8071,6 +8083,7 @@ function masterMarkSheetView(forExport){
   // register; 'grades' shows only the letter/code each learner earned per subject, so it
   // reads like an official results sheet. Kept as one function (same underlying data,
   // same landscape layout) so the two never drift out of sync with each other.
+  if(sel.mmMode==='rank' || (sel.mmMode==='level' && isAdmin)) return masterRankView({isAdmin, visibleClasses, cls, term, year, mode:sel.mmMode, sel, forExport});
   const mode = sel.mmMode==='grades' ? 'grades' : 'scores';
   const isA = cls.level==='A';
   const isP = cls.level==='P';
@@ -8153,10 +8166,8 @@ function masterMarkSheetView(forExport){
     colCount = 6 + subjectMeta.length + (isP?1:0);
   }
 
-  const tabBtn = (val,label)=>`<button class="${mode===val?'btn':'btn-outline'}" onclick="setMasterMarkSheetParam('mmMode','${val}')">${label}</button>`;
-
   return `
-  <h2>Master Mark Sheet</h2>
+  <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
   <div class="card">
     <div class="grid3">
       <div><label>Class</label><select onchange="setMasterMarkSheetParam('mmClassId', this.value)">
@@ -8168,7 +8179,7 @@ function masterMarkSheetView(forExport){
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
     </div>
     <label style="margin-top:14px;">View</label>
-    <div class="flex">${tabBtn('scores','Real Scores (marks per subject/paper)')}${tabBtn('grades','Letter Grades (per subject)')}</div>
+    <div class="flex">${mmTabsHtml(mode,isAdmin)}</div>
     <div class="note" style="margin-top:12px;">${mode==='scores'
       ? 'This sheet lists every student\'s raw marks — no grading — with a sub-column per paper for subjects that have more than one. Switch to "Letter Grades" for the graded version.'
       : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position. Switch to "Real Scores" to see the underlying marks.'
@@ -8201,6 +8212,89 @@ function masterMarkSheetView(forExport){
       ? 'Grading scale (Primary/PLE): D1, D2 = Distinction &nbsp; C3–C6 = Credit &nbsp; P7, P8 = Pass &nbsp; F9 = Fail. Aggregate = sum of grade-points for the compulsory subjects; Division is derived from that aggregate.'
       : `Grading scale (${isA?'A-Level':'O-Level'}): A = Excellent &nbsp; B = Very Good &nbsp; C = Good &nbsp; D = Fair &nbsp; E = Weak${isA?' &nbsp; General Paper/Subsidiaries = Pass/Fail':''}.`
     }</p>` : ''}
+    <div class="mm-footer">
+      <span>Generated ${esc(new Date().toLocaleDateString())}</span>
+      ${DB.info.headteacher?`<span>Head Teacher: ${esc(DB.info.headteacher)}</span>`:''}
+    </div>
+  </div>
+  </div>
+  ${!forExport ? marksheetPaginationBar(pg.page, pg.totalPages, pg.total, pg.size, pg.startIndex, `mmPage`) : ''}`;
+}
+function mmLevelLabel(l){ return l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "A'-Level"); }
+function mmTabsHtml(mode, isAdmin){
+  const b = (val,label)=>`<button class="${mode===val?'btn':'btn-outline'}" onclick="setMasterMarkSheetParam('mmMode','${val}')">${label}</button>`;
+  return b('scores','Real Scores (marks per subject/paper)') + b('grades','Letter Grades (per subject)') + b('rank','Rank List (this class)') + (isAdmin ? b('level','General Rank List (by level)') : '');
+}
+// Rank List (one class) and General Rank List (every class of one level): students sorted
+// best-first by the same metric the report-card position uses (Average %, or Points at
+// A-Level), with ties sharing a rank. Reuses the .mm-* layout so PDF/print export is unchanged.
+function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport}){
+  const isLevel = mode==='level';
+  const levels = ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l));
+  const level = isLevel ? (levels.includes(sel.mmLevel) ? sel.mmLevel : levels[0]) : cls.level;
+  window._mmLevelUsed = level;
+  const isA = level==='A', isP = level==='P';
+  const pool = isLevel
+    ? DB.students.filter(st=>st.status!=='left' && (DB.classes.find(c=>c.id===st.classId)||{}).level===level)
+    : DB.students.filter(st=>st.status!=='left' && st.classId===cls.id);
+  const data = pool.map(st=>{
+    const c = DB.classes.find(x=>x.id===st.classId);
+    const d = computeSubjectRows(st, c, term, year);
+    return {st, c, avgPct:d.avgPct, pts:d.totalPoints, m: isA ? d.totalPoints : d.avgPct,
+      maxP: isA ? maxPointsFor(st, c) : 100,
+      grade: isP ? null : gradeFor('', d.avgPct, c.level),
+      agg: isP ? primaryAggregate(st, c, term, year) : null};
+  }).sort((a,b)=> b.m-a.m || (a.st.name||'').localeCompare(b.st.name||''));
+  let pos = 0;
+  data.forEach((r,i)=>{ if(i===0 || r.m < data[i-1].m) pos = i+1; r.pos = pos; });
+  const pg = paginateMarksheet(data, sel.mmPage, !!forExport);
+  const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
+  const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}`;
+  const colCount = 5 + (isLevel?1:0) + (isA?1:0) + (isP?1:0);
+  const body = pg.pageItems.map(r=>{
+    const clsName = r.c ? esc(r.c.name)+(r.c.stream?(' '+esc(r.c.stream)):'') : '—';
+    const tail = isP
+      ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${esc(String(primaryDivisionFor(r.agg)||'—'))}</td>`
+      : gradeTd(r.grade||'—');
+    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${r.avgPct.toFixed(1)}%</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}</tr>`;
+  }).join('');
+  const title = isLevel ? `General Rank List — ${mmLevelLabel(level)}` : 'Rank List';
+  const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}`;
+  const arg = `${cls.id}:${encodeURIComponent(term)}:${year}:${mode}`;
+  return `
+  <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
+  <div class="card">
+    <div class="grid3">
+      <div>${isLevel
+        ? `<label>Level</label><select onchange="setMasterMarkSheetParam('mmLevel', this.value)">${levels.map(l=>`<option value="${l}" ${l===level?'selected':''}>${mmLevelLabel(l)}</option>`).join('')}</select>`
+        : `<label>Class</label><select onchange="setMasterMarkSheetParam('mmClassId', this.value)">${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`}</div>
+      <div><label>Term</label><select onchange="setMasterMarkSheetParam('mmTerm', this.value)">
+        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
+    </div>
+    <label style="margin-top:14px;">View</label>
+    <div class="flex">${mmTabsHtml(mode,isAdmin)}</div>
+    <div class="flex" style="margin-top:12px;">
+      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (landscape)</b></button>
+      <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (landscape)</button>
+      <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
+    </div>
+  </div>
+  <div id="printArea">
+  <div class="mm-page">
+    <div class="mm-header">
+      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
+      <div class="mm-title">${title}</div>
+      <div class="mm-meta">${scope} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
+    </div>
+    <div class="mm-tablewrap">
+      <table class="mm-table">
+        <thead><tr>${head}</tr></thead>
+        <tbody>${body || `<tr><td colspan="${colCount}">No students to rank yet.</td></tr>`}</tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top:10px;">Ranked best first by ${isA?'total Points':'Average %'}; students with equal results share the same rank.</p>
     <div class="mm-footer">
       <span>Generated ${esc(new Date().toLocaleDateString())}</span>
       ${DB.info.headteacher?`<span>Head Teacher: ${esc(DB.info.headteacher)}</span>`:''}
@@ -9154,7 +9248,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (isP?0:1) + 1 + 1 + (isA?1:0) + 1 + 1;
         const _lbl = Math.floor(_colCount/2), _val = _colCount-_lbl;
         const _st = 'text-align:center;font-weight:900;text-transform:uppercase;color:#000;border-top:2.4px solid var(--blue);';
-        return `<tr class="rc-result"><td colspan="${_lbl}" style="${_st}font-size:17px;letter-spacing:1.5px;padding:7px 4px;">RESULT :</td><td colspan="${_val}" style="${_st}font-size:22px;padding:7px 4px;">${_res}</td></tr>`;
+        return `<tr class="rc-result"><td colspan="${_lbl}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_val}" style="${_st}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td></tr>`;
       })()}
     </table>
     </div>
@@ -9775,12 +9869,12 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   cy += totRowH;
   // ---- RESULT row: two merged cells — the word RESULT : and the result itself (1 or 2) ----
   if(data.result!==null && data.result!==undefined){
-    const resH = 24, half = contentW/2;
+    const resH = 16, half = contentW/2;
     setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
     pdf.rect(contentX, cy, contentW, resH, 'F');
     pdf.setLineWidth(0.9); pdf.rect(contentX, cy, half, resH); pdf.rect(contentX+half, cy, half, resH);
-    centerText('RESULT :', contentX, half, cy+resH-7, bodySize+5, 'bold', [0,0,0]);
-    centerText(String(data.result), contentX+half, half, cy+resH-6, bodySize+9, 'bold', [0,0,0]);
+    centerText('RESULT :', contentX, half, cy+resH-4.5, bodySize+2, 'bold', [0,0,0]);
+    centerText(String(data.result), contentX+half, half, cy+resH-4, bodySize+4, 'bold', [0,0,0]);
     cy += resH;
   }
   cy += 14 + gapBoost;
@@ -10862,7 +10956,7 @@ Continue?`);
       try{ await refreshScoresForPeriod(exportTerm, exportYear); } finally { setAppBusy(false); }
       const cls = DB.classes.find(c=>c.id===classId);
       const term = termEnc?decodeURIComponent(termEnc):'';
-      const modeLabel = modeArg==='grades' ? 'grades' : 'scores';
+      const modeLabel = ['grades','rank','level'].includes(modeArg) ? modeArg : 'scores';
       // Always exported from the FULL, unpaginated student list (forExport=true),
       // regardless of which on-screen page the user was viewing when they clicked.
       document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
@@ -10870,7 +10964,7 @@ Continue?`);
         // Dedicated adapter (handles the two-row subject/paper header and the
         // legend/footer text) feeding the same row-paginating, no-column-splitting
         // export core as Class Analysis and the Integrated Mark Sheet.
-        await downloadMasterMarkSheetPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
+        await downloadMasterMarkSheetPdf('printArea', `${(modeArg==='level' ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
       } finally {
         render();
       }
@@ -12526,11 +12620,8 @@ document.addEventListener('submit', async (e)=>{
       if(!tUser){ alert('Please select a teacher.'); return; }
       const subjTicked = new Set(fd.getAll('subj'));
       if(!subjTicked.size){ alert('Tick at least one subject this teacher teaches.'); return; }
-      const papersBySubj = {};
-      form.querySelectorAll('input.as-paper-cb:checked').forEach(cb=>{
-        (papersBySubj[cb.dataset.subject] = papersBySubj[cb.dataset.subject] || []).push(cb.value);
-      });
-      Object.keys(papersBySubj).forEach(k=>papersBySubj[k].sort());
+      const papTicked = fd.getAll('pap').map(v=>v.split('||')); // [subject, classId, paper]
+      const papersFor = (sj,cid)=>papTicked.filter(x=>x[0]===sj && x[1]===cid).map(x=>x[2]).sort();
       const picks = []; // new (subject, class) pairs
       const noClass = [];
       for(const sj of subjTicked){
@@ -12541,14 +12632,14 @@ document.addEventListener('submit', async (e)=>{
       if(noClass.length){ alert('Tick at least one new class for: '+noClass.join(', ')+'.\n\n(Untick a subject you do not want to add this round.)'); return; }
       for(const pk of picks){
         const c = DB.classes.find(x=>x.id===pk.classId);
-        if(c && c.level!=='P' && !(papersBySubj[pk.subject]||[]).length){ alert('Please tick the papers taught for '+pk.subject+' (Paper 1, Paper 2 or both).'); return; }
+        if(c && c.level!=='P' && !papersFor(pk.subject, pk.classId).length){ alert('Please tick the papers taught for '+pk.subject+' in '+c.name+'.'); return; }
       }
       let added = 0, skipped = 0;
       picks.forEach(pk=>{
         const c = DB.classes.find(x=>x.id===pk.classId);
         if(!c) return;
         if(DB.assignments.some(a=>a.teacherUsername===tUser && a.classId===pk.classId && a.subject===pk.subject)){ skipped++; return; }
-        const papers = c.level==='P' ? ['1'] : papersBySubj[pk.subject].slice();
+        const papers = c.level==='P' ? ['1'] : papersFor(pk.subject, pk.classId);
         DB.assignments.push({id:uid('asn'), teacherUsername:tUser, classId:pk.classId, subject:pk.subject, papers});
         added++;
       });
@@ -13649,7 +13740,7 @@ async function downloadMasterMarkSheetPdf(elementId, filename){
     title: [schoolEl&&schoolEl.textContent, titleEl&&titleEl.textContent].filter(Boolean).join(' — '),
     subtitle: metaEl ? metaEl.textContent : '',
     headRows, bodyRows, footerHtml,
-    emptyText: 'No students in this class yet.'
+    emptyText: 'No students to show yet.'
   }], filename, {progressLabel:'Downloading Master Mark Sheet'});
 }
 // Blank mark sheet, for printing/marking on paper (separate from the CSV version,
