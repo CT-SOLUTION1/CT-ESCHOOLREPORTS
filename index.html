@@ -7691,9 +7691,18 @@ function blankMarksheetView(classId, subject){
   if(!cls) return '<p>Class not found.</p>';
   const students = blankSheetStudents(classId, subject);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
-  const BLANK_COLS = 8;
-  const blankHead = Array.from({length:BLANK_COLS},()=>'<th style="min-width:54px;">&nbsp;</th>').join('');
-  const blankCells = Array.from({length:BLANK_COLS},()=>'<td style="height:30px;">&nbsp;</td>').join('');
+  // One column per assessment the admin has set up for this class: each named Course Work
+  // test (or a single Course Work column if no tests are named), then End of Term.
+  const cfg = examConfig(classId);
+  const assessCols = [];
+  if(cfg.cwEnabled){
+    if(cfg.cwTests.length) cfg.cwTests.forEach(t=>assessCols.push(`${t.name} (/${t.max})`));
+    else assessCols.push(`${cfg.cwLabel} (/${cfg.cwPercent})`);
+  }
+  if(cfg.eotEnabled) assessCols.push(`${cfg.eotLabel} (/${cfg.eotPercent})`);
+  if(!assessCols.length) assessCols.push('Score');
+  const blankHead = assessCols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('');
+  const blankCells = assessCols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
   const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${blankCells}<td style="min-width:90px;">&nbsp;</td></tr>`).join('');
   return `
   <h2>Blank Mark Sheet</h2>
@@ -7710,9 +7719,9 @@ function blankMarksheetView(classId, subject){
   <div id="printArea">
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — ${esc(subject)} — Blank Mark Sheet</h3>
-    <p class="small">${esc(term||'')}, ${esc(String(year||''))} — Test / Exam: ______________________ &nbsp; Date: ______________ &nbsp; Out of: ________</p>
+    <p class="small">${esc(term||'')}, ${esc(String(year||''))}</p>
     <table class="data-table"><tr><th>No.</th><th>Student</th><th>Adm No</th>${blankHead}<th>Remarks</th></tr>
-    ${rowsHtml || `<tr><td colspan="${4+BLANK_COLS}">No students are enrolled for this subject yet.</td></tr>`}
+    ${rowsHtml || `<tr><td colspan="${4+assessCols.length}">No students are enrolled for this subject yet.</td></tr>`}
     </table>
   </div>
   </div>`;
