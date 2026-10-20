@@ -3463,26 +3463,31 @@ function teacherForSubjectClass(subject, classId){
 // each is worth the same top value as a principal.
 function maxPointsFor(st, cls){ const top = aTopPoints(), pf = passFailMaxPoints(); return principalsFor(st, cls || classOf(st)).length*top + pf + pf + aCompulsoryExtra().length*top; }
 
-// RESULT shown as the last row of O-Level / A-Level report cards:
-//   1 = every subject has at least a D (D or better) AND the student missed no exam
-//       (every subject has a score, and an End of Term score wherever End of Term is used);
-//   2 = anything else.
-// Returns null when no RESULT row applies (Primary cards, or a student with no subjects) and ''
-// (blank) while no scores have been entered at all yet.
-function reportResultFor(rows, breakdowns, cls, showEOT){
-  if(!cls || cls.level==='P' || !rows || !rows.length) return null;
-  if(!rows.some(r=>r.avg!==null && r.avg!==undefined)) return '';
-  const atLeastD = (r)=>{
-    if(cls.level==='A' && isPassFailSubject(r.subject)) return passFailLevelFor(r.avg).points>0;
-    const g = String(gradeDisplay(r.subject, r.grade, cls.level, r.avg)||'').toUpperCase();
-    return ['A','B','C','D'].includes(g);
-  };
-  for(let i=0;i<rows.length;i++){
-    const r = rows[i], bd = breakdowns[i];
-    if(r.avg===null || r.avg===undefined) return 2;               // missed this subject entirely
-    if(showEOT && bd && (bd.eotAvg===null || bd.eotAvg===undefined)) return 2; // missed the exam
-    if(!atLeastD(r)) return 2;
+// RESULT shown as the last row of O-Level report cards ONLY (A-Level and Primary cards end at TOTAL / OVERALL):
+//   2 = the student's grades are ALL E (only Es), OR the student MISSED A SUBJECT: has no score in a
+//       subject that other students in the class (who take it) already have scores in;
+//   1 = anything else.
+// If other students ALSO have no score in that subject (it simply hasn't been marked/done yet), that
+// is not a reason for a 2.
+// Returns null when no RESULT row applies (Primary / A-Level cards, or a student with no subjects) and ''
+// (blank) while the student has no scores at all yet.
+function reportResultFor(rows, breakdowns, cls, showEOT, st, term, year){
+  if(!cls || cls.level!=='O' || !rows || !rows.length) return null;
+  const has = (v)=> v!==null && v!==undefined;
+  const scored = rows.filter(r=>has(r.avg));
+  if(!scored.length) return '';
+  // Missed a subject that other classmates have scores in
+  if(scored.length < rows.length && st){
+    const mates = DB.students.filter(x=>x.classId===cls.id && x.id!==st.id);
+    for(const r of rows){
+      if(has(r.avg)) continue;
+      const othersHave = mates.some(m=> studentSubjects(m, cls).includes(r.subject) && has(subjectAverage(m.id, r.subject, term, year)));
+      if(othersHave) return 2;
+    }
   }
+  // Only Es across all graded subjects
+  const gradeOf = (r)=> String(gradeDisplay(r.subject, r.grade, cls.level, r.avg)||'').toUpperCase();
+  if(scored.every(r=>gradeOf(r)==='E')) return 2;
   return 1;
 }
 function computeSubjectRows(st, cls, term, year){
@@ -9143,7 +9148,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       ${rowsHtml}
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${isP?'':`<td>${totalPaperAvgTxt}</td>`}<td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
       ${(()=>{
-        const _res = reportResultFor(rows, breakdowns, cls, showEOT);
+        const _res = reportResultFor(rows, breakdowns, cls, showEOT, s, term, year);
         if(_res===null) return '';
         const _cwCols = showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0;
         const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (isP?0:1) + 1 + 1 + (isA?1:0) + 1 + 1;
@@ -9430,7 +9435,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     // label ("Exceptional", etc.) still comes from the school's own gradeCommentsFor().
     gradingKey: isP ? null : gradeKeyRows(cls.level),
     totals: { cwTotalTxt, eotTotalTxt, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
-    result: reportResultFor(rows, breakdowns, cls, showEOT),
+    result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year),
     summary: {
       maxP, avgPct, overallGrade, overallDesc, pAggregate, pDivision, position, size,
       prevPeriod, prevPosition, weakSubjects
