@@ -8024,38 +8024,32 @@ function classAnalysisView(){
   const isA = cls.level==='A';
 
   const studentStats = classStudentStats(cls, term, year);
-  // ---- Subject Performance: pick CLASS-WISE (then a class) or LEVEL-WISE (then a level) ----
-  const spMode = sel.spMode==='class' || sel.spMode==='level' ? sel.spMode : '';
-  const spClass = visibleClasses.find(c=>c.id===sel.spClassId) || null;
-  const levelOptions = [...new Set(visibleClasses.map(c=>c.level))];
-  const spLevel = levelOptions.includes(sel.spLevel) ? sel.spLevel : '';
-  const spLevelName = spLevel ? levelLabel({level:spLevel,form:''}).trim() : '';
-  const spGradeCols = spMode==='class' && spClass ? gradeColsFor(spClass.level) : (spMode==='level' && spLevel ? gradeColsFor(spLevel) : []);
-  const statRow = r=>{
-    const gradeCells = spGradeCols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
+  // ---- Subject Performance: BOTH views are shown automatically for the selected class —
+  // class-wise (this class) and level-wise (every class of this class's level combined).
+  const classGradeCols = gradeColsFor(cls.level);
+  const statRow = (r, cols)=>{
+    const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
     return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
   };
-  let spResultHtml = '';
-  if(spMode==='class' && spClass){
-    const rows = classSubjectsFor(spClass).map(subj=>({subject:subj, ...subjectClassStats(spClass, subj, term, year)}))
-      .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(statRow).join('');
-    spResultHtml = `
-    <h3>Subject Performance — CLASS-WISE — ${esc(spClass.name)}</h3>
+  const classRows = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
+    .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(r=>statRow(r, classGradeCols)).join('');
+  const classWiseHtml = `
+    <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${spGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${rows || `<tr><td colspan="${5+spGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    ${classRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
     </table>`;
-  } else if(spMode==='level' && spLevel){
-    const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
-    const rows = levelSubjectsFor(spLevel).map(subj=>({subject:subj, ...subjectLevelStats(spLevel, subj, term, year)}))
-      .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(statRow).join('');
-    spResultHtml = `
+  const spLevel = cls.level;
+  const spLevelName = levelLabel({level:spLevel,form:''}).trim();
+  const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
+  const levelRows = levelSubjectsFor(spLevel).map(subj=>({subject:subj, ...subjectLevelStats(spLevel, subj, term, year)}))
+    .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(r=>statRow(r, classGradeCols)).join('');
+  const levelWiseHtml = `
     <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)}</h3>
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${spGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${rows || `<tr><td colspan="${5+spGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
+    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    ${levelRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
     </table>`;
-  }
 
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
@@ -8076,26 +8070,9 @@ function classAnalysisView(){
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setAnalysisParam('year', this.value)"></div>
     </div>
     <div class="flex" style="margin-top:14px;">
-      <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>
-      <button class="btn" onclick="printLandscape()">Print / Save as PDF</button>
+      <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF (all 3 analyses)</b></button>
+      <button class="btn" onclick="printLandscape()">Print all 3 analyses</button>
     </div>
-  </div>
-  <div class="card" style="margin-top:14px;">
-    <h3 style="margin-top:0;">Subject Performance</h3>
-    <div class="flex" style="gap:10px;flex-wrap:wrap;">
-      <button class="${spMode==='class'?'btn':'btn-outline'}" data-action="spMode:class"><b>CLASS-WISE</b></button>
-      <button class="${spMode==='level'?'btn':'btn-outline'}" data-action="spMode:level"><b>LEVEL-WISE</b></button>
-    </div>
-    ${spMode==='class' ? `<label>Select class</label>
-    <select onchange="setAnalysisParam('spClassId', this.value)" style="max-width:320px;">
-      <option value="" ${spClass?'':'selected'}>— Select class —</option>
-      ${visibleClasses.map(c=>`<option value="${c.id}" ${spClass&&c.id===spClass.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-    </select>` : ''}
-    ${spMode==='level' ? `<label>Select level</label>
-    <select onchange="setAnalysisParam('spLevel', this.value)" style="max-width:320px;">
-      <option value="" ${spLevel?'':'selected'}>— Select level —</option>
-      ${levelOptions.map(l=>`<option value="${esc(l)}" ${l===spLevel?'selected':''}>${esc(levelLabel({level:l,form:''}).trim())}</option>`).join('')}
-    </select>` : ''}
   </div>
   <div id="printArea">
   <div class="card" style="overflow:auto;">
@@ -8105,7 +8082,8 @@ function classAnalysisView(){
     ${studentRowsHtml || `<tr><td colspan="7">No students in this class yet.</td></tr>`}
     </table>
   </div>
-  ${spResultHtml ? `<div class="card" style="overflow:auto;">${spResultHtml}</div>` : ''}
+  <div class="card" style="overflow:auto;">${classWiseHtml}</div>
+  <div class="card" style="overflow:auto;">${levelWiseHtml}</div>
   </div>`;
 }
 function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
