@@ -4283,7 +4283,7 @@ function navByRoleRaw(role){
     const extraSubjectsLabel = extraSubjectsPageLabel();
     return [
       ['dashboard','Dashboard','🏠'],['schoolinfo','School Info & Logo','🏫'],['promote','Year, Term & Promotion','⬆️'],
-      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','ADD NEW and VIEW ALL STUDENTS','🎓'],
+      ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','ADD NEW or VIEW STUDENTS','🎓'],
       ['assignsubjects','Assign Subjects','📌'],['olevel',extraSubjectsLabel,'📖'],
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
@@ -6607,7 +6607,7 @@ async function unlinkParentChild(username, studentId){
 /* ---------- Admin: Students ---------- */
 function studentsView(){
   return `
-  <h2>ADD NEW and VIEW ALL STUDENTS</h2>
+  <h2>ADD NEW or VIEW STUDENTS</h2>
   <div class="card">
     <h3>Add student</h3>
     <form data-form="addStudent">
@@ -7605,53 +7605,81 @@ function marksheetPaginationBar(page, totalPages, total, size, startIndex, pageA
 }
 function marksheetsListView(){
   const ctClassIds = classTeacherClassIds();
-  const pool = CUR.role==='admin' ? DB.assignments
+  const isAdmin = CUR.role==='admin';
+  const pool = isAdmin ? DB.assignments
     : DB.assignments.filter(a=>a.teacherUsername===CUR.username || ctClassIds.includes(a.classId));
-  const groups = marksheetGroups(pool);
+  const poolGroups = marksheetGroups(pool);
+  const classes = isAdmin ? DB.classes : DB.classes.filter(c=>poolGroups.some(g=>g.classId===c.id));
+  const selId = VIEW.params && VIEW.params.msClassId;
+  const cls = classes.find(c=>c.id===selId) || null;
+  const mode = cls && VIEW.params && VIEW.params.msMode ? VIEW.params.msMode : '';
+  let body = '';
+  if(!classes.length){
+    body = `<p class="small">${isAdmin?'No classes yet — add a class first.':"You haven't been assigned any subjects yet."}</p>`;
+  } else {
+    body = `
+    <label>Select class</label>
+    <select onchange="setMarksheetClass(this.value)" style="max-width:320px;">
+      <option value="" ${cls?'':'selected'}>— Select class —</option>
+      ${classes.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+    ${cls ? `
+    <div class="flex" style="margin-top:14px;gap:10px;flex-wrap:wrap;">
+      <button class="${mode==='filled'?'btn':'btn-outline'}" data-action="msMode:filled"><b>FILLED MARKSHEETS</b></button>
+      <button class="${mode==='empty'?'btn':'btn-outline'}" data-action="msMode:empty"><b>EMPTY MARKSHEETS</b></button>
+    </div>` : ''}`;
+  }
+  let panel = '';
+  if(cls && mode==='filled'){
+    const subs = [...new Set(poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject))].sort((x,y)=>x.localeCompare(y));
+    panel = `
+    <div class="note" style="margin-top:14px;">A filled mark sheet lists every test and exam recorded for a subject in this class, side by side for every student — handy for spotting missing marks or reviewing a subject at a glance.${ctClassIds.length?' As Class Teacher, you can also see and download every subject for your class(es), not just the ones you personally teach.':''}</div>
+    <div class="card" style="margin-top:14px;">
+      <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Action</th></tr>
+      ${subs.map(subj=>`<tr><td>${esc(cls.name)}</td><td>${esc(subj)}</td><td><button class="btn-outline" data-action="openMarksheet:${cls.id}:${encodeURIComponent(subj)}">Open mark sheet</button></td></tr>`).join('') || `<tr><td colspan="3">No subjects on record for this class yet.</td></tr>`}
+      </table>
+    </div>`;
+  } else if(cls && mode==='empty'){
+    panel = blankMarksheetsCard(pool, cls);
+  }
   return `
   <h2>Mark Sheets</h2>
-  <div class="note">An integrated mark sheet lists every test and exam recorded for a subject in a class, side by side for every student — handy for spotting missing marks or reviewing a subject at a glance. You can also download a blank sheet for a specific test from the "Enter Scores" page.${ctClassIds.length?' As Class Teacher, you can also see and download every subject for your class(es), not just the ones you personally teach.':''}</div>
-  <div class="card" style="margin-top:14px;">
-    <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Action</th></tr>
-    ${groups.map(g=>{
-      const cls = DB.classes.find(c=>c.id===g.classId);
-      return `<tr><td>${cls?esc(cls.name):'—'}</td><td>${esc(g.subject)}</td><td><button class="btn-outline" data-action="openMarksheet:${g.classId}:${encodeURIComponent(g.subject)}">Open mark sheet</button></td></tr>`;
-    }).join('') || `<tr><td colspan="3">${CUR.role==='admin'?'No subject assignments yet.':"You haven't been assigned any subjects yet."}</td></tr>`}
-    </table>
-  </div>
-  ${blankMarksheetsCard(pool)}`;
+  <div class="card" style="margin-top:14px;">${body}</div>
+  ${panel}`;
 }
+function setMarksheetClass(id){ VIEW.params = {msClassId:id, msMode:''}; render(); }
 // ---- Blank Mark Sheets: one printable empty sheet per class + subject, listing only the
 // students enrolled for that subject (studentSubjects already puts every student on a
 // compulsory subject's sheet, and only the takers on an optional one).
 function blankSheetStudents(classId, subject){
   const cls = DB.classes.find(c=>c.id===classId);
   if(!cls) return [];
-  return sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
+  // Only students actually enrolled for this subject: those on the teacher's ticked class
+  // list (assignment.studentIds). Until a teacher has ticked anyone, fall back to everyone
+  // eligible for the subject so the sheet isn't empty.
+  const asns = DB.assignments.filter(a=>a.classId===classId && a.subject===subject);
+  const rosterIds = new Set();
+  let anyRosterSet = false;
+  asns.forEach(a=>{ if(Array.isArray(a.studentIds)){ anyRosterSet=true; a.studentIds.forEach(id=>rosterIds.add(id)); } });
+  return sortByName(anyRosterSet
+    ? DB.students.filter(s=>s.status!=='left' && s.classId===classId && rosterIds.has(s.id))
+    : DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
 }
-function blankMarksheetsCard(pool){
+function blankMarksheetsCard(pool, selCls){
   const isAdmin = CUR.role==='admin';
   const poolGroups = marksheetGroups(pool);
-  const classes = isAdmin ? DB.classes : DB.classes.filter(c=>poolGroups.some(g=>g.classId===c.id));
-  if(!classes.length) return `<h3 style="margin-top:22px;">Blank Mark Sheets</h3><div class="card"><p class="small">${isAdmin?'No classes yet — add a class first.':"You haven't been assigned any subjects yet."}</p></div>`;
-  const sel = VIEW.params && VIEW.params.blankClassId;
-  const cls = classes.find(c=>c.id===sel) || classes[0];
+  const cls = selCls;
+  if(!cls) return '';
   const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject);
   const subs = [...new Set(subjects)].sort((a,b)=>a.localeCompare(b));
   const rows = subs.map(subj=>{
     const n = blankSheetStudents(cls.id, subj).length;
-    const compulsory = isCompulsorySubjectFor(subj, cls);
-    return `<tr><td style="text-align:left;">${esc(subj)}</td><td>${compulsory?'Compulsory — all students':'Optional — enrolled students only'}</td><td>${n}</td><td><button class="btn-outline" data-action="openBlankMarksheet:${cls.id}:${encodeURIComponent(subj)}">Open blank sheet</button></td></tr>`;
+    return `<tr><td style="text-align:left;">${esc(subj)}</td><td>Enrolled students only</td><td>${n}</td><td><button class="btn-outline" data-action="openBlankMarksheet:${cls.id}:${encodeURIComponent(subj)}">Open blank sheet</button></td></tr>`;
   }).join('');
   return `
-  <h3 style="margin-top:22px;">Blank Mark Sheets</h3>
-  <div class="note">A blank mark sheet is an empty, printable score sheet for one subject in one class. It lists only the students enrolled for that subject — every student for a compulsory subject — with empty columns to fill in by hand.</div>
+  <div class="note" style="margin-top:14px;">An empty mark sheet is a blank, printable score sheet for one subject in this class. It lists only the students enrolled for that subject, with empty columns to fill in by hand.</div>
   <div class="card" style="margin-top:14px;">
-    <label>Class</label>
-    <select onchange="setBlankSheetClass(this.value)" style="max-width:320px;">
-      ${classes.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-    </select>
-    <table class="data-table" style="margin-top:12px;"><tr><th>Subject</th><th>Who is listed</th><th>Students</th><th>Action</th></tr>
+    <table class="data-table"><tr><th>Subject</th><th>Who is listed</th><th>Students</th><th>Action</th></tr>
     ${rows || `<tr><td colspan="4">No subjects on record for this class yet.</td></tr>`}
     </table>
   </div>`;
@@ -7667,12 +7695,11 @@ function blankMarksheetView(classId, subject){
   const blankHead = Array.from({length:BLANK_COLS},()=>'<th style="min-width:54px;">&nbsp;</th>').join('');
   const blankCells = Array.from({length:BLANK_COLS},()=>'<td style="height:30px;">&nbsp;</td>').join('');
   const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${blankCells}<td style="min-width:90px;">&nbsp;</td></tr>`).join('');
-  const compulsory = isCompulsorySubjectFor(subject, cls);
   return `
   <h2>Blank Mark Sheet</h2>
   <div class="card">
     <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
-      <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}${compulsory?' (compulsory — all students)':''}</div>
+      <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
       <div class="flex">
         <button class="btn-outline" data-action="dlBlankPdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
         <button class="btn" onclick="printLandscape()">Print / Save as PDF</button>
@@ -7789,9 +7816,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
     const cells = cols.map(c=>{
       const row = scoreCellFor(s.id, subject, c, term, year);
       if(!row) return '<td>—</td>';
-      const canDelete = CUR.role==='admin' || (CUR.role==='teacher' && row.teacher===CUR.username);
-      const delBtn = canDelete ? ` <a href="#" style="color:var(--danger);text-decoration:none;font-weight:800;" data-action="deleteScore:${row.id}" title="Delete this score">✕</a>` : '';
-      return `<td>${esc(row.marks)}/${esc(row.max)}${delBtn}</td>`;
+      return `<td>${esc(row.marks)}/${esc(row.max)}</td>`;
     }).join('');
     return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${cells}<td>${bd.aoiAvg===null?'—':bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?'—':bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?'—':bd.final.toFixed(1)}</td><td>${grade}</td></tr>`;
   }).join('');
@@ -7990,27 +8015,43 @@ function classAnalysisView(){
   const isA = cls.level==='A';
 
   const studentStats = classStudentStats(cls, term, year);
-  const subjectStats = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
-    .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
-
-  const levelStats = levelSubjectsFor(cls.level).map(subj=>({subject:subj, ...subjectLevelStats(cls.level, subj, term, year)}))
-    .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
-  const levelClassNames = levelClasses(cls.level).map(c=>c.name).join(', ');
-  const levelRowsHtml = levelStats.map(r=>{
-    const gradeCells = gradeColsFor(cls.level).map(g=>`<td>${r.grades[g]||0}</td>`).join('');
+  // ---- Subject Performance: pick CLASS-WISE (then a class) or LEVEL-WISE (then a level) ----
+  const spMode = sel.spMode==='class' || sel.spMode==='level' ? sel.spMode : '';
+  const spClass = visibleClasses.find(c=>c.id===sel.spClassId) || null;
+  const levelOptions = [...new Set(visibleClasses.map(c=>c.level))];
+  const spLevel = levelOptions.includes(sel.spLevel) ? sel.spLevel : '';
+  const spLevelName = spLevel ? levelLabel({level:spLevel,form:''}).trim() : '';
+  const spGradeCols = spMode==='class' && spClass ? gradeColsFor(spClass.level) : (spMode==='level' && spLevel ? gradeColsFor(spLevel) : []);
+  const statRow = r=>{
+    const gradeCells = spGradeCols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
     return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
-  }).join('');
+  };
+  let spResultHtml = '';
+  if(spMode==='class' && spClass){
+    const rows = classSubjectsFor(spClass).map(subj=>({subject:subj, ...subjectClassStats(spClass, subj, term, year)}))
+      .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(statRow).join('');
+    spResultHtml = `
+    <h3>Subject Performance — CLASS-WISE — ${esc(spClass.name)}</h3>
+    <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
+    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${spGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    ${rows || `<tr><td colspan="${5+spGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    </table>`;
+  } else if(spMode==='level' && spLevel){
+    const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
+    const rows = levelSubjectsFor(spLevel).map(subj=>({subject:subj, ...subjectLevelStats(spLevel, subj, term, year)}))
+      .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(statRow).join('');
+    spResultHtml = `
+    <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)}</h3>
+    <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
+    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${spGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    ${rows || `<tr><td colspan="${5+spGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
+    </table>`;
+  }
 
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
     const gradeTxt = isA ? '—' : (r.overallGrade || '—');
     return `<tr><td>${r.position}</td><td style="text-align:left;">${esc(r.student.name)}</td><td>${esc(r.student.admNo)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td></tr>`;
-  }).join('');
-
-  const gradeCols = gradeColsFor(cls.level);
-  const subjectRowsHtml = subjectStats.map(r=>{
-    const gradeCells = gradeCols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
-    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
   }).join('');
 
   return `
@@ -8030,6 +8071,23 @@ function classAnalysisView(){
       <button class="btn" onclick="printLandscape()">Print / Save as PDF</button>
     </div>
   </div>
+  <div class="card" style="margin-top:14px;">
+    <h3 style="margin-top:0;">Subject Performance</h3>
+    <div class="flex" style="gap:10px;flex-wrap:wrap;">
+      <button class="${spMode==='class'?'btn':'btn-outline'}" data-action="spMode:class"><b>CLASS-WISE</b></button>
+      <button class="${spMode==='level'?'btn':'btn-outline'}" data-action="spMode:level"><b>LEVEL-WISE</b></button>
+    </div>
+    ${spMode==='class' ? `<label>Select class</label>
+    <select onchange="setAnalysisParam('spClassId', this.value)" style="max-width:320px;">
+      <option value="" ${spClass?'':'selected'}>— Select class —</option>
+      ${visibleClasses.map(c=>`<option value="${c.id}" ${spClass&&c.id===spClass.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>` : ''}
+    ${spMode==='level' ? `<label>Select level</label>
+    <select onchange="setAnalysisParam('spLevel', this.value)" style="max-width:320px;">
+      <option value="" ${spLevel?'':'selected'}>— Select level —</option>
+      ${levelOptions.map(l=>`<option value="${esc(l)}" ${l===spLevel?'selected':''}>${esc(levelLabel({level:l,form:''}).trim())}</option>`).join('')}
+    </select>` : ''}
+  </div>
   <div id="printArea">
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(term)}, ${esc(String(year))}</h3>
@@ -8038,20 +8096,7 @@ function classAnalysisView(){
     ${studentRowsHtml || `<tr><td colspan="7">No students in this class yet.</td></tr>`}
     </table>
   </div>
-  <div class="card" style="overflow:auto;">
-    <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
-    <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${gradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${subjectRowsHtml || `<tr><td colspan="${5+gradeCols.length}">No subjects on record for this class yet.</td></tr>`}
-    </table>
-  </div>
-  <div class="card" style="overflow:auto;">
-    <h3>Subject Performance — LEVEL-WISE — ${esc(levelLabel({level:cls.level,form:''}).trim())}</h3>
-    <p class="small">How each subject was done across all ${esc(levelLabel({level:cls.level,form:''}).trim())} classes combined this term (${esc(levelClassNames)}).</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${gradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${levelRowsHtml || `<tr><td colspan="${5+gradeCols.length}">No subjects on record for this level yet.</td></tr>`}
-    </table>
-  </div>
+  ${spResultHtml ? `<div class="card" style="overflow:auto;">${spResultHtml}</div>` : ''}
   </div>`;
 }
 function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
@@ -10986,6 +11031,11 @@ Continue?`);
       await downloadMarksheetPDF(assignId, paper, kind, labelEnc?decodeURIComponent(labelEnc):'', Number(maxStr)||100);
       break;
     }
+    case 'msMode': {
+      VIEW.params = {...VIEW.params, msMode: arg==='empty'?'empty':'filled'};
+      render();
+      break;
+    }
     case 'openMarksheet': {
       const [classId, subjEnc] = (arg||'').split(':');
       VIEW = {name:'integratedmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):'', imsPage:1}};
@@ -11054,6 +11104,11 @@ Continue?`);
       // mean many columns).
       document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
       printLandscape();
+      render();
+      break;
+    }
+    case 'spMode': {
+      VIEW.params = {...VIEW.params, spMode: arg==='level'?'level':'class'};
       render();
       break;
     }
