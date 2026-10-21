@@ -219,7 +219,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
   text-align:center;font-family:inherit;transition:box-shadow .12s ease,border-color .12s ease,transform .12s ease;}
 .tile:hover, .tile:active{border-color:#2f8a4c;background:#d9f2df;box-shadow:0 3px 12px rgba(10,42,74,.14);transform:translateY(-1px);}
 .tile-icon{font-size:26px;line-height:1;}
-.tile-label{font-size:10px;font-weight:800;color:#0f3d1f;line-height:1.25;text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere;}
+.tile-label{font-size:10px;font-weight:900 !important;-webkit-text-stroke:0.35px currentColor;color:#0f3d1f;line-height:1.25;text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere;}
 /* The Report Cards tile is the feature people reach for most, so it is made twice as long as the
    others: it spans two tile-widths on the same row (same height as every other tile). The grid
    packs densely, so a wide tile that doesn't fit at the end of a row never leaves a gap behind. */
@@ -979,6 +979,36 @@ const O_OPTIONAL_BASE = ['CHRISTIAN REL. EDUC','ISLAMIC REL. EDUC','LITERATURE',
 function oAllSubjectPool(){
   return [...new Set([...O_LOWER_COMPULSORY, ...O_UPPER_COMPULSORY, ...O_OPTIONAL_BASE,
     ...((DB.info && DB.info.oExtraSubjects) || [])])].sort();
+}
+
+// Short subject codes used ONLY as column headings on the General Mark Sheets (to save space).
+// Full names stay everywhere else. Subjects not in this table get a code in the same style:
+// the first 3 letters of a one-word name, or the initials (up to 3) of a multi-word name.
+const MS_ABBR_LIST = {
+  'MATHEMATICS':'MTC','ENGLISH LANGUAGE':'ENG','ENGLISH':'ENG','BIOLOGY':'BIO','CHEMISTRY':'CHE','PHYSICS':'PHY',
+  'AGRICULTURE':'AGR','COMPUTER STUDIES':'CST','INFORMATION AND COMMUNICATION TECHNOLOGY':'ICT','ICT':'ICT',
+  'ICT (COMPUTER STUDIES)':'ICT','PHYSICAL EDUCATION':'PE','GENERAL SCIENCE':'GSC','NUTRITION AND FOOD TECHNOLOGY':'NFT',
+  'LITERATURE IN ENGLISH':'LIT','LITERATURE':'LIT','LUGANDA':'LUG','KISWAHILI':'KIS','FRENCH':'FRE','GERMAN':'GER',
+  'CHINESE':'CHI','LATIN':'LAT','RUNYANKOLE-RUKIGA':'R/R','LUSOGA':'LUS','LUO':'LUO','ARABIC':'ARA','HISTORY':'HIS',
+  'GEOGRAPHY':'GEO','CHRISTIAN RELIGIOUS EDUCATION':'CRE','CHRISTIAN REL EDUC':'CRE','ISLAMIC RELIGIOUS EDUCATION':'IRE',
+  'ISLAMIC REL EDUC':'IRE','ENTREPRENEURSHIP EDUCATION':'ENT','ENTREPRENEURSHIP':'ENT','ECONOMICS':'ECO',
+  'POLITICAL EDUCATION':'POL','SOCIAL STUDIES':'SST','GENERAL PAPER':'GP','DIVINITY':'DIV','COMMERCE':'COM',
+  'ACCOUNTING':'ACC','BUSINESS STUDIES':'BUS','OFFICE PRACTICE':'OP','FINANCIAL LITERACY':'FL','ART AND DESIGN':'ART',
+  'FINE ART':'FAT','MUSIC':'MUS','HOME ECONOMICS':'HEC','CLOTHING AND TEXTILES':'CTX','WOODWORK':'WDW','METALWORK':'MTW',
+  'TECHNICAL DRAWING':'TD','BUILDING CONSTRUCTION':'BC','ELECTRICAL INSTALLATION':'ELI','TAILORING':'TAI',
+  'COMPUTER APPLICATIONS':'CPA','FOOD AND NUTRITION':'FAN','SUBSIDIARY MATHEMATICS':'SMT','SUBSIDIARY COMPUTER STUDIES':'SCS',
+  'SUBSIDIARY COMPUTER':'SCS'
+};
+function msAbbr(name){
+  const raw = String(name||'').trim();
+  if(!raw) return '';
+  const norm = raw.toUpperCase().replace(/&/g,' AND ').replace(/\./g,'').replace(/\s+/g,' ').trim();
+  if(MS_ABBR_LIST[norm]) return MS_ABBR_LIST[norm];
+  const noLang = norm.replace(/\s+LANGUAGE$/,'');
+  if(MS_ABBR_LIST[noLang]) return MS_ABBR_LIST[noLang];
+  const words = norm.replace(/[()]/g,' ').split(/[\s\-\/]+/).filter(w=>w && !['AND','OF','IN','THE'].includes(w));
+  if(words.length>=2) return words.slice(0,3).map(w=>w[0]).join('');
+  return (words[0]||norm).slice(0,3);
 }
 
 const ABBR = {'BIOLOGY':'BIO','CHEMISTRY':'CHEM','PHYSICS':'PHY','MATHEMATICS':'MATH','HISTORY':'HIST','GEOGRAPHY':'GEO',
@@ -3505,6 +3535,12 @@ function reportResultFor(rows, breakdowns, cls, showEOT, st, term, year){
   const gradeOf = (r)=> String(gradeDisplay(r.subject, r.grade, cls.level, r.avg)||'').toUpperCase();
   if(scored.every(r=>gradeOf(r)==='E')) return 2;
   return 1;
+}
+// RESULT (1 or 2) exactly as printed on the learner's report card; '—' where the card shows none.
+function resultTextFor(st, cls, term, year){
+  const d = computeSubjectRows(st, cls, term, year);
+  const r = reportResultFor(d.rows, null, cls, null, st, term, year);
+  return (r===null || r==='' || r===undefined) ? '—' : String(r);
 }
 function computeSubjectRows(st, cls, term, year){
   const subs = studentSubjects(st, cls);
@@ -7451,11 +7487,6 @@ function reportsListView(){
     </select>
     ${isAdmin ? `<div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>
-      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open GENERAL MARKSHEETS AND RANK LISTS</b></button>
-      <button class="btn-outline" data-action="nav:classanalysis"><b>Open RESULT ANALYSIS</b></button>
-    </div>` : (isTeacher && classTeacherClassIds().length) ? `<div class="flex" style="margin-top:12px;">
-      <button class="btn-outline" data-action="nav:mastermarksheet"><b>Open GENERAL MARKSHEETS AND RANK LISTS</b></button>
-      <button class="btn-outline" data-action="nav:classanalysis"><b>Open RESULT ANALYSIS</b></button>
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
   <div class="card">
@@ -7703,7 +7734,7 @@ function blankMarksheetView(classId, subject){
   if(!assessCols.length) assessCols.push('Score');
   const blankHead = assessCols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('');
   const blankCells = assessCols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
-  const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${blankCells}<td style="min-width:90px;">&nbsp;</td></tr>`).join('');
+  const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${blankCells}<td style="min-width:90px;">&nbsp;</td></tr>`).join('');
   return `
   <h2>Blank Mark Sheet</h2>
   <div class="card">
@@ -7720,7 +7751,7 @@ function blankMarksheetView(classId, subject){
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — ${esc(subject)} — Blank Mark Sheet</h3>
     <p class="small">${esc(term||'')}, ${esc(String(year||''))}</p>
-    <table class="data-table"><tr><th>No.</th><th>Student</th><th>Adm No</th>${blankHead}<th>Remarks</th></tr>
+    <table class="data-table"><tr><th>No.</th><th>Adm No</th><th>Student</th>${blankHead}<th>Remarks</th></tr>
     ${rowsHtml || `<tr><td colspan="${4+assessCols.length}">No students are enrolled for this subject yet.</td></tr>`}
     </table>
   </div>
@@ -7819,7 +7850,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const colHeaders = cols.map(c=>`<th>P${esc(String(c.paper))} ${c.kind==='EOT'?'EOT':('AOI'+(c.label?': '+esc(c.label):''))}</th>`).join('');
   const canBulk = !forExport && (CUR.role==='admin'||CUR.role==='teacher') && bulkDeletableScores(classId, subject).length>0;
-  const rowsHtml = students.map(s=>{
+  const rowsHtml = students.map((s,ri)=>{
     const bd = subjectBreakdown(s.id, subject, term, year);
     const grade = bd.final===null ? '—' : gradeFor(subject, bd.final, cls.level);
     const cells = cols.map(c=>{
@@ -7827,7 +7858,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
       if(!row) return '<td>—</td>';
       return `<td>${esc(row.marks)}/${esc(row.max)}</td>`;
     }).join('');
-    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td style="text-align:left;">${esc(s.name)}</td><td>${esc(s.admNo)}</td>${cells}<td>${bd.aoiAvg===null?'—':bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?'—':bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?'—':bd.final.toFixed(1)}</td><td>${grade}</td></tr>`;
+    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?'—':bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?'—':bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?'—':bd.final.toFixed(1)}</td><td>${grade}</td></tr>`;
   }).join('');
   return `
   <h2>Integrated Mark Sheet</h2>
@@ -7846,8 +7877,8 @@ function integratedMarksheetView(classId, subject, page, forExport){
   </div>
   <div id="printArea">
   <div class="card" style="overflow:auto;">
-    ${cols.length || allStudents.length ? `<table class="data-table"><tr>${canBulk?'<th><input type="checkbox" id="msSelectAllCb" onchange="toggleAllMsCheckboxes(this)" title="Select all students on this page" style="width:auto;"></th>':''}<th>Student</th><th>Adm No</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
-    ${rowsHtml || `<tr><td colspan="${5+cols.length+(canBulk?1:0)}">No students on record for this subject yet.</td></tr>`}
+    ${cols.length || allStudents.length ? `<table class="data-table"><tr>${canBulk?'<th><input type="checkbox" id="msSelectAllCb" onchange="toggleAllMsCheckboxes(this)" title="Select all students on this page" style="width:auto;"></th>':''}<th>No.</th><th>Adm No</th><th>Student</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
+    ${rowsHtml || `<tr><td colspan="${6+cols.length+(canBulk?1:0)}">No students on record for this subject yet.</td></tr>`}
     </table>` : `<p class="small">No students or scores are on record yet for ${esc(subject)} in ${esc(cls.name)} this term.</p>`}
   </div>
   </div>
@@ -8009,7 +8040,7 @@ function classStudentStats(cls, term, year){
     const maxP = isA ? maxPointsFor(s, cls) : 100;
     const metric = isA ? totalPoints : avgPct;
     const overallGrade = overallGradeFor(cls, avgPct);
-    return {student:s, metric, maxP, position, size, overallGrade, sat: rows.filter(r=>r.avg!=null).length, total: rows.length};
+    return {student:s, metric, maxP, position, size, overallGrade, result: resultTextFor(s, cls, term, year), sat: rows.filter(r=>r.avg!=null).length, total: rows.length};
   }).sort((a,b)=>a.position-b.position);
 }
 function classAnalysisView(){
@@ -8031,8 +8062,21 @@ function classAnalysisView(){
     const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
     return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
   };
-  const classRows = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
-    .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(r=>statRow(r, classGradeCols)).join('');
+  const totalsRow = (list, cols)=>{
+    const t = {subject:'TOTAL', enrolled:0, sat:0, sum:0, max:null, min:null, grades:{}};
+    list.forEach(r=>{
+      t.enrolled += r.enrolled; t.sat += r.sat;
+      if(r.avg!=null) t.sum += r.avg * r.sat;
+      if(r.max!==null && r.max!==undefined && (t.max===null || r.max>t.max)) t.max = r.max;
+      if(r.min!==null && r.min!==undefined && (t.min===null || r.min<t.min)) t.min = r.min;
+      cols.forEach(g=>{ t.grades[g] = (t.grades[g]||0) + (r.grades[g]||0); });
+    });
+    t.avg = t.sat ? t.sum/t.sat : null;
+    return statRow(t, cols).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
+  };
+  const classRowData = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
+    .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
+  const classRows = classRowData.map(r=>statRow(r, classGradeCols)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols) : '');
   const classWiseHtml = `
     <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
@@ -8042,8 +8086,9 @@ function classAnalysisView(){
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
   const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
-  const levelRows = levelSubjectsFor(spLevel).map(subj=>({subject:subj, ...subjectLevelStats(spLevel, subj, term, year)}))
-    .sort((a,b)=> (b.avg??-1) - (a.avg??-1)).map(r=>statRow(r, classGradeCols)).join('');
+  const levelRowData = levelSubjectsFor(spLevel).map(subj=>({subject:subj, ...subjectLevelStats(spLevel, subj, term, year)}))
+    .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
+  const levelRows = levelRowData.map(r=>statRow(r, classGradeCols)).join('') + (levelRowData.length ? totalsRow(levelRowData, classGradeCols) : '');
   const levelWiseHtml = `
     <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)}</h3>
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
@@ -8054,7 +8099,7 @@ function classAnalysisView(){
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
     const gradeTxt = isA ? '—' : (r.overallGrade || '—');
-    return `<tr><td>${r.position}</td><td style="text-align:left;">${esc(r.student.name)}</td><td>${esc(r.student.admNo)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td></tr>`;
+    return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td><td style="font-weight:800;">${r.result}</td></tr>`;
   }).join('');
 
   return `
@@ -8078,8 +8123,8 @@ function classAnalysisView(){
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
-    <table class="data-table"><tr><th>Pos</th><th>Name</th><th>Adm No</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th></tr>
-    ${studentRowsHtml || `<tr><td colspan="7">No students in this class yet.</td></tr>`}
+    <table class="data-table"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
+    ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
     </table>
   </div>
   <div class="card" style="overflow:auto;">${classWiseHtml}</div>
@@ -8124,7 +8169,7 @@ function projectAssessmentView(){
   const takes = (s,su)=> studentSubjects(s,cls).includes(su);
   const students = chosen.length ? sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===cls.id && chosen.some(su=>takes(s,su) || projectScoreRecord(s.id, cls.id, su, term, year, d)))) : [];
 
-  const rowsHtml = students.map(s=>{
+  const rowsHtml = students.map((s,ri)=>{
     const cells = chosen.map((su,i)=>{
       const rec = projectScoreRecord(s.id, cls.id, su, term, year, d);
       const has = rec && rec.score!=null;
@@ -8134,7 +8179,7 @@ function projectAssessmentView(){
       if(canEnterScores) return `<td style="white-space:nowrap;"><input name="score|${esc(s.id)}|${i}" type="number" min="0" max="100" step="0.1" value="${has?rec.score:''}" style="width:80px;">${gradeTxt}</td>`;
       return `<td>${has?esc(String(rec.score)):'—'}${gradeTxt}</td>`;
     }).join('');
-    return `<tr><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}</tr>`;
+    return `<tr><td>${ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}</tr>`;
   }).join('');
 
   const editingGrading = isAdmin && VIEW.params.editProjectGrading;
@@ -8182,8 +8227,8 @@ function projectAssessmentView(){
     ${canEnterScores && students.length ? `<p class="small">Type or change any scores below, then press <b>Save All Scores</b> once. Clear a box to remove that score. <b>Delete All Scores</b> removes every score for the ticked subjects this term.</p>` : ''}
     ${canEnterScores && students.length ? `<form data-form="saveAllProjectScores" data-classid="${cls.id}" data-subjects="${encodeURIComponent(JSON.stringify(chosen))}">` : ''}
     <table class="data-table">
-      <tr><th>Adm No.</th><th>Student</th>${chosen.map(su=>`<th>${esc(su)} (/100)</th>`).join('')}</tr>
-      ${rowsHtml || `<tr><td colspan="${2+chosen.length}">No students take these subjects in this class.</td></tr>`}
+      <tr><th>No.</th><th>Adm No.</th><th>Student</th>${chosen.map(su=>`<th>${esc(su)} (/100)</th>`).join('')}</tr>
+      ${rowsHtml || `<tr><td colspan="${3+chosen.length}">No students take these subjects in this class.</td></tr>`}
     </table>
     ${canEnterScores && students.length ? `<div class="flex" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
       <button class="btn" name="op" value="saveAll">💾 Save All Scores</button>
@@ -8253,6 +8298,7 @@ function masterMarkSheetView(forExport){
 
   const rowsData = students.map(s=>{
     const {totalPoints, avgPct} = computeSubjectRows(s, cls, term, year);
+    const resultTxt = resultTextFor(s, cls, term, year);
     const {position, size} = classPosition(s, cls, term, year);
     const maxP = isA ? maxPointsFor(s, cls) : 100;
     const overallGrade = isP ? null : gradeFor('', avgPct, cls.level);
@@ -8273,7 +8319,7 @@ function masterMarkSheetView(forExport){
       }
       return { paperCells, avg: bd.final===null?'—':bd.final.toFixed(1), grade };
     });
-    return { student:s, perSubject, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
+    return { student:s, perSubject, resultTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
   });
 
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
@@ -8284,32 +8330,32 @@ function masterMarkSheetView(forExport){
     // Raw marks only — no grading. Overall column is the plain Average % (Points and
     // Aggregate are themselves grade-derived, so they belong on the Grades sheet, not here).
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>` +
-      subjectMeta.map(sm=>sm.colspan>1?`<th colspan="${sm.colspan}">${esc(sm.subject)}</th>`:`<th rowspan="2">${esc(sm.subject)}</th>`).join('') +
-      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">Position</th>`;
+      subjectMeta.map(sm=>sm.colspan>1?`<th colspan="${sm.colspan}" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`:`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
+      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">RESULT</th><th rowspan="2">Position</th>`;
     headerRow2 = subjectMeta.map(sm=> sm.multi ? sm.papers.map(p=>`<th>P${esc(String(p))}</th>`).join('') + `<th>Avg</th>` : '').join('');
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>{
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
         return `${paperTds}<td>${ps.avg}</td>`;
       }).join('');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td><td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td><td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 6 + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
+    colCount = 7 + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
     // Letter/code grades only — one Grade column per subject, plus the official overall
     // Points/Average, Grade/Aggregate(+Division), and Position, exactly as they'd appear
     // on a results/release sheet.
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>` +
-      subjectMeta.map(sm=>`<th rowspan="2">${esc(sm.subject)}</th>`).join('') +
-      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th><th rowspan="2">${isP?'Aggregate':'Grade'}</th>${isP?'<th rowspan="2">Division</th>':''}<th rowspan="2">Position</th>`;
+      subjectMeta.map(sm=>`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
+      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th><th rowspan="2">${isP?'Aggregate':'Grade'}</th>${isP?'<th rowspan="2">Division</th>':''}<th rowspan="2">RESULT</th><th rowspan="2">Position</th>`;
     headerRow2 = '';
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
       const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : `${r.avgPct.toFixed(0)}%`;
       const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 6 + subjectMeta.length + (isP?1:0);
+    colCount = 7 + subjectMeta.length + (isP?1:0);
   }
 
   return `
