@@ -7862,6 +7862,31 @@ function integratedMarksheetView(classId, subject, page, forExport){
     }).join('');
     return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?gapTxt('AOI'):bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?gapTxt('EOT'):bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?gapTxt():bd.final.toFixed(1)}</td><td>${bd.final===null?gapTxt():grade}</td></tr>`;
   }).join('');
+  // ---- Summary at the foot of the sheet (counted over EVERY learner on the sheet, not just the page
+  // showing on screen): how many learners earned each grade, plus the highest, lowest and average
+  // Final score (/100) for this subject. Built as table rows so print and PDF carry it automatically.
+  const msColspan = 7 + cols.length + (canBulk?1:0);
+  const sumFinals = [], sumGrades = {};
+  let sumNoScore = 0;
+  allStudents.forEach(st=>{
+    const f = subjectBreakdown(st.id, subject, term, year).final;
+    if(f===null || f===undefined){ sumNoScore++; return; }
+    sumFinals.push(f);
+    const g = gradeFor(subject, f, cls.level);
+    sumGrades[g] = (sumGrades[g]||0) + 1;
+  });
+  const sumGradeKeys = [...new Set([...gradeColsFor(cls.level), ...Object.keys(sumGrades)])];
+  const sumStyle = 'font-weight:bold;background:#eef1f6;text-align:left;';
+  const sumHi = sumFinals.length ? Math.max(...sumFinals) : null;
+  const sumLo = sumFinals.length ? Math.min(...sumFinals) : null;
+  const sumAvg = sumFinals.length ? sumFinals.reduce((a,b)=>a+b,0)/sumFinals.length : null;
+  const fmt1 = (v)=> v===null ? '—' : v.toFixed(1);
+  // On screen the sheet is split into pages of 25, so the summary appears only after the LAST learner
+  // (print and PDF always contain every learner, so they always end with it).
+  const summaryRows = (allStudents.length && pg.page>=pg.totalPages) ? `
+    <tr><td colspan="${msColspan}" style="${sumStyle}">GRADE SUMMARY — ${sumGradeKeys.map(g=>`${esc(g)}: ${sumGrades[g]||0}`).join(' &nbsp;|&nbsp; ')}${sumNoScore?` &nbsp;|&nbsp; No score yet: ${sumNoScore}`:''} &nbsp;|&nbsp; Total students: ${allStudents.length}</td></tr>
+    <tr><td colspan="${msColspan}" style="${sumStyle}">HIGHEST SCORE: ${fmt1(sumHi)} &nbsp;|&nbsp; LOWEST SCORE: ${fmt1(sumLo)} &nbsp;|&nbsp; AVERAGE SCORE: ${fmt1(sumAvg)}</td></tr>` : '';
+
   return `
   <h2>Integrated Mark Sheet</h2>
   <div class="card">
@@ -7880,7 +7905,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
   <div id="printArea">
   <div class="card" style="overflow:auto;">
     ${cols.length || allStudents.length ? `<table class="data-table"><tr>${canBulk?'<th><input type="checkbox" id="msSelectAllCb" onchange="toggleAllMsCheckboxes(this)" title="Select all students on this page" style="width:auto;"></th>':''}<th>No.</th><th>Adm No</th><th>Student</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
-    ${rowsHtml || `<tr><td colspan="${6+cols.length+(canBulk?1:0)}">No students on record for this subject yet.</td></tr>`}
+    ${rowsHtml ? rowsHtml + summaryRows : `<tr><td colspan="${7+cols.length+(canBulk?1:0)}">No students on record for this subject yet.</td></tr>`}
     </table>` : `<p class="small">No students or scores are on record yet for ${esc(subject)} in ${esc(cls.name)} this term.</p>`}
   </div>
   </div>
