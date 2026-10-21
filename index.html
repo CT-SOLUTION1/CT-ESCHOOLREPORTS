@@ -8043,6 +8043,20 @@ function classStudentStats(cls, term, year){
     return {student:s, metric, maxP, position, size, overallGrade, result: resultTextFor(s, cls, term, year), sat: rows.filter(r=>r.avg!=null).length, total: rows.length};
   }).sort((a,b)=>a.position-b.position);
 }
+// Counts of learners per RESULT (1 / 2) as shown on the report cards. RESULT only exists on
+// O-Level cards, so other levels get a note instead of numbers.
+function resultSummaryRow(studentClassPairs, colspan, level){
+  const bg = 'font-weight:bold;background:#eef1f6;text-align:left;';
+  if(level!=='O') return `<tr><td colspan="${colspan}" style="${bg}">RESULT SUMMARY — RESULT (1 or 2) is shown on O-Level report cards only, so there is nothing to count for this level.</td></tr>`;
+  let r1=0, r2=0, none=0;
+  studentClassPairs.forEach(([st,c])=>{
+    const r = resultTextFor(st, c, termForSummary, yearForSummary);
+    if(r==='1') r1++; else if(r==='2') r2++; else none++;
+  });
+  const total = r1+r2+none;
+  return `<tr><td colspan="${colspan}" style="${bg}">RESULT SUMMARY — Result 1: ${r1} &nbsp;|&nbsp; Result 2: ${r2}${none?` &nbsp;|&nbsp; No result yet: ${none}`:''} &nbsp;|&nbsp; Total students: ${total}</td></tr>`;
+}
+let termForSummary = '', yearForSummary = '';
 function classAnalysisView(){
   const isAdmin = CUR.role==='admin';
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
@@ -8055,6 +8069,10 @@ function classAnalysisView(){
   const isA = cls.level==='A';
 
   const studentStats = classStudentStats(cls, term, year);
+  termForSummary = term; yearForSummary = year;
+  const classPairs = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).map(s=>[s,cls]);
+  const levelPairs = [];
+  levelClasses(cls.level).forEach(c=>DB.students.filter(s=>s.status!=='left' && s.classId===c.id).forEach(s=>levelPairs.push([s,c])));
   // ---- Subject Performance: BOTH views are shown automatically for the selected class —
   // class-wise (this class) and level-wise (every class of this class's level combined).
   const classGradeCols = gradeColsFor(cls.level);
@@ -8082,6 +8100,7 @@ function classAnalysisView(){
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
     <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
     ${classRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    ${classPairs.length ? resultSummaryRow(classPairs, 5+classGradeCols.length, cls.level) : ''}
     </table>`;
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
@@ -8094,6 +8113,7 @@ function classAnalysisView(){
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
     <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
     ${levelRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
+    ${levelPairs.length ? resultSummaryRow(levelPairs, 5+classGradeCols.length, cls.level) : ''}
     </table>`;
 
   const studentRowsHtml = studentStats.map(r=>{
@@ -8125,6 +8145,7 @@ function classAnalysisView(){
     <p class="small">How each student did overall this term, ranked by class position.</p>
     <table class="data-table"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
     ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
+    ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
   </div>
   <div class="card" style="overflow:auto;">${classWiseHtml}</div>
@@ -8299,6 +8320,7 @@ function masterMarkSheetView(forExport){
   const rowsData = students.map(s=>{
     const {totalPoints, avgPct} = computeSubjectRows(s, cls, term, year);
     const resultTxt = resultTextFor(s, cls, term, year);
+    const overallGradeTxt = overallGradeFor(cls, avgPct) || '—';
     const {position, size} = classPosition(s, cls, term, year);
     const maxP = isA ? maxPointsFor(s, cls) : 100;
     const overallGrade = isP ? null : gradeFor('', avgPct, cls.level);
@@ -8319,7 +8341,7 @@ function masterMarkSheetView(forExport){
       }
       return { paperCells, avg: bd.final===null?'—':bd.final.toFixed(1), grade };
     });
-    return { student:s, perSubject, resultTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
+    return { student:s, perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
   });
 
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
@@ -8331,16 +8353,16 @@ function masterMarkSheetView(forExport){
     // Aggregate are themselves grade-derived, so they belong on the Grades sheet, not here).
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>` +
       subjectMeta.map(sm=>sm.colspan>1?`<th colspan="${sm.colspan}" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`:`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
-      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">RESULT</th><th rowspan="2">Position</th>`;
+      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">GRADE</th><th rowspan="2">RESULT</th><th rowspan="2">Position</th>`;
     headerRow2 = subjectMeta.map(sm=> sm.multi ? sm.papers.map(p=>`<th>P${esc(String(p))}</th>`).join('') + `<th>Avg</th>` : '').join('');
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>{
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
         return `${paperTds}<td>${ps.avg}</td>`;
       }).join('');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td><td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td>${gradeTd(r.overallGradeTxt)}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 7 + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
+    colCount = 8 + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
     // Letter/code grades only — one Grade column per subject, plus the official overall
     // Points/Average, Grade/Aggregate(+Division), and Position, exactly as they'd appear
