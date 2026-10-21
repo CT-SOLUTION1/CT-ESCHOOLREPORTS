@@ -7853,12 +7853,14 @@ function integratedMarksheetView(classId, subject, page, forExport){
   const rowsHtml = students.map((s,ri)=>{
     const bd = subjectBreakdown(s.id, subject, term, year);
     const grade = bd.final===null ? '—' : gradeFor(subject, bd.final, cls.level);
+    // 'x' = this learner has nothing yet while classmates already have scores for it; plain '—' otherwise.
+    const gapTxt = (kind)=> peersHaveScore(s, subject, term, year, kind) ? 'x' : '—';
     const cells = cols.map(c=>{
       const row = scoreCellFor(s.id, subject, c, term, year);
-      if(!row) return '<td>—</td>';
+      if(!row) return `<td>${gapTxt(c.kind==='EOT'?'EOT':'AOI')}</td>`;
       return `<td>${esc(row.marks)}/${esc(row.max)}</td>`;
     }).join('');
-    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?'—':bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?'—':bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?'—':bd.final.toFixed(1)}</td><td>${grade}</td></tr>`;
+    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?gapTxt('AOI'):bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?gapTxt('EOT'):bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?gapTxt():bd.final.toFixed(1)}</td><td>${bd.final===null?gapTxt():grade}</td></tr>`;
   }).join('');
   return `
   <h2>Integrated Mark Sheet</h2>
@@ -8350,23 +8352,25 @@ function masterMarkSheetView(forExport){
     const pDivision = isP ? primaryDivisionFor(pAggregate) : null;
     const perSubject = subjectMeta.map(sm=>{
       const bd = subjectBreakdown(s.id, sm.subject, term, year);
-      const grade = bd.final===null ? '—' : gradeFor(sm.subject, bd.final, cls.level);
+      // 'x' only for a subject this learner is ENROLLED in, has no score for, while classmates already do.
+      const gap = (bd.final===null && studentSubjects(s, cls).includes(sm.subject) && peersHaveScore(s, sm.subject, term, year)) ? 'x' : '—';
+      const grade = bd.final===null ? gap : gradeFor(sm.subject, bd.final, cls.level);
       let paperCells = [];
       if(sm.multi){
         const pb = subjectPaperBreakdown(s.id, sm.subject, cls, term, year);
         paperCells = sm.papers.map(p=>{
           const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
-          if(!row || !row.hasAny) return '—';
+          if(!row || !row.hasAny) return gap;
           const val = combinePaper(row.aoiAvg, row.eotAvg, cfg);
-          return val===null ? '—' : val.toFixed(1);
+          return val===null ? gap : val.toFixed(1);
         });
       }
-      return { paperCells, avg: bd.final===null?'—':bd.final.toFixed(1), grade };
+      return { paperCells, avg: bd.final===null?gap:bd.final.toFixed(1), grade };
     });
     return { student:s, clsName: cls.name + (cls.stream?(' '+cls.stream):''), perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
   });
 
-  const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
+  const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'&&g!=='x'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
 
   let headerRow1, headerRow2, bodyRows, colCount;
 
@@ -9247,7 +9251,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   // '—' only when this student is missing a score that others in the class already have;
   // otherwise a blank cell (nothing entered yet for anyone).
-  function dashFor(subject, kind){ return peersHaveScore(s, subject, term, year, kind) ? '—' : '&nbsp;'; }
+  function dashFor(subject, kind){ return peersHaveScore(s, subject, term, year, kind) ? 'x' : '&nbsp;'; }
   // Builds the Course Work cell(s) for one physical row (either the whole subject, when
   // it has a single paper, or one paper's sub-row): the raw mark for each admin-defined
   // test plus, in the last sub-column, the scaled average actually used for grading.
@@ -9311,7 +9315,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // Primary has no concept of papers (single, unlabeled paper per subject), so the
       // Papers column/cell is omitted entirely on Primary report cards — see isP checks
       // around this cell and in the header row.
-      const papersTxt = useSubrows ? esc(String(p.paper)) : (singleLabel ? esc(singleLabel) : dashFor(r.subject));
+      const papersTxt = useSubrows ? esc(String(p.paper)) : (singleLabel ? esc(singleLabel) : (peersHaveScore(s, r.subject, term, year) ? '—' : '&nbsp;'));
       const papersTd = isP ? '' : `<td>${papersTxt}</td>`;
       const cwHtml = cwCellsFor(paperForLookup, p.aoiAvg);
       let eotHtml = '';
@@ -9725,7 +9729,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   // record (paperRows), matching exactly how reportCardHTML decides rowspans.
   const subjectEntries = rows.map((r,i)=>{
     const bd = breakdowns[i];
-    const dashFor = (kind)=> peersHaveScore(s, r.subject, term, year, kind) ? '—' : '';
+    const dashFor = (kind)=> peersHaveScore(s, r.subject, term, year, kind) ? 'x' : '';
     const descriptor = r.avg==null ? dashFor() : (isP ? primaryFinalRemark(r.avg) : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
@@ -9740,7 +9744,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       const paperForLookup = useSubrows ? p.paper : singleLookup;
       const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
       const initTxt = (!teacherInit || teacherInit==='--') ? '' : teacherInit;
-      const papersTxt = useSubrows ? String(p.paper) : (singleLabel ? singleLabel : dashFor());
+      const papersTxt = useSubrows ? String(p.paper) : (singleLabel ? singleLabel : (peersHaveScore(s, r.subject, term, year) ? '—' : ''));
       let cwTestVals = [];
       let cwAvgTxt = '';
       if(showCW){
