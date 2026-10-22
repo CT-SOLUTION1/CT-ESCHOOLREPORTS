@@ -880,8 +880,8 @@ body>*{position:relative;z-index:1;}
    several layout pixels, so the card and text look the same real size as on a computer.
    The 36u top/bottom and 16u side padding keep the card clear of the Founder-panel dot
    (fixed 6px from the bottom-left corner, 18px wide), and the dot keeps its own z-index. */
-:root{--u:calc(var(--ui-k,1) * 1px);}
-html .auth-wrap:has(.platform-login-box){padding:calc(36*var(--u)) calc(16*var(--u));}
+:root{--u:calc(var(--ui-k,1) * var(--fit,1) * 1px);}
+html .auth-wrap:has(.platform-login-box){padding:max(30px,calc(36*var(--u))) calc(16*var(--u));}
 html .auth-wrap .platform-login-box{
   width:min(100%,calc(580*var(--u)));max-width:calc(580*var(--u));
   padding:calc(34*var(--u)) calc(24*var(--u));border-radius:calc(16*var(--u));
@@ -946,6 +946,47 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
   #printArea table.data-table th:last-child, #printArea table.data-table td:last-child{border-right:2.2pt solid #0A2A4A !important;}
 }
 </style>
+<script id="cte-login-fit">
+/* Login screen: shrink the card's text/spacing (--fit, 0.3–1) until the whole card fits the
+   visible screen height, so nothing is pushed below the fold. Re-runs on every re-render
+   (role picked, error shown), rotation and resize. Only ever shrinks, never enlarges. */
+(function(){
+  var raf = 0;
+  function fit(){
+    try{
+      var root = document.documentElement;
+      var box = document.querySelector('.platform-login-box');
+      if(!box){ if(root.style.getPropertyValue('--fit')) root.style.removeProperty('--fit'); return; }
+      var wrap = box.closest('.auth-wrap') || box.parentElement;
+      var avail = window.innerHeight || root.clientHeight || 0;
+      if(!avail) return;
+      var need = function(){
+        var cs = getComputedStyle(wrap);
+        return box.getBoundingClientRect().height + (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+      };
+      var f = 1;
+      root.style.setProperty('--fit', '1');
+      for(var i=0;i<8;i++){
+        var n = need();
+        if(n <= avail - 1) break;
+        if(f <= 0.3) break;
+        f = Math.max(0.3, f * (avail / n) * 0.97);
+        root.style.setProperty('--fit', f.toFixed(3));
+      }
+    }catch(e){}
+  }
+  function schedule(){ if(raf) return; raf = requestAnimationFrame(function(){ raf = 0; fit(); }); }
+  function start(){
+    try{ new MutationObserver(schedule).observe(document.body, {childList:true, subtree:true, characterData:true}); }catch(e){}
+    schedule();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+  window.addEventListener('resize', schedule);
+  window.addEventListener('orientationchange', function(){ setTimeout(schedule, 300); setTimeout(schedule, 900); });
+  window.addEventListener('load', function(){ schedule(); setTimeout(schedule, 500); setTimeout(schedule, 1700); });
+  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(schedule); }catch(e){}
+})();
+</script>
 </head>
 <body>
 <!-- Boot splash: shown the instant the page loads, before any JS/data has run.
