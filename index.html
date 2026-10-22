@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>const BUILD_ID = 'BUILD-2026-10-22-5'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -945,6 +946,21 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
   #printArea table.ims-table th:last-child, #printArea table.ims-table td:last-child,
   #printArea table.data-table th:last-child, #printArea table.data-table td:last-child{border-right:2.2pt solid #0A2A4A !important;}
 }
+</style>
+<style id="cte-teacher-ui">
+/* --uk = one real screen pixel (the app is laid out at 1280px and shrunk on phones, so plain px
+   come out tiny there). Sizes below are moderate: readable, not oversized. */
+:root{--uk:calc(var(--ui-k,1) * 1px);}
+/* Teacher dashboard: strictly three tiles on every line, on every screen */
+.tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
+.tile-grid-3 .tile{padding:calc(20*var(--uk)) calc(8*var(--uk));min-height:calc(104*var(--uk));gap:calc(8*var(--uk));border-radius:calc(12*var(--uk));}
+.tile-grid-3 .tile-icon{font-size:calc(32*var(--uk));}
+.tile-grid-3 .tile-label{font-size:calc(12*var(--uk));letter-spacing:.01em;}
+/* Enter Scores: choosing class/subject, paper, assessment, term, maximum mark */
+.score-pick h3{font-size:calc(19*var(--uk));}
+.score-pick label{font-size:calc(14*var(--uk));margin:calc(14*var(--uk)) 0 calc(6*var(--uk));}
+.score-pick select,.score-pick input{font-size:calc(17*var(--uk));padding:calc(12*var(--uk)) calc(12*var(--uk));border-radius:calc(7*var(--uk));}
+.score-pick .btn{font-size:calc(17*var(--uk));padding:calc(13*var(--uk)) calc(22*var(--uk));border-radius:calc(8*var(--uk));}
 </style>
 <script id="cte-login-fit">
 /* Login screen: shrink the card's text/spacing (--fit, 0.3–1) until the whole card fits the
@@ -4788,7 +4804,7 @@ function featureTilesHTML(role, excludeKey){
   if(!items.length) return '';
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
-  return `<div class="tile-grid">${items.map(([k,l,icon])=>`
+  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':''}">${items.map(([k,l,icon])=>`
     <button type="button" class="tile${WIDE_TILE_KEYS.includes(k)?' tile-wide':''}" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${l}</span>
@@ -9430,7 +9446,7 @@ function scoresEntryView(mine){
     const firstCls = firstA ? DB.classes.find(c=>c.id===firstA.classId) : null;
     const firstIsPrimary = !!(firstCls && firstCls.level==='P');
     return `
-  <div class="card" style="margin-top:14px;">
+  <div class="card score-pick" style="margin-top:14px;">
     <form data-form="pickPaper">
       <div>
         <div><label>Subject / class assignment</label>
@@ -9475,7 +9491,7 @@ function scoresEntryView(mine){
   </div>`;
   })();
   const periodPickerCard = isAdmin ? `
-  <div class="card" style="margin-top:14px;${isPastPeriod?'background:#fff8e6;border:1px solid #e8d38a;':''}">
+  <div class="card score-pick" style="margin-top:14px;${isPastPeriod?'background:#fff8e6;border:1px solid #e8d38a;':''}">
     <h3 style="margin-top:0;">Scoring period</h3>
 
     <div class="grid2">
@@ -14861,7 +14877,7 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
      operations like bulk PDF export, so a 100-report bulk download can't be killed
      partway through by an update landing at the wrong moment.
 ------------------------------------------------------------------------------- */
-const BUILD_ID = 'BUILD-2026-10-22-3'; // <-- change this to any new value on every deploy
+// BUILD_ID is declared at the very top of this file (first script in <head>).
 
 // Set true for the duration of any operation an update-reload must never interrupt
 // (bulk PDF export, CSV import, etc). Kept as a simple counter so nested/overlapping
@@ -14894,7 +14910,9 @@ function isEditingNow(){
   return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 }
 function hasUnsavedWork(){
-  return isEditingNow() || FORM_DIRTY || APP_BUSY>0;
+  // Only a save in flight (APP_BUSY) or typed-but-not-yet-submitted form data (FORM_DIRTY)
+  // holds an update back. A merely focused box or a search field no longer does.
+  return FORM_DIRTY || APP_BUSY>0;
 }
 function showUpdateToast(msg){
   let t = document.getElementById('updateToast');
@@ -14985,50 +15003,42 @@ function resumeAfterUpdate(){
     Promise.resolve(p).then(()=>{ if(NAV_TOKEN===tok) render(); }).catch(e=>console.error(e));
   }
 }
-// The full check downloads the whole page (~1.4 MB), so it is rate-limited: it only runs when
-// the cheap HEAD check sees a change (force=true), or as a slow safety net.
-let _lastFullCheck = 0;
+// Update check: re-fetches this page from the network (never from any cache) and reads only
+// the first few KB, where BUILD_ID lives, then cancels the download. So it is
+// cheap enough to run every 15 seconds, needs no ETag/Last-Modified headers from the host,
+// and an open tab notices a deploy within seconds.
+let _checking = false, _lastCheck = 0;
 async function checkForNewBuild(force){
-  if(updatePending) return;
+  if(updatePending || _checking) return;
   const now = Date.now();
-  if(force !== true && now - _lastFullCheck < 8*60*1000) return;
-  _lastFullCheck = now;
+  if(now - _lastCheck < (force===true ? 4000 : 15000)) return;
+  _lastCheck = now; _checking = true;
   try{
-    const res = await fetch(location.pathname + location.search + (location.search?'&':'?') + '_v=' + Date.now(), {cache:'no-store'});
+    const url = location.pathname + location.search + (location.search?'&':'?') + '_v=' + now;
+    const res = await fetch(url, {cache:'no-store', headers:{'Cache-Control':'no-cache'}});
     if(!res.ok) return;
-    const html = await res.text();
-    const m = html.match(/BUILD_ID\s*=\s*['"]([^'"]+)['"]/);
-    if(m && m[1] && m[1] !== BUILD_ID) requestUpdateWhenSafe();
-  }catch(e){ /* offline or a network blip — just try again next interval */ }
+    let head = '';
+    if(res.body && res.body.getReader){
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      while(head.length < 8192){
+        const {done, value} = await reader.read();
+        if(done) break;
+        head += dec.decode(value, {stream:true});
+        if(/BUILD_ID\s*=\s*['"][^'"]+['"]/.test(head)) break;
+      }
+      try{ reader.cancel(); }catch(e){}
+    } else { head = (await res.text()).slice(0, 8192); }
+    const m = head.match(/BUILD_ID\s*=\s*['"]([^'"]+)['"]/);
+    if(m && m[1] !== BUILD_ID) requestUpdateWhenSafe();
+  }catch(e){ /* offline or a network blip — try again next interval */ }
+  finally{ _checking = false; }
 }
-// Cheap check (headers only, a few hundred bytes): if the server's copy of the page changed
-// (ETag / Last-Modified / size), confirm with the full BUILD_ID comparison above.
-let _headSig = null;
-async function quickCheckForNewBuild(){
-  if(updatePending) return;
-  try{
-    const res = await fetch(location.pathname + location.search + (location.search?'&':'?') + '_h=' + Date.now(), {method:'HEAD', cache:'no-store'});
-    if(!res.ok) return;
-    const sig = [res.headers.get('etag'), res.headers.get('last-modified'), res.headers.get('content-length')].join('|');
-    if(sig === '||') return; // host exposes no validators — the slow full check covers it
-    if(_headSig === null){
-      _headSig = sig;
-      // If the server's copy is already newer than the copy this tab loaded, update now
-      // instead of waiting for the slow safety-net check.
-      const lm = Date.parse(res.headers.get('last-modified')||''), mine = Date.parse(document.lastModified||'');
-      if(lm && mine && lm > mine + 2000) checkForNewBuild(true);
-      return;
-    }
-    if(sig !== _headSig){ _headSig = sig; checkForNewBuild(true); }
-  }catch(e){}
-}
+function quickCheckForNewBuild(){ return checkForNewBuild(true); }
 function startUpdateWatcher(){
-  quickCheckForNewBuild();
-  // Background tabs don't poll (saves battery and mobile data); they re-check the moment
-  // they become visible again.
-  setInterval(()=>{ if(!document.hidden) quickCheckForNewBuild(); }, 30*1000);   // headers only
-  setInterval(()=>{ if(!document.hidden) checkForNewBuild(false); }, 10*60*1000); // slow full-check safety net
-  const onActive = ()=>{ if(!document.hidden){ quickCheckForNewBuild(); checkForNewBuild(false); } };
+  checkForNewBuild(true);
+  // Background tabs don't poll (saves battery and data); they re-check the moment they are visible again.
+  setInterval(()=>{ if(!document.hidden) checkForNewBuild(false); }, 15*1000);
+  const onActive = ()=>{ if(!document.hidden) checkForNewBuild(true); };
   document.addEventListener('visibilitychange', onActive);
   window.addEventListener('focus', onActive);
   window.addEventListener('online', onActive);
