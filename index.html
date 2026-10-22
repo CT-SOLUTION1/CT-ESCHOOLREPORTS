@@ -277,7 +277,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.035;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
-.rc-topline .fees-code-tag{font-weight:900;color:var(--navy);}
+.rc-topline .fees-code-tag{font-weight:900;color:var(--navy);position:relative;top:5px;} /* nudged down off the card border; relative offset so the logo/title below never moves */
 .rc-title-block{display:block;text-align:center;border-bottom:2px solid var(--navy);padding:10px 0;margin-bottom:14px;position:relative;min-height:74px;}
 /* The school logo is deliberately OUTSIDE the header's layout flow. This keeps the
    school name genuinely centered across the full report-card width, while the logo
@@ -1068,12 +1068,95 @@ const DEFAULT_PRIMARY_REMARKS = {
   'Division 4': {class:'Fair performance. More effort and attention is needed.', head:'This result calls for renewed effort next term.'},
   'Division U': {class:'Below average performance. Needs serious improvement and support.', head:'This result is a serious concern and needs urgent action.'}
 };
+// Report-card rule: when the card has NO End of Term column (e.g. a mid-term report) the
+// class/head teacher comments urge the student to improve in the coming END OF TERM exams;
+// when that column IS present they look ahead to NEXT TERM. Several wordings exist for every
+// level of performance; one is picked per learner (see remarkPick) so cards don't all read alike.
+const PRIMARY_REMARK_VARIANTS = {
+  eot: {
+    class: {
+      'Division 1': ['Excellent performance so far. Keep it up and aim even higher in the end of term exams.','Outstanding work! Keep revising and finish strongly in the end of term exams.','Very impressive results. Stay focused and aim to stay at the top in the end of term exams.'],
+      'Division 2': ['Very good performance. Put in a little more effort to do even better in the end of term exams.','A very good effort. Keep working hard and aim higher in the end of term exams.','Good progress. Revise more and aim for Division 1 in the end of term exams.'],
+      'Division 3': ['Good performance, but you need to put in more effort in the end of term exams.','A fair result. Revise more thoroughly to improve in the end of term exams.','You can do better. Practise more and work harder for the end of term exams.'],
+      'Division 4': ['Fair performance. You need to put in much more effort and attention in the end of term exams.','Your results are weak. Concentrate in class and revise daily for the end of term exams.','More commitment is needed. Work harder and ask for help to improve in the end of term exams.'],
+      'Division U': ['Below average performance. You need serious improvement and support before the end of term exams.','Your performance is worrying. Work very hard and seek help before the end of term exams.','Much more effort is needed. Attend all lessons and revise every day for the end of term exams.']
+    },
+    head: {
+      'Division 1': ['An excellent result so far — keep working hard for the end of term exams.','Well done on this excellent result. Maintain it in the end of term exams.','A commendable result. Do not relax; aim to excel in the end of term exams.'],
+      'Division 2': ['A very good result so far — keep pushing towards the end of term exams.','A pleasing result. Sustained effort will pay off in the end of term exams.','Good work. Keep this momentum up in the end of term exams.'],
+      'Division 3': ['A fair result — more effort is needed to improve in the end of term exams.','You can achieve more. Aim higher in the end of term exams.','You are capable of more. Work harder towards the end of term exams.'],
+      'Division 4': ['This result calls for renewed effort ahead of the end of term exams.','A weak result. Greater commitment is needed in the end of term exams.','This result is below expectation. You must improve in the end of term exams.'],
+      'Division U': ['This result is a serious concern; urgent action is needed to improve in the end of term exams.','A very poor result. Urgent action and support are needed before the end of term exams.','This result needs immediate attention and close monitoring before the end of term exams.']
+    }
+  },
+  next: {
+    class: {
+      'Division 1': ['Excellent performance. Keep it up and aim even higher next term.','Outstanding work! Keep revising and finish strongly next term.','Very impressive results. Stay focused and aim to stay at the top next term.'],
+      'Division 2': ['Very good performance. Put in a little more effort to do even better next term.','A very good effort. Keep working hard and aim higher next term.','Good progress. Revise more and aim for Division 1 next term.'],
+      'Division 3': ['Good performance, but you need to put in more effort next term.','A fair result. Revise more thoroughly to improve next term.','You can do better. Practise more and work harder next term.'],
+      'Division 4': ['Fair performance. You need to put in much more effort and attention next term.','Your results are weak. Concentrate in class and revise daily next term.','More commitment is needed. Work harder and ask for help to improve next term.'],
+      'Division U': ['Below average performance. You need serious improvement and support next term.','Your performance is worrying. Work very hard and seek help next term.','Much more effort is needed. Attend all lessons and revise every day next term.']
+    },
+    head: {
+      'Division 1': ['An excellent result — keep it up next term.','Well done on this excellent result. Maintain it next term.','A commendable result. Do not relax; aim to excel next term.'],
+      'Division 2': ['A very good result — keep pushing next term.','A pleasing result. Sustained effort will pay off next term.','Good work. Keep this momentum up next term.'],
+      'Division 3': ['A fair result — more effort next term will help.','You can achieve more. Aim higher next term.','You are capable of more. Work harder next term.'],
+      'Division 4': ['This result calls for renewed effort next term.','A weak result. Greater commitment is needed next term.','This result is below expectation. You must improve next term.'],
+      'Division U': ['This result is a serious concern and needs urgent action next term.','A very poor result. Urgent action and support are needed next term.','This result needs immediate attention and close monitoring next term.']
+    }
+  }
+};
+// True when a saved comment is just one of the built-in wordings (not something the school typed),
+// so it must not override the end-of-term / next-term wording.
+function isBuiltInPrimaryRemark(div, who, text){
+  if(DEFAULT_PRIMARY_REMARKS[div] && DEFAULT_PRIMARY_REMARKS[div][who]===text) return true;
+  return ['eot','next'].some(m=>((PRIMARY_REMARK_VARIANTS[m][who]||{})[div]||[]).includes(text));
+}
 function primaryRemarksFor(){
   const custom = DB.info && DB.info.primaryRemarks;
   if(!custom) return DEFAULT_PRIMARY_REMARKS;
   const merged = {};
   Object.keys(DEFAULT_PRIMARY_REMARKS).forEach(d=>{ merged[d] = {...DEFAULT_PRIMARY_REMARKS[d], ...(custom[d]||{})}; });
   return merged;
+}
+// Stable number from a learner id, so the same learner always gets the same wording while
+// different learners get different ones.
+function remarkSeedFor(id){
+  let h = 7; const t = String(id==null?'':id);
+  for(let i=0;i<t.length;i++) h = (h*31 + t.charCodeAt(i)) % 1000003;
+  return h;
+}
+function remarkPick(list, seed, offset){ return list[((seed||0) + (offset||0)) % list.length]; }
+// The learner's weakest subject(s) by Final Average (all levels). Returns [] when it can't be
+// judged (fewer than 2 marked subjects, or 3+ subjects tie for lowest). Ties of 2 are both named.
+function weakestSubjectNames(rows){
+  const g = (rows||[]).filter(r=>r.avg!=null && Number.isFinite(Number(r.avg)));
+  if(g.length<2) return [];
+  const min = Math.min(...g.map(r=>Number(r.avg)));
+  const names = g.filter(r=>Math.abs(Number(r.avg)-min)<0.05).map(r=>r.subject);
+  return names.length>2 ? [] : names;
+}
+// Weakest-subject sentence for the HEAD teacher's comment. tier: 0 strong, 1 middle, 2 weak.
+function weakSubjectSentence(names, tier, showEOT, seed){
+  if(!names || !names.length) return '';
+  const W = names.join(' and '), pl = names.length>1;
+  const sub = pl?'subjects':'subject', be = pl?'are':'is', it = pl?'them':'it', nd = pl?'need':'needs', sj = pl?'they':'it', kp = pl?'keep':'keeps';
+  const T = showEOT ? [
+    [ `Spend some extra time on ${W}, your weakest ${sub}, so ${sj} ${kp} pace with your other subjects next term.`,
+      `Your weakest ${sub} ${be} ${W}; strengthen ${it} next term.` ],
+    [ `Pay special attention to ${W}, your weakest ${sub}, next term.`,
+      `Work harder in ${W}, your weakest ${sub}, to lift your result next term.` ],
+    [ `${W} ${be} your weakest ${sub} and ${nd} urgent attention next term.`,
+      `Concentrate especially on ${W}, your weakest ${sub}, next term.` ]
+  ] : [
+    [ `Spend some extra time on ${W}, your weakest ${sub}, so ${sj} ${kp} pace with your other subjects in the end of term exams.`,
+      `Your weakest ${sub} ${be} ${W}; strengthen ${it} before the end of term exams.` ],
+    [ `Pay special attention to ${W}, your weakest ${sub}, in the end of term exams.`,
+      `Work harder in ${W}, your weakest ${sub}, to lift your result in the end of term exams.` ],
+    [ `${W} ${be} your weakest ${sub} and ${nd} urgent attention before the end of term exams.`,
+      `Concentrate especially on ${W}, your weakest ${sub}, in preparation for the end of term exams.` ]
+  ];
+  return remarkPick(T[tier], seed, 1);
 }
 function gradeCommentsFor(level){
   const key = level==='A' ? 'aGradeComments' : level==='O' ? 'oGradeComments' : null;
@@ -1469,10 +1552,18 @@ function primaryDivisionFor(aggregate){
   for(const d of PLE_DIVISIONS) if(aggregate>=d.min && aggregate<=d.max) return d.name;
   return 'Division U';
 }
-function primaryRemark(division, who){
-  const map = primaryRemarksFor();
-  const entry = map[division] || map['Division U'];
-  return (entry && entry[who]) || (who==='class' ? 'Performance on record. Keep working hard.' : 'Result on record.');
+function primaryRemark(division, who, showEOT, seed, weakNames){
+  const div = PRIMARY_REMARK_VARIANTS.eot.class[division] ? division : 'Division U';
+  const custom = DB.info && DB.info.primaryRemarks && DB.info.primaryRemarks[div] && DB.info.primaryRemarks[div][who];
+  let text = (custom && !isBuiltInPrimaryRemark(div, who, custom))
+    ? custom
+    : remarkPick(PRIMARY_REMARK_VARIANTS[showEOT?'next':'eot'][who][div], seed, who==='head'?1:0);
+  if(who==='head'){
+    const tier = (div==='Division 1'||div==='Division 2') ? 0 : (div==='Division U' ? 2 : 1);
+    const w = weakSubjectSentence(weakNames, tier, showEOT, seed);
+    if(w) text += ' ' + w;
+  }
+  return text;
 }
 
 /* ============================================================
@@ -3589,18 +3680,67 @@ function classPosition(student, cls, term, year){
   const map = computeClassRankings(cls, term, year);
   return map.get(student.id) || {position: DB.students.filter(s=>s.classId===cls.id).length || 1, size: DB.students.filter(s=>s.classId===cls.id).length};
 }
-function overallRemark(pct, who){
-  if(who==='class'){
-    if(pct>=0.75) return 'Excellent overall performance this term. Keep up the outstanding work.';
-    if(pct>=0.5) return 'Good, steady performance. A little more effort will push results higher.';
-    if(pct>=0.3) return 'Fair performance. Needs closer attention and more consistent study habits.';
-    return 'Performance is below expectation. Requires serious improvement and support.';
-  } else {
-    if(pct>=0.75) return 'A commendable result — well done this term.';
-    if(pct>=0.5) return 'A satisfactory result with clear room to grow.';
-    if(pct>=0.3) return 'This result calls for renewed effort next term.';
-    return 'This result is a serious concern and needs urgent action.';
+// showEOT true  -> the card has an End of Term column: comments look ahead to NEXT TERM.
+// showEOT false -> no End of Term column (e.g. a mid-term report): comments urge the student to
+//                  improve in the coming END OF TERM exams.
+// 8 performance bands x 3 wordings each; seed (learner id) picks the wording, weakNames adds the
+// weakest subject(s) to the HEAD teacher's comment.
+const OVERALL_REMARK_BANDS = [0.85,0.75,0.65,0.55,0.45,0.35,0.25,0];
+const OVERALL_REMARKS = {
+  eot: {
+    class: [
+      ['Outstanding performance so far. Keep up this excellent work and finish strongly in the end of term exams.','An exceptional result. Stay focused and consistent to maintain this standard in the end of term exams.','Excellent work! Keep revising hard so that you excel in the end of term exams.'],
+      ['Excellent performance. A little extra effort will take you to the very top in the end of term exams.','Very impressive work so far. Keep it up and aim even higher in the end of term exams.','You are doing very well. Stay disciplined and push for an even better result in the end of term exams.'],
+      ['Very good performance. With more consistent revision you can do even better in the end of term exams.','A very good effort. Keep working hard and aim higher in the end of term exams.','Good progress so far. Keep up the hard work to improve further in the end of term exams.'],
+      ['Good, steady performance. Put in a little more effort to do better in the end of term exams.','A good result, but there is room to grow. Revise more thoroughly for the end of term exams.','You are doing well. More effort and practice will lift your results in the end of term exams.'],
+      ['Fair performance. You need to put in more effort and revise regularly for the end of term exams.','An average result. Work harder and ask for help where needed to improve in the end of term exams.','You can do better. Set aside more time for revision before the end of term exams.'],
+      ['Below average performance. You need to put in much more effort to improve in the end of term exams.','Your results are weak. Concentrate in class and revise daily to improve in the end of term exams.','More commitment is needed. Work harder and seek help to perform better in the end of term exams.'],
+      ['Poor performance. You must work much harder and revise seriously before the end of term exams.','Your performance is worrying. Serious effort and support are needed to improve in the end of term exams.','Much more effort is needed. Study every day and seek help to pass the end of term exams.'],
+      ['Performance is very low. You need urgent support and serious daily revision before the end of term exams.','This result is far below expectation. Work with your teachers and put in great effort for the end of term exams.','You must change your approach now. Attend all lessons and revise hard for the end of term exams.']
+    ],
+    head: [
+      ['A commendable result — keep working hard for the end of term exams.','Well done on this outstanding result. Maintain it in the end of term exams.','An excellent result so far. Do not relax; aim to excel in the end of term exams.'],
+      ['A very good result — keep climbing in the end of term exams.','Impressive work. Keep pushing for a stronger result in the end of term exams.','A pleasing result. Sustained effort will pay off in the end of term exams.'],
+      ['A good result. A bit more effort will pay off in the end of term exams.','A pleasing result with room to grow in the end of term exams.','Good progress. Keep up the effort towards the end of term exams.'],
+      ['A satisfactory result — more effort will help you improve in the end of term exams.','A fair result. Work harder to raise your performance in the end of term exams.','You can achieve more. Aim higher in the end of term exams.'],
+      ['An average result. Greater effort is needed in the end of term exams.','This result calls for renewed effort in the end of term exams.','You are capable of more. Work harder towards the end of term exams.'],
+      ['This result is below expectation. You must improve in the end of term exams.','A weak result. Greater commitment is needed in the end of term exams.','This result calls for serious effort in the end of term exams.'],
+      ['This result is a concern. Serious improvement is needed in the end of term exams.','A poor result. Much greater effort is required in the end of term exams.','This result is worrying and requires real effort in the end of term exams.'],
+      ['This result is a serious concern; urgent improvement is needed in the end of term exams.','A very poor result. Urgent action and support are needed before the end of term exams.','This result needs immediate attention and close monitoring before the end of term exams.']
+    ]
+  },
+  next: {
+    class: [
+      ['Outstanding performance. Keep up this excellent work next term.','An exceptional result. Stay focused and maintain this standard next term.','Excellent work! Keep revising hard and excel again next term.'],
+      ['Excellent performance. A little extra effort will take you to the very top next term.','Very impressive work. Keep it up and aim even higher next term.','You did very well. Stay disciplined and push for an even better result next term.'],
+      ['Very good performance. With more consistent revision you can do even better next term.','A very good effort. Keep working hard and aim higher next term.','Good progress. Keep up the hard work to improve further next term.'],
+      ['Good, steady performance. Put in a little more effort next term to do better.','A good result, but there is room to grow. Revise more thoroughly next term.','You did well. More effort and practice will lift your results next term.'],
+      ['Fair performance. You need to put in more effort and revise regularly next term.','An average result. Work harder and ask for help where needed next term.','You can do better. Set aside more time for revision next term.'],
+      ['Below average performance. You need to put in much more effort next term.','Your results are weak. Concentrate in class and revise daily next term.','More commitment is needed. Work harder and seek help to perform better next term.'],
+      ['Poor performance. You must work much harder and revise seriously next term.','Your performance is worrying. Serious effort and support are needed next term.','Much more effort is needed. Study every day and seek help next term.'],
+      ['Performance is very low. You need urgent support and serious daily revision next term.','This result is far below expectation. Work with your teachers and put in great effort next term.','You must change your approach now. Attend all lessons and revise hard next term.']
+    ],
+    head: [
+      ['A commendable result — keep it up next term.','Well done on this outstanding result. Maintain it next term.','An excellent result. Do not relax; aim to excel again next term.'],
+      ['A very good result — keep climbing next term.','Impressive work. Keep pushing for a stronger result next term.','A pleasing result. Sustained effort will pay off next term.'],
+      ['A good result. A bit more effort will pay off next term.','A pleasing result with room to grow next term.','Good progress. Keep up the effort next term.'],
+      ['A satisfactory result — you can achieve more next term.','A fair result. Work harder to raise your performance next term.','You can achieve more. Aim higher next term.'],
+      ['An average result. Greater effort is needed next term.','This result calls for renewed effort next term.','You are capable of more. Work harder next term.'],
+      ['This result is below expectation. You must improve next term.','A weak result. Greater commitment is needed next term.','This result calls for serious effort next term.'],
+      ['This result is a concern. Serious improvement is needed next term.','A poor result. Much greater effort is required next term.','This result is worrying and requires real effort next term.'],
+      ['This result is a serious concern and needs urgent action next term.','A very poor result. Urgent action and support are needed next term.','This result needs immediate attention and close monitoring next term.']
+    ]
   }
+};
+function overallRemark(pct, who, showEOT, seed, weakNames){
+  let band = OVERALL_REMARK_BANDS.findIndex(t=>pct>=t);
+  if(band<0) band = OVERALL_REMARK_BANDS.length-1;
+  let text = remarkPick(OVERALL_REMARKS[showEOT?'next':'eot'][who==='class'?'class':'head'][band], seed, who==='head'?1:0);
+  if(who!=='class'){
+    const w = weakSubjectSentence(weakNames, band<=2 ? 0 : (band<=4 ? 1 : 2), showEOT, seed);
+    if(w) text += ' ' + w;
+  }
+  return text;
 }
 
 // Student/staff photos are shown at most ~90px wide on screen and in the
@@ -9230,6 +9370,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const cfg = examConfig(cls && cls.id);
   const showCW = cfg.cwEnabled;
   const showEOT = cfg.eotEnabled;
+  const remarkSeed = remarkSeedFor(s.id), remarkWeak = weakestSubjectNames(rows);
   const cwTests = cfg.cwTests || [];
   const useCwTestCols = showCW && cwTests.length>1; // split into test sub-columns only when multiple tests are configured
   const breakdowns = rows.map(r=>subjectBreakdown(s.id, r.subject, term, year));
@@ -9602,16 +9743,16 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     ${isO ? `
     <div class="rc-comments-plain">
-      <div class="rc-comments-line"><b>Class teacher's comment:</b> ${esc(overallRemark(pct,'class'))}</div>
-      <div class="rc-comments-line"><b>Head teacher's comment:</b> ${esc(overallRemark(pct,'head'))}</div>
+      <div class="rc-comments-line"><b>Class teacher's comment:</b> ${esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</div>
+      <div class="rc-comments-line"><b>Head teacher's comment:</b> ${esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</div>
     </div>` : `
     <div class="rc-section-title">Comments</div>
     <table class="rc-comments-table">
       <colgroup><col style="width:50%"><col style="width:50%"></colgroup>
       <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
       <tr>
-        <td>${isP ? esc(primaryRemark(pDivision,'class')) : esc(overallRemark(pct,'class'))}</td>
-        <td>${isP ? esc(primaryRemark(pDivision,'head')) : esc(overallRemark(pct,'head'))}</td>
+        <td>${isP ? esc(primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</td>
+        <td>${isP ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</td>
       </tr>
     </table>`}
 
@@ -9621,9 +9762,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         <span class="rc-action">Signature:${ctSignature?`<img loading="lazy" decoding="async" src="${ctSignature}" class="rc-teacher-signature" alt="">`:''}</span>
       </div>
 
-      <div class="rc-term-middle">
-        <div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDate(DB.info.termEndDate)}</div>
-        <div>Next term begins on ${fmtDate(DB.info.nextTermBeginDate)}</div>
+      <div class="rc-term-middle"${showEOT?'':' style="visibility:hidden;"'}>
+        ${showEOT?`<div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDate(DB.info.termEndDate)}</div>
+        <div>Next term begins on ${fmtDate(DB.info.nextTermBeginDate)}</div>`:''}
       </div>
 
       <div class="rc-sign-block">
@@ -9731,6 +9872,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const cfg = examConfig(cls && cls.id);
   const showCW = cfg.cwEnabled;
   const showEOT = cfg.eotEnabled;
+  const remarkSeed = remarkSeedFor(s.id), remarkWeak = weakestSubjectNames(rows);
   const cwTests = cfg.cwTests || [];
   const useCwTestCols = showCW && cwTests.length>1; // keep a single CW column when only one test is configured
 
@@ -9834,8 +9976,8 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       prevPeriod, prevPosition, weakSubjects
     },
     comments: {
-      classComment: isP ? primaryRemark(pDivision,'class') : overallRemark(pct,'class'),
-      headComment: isP ? primaryRemark(pDivision,'head') : overallRemark(pct,'head')
+      classComment: isP ? primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak),
+      headComment: isP ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
     },
     signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
@@ -9914,7 +10056,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
 
   // ---- 3. Topline: fees code + printed date ----
   pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
-  if(data.feesCode){ pdf.setFont('courier','bold'); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy); pdf.setFont('courier','normal'); setC(muted); }
+  if(data.feesCode){ pdf.setFont('courier','bold'); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy+4); /* +4: nudged down off the card border, still clear of the logo below */ pdf.setFont('courier','normal'); setC(muted); }
   pdf.text(`Printed ${fmtDate(Date.now())}`, contentX+contentW, cy, {align:'right'});
   cy += 10;
 
@@ -10300,17 +10442,21 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // ---- 9. Comments ----
   if(data.isO){
     // O-Level: plain statement lines instead of the boxed two-column table.
+    // Each comment wraps onto as many lines as it needs (hanging indent under the label) so a
+    // longer comment can never run past the right edge or into the next comment.
     function labeledLine(label, value, yPos){
       pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); setC(navy);
       pdf.text(label, contentX, yPos);
       const labelW = pdf.getTextWidth(label + ' ');
       pdf.setFont('helvetica','normal'); pdf.setFontSize(8.5); setC(ink);
-      pdf.text(String(value==null?'':value), contentX + labelW, yPos);
+      const lines = pdf.splitTextToSize(String(value==null?'':value), contentW - labelW - 2);
+      lines.forEach((ln,i)=>pdf.text(ln, contentX + labelW, yPos + i*10.5));
+      return Math.max(1, lines.length);
     }
-    labeledLine("Class teacher's comment:", data.comments.classComment, cy);
-    cy += 14;
-    labeledLine("Head teacher's comment:", data.comments.headComment, cy);
-    cy += 16;
+    const _ctN = labeledLine("Class teacher's comment:", data.comments.classComment, cy);
+    cy += 4 + _ctN*10.5;
+    const _htN = labeledLine("Head teacher's comment:", data.comments.headComment, cy);
+    cy += 6 + _htN*10.5;
   } else {
     leftText('COMMENTS', contentX, cy, 9, 'bold', navy);
     line(contentX, cy+3, contentX+contentW, cy+3, 1.1);
@@ -10358,13 +10504,16 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // and vertically balanced/centered between, the two sign-off columns beside it.
   const signBlockTop = cy - 6, signBlockBottom = cy + 15, dateH = signBlockBottom - signBlockTop;
   const dateW = thirdW*0.88, dateX = contentX + thirdW + (thirdW-dateW)/2;
-  pdf.setFillColor(29,78,137); pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6);
-  const dateY = signBlockTop;
-  pdf.rect(dateX, dateY, dateW, dateH, 'F');
-  pdf.rect(dateX, dateY, dateW, dateH);
-  const dateCenterY = dateY + dateH/2;
-  centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, dateCenterY-2, 6.8, 'bold', [255,255,255]);
-  centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, dateCenterY+8, 6.8, 'bold', [255,255,255]);
+  // Only drawn when the card has an End of Term column (otherwise the middle cell stays empty).
+  if(data.showEOT){
+    pdf.setFillColor(29,78,137); pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6);
+    const dateY = signBlockTop;
+    pdf.rect(dateX, dateY, dateW, dateH, 'F');
+    pdf.rect(dateX, dateY, dateW, dateH);
+    const dateCenterY = dateY + dateH/2;
+    centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, dateCenterY-2, 6.8, 'bold', [255,255,255]);
+    centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, dateCenterY+8, 6.8, 'bold', [255,255,255]);
+  }
 
   const rightX = contentX+thirdW*2;
   leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
@@ -13138,13 +13287,15 @@ document.addEventListener('submit', async (e)=>{
       const b={...(DB.pbands||DEFAULT_P_BANDS)}; PLE_GRADES.forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
       DB.pbands=b;
       if(DB.info){
-        const merged = primaryRemarksFor();
+        const merged = {};
         Object.keys(DEFAULT_PRIMARY_REMARKS).forEach(d=>{
           const key = d.replace(/\s+/g,'');
-          merged[d] = {
-            class: (fd.get('pRemarkClass_'+key)||'').trim() || DEFAULT_PRIMARY_REMARKS[d].class,
-            head: (fd.get('pRemarkHead_'+key)||'').trim() || DEFAULT_PRIMARY_REMARKS[d].head
-          };
+          // Store only wording the school really changed; built-in wording is left out so the
+          // end-of-term / next-term focus keeps applying on the report card.
+          const cls_ = (fd.get('pRemarkClass_'+key)||'').trim(), hd_ = (fd.get('pRemarkHead_'+key)||'').trim();
+          merged[d] = {};
+          if(cls_ && !isBuiltInPrimaryRemark(d,'class',cls_)) merged[d].class = cls_;
+          if(hd_ && !isBuiltInPrimaryRemark(d,'head',hd_)) merged[d].head = hd_;
         });
         DB.info.primaryRemarks = merged;
         await saveInfo();
