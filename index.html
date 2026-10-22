@@ -7882,7 +7882,7 @@ function blankMarksheetView(classId, subject){
       <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
       <div class="flex">
         <button class="btn-outline" data-action="dlBlankPdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
-        <button class="btn" onclick="printLandscape()">Print / Save as PDF</button>
+        <button class="btn" onclick="printPortrait()">Print / Save as PDF</button>
         <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
       </div>
     </div>
@@ -8621,10 +8621,10 @@ function masterMarkSheetView(forExport){
     <div class="note" style="margin-top:12px;">${isLevelSheet ? 'This sheet puts every learner of the whole level together — all classes — arranged from the best performer downwards, with a Class column after each name. Position is the learner\'s position in the level.' : ''} ${mode==='scores'
       ? 'This sheet lists every student\'s raw marks — no grading — with a sub-column per paper for subjects that have more than one. Switch to "Letter Grades" for the graded version.'
       : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position. Switch to "Real Scores" to see the underlying marks.'
-    } Either way, it\'s wide — download it as a PDF or print it, and choose <b>LANDSCAPE</b> paper for clarity.</div>
+    } Either way, it\'s wide — download it as a PDF or print it, and choose <b>PORTRAIT</b> paper (saves pages).</div>
     <div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (landscape)</b></button>
-      <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (landscape)</button>
+      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (portrait)</b></button>
+      <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (portrait)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
   </div>
@@ -8715,8 +8715,8 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     <label style="margin-top:14px;">View</label>
     <div class="flex">${mmTabsHtml(mode,isAdmin)}</div>
     <div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (landscape)</b></button>
-      <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (landscape)</button>
+      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (portrait)</b></button>
+      <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (portrait)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
   </div>
@@ -11343,7 +11343,7 @@ Continue?`);
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
       const term = DB.info.currentTerm, year = DB.info.currentYear;
       await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
-        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`
+        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait'
       });
       break;
     }
@@ -11365,7 +11365,7 @@ Continue?`);
         // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
         const term = DB.info.currentTerm, year = DB.info.currentYear;
         await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
-          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`
+          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait'
         });
       } finally {
         render();
@@ -11389,10 +11389,9 @@ Continue?`);
       const [classId, subjEnc] = (arg||'').split(':');
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
       // Same principle as dlIntegratedPdf: print the FULL student list, not just the
-      // page currently showing on screen, and always in landscape (many subjects can
-      // mean many columns).
+      // page currently showing on screen, in portrait to save pages.
       document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
-      printLandscape();
+      printPortrait();
       render();
       break;
     }
@@ -11438,7 +11437,7 @@ Continue?`);
         // Dedicated adapter (handles the two-row subject/paper header and the
         // legend/footer text) feeding the same row-paginating, no-column-splitting
         // export core as Class Analysis and the Integrated Mark Sheet.
-        await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
+        await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'portrait'});
       } finally {
         render();
       }
@@ -11451,7 +11450,7 @@ Continue?`);
       showActionProgress('Preparing Master Mark Sheet for printing…', el);
       await refreshScoresForPeriod(printTermEnc?decodeURIComponent(printTermEnc):DB.info.currentTerm, printYear||DB.info.currentYear);
       document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
-      printLandscape();
+      printPortrait();
       render();
       break;
     }
@@ -13916,6 +13915,20 @@ function printLandscape(){
   printFramed();
   setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
 }
+// Portrait print for mark sheets (saves paper vs landscape). Wide tables are tightened
+// and allowed to wrap so every column still fits the portrait page width.
+function printPortrait(){
+  const st = document.createElement('style');
+  st.id = 'portraitPrintOverride';
+  st.textContent = '@page{ size: A4 portrait; margin:8mm; }'
+    + '@media print{ .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
+    + ' #printArea table{width:100% !important;min-width:0 !important;table-layout:auto;}'
+    + ' #printArea table th, #printArea table td{padding:2px 3px !important;font-size:7.5px !important;white-space:normal !important;word-break:break-word;}'
+    + ' #printArea table th{font-size:7px !important;} }';
+  document.head.appendChild(st);
+  printFramed();
+  setTimeout(()=>{ const e=document.getElementById('portraitPrintOverride'); if(e) e.remove(); }, 1000);
+}
 async function downloadElementAsPdf(elementId, filename, opts={}){
   const el = document.getElementById(elementId);
   if(!el){ alert('Nothing to export yet.'); return; }
@@ -14196,7 +14209,7 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
    .card auto-detection above. The grading-scale legend and the generated-date/head-
    teacher footer are carried over as a footer shown under the table on its last
    page. ---------- */
-async function downloadMasterMarkSheetPdf(elementId, filename){
+async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
   const el = document.getElementById(elementId);
   if(!el){ alert('Nothing to export yet.'); return; }
   const table = el.querySelector('table.mm-table') || el.querySelector('table');
@@ -14219,7 +14232,7 @@ async function downloadMasterMarkSheetPdf(elementId, filename){
     subtitle: metaEl ? metaEl.textContent : '',
     headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0,
     emptyText: 'No students to show yet.'
-  }], filename, {progressLabel:'Downloading Master Mark Sheet'});
+  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation});
 }
 // Blank mark sheet, for printing/marking on paper (separate from the CSV version,
 // which is a data-interchange file meant to be filled in and re-uploaded).
