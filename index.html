@@ -162,7 +162,10 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    (z-index:0 vs 1), so the brand name, contact line, form fields, and every link on top
    stay fully legible — only the crest itself is faded (7% opacity). */
 .auth-box{background:#fff;padding:36px;border-radius:14px;width:420px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden;}
-.platform-login-box{width:520px;max-width:100%;min-height:auto;padding:46px 48px;display:flex;flex-direction:column;}
+.platform-login-box{width:100%;max-width:none;min-height:calc(100vh - 64px);min-height:calc(100dvh - 64px);box-sizing:border-box;padding:46px 48px;display:flex;flex-direction:column;}
+.platform-login-box .login-body{width:100%;max-width:760px;margin:0 auto;}
+/* 32px gap on every side keeps the card clear of the Founder-panel dot (6px from the corner, 18px wide) */
+.auth-wrap:has(.platform-login-box){padding:32px;align-items:stretch;}
 /* Responsive login layout: sections use their natural height instead of being
    forced to share a fixed card height. This prevents overlap on short screens. */
 .login-body{display:flex;flex-direction:column;flex:none;min-height:0;}
@@ -176,12 +179,14 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 @media(max-width:600px){
   .auth-wrap{min-height:100vh;min-height:100dvh;height:auto;align-items:flex-start;padding:12px;overflow-x:hidden;overflow-y:auto;}
   .auth-box{padding:28px 18px;}
-  .platform-login-box{width:100%;min-height:auto;padding:28px 18px;margin:0 auto;}
+  .auth-wrap:has(.platform-login-box){padding:30px 30px;}
+  .platform-login-box{width:100%;min-height:calc(100vh - 60px);min-height:calc(100dvh - 60px);padding:28px 18px;margin:0 auto;}
   .login-section,.login-section-fill{flex:none;min-height:auto;padding:16px 0;justify-content:flex-start;}
   .login-section-tinted{padding:16px;}
 }
 @media(max-width:380px){
   .auth-wrap{padding:8px;}
+  .auth-wrap:has(.platform-login-box){padding:30px 30px;}
   .auth-box,.platform-login-box{padding:22px 14px;}
   .login-section,.login-section-fill{padding:13px 0;}
   .login-section-tinted{padding:14px;}
@@ -213,9 +218,15 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .chip{display:inline-flex;align-items:center;gap:4px;background:var(--blue-light);color:var(--blue);border-radius:14px;padding:3px 10px;font-size:12px;margin:2px;}
 
 /* ---- Dashboard icon tiles: tap-to-open feature grid, sized to fit a phone screen ---- */
-.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));grid-auto-flow:row dense;gap:10px;margin:6px 0 22px;}
+.tile-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:6px 0 22px;} /* always exactly 6 tiles per line, on any screen size */
+@media(max-width:600px){
+  .tile-grid{gap:5px;}
+  .tile{padding:12px 2px;min-height:78px;gap:4px;border-radius:9px;}
+  .tile-icon{font-size:20px;}
+  .tile-label{font-size:7.5px;letter-spacing:0;}
+}
 .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#e6f7ea;
-  border:1px solid #a9dbb6;border-radius:12px;padding:14px 6px;box-shadow:0 1px 4px rgba(10,42,74,.06);
+  border:1px solid #a9dbb6;border-radius:12px;padding:20px 6px;min-height:104px;box-shadow:0 1px 4px rgba(10,42,74,.06);
   text-align:center;font-family:inherit;transition:box-shadow .12s ease,border-color .12s ease,transform .12s ease;}
 .tile:hover, .tile:active{border-color:#2f8a4c;background:#d9f2df;box-shadow:0 3px 12px rgba(10,42,74,.14);transform:translateY(-1px);}
 .tile-icon{font-size:26px;line-height:1;}
@@ -223,7 +234,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 /* The Report Cards tile is the feature people reach for most, so it is made twice as long as the
    others: it spans two tile-widths on the same row (same height as every other tile). The grid
    packs densely, so a wide tile that doesn't fit at the end of a row never leaves a gap behind. */
-.tile-wide{grid-column:span 2;}
+.tile-wide{grid-column:span 1;} /* kept at one slot so every line holds exactly 6 tiles */
 
 /* ---- Delivered-command toast: brief confirmation that a Submit tap went through ---- */
 #deliveredToast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--good);color:#fff;
@@ -732,6 +743,60 @@ body::before{content:"";position:fixed;left:50%;top:50%;width:min(58vw,620px);he
 body>*{position:relative;z-index:1;}
 .modal,.modal-backdrop,.overlay,.dialog,[role="dialog"]{z-index:10000!important;}
 @media print{body::before{position:fixed;opacity:.055;width:65vw;height:65vw;z-index:0;}body>*{position:relative;z-index:1;}}
+</style>
+<style id="cte-print-clarity">
+/* ============================================================
+   PRINT CLARITY — makes the browser Print dialog / Save-as-PDF output match the
+   crisp, straight-ruled look of the downloaded PDFs.
+   Why it was needed:
+   1. A portrait A4 print area is only ~718 CSS px wide, which is UNDER the
+      (max-width:760px) phone breakpoint — so printing in portrait was switching every
+      table into the phone layout (display:block, each row its own mini-table,
+      nowrap + scroll). Rows stopped sharing column widths, so columns zig-zagged.
+   2. Fractional hairline borders (1px / 1.4px / 2.4px) print with uneven weights.
+   3. Each printed mark-sheet page was a separate auto-sized table, so columns
+      drifted from page to page (fixed in printPortrait() with a shared <colgroup>).
+   ============================================================ */
+@media print{
+  html,body{background:#fff !important;}
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
+
+  /* 1. Undo the phone-table layout in print: real table, real rows, shared columns */
+  #printArea table.data-table, #printArea table.report-table, #printArea table.mm-table,
+  #printArea table.as-table, #printArea table.rc-perf, #printArea table.rc-project-table{
+    display:table !important;overflow:visible !important;white-space:normal !important;
+    width:100% !important;max-width:100% !important;min-width:0 !important;
+  }
+  #printArea table thead{display:table-header-group !important;}
+  #printArea table tbody{display:table-row-group !important;}
+  #printArea table tfoot{display:table-footer-group !important;}
+  #printArea table tr{display:table-row !important;width:auto !important;}
+  #printArea .rc-perf-wrap, #printArea .mm-tablewrap{overflow:visible !important;border:none !important;}
+
+  /* 2. Uniform, whole-weight rules on every table that is printed */
+  #printArea table{border-collapse:collapse !important;border-spacing:0 !important;}
+  #printArea table th, #printArea table td{
+    border-style:solid !important;border-color:#0A2A4A !important;
+    border-width:1.4pt !important;
+    vertical-align:middle;
+    -webkit-text-stroke:0 !important;
+    box-shadow:none !important;
+  }
+  #printArea table.data-table, #printArea table.report-table, #printArea table.mm-table{border:2.2pt solid #0A2A4A !important;}
+  #printArea tr.total td, #printArea tr.total th{border-top-width:2.2pt !important;}
+  /* keep the intentional merged-cell look in the Academic Performance table */
+  #printArea table td.mrg-top, #printArea table th.mrg-top{border-bottom-width:0 !important;}
+  #printArea table td.mrg-bot, #printArea table th.mrg-bot{border-top-width:0 !important;}
+
+  /* 3. Rows never split across pages; header row repeats on every page */
+  #printArea table tr{break-inside:avoid;page-break-inside:avoid;}
+  #printArea table.ms-fixed{table-layout:fixed !important;}
+  #printArea table.ms-fixed th, #printArea table.ms-fixed td{overflow-wrap:anywhere;word-break:normal;}
+
+  /* 4. Screen-only effects must not show up on paper */
+  #printArea table tbody tr:hover{background:inherit;}
+  table.mm-table thead th{position:static !important;}
+}
 </style>
 </head>
 <body>
@@ -3930,6 +3995,20 @@ function fitOnePage(root, settle=true){
 /* ============================================================
    6. RENDER ROOT
    ============================================================ */
+/* Scrolls every possible scroller to the top so a freshly opened page starts at its heading. */
+function scrollPageToTop(){
+  const go = ()=>{
+    try{ window.scrollTo(0,0); }catch(e){}
+    try{ document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }catch(e){}
+    try{ document.querySelectorAll('#mainArea, .main, .auth-wrap, .layout').forEach(el=>{ el.scrollTop = 0; }); }catch(e){}
+  };
+  go();
+  // once more after layout settles (images, fonts, fitOnePage, score refresh re-render)
+  requestAnimationFrame(go);
+  setTimeout(go, 120);
+}
+try{ if('scrollRestoration' in history) history.scrollRestoration = 'manual'; }catch(e){}
+
 function render(){
   // Any full re-render replaces the on-screen forms wholesale — either because the
   // user navigated away (in which case whatever they'd typed is gone regardless of
@@ -3954,6 +4033,21 @@ function render(){
   // Avoid destroying and rebuilding an unchanged screen. This preserves browser work
   // and makes repeated state notifications cheaper, while real data/view changes still render normally.
   if(app.innerHTML !== nextHtml) app.innerHTML = nextHtml;
+  // Land on the TOP of any newly opened page. Without this, the browser keeps the previous
+  // page's scroll offset, so after a save / submit / open the new page appears already
+  // scrolled down to its lower part and looks empty until the user scrolls up. Only a real
+  // change of screen (different view, user, school or login step) scrolls; background
+  // re-renders of the SAME screen keep the reader's position.
+  try{
+    let sig = String(SCHOOL_ID||'')+'|'+(CUR?(CUR.role+':'+(CUR.username||CUR.id||'')):'');
+    try{ if(typeof VIEW!=='undefined' && VIEW) sig += '|'+VIEW.name+'|'+JSON.stringify(VIEW.params||{}); }catch(e){}
+    try{ if(typeof loginRole!=='undefined') sig += '|'+loginRole; }catch(e){}
+    if(window.__lastRenderSig !== sig){
+      const first = window.__lastRenderSig === undefined;
+      window.__lastRenderSig = sig;
+      if(!first) scrollPageToTop();
+    }
+  }catch(e){}
   // Keep the install button accurate every time the login dashboard is rendered.
   // This is harmless on browsers that do not expose an install prompt.
   updatePWAInstallState();
@@ -7751,7 +7845,7 @@ function marksheetGroups(pool){
 // printIntegrated/printMasterMarkSheet action handlers), so a downloaded or printed
 // mark sheet always contains every student regardless of which on-screen page is
 // showing when the button is clicked.
-const MARKSHEET_PAGE_SIZE = 25;
+const MARKSHEET_PAGE_SIZE = 30;
 function paginateMarksheet(list, page, forExport, pageSize){
   const size = pageSize || MARKSHEET_PAGE_SIZE;
   const total = list.length;
@@ -8229,10 +8323,41 @@ function classAnalysisView(){
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
   if(!visibleClasses.length) return `<h2>RESULT ANALYSIS</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
   const sel = VIEW.params;
-  const classId = (sel.classId && visibleClasses.some(c=>c.id===sel.classId)) ? sel.classId : visibleClasses[0].id;
-  const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
+  // The class starts BLANK (nothing preselected) and so does the analysis form: the user must
+  // pick a class, then choose which of the three analysis forms to open.
+  const cls = (sel.classId && visibleClasses.find(c=>c.id===sel.classId)) || null;
   const term = sel.term || DB.info.currentTerm;
   const year = sel.year || DB.info.currentYear;
+  const ANALYSIS_FORMS = [
+    ['students','1. Student Performance (ranked by class position)'],
+    ['classwise','2. Subject Performance — Class-wise'],
+    ['levelwise','3. Subject Performance — Level-wise']
+  ];
+  const formKey = ANALYSIS_FORMS.some(f=>f[0]===sel.form) ? sel.form : '';
+  const selectorsHtml = (showButtons)=>`
+  <h2>RESULT ANALYSIS</h2>
+  <div class="card">
+    <div class="grid3">
+      <div><label>Class</label><select onchange="setAnalysisParam('classId', this.value)">
+        <option value="" ${cls?'':'selected'}>— Select class —</option>
+        ${visibleClasses.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select></div>
+      <div><label>Term</label><select onchange="setAnalysisParam('term', this.value)">
+        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setAnalysisParam('year', this.value)"></div>
+    </div>
+    ${cls?`<div style="margin-top:12px;"><label>Analysis form</label><select onchange="setAnalysisParam('form', this.value)">
+      <option value="" ${formKey?'':'selected'}>— Select analysis form —</option>
+      ${ANALYSIS_FORMS.map(f=>`<option value="${f[0]}" ${f[0]===formKey?'selected':''}>${esc(f[1])}</option>`).join('')}
+    </select></div>`:''}
+    ${showButtons?`<div class="flex" style="margin-top:14px;">
+      <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>
+      <button class="btn" onclick="printLandscape()">Print</button>
+    </div>`:''}
+  </div>`;
+  if(!cls) return selectorsHtml(false) + `<div class="card"><p class="small">Select a class to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div>`;
+  if(!formKey) return selectorsHtml(false) + `<div class="card"><p class="small">Now select which analysis form you want to open: Student Performance, Subject Performance (Class-wise) or Subject Performance (Level-wise).</p></div>`;
   const isA = cls.level==='A';
 
   const studentStats = classStudentStats(cls, term, year);
@@ -8289,24 +8414,7 @@ function classAnalysisView(){
     return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td><td style="font-weight:800;">${r.result}</td></tr>`;
   }).join('');
 
-  return `
-  <h2>RESULT ANALYSIS</h2>
-  <div class="card">
-    <div class="grid3">
-      <div><label>Class</label><select onchange="setAnalysisParam('classId', this.value)">
-        ${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-      </select></div>
-      <div><label>Term</label><select onchange="setAnalysisParam('term', this.value)">
-        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
-      </select></div>
-      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setAnalysisParam('year', this.value)"></div>
-    </div>
-    <div class="flex" style="margin-top:14px;">
-      <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF (all 3 analyses)</b></button>
-      <button class="btn" onclick="printLandscape()">Print all 3 analyses</button>
-    </div>
-  </div>
-  <div id="printArea">
+  const studentsCardHtml = `
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
@@ -8314,9 +8422,12 @@ function classAnalysisView(){
     ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
-  </div>
-  <div class="card" style="overflow:auto;">${classWiseHtml}</div>
-  <div class="card" style="overflow:auto;">${levelWiseHtml}</div>
+  </div>`;
+  const formHtml = formKey==='students' ? studentsCardHtml
+    : formKey==='classwise' ? `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`
+    : `<div class="card" style="overflow:auto;">${levelWiseHtml}</div>`;
+  return selectorsHtml(true) + `
+  <div id="printArea">${formHtml}
   </div>`;
 }
 function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
@@ -9114,7 +9225,7 @@ function scoresEntryView(mine){
     return `
   <div class="card" style="margin-top:14px;">
     <form data-form="pickPaper">
-      <div class="grid2">
+      <div>
         <div><label>Subject / class assignment</label>
           <select name="assignId" id="assignSel" required>
             <option value="">-- click here to choose what to mark --</option>
@@ -11343,7 +11454,7 @@ Continue?`);
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
       const term = DB.info.currentTerm, year = DB.info.currentYear;
       await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
-        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait'
+        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:30, school: DB.info.schoolName||''
       });
       break;
     }
@@ -11365,7 +11476,7 @@ Continue?`);
         // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
         const term = DB.info.currentTerm, year = DB.info.currentYear;
         await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
-          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait'
+          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:30, school: DB.info.schoolName||''
         });
       } finally {
         render();
@@ -11391,7 +11502,8 @@ Continue?`);
       // Same principle as dlIntegratedPdf: print the FULL student list, not just the
       // page currently showing on screen, in portrait to save pages.
       document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
-      printPortrait();
+      { const _c = DB.classes.find(c=>c.id===classId);
+        printPortrait({title:`${_c?_c.name:''} — ${subject}`, subtitle:`${DB.info.currentTerm||''}, ${DB.info.currentYear||''}`}); }
       render();
       break;
     }
@@ -11407,7 +11519,7 @@ Continue?`);
       // Class Analysis always exports landscape with every column intact — see
       // downloadTablesAsPdf for why this uses a dedicated row-paginating export
       // instead of the generic canvas-tiling one used by wide mark sheets.
-      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_result_analysis_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
+      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_result_analysis${(VIEW&&VIEW.params&&VIEW.params.form)?'_'+VIEW.params.form:''}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
       break;
     }
     case 'dlReportCardPdf': {
@@ -13915,19 +14027,105 @@ function printLandscape(){
   printFramed();
   setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
 }
-// Portrait print for mark sheets (saves paper vs landscape). Wide tables are tightened
-// and allowed to wrap so every column still fits the portrait page width.
-function printPortrait(){
+// Portrait print for mark sheets: 30 learners per page, school letterhead on EVERY page.
+// The on-screen #printArea is temporarily rebuilt into one block per page (page-break
+// between blocks), printed, then put back exactly as it was.
+function printPortrait(opts){
+  opts = opts || {};
+  const PER_PAGE = 30;
+  const area = document.getElementById('printArea');
+  let originalHtml = null;
+  try{
+    const table = area && (area.querySelector('table.mm-table') || area.querySelector('table'));
+    if(table){
+      const isMaster = table.classList.contains('mm-table');
+      const thead = table.querySelector('thead');
+      const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
+      const allRows = thead ? [...table.querySelectorAll('tbody tr')] : [...table.querySelectorAll('tr')].slice(1);
+      const isSummary = r => r.cells.length===1 && r.cells[0].colSpan>1;
+      const dataRows = allRows.filter(r=>!isSummary(r));
+      const sumRows = allRows.filter(isSummary);
+      const pages = [];
+      for(let i=0;i<dataRows.length;i+=PER_PAGE) pages.push(dataRows.slice(i,i+PER_PAGE));
+      if(!pages.length) pages.push([]);
+      pages[pages.length-1] = pages[pages.length-1].concat(sumRows);
+
+      // Letterhead (logo + school + title + meta)
+      let titleTxt = opts.title || '', metaTxt = opts.subtitle || '';
+      if(isMaster){
+        const t = area.querySelector('.mm-title'), m = area.querySelector('.mm-meta');
+        titleTxt = t ? t.textContent : titleTxt; metaTxt = m ? m.textContent : metaTxt;
+      } else {
+        const h3 = area.querySelector('h3'), sm = area.querySelector('p.small');
+        if(!titleTxt && h3) titleTxt = h3.textContent;
+        if(!metaTxt && sm) metaTxt = sm.textContent;
+      }
+      const footerEls = isMaster ? [...area.querySelectorAll('.mm-summary, p.small, .mm-footer')] : [];
+      const footerHtml = footerEls.map(e=>e.outerHTML).join('');
+      const logo = (DB.info && DB.info.logo) ? `<img src="${DB.info.logo}" class="mm-logo" alt="">` : '';
+      // Measure the real on-screen column proportions BEFORE the table is split into pages,
+      // then give every page's table the same <colgroup> so columns line up page to page.
+      let colPct = null;
+      try{
+        const ref = dataRows[0];
+        const headCols = headRows.length ? [...headRows[headRows.length-1].cells].reduce((a,c)=>a+c.colSpan,0) : 0;
+        if(ref && ref.cells.length===headCols && [...ref.cells].every(c=>c.colSpan===1)){
+          const ws = [...ref.cells].map(c=>c.getBoundingClientRect().width);
+          const tot = ws.reduce((a,b)=>a+b,0);
+          if(tot>0 && ws.every(w=>w>0)) colPct = ws.map(w=>w/tot*100);
+        }
+      }catch(e){ colPct = null; }
+      originalHtml = area.innerHTML;
+      const out = document.createElement('div');
+      pages.forEach((rows,pi)=>{
+        const pg = document.createElement('div');
+        pg.className = 'ms-print-page';
+        pg.innerHTML = `<div class="mm-header">${logo}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>`
+          + (titleTxt?`<div class="mm-title">${esc(titleTxt)}</div>`:'')
+          + `<div class="mm-meta">${esc([metaTxt,`Page ${pi+1} of ${pages.length}`].filter(Boolean).join('  •  '))}</div></div>`;
+        const t = table.cloneNode(false);
+        if(colPct){
+          t.classList.add('ms-fixed');
+          const cg = document.createElement('colgroup');
+          colPct.forEach(w=>{ const c=document.createElement('col'); c.style.width=w.toFixed(3)+'%'; cg.appendChild(c); });
+          t.appendChild(cg);
+        }
+        const th = document.createElement('thead');
+        headRows.forEach(r=>th.appendChild(r.cloneNode(true)));
+        t.appendChild(th);
+        const tb = document.createElement('tbody');
+        rows.forEach(r=>tb.appendChild(r.cloneNode(true)));
+        t.appendChild(tb);
+        pg.appendChild(t);
+        if(pi===pages.length-1 && footerHtml){ const f=document.createElement('div'); f.style.marginTop='8px'; f.innerHTML=footerHtml; pg.appendChild(f); }
+        out.appendChild(pg);
+      });
+      area.innerHTML = '';
+      area.appendChild(out);
+    }
+  }catch(e){ console.warn('print pagination failed, printing as-is', e); if(originalHtml!==null && area){ area.innerHTML = originalHtml; originalHtml = null; } }
+
   const st = document.createElement('style');
   st.id = 'portraitPrintOverride';
   st.textContent = '@page{ size: A4 portrait; margin:8mm; }'
-    + '@media print{ .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
-    + ' #printArea table{width:100% !important;min-width:0 !important;table-layout:auto;}'
-    + ' #printArea table th, #printArea table td{padding:2px 3px !important;font-size:7.5px !important;white-space:normal !important;word-break:break-word;}'
-    + ' #printArea table th{font-size:7px !important;} }';
+    + '@media print{'
+    + ' .ms-print-page{break-after:page;page-break-after:always;} .ms-print-page:last-child{break-after:auto;page-break-after:auto;}'
+    + ' .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
+    + ' #printArea .mm-header{padding-bottom:6px;margin-bottom:8px;} #printArea .mm-header .mm-logo{width:48px;height:48px;} #printArea .mm-header .mm-school{font-size:18px;}'
+    + ' #printArea table{width:100% !important;min-width:0 !important;table-layout:auto;border-collapse:collapse;}'
+    + ' #printArea table.mm-table th, #printArea table.mm-table td{padding:2px 3px !important;font-size:7.5px !important;white-space:normal !important;word-break:break-word;}'
+    + ' #printArea table.mm-table th{font-size:7px !important;}'
+    + ' #printArea table:not(.mm-table) th, #printArea table:not(.mm-table) td{padding:3px 5px !important;font-size:10px !important;height:7.4mm;}'
+    + ' }';
   document.head.appendChild(st);
+  const restore = ()=>{
+    const e=document.getElementById('portraitPrintOverride'); if(e) e.remove();
+    const a=document.getElementById('printArea'); if(originalHtml!==null && a){ a.innerHTML = originalHtml; originalHtml = null; }
+    window.removeEventListener('afterprint', restore);
+  };
+  window.addEventListener('afterprint', restore);
+  setTimeout(restore, 30000); // fallback if a browser never fires afterprint
   printFramed();
-  setTimeout(()=>{ const e=document.getElementById('portraitPrintOverride'); if(e) e.remove(); }, 1000);
 }
 async function downloadElementAsPdf(elementId, filename, opts={}){
   const el = document.getElementById(elementId);
@@ -14111,12 +14309,23 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     // Group body rows into page-sized chunks without ever splitting a row across two
     // chunks/pages.
     const chunks = [];
-    let cur = [], curH = 0;
-    rowHeights.forEach((h, i)=>{
-      if(cur.length && curH + h > maxBodyHeightPx){ chunks.push(cur); cur = []; curH = 0; }
-      cur.push(bodyRows[i]); curH += h;
-    });
-    chunks.push(cur); // always at least one chunk, even if empty (shows header only)
+    if(opts.rowsPerPage){
+      // Fixed number of learners per page (e.g. 30). Full-width summary rows (a single
+      // colspan cell — grade summary, "no students" notice) stay with the LAST page.
+      const isSummaryRow = r => r.cells && r.cells.length===1 && r.cells[0].colSpan>1;
+      const dataRows = bodyRows.filter(r=>!isSummaryRow(r));
+      const sumRows = bodyRows.filter(isSummaryRow);
+      for(let i=0;i<dataRows.length;i+=opts.rowsPerPage) chunks.push(dataRows.slice(i,i+opts.rowsPerPage));
+      if(!chunks.length) chunks.push([]);
+      chunks[chunks.length-1] = chunks[chunks.length-1].concat(sumRows);
+    } else {
+      let cur = [], curH = 0;
+      rowHeights.forEach((h, i)=>{
+        if(cur.length && curH + h > maxBodyHeightPx){ chunks.push(cur); cur = []; curH = 0; }
+        cur.push(bodyRows[i]); curH += h;
+      });
+      chunks.push(cur); // always at least one chunk, even if empty (shows header only)
+    }
 
     for(let ci=0; ci<chunks.length; ci++){
       showActionProgress(`${progressLabel} — page ${ci+1} of ${chunks.length}`);
@@ -14140,7 +14349,14 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       pageWrap.style.fontFamily = 'Inter,sans-serif';
       pageWrap.style.background = '#fff';
       let headHtml = '';
-      if(ci===0){
+      if(section.school){
+        // Letterhead repeated on EVERY page: logo + school name, sheet title, meta line, page x of y.
+        const logo = (DB.info && DB.info.logo) ? `<img src="${DB.info.logo}" style="width:56px;height:56px;object-fit:contain;vertical-align:middle;margin-right:10px;" alt="">` : '';
+        headHtml = `<div style="text-align:center;border-bottom:2px solid #0A2A4A;padding-bottom:8px;margin-bottom:10px;">`
+          + `${logo}<span style="font-family:Georgia,serif;font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:.03em;color:#0A2A4A;vertical-align:middle;">${esc(section.school)}</span>`
+          + (section.title ? `<div style="font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#1D4E89;margin-top:5px;">${esc(section.title)}</div>` : '')
+          + `<div style="font-size:12px;color:#5A7189;margin-top:4px;">${esc([section.subtitle, `Page ${ci+1} of ${chunks.length}`].filter(Boolean).join('  •  '))}</div></div>`;
+      } else if(ci===0){
         if(section.title) headHtml += `<h3 style="margin:0 0 4px;">${esc(section.title)}</h3>`;
         if(section.subtitle) headHtml += `<p style="margin:0 0 10px;font-size:12px;color:#5A7189;">${esc(section.subtitle)}</p>`;
       } else if(section.title){
@@ -14160,12 +14376,13 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
 
       const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
       const img = canvas.toDataURL('image/jpeg', 0.95);
-      const w = usableW;
-      const h = Math.min(canvas.height*usableW/canvas.width, usableH);
+      let w = usableW;
+      let h = canvas.height*usableW/canvas.width;
+      if(h > usableH){ const k = usableH/h; w *= k; h = usableH; } // shrink to fit, never distort
       if(!firstPageOverall) pdf.addPage();
       firstPageOverall = false;
       drawPdfFrame(pdf);
-      pdf.addImage(img, 'JPEG', margin, margin, w, h);
+      pdf.addImage(img, 'JPEG', margin + (usableW-w)/2, margin, w, h);
     }
   }
 
@@ -14196,6 +14413,7 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
     return {
       title: (titleEl && titleEl.textContent) || opts.title || '',
       subtitle: (descEl && descEl.textContent) || opts.subtitle || '',
+      school: opts.school || '',
       headRows, bodyRows
     };
   }).filter(Boolean);
@@ -14228,11 +14446,12 @@ async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
   if(legendEl) footerHtml += `<p style="font-size:10px;color:#5A7189;margin:0 0 4px;">${esc(legendEl.textContent)}</p>`;
   if(footerEl) footerHtml += `<p style="font-size:9px;color:#8a97a6;margin:0;">${esc(footerEl.textContent)}</p>`;
   await renderTableSectionsAsPdf([{
-    title: [schoolEl&&schoolEl.textContent, titleEl&&titleEl.textContent].filter(Boolean).join(' — '),
+    school: (schoolEl&&schoolEl.textContent) || DB.info.schoolName || '',
+    title: (titleEl&&titleEl.textContent) || '',
     subtitle: metaEl ? metaEl.textContent : '',
     headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0,
     emptyText: 'No students to show yet.'
-  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation});
+  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage:30});
 }
 // Blank mark sheet, for printing/marking on paper (separate from the CSV version,
 // which is a data-interchange file meant to be filled in and re-uploaded).
@@ -14258,10 +14477,11 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
   });
   const kindFile = kind==='EOT' ? 'EndOfTerm' : ('AOI_'+(label||'test')).replace(/\s+/g,'_');
   await renderTableSectionsAsPdf([{
-    title: `${DB.info.schoolName||''}`,
-    subtitle: `${cls?cls.name:''} — ${a.subject} — Paper ${paper} — ${kindLbl} — marked out of ${max}`,
+    school: `${DB.info.schoolName||''}`,
+    title: `${cls?cls.name:''} — ${a.subject}`,
+    subtitle: `Paper ${paper} — ${kindLbl} — marked out of ${max}`,
     headRows: [headRow], bodyRows
-  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait'});
+  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait', rowsPerPage:30});
 }
 
 /* ---------- Bulk PDF ---------- */
