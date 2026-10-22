@@ -33,6 +33,29 @@
     }catch(e){}
   }
   applyDesktopViewport();
+  // --ui-k = how many layout pixels one real screen pixel covers. On a phone the 1280px desktop
+  // layout is shrunk to fit (e.g. ~0.3x), which made the login card and its text tiny. The
+  // login screen multiplies its sizes by --ui-k so it looks the same physical size on every
+  // device (k = 1 on a real desktop). Only used by the login CSS ("cte-login-size" style).
+  function updateUiK(){
+    try{
+      var dw = screen.width || screen.availWidth || 0;
+      var iw = window.innerWidth || document.documentElement.clientWidth || 0;
+      var vs = (window.visualViewport && window.visualViewport.scale) || 1;
+      var k = 1;
+      if(dw && dw < 1280){
+        if(vs < 1) k = 1/vs;                 // browser shrank the 1280px layout to fit
+        else if(iw > dw) k = iw/dw;          // zoomed-in moment: fall back to width ratio
+      }
+      k = Math.min(6, Math.max(1, k));
+      document.documentElement.style.setProperty('--ui-k', k.toFixed(3));
+    }catch(e){}
+  }
+  updateUiK();
+  document.addEventListener('DOMContentLoaded', updateUiK);
+  window.addEventListener('load', function(){ updateUiK(); setTimeout(updateUiK,400); setTimeout(updateUiK,1500); });
+  window.addEventListener('orientationchange', function(){ setTimeout(applyDesktopViewport,150); setTimeout(updateUiK,500); });
+  try{ if(screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', function(){ setTimeout(updateUiK,500); }); }catch(e){}
   // Some installed/standalone apps don't fully apply a viewport meta change made
   // this early (before layout exists yet); reapplying once things have settled
   // makes sure the scale sticks either way instead of silently falling back to
@@ -849,6 +872,78 @@ body>*{position:relative;z-index:1;}
 @media(max-width:380px){
   .auth-wrap:has(.platform-login-box){padding:12px;}
   .auth-wrap .platform-login-box{padding:22px 16px;}
+}
+</style>
+<style id="cte-login-size">
+/* Login screen — larger card and larger text on every screen (loaded last, so it wins).
+   --u is "1 screen pixel": on a phone (where the 1280px desktop layout is shrunk to fit) it is
+   several layout pixels, so the card and text look the same real size as on a computer.
+   The 36u top/bottom and 16u side padding keep the card clear of the Founder-panel dot
+   (fixed 6px from the bottom-left corner, 18px wide), and the dot keeps its own z-index. */
+:root{--u:calc(var(--ui-k,1) * 1px);}
+html .auth-wrap:has(.platform-login-box){padding:calc(36*var(--u)) calc(16*var(--u));}
+html .auth-wrap .platform-login-box{
+  width:min(100%,calc(580*var(--u)));max-width:calc(580*var(--u));
+  padding:calc(34*var(--u)) calc(24*var(--u));border-radius:calc(16*var(--u));
+}
+html .auth-wrap .platform-login-box .login-section,
+html .auth-wrap .platform-login-box .login-section-fill{padding:calc(16*var(--u)) 0;}
+html .auth-wrap .platform-login-box .login-section:first-child{padding-top:calc(8*var(--u));}
+html .auth-wrap .platform-login-box .login-section:last-child{padding-bottom:0;}
+html .auth-wrap .platform-login-box .login-section-tinted{padding:calc(20*var(--u));border-radius:calc(14*var(--u));}
+
+/* words */
+html .platform-login-box .school-name-big{font-size:calc(34*var(--u)) !important;line-height:1.15;}
+html .platform-login-box .small{font-size:calc(16*var(--u));line-height:1.4;}
+html .platform-login-box .login-section-label{font-size:calc(14*var(--u));margin-bottom:calc(12*var(--u));}
+html .platform-login-box label{font-size:calc(15*var(--u));margin:calc(14*var(--u)) 0 calc(6*var(--u));}
+html .platform-login-box .note{font-size:calc(16*var(--u));padding:calc(14*var(--u)) calc(16*var(--u));border-radius:calc(9*var(--u));border-width:calc(1.5*var(--u));}
+html .platform-login-box #loginErr{font-size:calc(16*var(--u)) !important;}
+
+/* username / password boxes */
+html .platform-login-box input[name="username"],
+html .platform-login-box input[name="password"]{
+  padding:calc(16*var(--u)) calc(16*var(--u));font-size:calc(21*var(--u));
+  border:calc(1.5*var(--u)) solid #b9c9da;border-radius:calc(8*var(--u));
+}
+
+/* buttons */
+html .platform-login-box .btn{font-size:calc(20*var(--u)) !important;padding:calc(15*var(--u)) calc(20*var(--u)) !important;border-radius:calc(9*var(--u));}
+html .platform-login-box .btn-outline{font-size:calc(15*var(--u)) !important;padding:calc(10*var(--u)) calc(14*var(--u)) !important;border-width:calc(2*var(--u));border-radius:calc(9*var(--u));}
+html .platform-login-box .install-app-btn{font-size:calc(18*var(--u));padding:calc(15*var(--u)) calc(16*var(--u));border-width:calc(2*var(--u));border-radius:calc(9*var(--u));margin-top:calc(14*var(--u));}
+html .platform-login-box .auth-action-stack{gap:calc(10*var(--u));margin-top:calc(12*var(--u));}
+html .platform-login-box .auth-action-stack .btn span:first-child{font-size:calc(14*var(--u)) !important;}
+html .platform-login-box .auth-action-stack .btn span:last-child{font-size:calc(19*var(--u)) !important;}
+html .platform-login-box .flex{gap:calc(10*var(--u));}
+
+/* role picker (Owner/Admin, Teacher, Parent) — capped by vw so three always fit on small phones */
+html .platform-login-box .role-icons{gap:calc(10*var(--u));flex-wrap:nowrap;}
+html .platform-login-box .role-icon-btn{max-width:none;gap:calc(10*var(--u));padding:calc(4*var(--u));}
+html .platform-login-box .role-icon-circle{
+  width:min(calc(84*var(--u)),20vw);height:min(calc(84*var(--u)),20vw);
+  font-size:min(calc(40*var(--u)),9vw);border-width:calc(2.5*var(--u));
+}
+html .platform-login-box .role-icon-label{font-size:min(calc(15*var(--u)),3.6vw);}
+
+/* "Owner/Admin Panel" header row after a role is chosen */
+html .platform-login-box .login-panel-icon{width:calc(54*var(--u)) !important;height:calc(54*var(--u)) !important;font-size:calc(26*var(--u)) !important;}
+html .platform-login-box .login-panel-title{font-size:calc(19*var(--u)) !important;}
+html .platform-login-box [data-action="clearRole"]{font-size:calc(14*var(--u)) !important;padding:calc(8*var(--u)) calc(14*var(--u)) !important;}
+html .platform-login-box .panel-indicator-row{gap:calc(12*var(--u));}
+</style>
+<style id="cte-marksheet-fix">
+/* Mark Sheets & General Mark Sheets: the last column always has a closing vertical line,
+   on screen, in print and in the PDF export. */
+table.mm-table th:last-child, table.mm-table td:last-child,
+table.ims-table th:last-child, table.ims-table td:last-child{border-right:2px solid var(--blue) !important;}
+table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
+/* General Mark Sheets are shown as a landscape (A4) sheet on screen too. */
+.mm-page{aspect-ratio:297/210;}
+@media print{
+  .mm-page{aspect-ratio:auto !important;}
+  #printArea table.mm-table th:last-child, #printArea table.mm-table td:last-child,
+  #printArea table.ims-table th:last-child, #printArea table.ims-table td:last-child,
+  #printArea table.data-table th:last-child, #printArea table.data-table td:last-child{border-right:2.2pt solid #0A2A4A !important;}
 }
 </style>
 </head>
@@ -4424,8 +4519,8 @@ function renderPlatformAuth(){
       <div class="login-section">
         <div class="panel-indicator-row" style="display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <span class="role-icon-circle" style="width:38px;height:38px;font-size:18px;background:var(--blue);color:#fff;">${roleIcon}</span>
-            <span style="font-weight:800;font-size:15px;">${roleLabel} Panel</span>
+            <span class="role-icon-circle login-panel-icon" style="width:38px;height:38px;font-size:18px;background:var(--blue);color:#fff;">${roleIcon}</span>
+            <span class="login-panel-title" style="font-weight:800;font-size:15px;">${roleLabel} Panel</span>
           </div>
           <button type="button" class="btn-outline" data-action="clearRole" style="padding:6px 12px;font-size:12px;white-space:nowrap;">Change role</button>
         </div>
@@ -8205,7 +8300,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
   </div>
   <div id="printArea">
   <div class="card" style="overflow:auto;">
-    ${cols.length || allStudents.length ? `<table class="data-table"><tr>${canBulk?'<th><input type="checkbox" id="msSelectAllCb" onchange="toggleAllMsCheckboxes(this)" title="Select all students on this page" style="width:auto;"></th>':''}<th>No.</th><th>Adm No</th><th>Student</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
+    ${cols.length || allStudents.length ? `<table class="data-table ims-table"><tr>${canBulk?'<th><input type="checkbox" id="msSelectAllCb" onchange="toggleAllMsCheckboxes(this)" title="Select all students on this page" style="width:auto;"></th>':''}<th>No.</th><th>Adm No</th><th>Student</th>${colHeaders}<th>${esc(examConfig(classId).cwLabel)} Avg /${examConfig(classId).cwPercent}</th><th>${esc(examConfig(classId).eotLabel)} Avg /${examConfig(classId).eotPercent}</th><th>Final /100</th><th>Grade</th></tr>
     ${rowsHtml ? rowsHtml + summaryRows : `<tr><td colspan="${7+cols.length+(canBulk?1:0)}">No students on record for this subject yet.</td></tr>`}
     </table>` : `<p class="small">No students or scores are on record yet for ${esc(subject)} in ${esc(cls.name)} this term.</p>`}
   </div>
@@ -8805,7 +8900,7 @@ function masterMarkSheetView(forExport){
       : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position. Switch to "Real Scores" to see the underlying marks.'
     } Either way, it\'s wide — download it as a PDF or print it, and choose <b>PORTRAIT</b> paper (saves pages).</div>
     <div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (portrait)</b></button>
+      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (landscape)</b></button>
       <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
@@ -8897,7 +8992,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     <label style="margin-top:14px;">View</label>
     <div class="flex">${mmTabsHtml(mode,isAdmin)}</div>
     <div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (portrait)</b></button>
+      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (landscape)</b></button>
       <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
@@ -14421,7 +14516,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       pageTable.appendChild(tbody);
 
       const pageWrap = document.createElement('div');
-      pageWrap.style.width = tableW+'px';
+      pageWrap.style.width = (tableW+20)+'px'; // table width + 10px padding each side, so the right-hand border is never cropped
       pageWrap.style.padding = '10px';
       pageWrap.style.fontFamily = 'Inter,sans-serif';
       pageWrap.style.background = '#fff';
@@ -14455,6 +14550,9 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       pageTable.classList.add('pg-fit');
       const fitStyle = document.createElement('style');
       pageWrap.appendChild(fitStyle);
+      const closeStyle = document.createElement('style'); // closing vertical line on the last column
+      closeStyle.textContent = '.pg-fit th:last-child,.pg-fit td:last-child{border-right:2px solid #0A2A4A !important;}';
+      pageWrap.appendChild(closeStyle);
       const maxRatio = usableH/usableW;
       for(const [padV, hV] of [[7,0],[5,0],[4,0],[3,0],[2,0],[1,0],[1,26],[1,24],[1,22],[1,20],[1,18],[1,16]]){
         fitStyle.textContent = `.pg-fit th,.pg-fit td{padding-top:${padV}px !important;padding-bottom:${padV}px !important;${hV?`height:${hV}px !important;`:''}}`;
