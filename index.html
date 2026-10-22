@@ -7845,7 +7845,7 @@ function marksheetGroups(pool){
 // printIntegrated/printMasterMarkSheet action handlers), so a downloaded or printed
 // mark sheet always contains every student regardless of which on-screen page is
 // showing when the button is clicked.
-const MARKSHEET_PAGE_SIZE = 30;
+const MARKSHEET_PAGE_SIZE = 35;
 function paginateMarksheet(list, page, forExport, pageSize){
   const size = pageSize || MARKSHEET_PAGE_SIZE;
   const total = list.length;
@@ -7968,7 +7968,7 @@ function blankMarksheetView(classId, subject){
   if(!assessCols.length) assessCols.push('Score');
   const blankHead = assessCols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('');
   const blankCells = assessCols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
-  const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${blankCells}<td style="min-width:90px;">&nbsp;</td></tr>`).join('');
+  const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${blankCells}</tr>`).join('');
   return `
   <h2>Blank Mark Sheet</h2>
   <div class="card">
@@ -7985,8 +7985,8 @@ function blankMarksheetView(classId, subject){
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — ${esc(subject)} — Blank Mark Sheet</h3>
     <p class="small">${esc(term||'')}, ${esc(String(year||''))}</p>
-    <table class="data-table"><tr><th>No.</th><th>Adm No</th><th>Student</th>${blankHead}<th>Remarks</th></tr>
-    ${rowsHtml || `<tr><td colspan="${4+assessCols.length}">No students are enrolled for this subject yet.</td></tr>`}
+    <table class="data-table"><tr><th>No.</th><th>Adm No</th><th>Student</th>${blankHead}</tr>
+    ${rowsHtml || `<tr><td colspan="${3+assessCols.length}">No students are enrolled for this subject yet.</td></tr>`}
     </table>
   </div>
   </div>`;
@@ -8331,7 +8331,8 @@ function classAnalysisView(){
   const ANALYSIS_FORMS = [
     ['students','1. Student Performance (ranked by class position)'],
     ['classwise','2. Subject Performance — Class-wise'],
-    ['levelwise','3. Subject Performance — Level-wise']
+    ['levelwise','3. Subject Performance — Level-wise'],
+    ['all','Show all three forms at once']
   ];
   const formKey = ANALYSIS_FORMS.some(f=>f[0]===sel.form) ? sel.form : '';
   const selectorsHtml = (showButtons)=>`
@@ -8347,17 +8348,17 @@ function classAnalysisView(){
       </select></div>
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setAnalysisParam('year', this.value)"></div>
     </div>
-    ${cls?`<div style="margin-top:12px;"><label>Analysis form</label><select onchange="setAnalysisParam('form', this.value)">
-      <option value="" ${formKey?'':'selected'}>— Select analysis form —</option>
-      ${ANALYSIS_FORMS.map(f=>`<option value="${f[0]}" ${f[0]===formKey?'selected':''}>${esc(f[1])}</option>`).join('')}
-    </select></div>`:''}
+    ${cls?`<div style="margin-top:12px;"><label>Analysis form</label>
+      <div class="flex" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+      ${ANALYSIS_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1])}</button>`).join('')}
+      </div></div>`:''}
     ${showButtons?`<div class="flex" style="margin-top:14px;">
       <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>
       <button class="btn" onclick="printLandscape()">Print</button>
     </div>`:''}
   </div>`;
   if(!cls) return selectorsHtml(false) + `<div class="card"><p class="small">Select a class to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div>`;
-  if(!formKey) return selectorsHtml(false) + `<div class="card"><p class="small">Now select which analysis form you want to open: Student Performance, Subject Performance (Class-wise) or Subject Performance (Level-wise).</p></div>`;
+  if(!formKey) return selectorsHtml(false) + `<div class="card"><p class="small">Now choose an analysis form above: Student Performance, Subject Performance (Class-wise), Subject Performance (Level-wise), or show all three at once.</p></div>`;
   const isA = cls.level==='A';
 
   const studentStats = classStudentStats(cls, term, year);
@@ -8423,9 +8424,12 @@ function classAnalysisView(){
     ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
   </div>`;
+  const classWiseCard = `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`;
+  const levelWiseCard = `<div class="card" style="overflow:auto;">${levelWiseHtml}</div>`;
   const formHtml = formKey==='students' ? studentsCardHtml
-    : formKey==='classwise' ? `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`
-    : `<div class="card" style="overflow:auto;">${levelWiseHtml}</div>`;
+    : formKey==='classwise' ? classWiseCard
+    : formKey==='levelwise' ? levelWiseCard
+    : studentsCardHtml + classWiseCard + levelWiseCard;
   return selectorsHtml(true) + `
   <div id="printArea">${formHtml}
   </div>`;
@@ -8612,7 +8616,7 @@ function masterMarkSheetView(forExport){
   } else {
     allStudents = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   }
-  const pg = paginateMarksheet(allStudents, sel.mmPage, !!forExport);
+  const pg = paginateMarksheet(allStudents, sel.mmPage, !!forExport, 25);
   const students = pg.pageItems;
 
   const rowsData = students.map(s=>{
@@ -8735,7 +8739,7 @@ function masterMarkSheetView(forExport){
     } Either way, it\'s wide — download it as a PDF or print it, and choose <b>PORTRAIT</b> paper (saves pages).</div>
     <div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (portrait)</b></button>
-      <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (portrait)</button>
+      <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
   </div>
@@ -8797,7 +8801,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   }).sort((a,b)=> b.m-a.m || (a.st.name||'').localeCompare(b.st.name||''));
   let pos = 0;
   data.forEach((r,i)=>{ if(i===0 || r.m < data[i-1].m) pos = i+1; r.pos = pos; });
-  const pg = paginateMarksheet(data, sel.mmPage, !!forExport);
+  const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 25);
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}`;
   const colCount = 5 + (isLevel?1:0) + (isA?1:0) + (isP?1:0);
@@ -8827,7 +8831,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     <div class="flex">${mmTabsHtml(mode,isAdmin)}</div>
     <div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (portrait)</b></button>
-      <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (portrait)</button>
+      <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
     </div>
   </div>
@@ -11454,7 +11458,7 @@ Continue?`);
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
       const term = DB.info.currentTerm, year = DB.info.currentYear;
       await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
-        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:30, school: DB.info.schoolName||''
+        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||''
       });
       break;
     }
@@ -11476,7 +11480,7 @@ Continue?`);
         // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
         const term = DB.info.currentTerm, year = DB.info.currentYear;
         await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
-          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:30, school: DB.info.schoolName||''
+          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||''
         });
       } finally {
         render();
@@ -11549,7 +11553,7 @@ Continue?`);
         // Dedicated adapter (handles the two-row subject/paper header and the
         // legend/footer text) feeding the same row-paginating, no-column-splitting
         // export core as Class Analysis and the Integrated Mark Sheet.
-        await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'portrait'});
+        await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
       } finally {
         render();
       }
@@ -11562,7 +11566,7 @@ Continue?`);
       showActionProgress('Preparing Master Mark Sheet for printing…', el);
       await refreshScoresForPeriod(printTermEnc?decodeURIComponent(printTermEnc):DB.info.currentTerm, printYear||DB.info.currentYear);
       document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
-      printPortrait();
+      printPortrait({landscape:true});
       render();
       break;
     }
@@ -14027,18 +14031,19 @@ function printLandscape(){
   printFramed();
   setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
 }
-// Portrait print for mark sheets: 30 learners per page, school letterhead on EVERY page.
+// Portrait print for mark sheets (landscape for the General Mark Sheets): 35 learners per page, school letterhead on EVERY page.
 // The on-screen #printArea is temporarily rebuilt into one block per page (page-break
 // between blocks), printed, then put back exactly as it was.
 function printPortrait(opts){
   opts = opts || {};
-  const PER_PAGE = 30;
+  let PER_PAGE = 35;
   const area = document.getElementById('printArea');
   let originalHtml = null;
   try{
     const table = area && (area.querySelector('table.mm-table') || area.querySelector('table'));
     if(table){
       const isMaster = table.classList.contains('mm-table');
+      if(isMaster) PER_PAGE = 25; // General Mark Sheets: 25 per page
       const thead = table.querySelector('thead');
       const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
       const allRows = thead ? [...table.querySelectorAll('tbody tr')] : [...table.querySelectorAll('tr')].slice(1);
@@ -14107,7 +14112,7 @@ function printPortrait(opts){
 
   const st = document.createElement('style');
   st.id = 'portraitPrintOverride';
-  st.textContent = '@page{ size: A4 portrait; margin:8mm; }'
+  st.textContent = '@page{ size: A4 ' + (opts.landscape?'landscape':'portrait') + '; margin:8mm; }'
     + '@media print{'
     + ' .ms-print-page{break-after:page;page-break-after:always;} .ms-print-page:last-child{break-after:auto;page-break-after:auto;}'
     + ' .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
@@ -14115,7 +14120,7 @@ function printPortrait(opts){
     + ' #printArea table{width:100% !important;min-width:0 !important;table-layout:auto;border-collapse:collapse;}'
     + ' #printArea table.mm-table th, #printArea table.mm-table td{padding:2px 3px !important;font-size:7.5px !important;white-space:normal !important;word-break:break-word;}'
     + ' #printArea table.mm-table th{font-size:7px !important;}'
-    + ' #printArea table:not(.mm-table) th, #printArea table:not(.mm-table) td{padding:3px 5px !important;font-size:10px !important;height:7.4mm;}'
+    + ' #printArea table:not(.mm-table) th, #printArea table:not(.mm-table) td{padding:3px 5px !important;font-size:10px !important;height:6.4mm;}'
     + ' }';
   document.head.appendChild(st);
   const restore = ()=>{
@@ -14294,7 +14299,8 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     measureTable.appendChild(measureTbody);
     holder.innerHTML = '';
     holder.appendChild(measureTable);
-    const tableW = measureTable.scrollWidth || measureTable.offsetWidth || 1;
+    // Narrow tables (few columns) are stretched so the sheet fills the page side to side.
+    const tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, orientation==='portrait' ? 720 : 1000);
     const headerH = measureThead.offsetHeight || 0;
     const bodyTrs = [...measureTbody.rows];
     const rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 22);
@@ -14310,7 +14316,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     // chunks/pages.
     const chunks = [];
     if(opts.rowsPerPage){
-      // Fixed number of learners per page (e.g. 30). Full-width summary rows (a single
+      // Fixed number of learners per page (e.g. 35). Full-width summary rows (a single
       // colspan cell — grade summary, "no students" notice) stay with the LAST page.
       const isSummaryRow = r => r.cells && r.cells.length===1 && r.cells[0].colSpan>1;
       const dataRows = bodyRows.filter(r=>!isSummaryRow(r));
@@ -14373,6 +14379,16 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
 
       holder.innerHTML = '';
       holder.appendChild(pageWrap);
+      // Fit every row on the page by tightening row height (instead of shrinking the whole
+      // sheet, which would leave empty bands down the sides) so the table always fills the width.
+      pageTable.classList.add('pg-fit');
+      const fitStyle = document.createElement('style');
+      pageWrap.appendChild(fitStyle);
+      const maxRatio = usableH/usableW;
+      for(const [padV, hV] of [[7,0],[5,0],[4,0],[3,0],[2,0],[1,0],[1,26],[1,24],[1,22],[1,20],[1,18],[1,16]]){
+        fitStyle.textContent = `.pg-fit th,.pg-fit td{padding-top:${padV}px !important;padding-bottom:${padV}px !important;${hV?`height:${hV}px !important;`:''}}`;
+        if(pageWrap.offsetHeight/pageWrap.offsetWidth <= maxRatio) break;
+      }
 
       const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
       const img = canvas.toDataURL('image/jpeg', 0.95);
@@ -14451,7 +14467,7 @@ async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
     subtitle: metaEl ? metaEl.textContent : '',
     headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0,
     emptyText: 'No students to show yet.'
-  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage:30});
+  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage:25});
 }
 // Blank mark sheet, for printing/marking on paper (separate from the CSV version,
 // which is a data-interchange file meant to be filled in and re-uploaded).
@@ -14481,7 +14497,7 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
     title: `${cls?cls.name:''} — ${a.subject}`,
     subtitle: `Paper ${paper} — ${kindLbl} — marked out of ${max}`,
     headRows: [headRow], bodyRows
-  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait', rowsPerPage:30});
+  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait', rowsPerPage:35});
 }
 
 /* ---------- Bulk PDF ---------- */
