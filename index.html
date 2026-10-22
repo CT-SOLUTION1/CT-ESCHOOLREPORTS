@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-22-5'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-22-7'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -953,14 +953,19 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 :root{--uk:calc(var(--ui-k,1) * 1px);}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
-.tile-grid-3 .tile{padding:calc(20*var(--uk)) calc(8*var(--uk));min-height:calc(104*var(--uk));gap:calc(8*var(--uk));border-radius:calc(12*var(--uk));}
-.tile-grid-3 .tile-icon{font-size:calc(32*var(--uk));}
+.tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
+.tile-grid-3 .tile-icon{font-size:calc(30*var(--uk));}
 .tile-grid-3 .tile-label{font-size:calc(12*var(--uk));letter-spacing:.01em;}
 /* Enter Scores: choosing class/subject, paper, assessment, term, maximum mark */
-.score-pick h3{font-size:calc(19*var(--uk));}
-.score-pick label{font-size:calc(14*var(--uk));margin:calc(14*var(--uk)) 0 calc(6*var(--uk));}
-.score-pick select,.score-pick input{font-size:calc(17*var(--uk));padding:calc(12*var(--uk)) calc(12*var(--uk));border-radius:calc(7*var(--uk));}
-.score-pick .btn{font-size:calc(17*var(--uk));padding:calc(13*var(--uk)) calc(22*var(--uk));border-radius:calc(8*var(--uk));}
+/* --pf (0.55–1) is set by the "cte-scorepick-fit" script below: it shrinks sizes/spacing just enough that
+   the whole picker (down to the Submit button) fits the visible screen height, so nothing looks missing. */
+.score-pick h3{font-size:calc(19*var(--uk)*var(--pf,1));margin-bottom:calc(6*var(--uk)*var(--pf,1));}
+.score-pick label{font-size:calc(14*var(--uk)*var(--pf,1));margin:calc(14*var(--uk)*var(--pf,1)) 0 calc(6*var(--uk)*var(--pf,1));}
+.score-pick select,.score-pick input{font-size:calc(17*var(--uk)*var(--pf,1));padding:calc(12*var(--uk)*var(--pf,1)) calc(12*var(--uk));border-radius:calc(7*var(--uk));}
+.score-pick .btn{font-size:calc(17*var(--uk)*var(--pf,1));padding:calc(13*var(--uk)*var(--pf,1)) calc(22*var(--uk));border-radius:calc(8*var(--uk));margin-top:calc(14*var(--uk)*var(--pf,1)) !important;}
+/* One full-width field per line, so "-- choose assessment type --" and the other choices are never cut off. */
+.score-pick .grid2{grid-template-columns:1fr !important;gap:0;}
+.score-pick select{text-overflow:clip;}
 </style>
 <script id="cte-login-fit">
 /* Login screen: shrink the card's text/spacing (--fit, 0.3–1) until the whole card fits the
@@ -1001,6 +1006,43 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
   window.addEventListener('orientationchange', function(){ setTimeout(schedule, 300); setTimeout(schedule, 900); });
   window.addEventListener('load', function(){ schedule(); setTimeout(schedule, 500); setTimeout(schedule, 1700); });
   try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(schedule); }catch(e){}
+})();
+</script>
+<script id="cte-scorepick-fit">
+/* Enter Scores picker: shrink its sizes/spacing (--pf, min 0.55) only as much as needed so the whole card,
+   including "Assessment type" and the Submit button, sits inside the visible screen height. Re-runs on
+   every re-render and whenever a field appears/disappears (Paper, test), and on rotation/resize. */
+(function(){
+  var raf = 0;
+  function fit(){
+    try{
+      var root = document.documentElement;
+      var form = document.querySelector('form[data-form="pickPaper"]');
+      var card = form && form.closest('.score-pick');
+      if(!card){ if(root.style.getPropertyValue('--pf')) root.style.removeProperty('--pf'); return; }
+      var avail = window.innerHeight || root.clientHeight || 0;
+      if(!avail) return;
+      var bottom = function(){ return card.getBoundingClientRect().bottom + (window.pageYOffset||0); };
+      var f = 1;
+      root.style.setProperty('--pf', '1');
+      for(var i=0;i<8;i++){
+        var b = bottom(), room = avail - 10;
+        if(b <= room || f <= 0.55) break;
+        f = Math.max(0.55, f * Math.max(0.6, room / b) * 0.97);
+        root.style.setProperty('--pf', f.toFixed(3));
+      }
+    }catch(e){}
+  }
+  function schedule(){ if(raf) return; raf = requestAnimationFrame(function(){ raf = 0; fit(); }); }
+  function start(){
+    try{ new MutationObserver(schedule).observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['style','class']}); }catch(e){}
+    schedule();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+  document.addEventListener('change', function(){ setTimeout(schedule, 30); }, true);
+  window.addEventListener('resize', schedule);
+  window.addEventListener('orientationchange', function(){ setTimeout(schedule, 300); setTimeout(schedule, 900); });
+  window.addEventListener('load', function(){ schedule(); setTimeout(schedule, 500); setTimeout(schedule, 1700); });
 })();
 </script>
 </head>
