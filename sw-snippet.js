@@ -1,7 +1,7 @@
 // sw.js — change SW_VERSION on EVERY deploy. Browsers re-fetch sw.js each time the app is
 // opened; any byte change installs this new worker, which takes over at once and makes
 // already-open (and old-version) pages reload themselves.
-const SW_VERSION = 'BUILD-2026-10-22-7';
+const SW_VERSION = 'BUILD-2026-10-22-8';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
