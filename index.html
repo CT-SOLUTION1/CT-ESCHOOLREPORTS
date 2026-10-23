@@ -163,7 +163,8 @@ img{max-width:100%;height:auto;}
 .sidebar a.nav-home{display:none;}
 .layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
 .layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
-.layout.nav-collapsed .sidebar a.nav-home{display:block;text-align:center;padding:calc(9*var(--uk)) calc(12*var(--uk));font-size:calc(15*var(--uk));font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-left:0;border-bottom:3px solid var(--gold);background:rgba(255,255,255,.1);color:#fff;}
+.layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:calc(100% - 16*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(9*var(--uk)) calc(12*var(--uk));font-size:calc(14*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
+.layout.nav-collapsed .sidebar a.nav-home:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .layout.nav-collapsed:not(.nav-open) .sidebar a:not(.nav-home){display:none;}
 .layout.nav-collapsed.nav-open .sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(3*var(--uk));padding:0 0 calc(6*var(--uk));}
 .layout.nav-collapsed.nav-open .sidebar a.nav-home{grid-column:1 / -1;}
@@ -1159,7 +1160,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .se-table th{position:sticky;top:0;z-index:2;font-size:calc(11*var(--uk));line-height:1.2;white-space:normal;}
 .se-table th .small{font-size:calc(9.5*var(--uk));}
 /* Student names: wrap onto two lines rather than push other columns off screen. */
-.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(11.5*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
+.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(10.5*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
 .se-name{overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;line-height:1.1;}
 .se-name::-webkit-scrollbar{display:none;}
 .se-nm{display:inline-block;}
@@ -1170,19 +1171,29 @@ table.data-table.se-table td.small{font-size:var(--se-ocfs,calc(13*var(--uk)));f
 table.data-table.se-table td.small[style*="muted"]{font-weight:400;color:var(--muted);}
 table.data-table.se-table th.small{font-size:var(--se-hfs,calc(9.5*var(--uk))) !important;font-weight:700;line-height:1.1;word-break:break-word;overflow:hidden;}
 .se-table th.small a{color:inherit;text-decoration:none;}
+.se-table th .se-en{display:block;margin-top:calc(1*var(--uk));}
+table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-size:calc(6.5*var(--uk)) !important;font-weight:600;line-height:1.15;letter-spacing:-.02em;}
 .se-hmax{font-weight:700;opacity:.95;}
 .se-sh .se-hmax{display:block;}
 /* ALREADY SCORED: ONE merged column holding a small sub-column per earlier test; it scrolls sideways (header and every row together). */
 .se-prev{overflow-x:auto;overflow-y:hidden;width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .se-prev::-webkit-scrollbar{display:none;}
 .se-pr-in{display:flex;width:max-content;min-width:100%;}
-.se-pc,.se-sh{flex:1 0 var(--se-cw,15px);width:var(--se-cw,15px);box-sizing:border-box;text-align:center;white-space:nowrap;overflow:hidden;}
-.se-pc{font-size:calc(5*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;letter-spacing:-.02em;border-left:1px solid #cfd9e3;padding:calc(1*var(--uk)) 0;}
+.se-pc,.se-sh{flex:none;width:var(--se-cw,12px);box-sizing:border-box;text-align:center;white-space:nowrap;overflow:hidden;}
+.se-pc{font-size:calc(4.5*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;letter-spacing:-.02em;border-left:1.5px solid #1D4E89;padding:calc(1*var(--uk)) 0;}
 .se-pc.se-nil{color:var(--muted);font-weight:400;}
 .se-table th.se-prevh,.se-table td.se-prevtd{padding-left:0;padding-right:0;}
-.se-table th.se-prevh{width:min(26%,max(calc(var(--se-oc,1) * var(--se-cw,15px) + 2*var(--uk)),calc(54*var(--uk))));}
-.se-ph-title{font-size:calc(5.5*var(--uk));font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:calc(1*var(--uk));padding-bottom:calc(1.5*var(--uk));border-bottom:1px solid rgba(255,255,255,.85);text-align:center;white-space:nowrap;overflow:hidden;}
-table.data-table.se-table th .se-sh{font-size:calc(4.5*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.1;letter-spacing:-.02em;border-left:1px solid rgba(255,255,255,.4);padding:calc(1*var(--uk)) 0;display:block;}
+.se-table th.se-prevh,.se-table td.se-prevtd{box-sizing:border-box;}
+.se-table th.se-prevh{width:calc(44*var(--uk));}
+.se-table th.se-prevh.se-more{width:calc(50*var(--uk));}
+/* more tests than fit: a small arrow in a 6px gutter tells users to swipe sideways; it fades once the end is reached. */
+.se-table th.se-more,.se-table td.se-more{position:relative;padding-right:calc(6*var(--uk)) !important;}
+.se-table th.se-more::after,.se-table td.se-more::after{content:'\25B8';position:absolute;right:calc(1*var(--uk));top:50%;transform:translateY(-50%);font-size:calc(7*var(--uk));line-height:1;font-weight:900;}
+.se-table th.se-more::after{color:#fff;}
+.se-table td.se-more::after{color:var(--blue,#1f5fa8);}
+.se-table.se-end .se-more::after{opacity:.2;}
+.se-ph-title{font-size:calc(5*var(--uk));font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:calc(1*var(--uk));padding-bottom:calc(1.5*var(--uk));border-bottom:1px solid rgba(255,255,255,.85);text-align:center;white-space:nowrap;overflow:hidden;}
+table.data-table.se-table th .se-sh{font-size:calc(4*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.1;letter-spacing:-.02em;border-left:1.5px solid #fff;padding:calc(1*var(--uk)) 0;display:block;}
 /* Column headers: bold WHITE words on solid colour (blue for every column; green marks the column being entered now). */
 table.data-table.se-table th,table.data-table.se-table th a,table.data-table.se-table th .small,.se-table th .se-hmax{color:#fff !important;}
 table.data-table.se-table th{background:var(--blue,#1f5fa8) !important;font-weight:800;}
@@ -1193,7 +1204,7 @@ table.data-table.se-table th:nth-last-child(2){background:#0f6b3a !important;}
 table.data-table.se-table th:last-child,
 table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-danger{font-size:calc(5.5*var(--uk)) !important;}
 .se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(5.5*var(--uk));padding:calc(2*var(--uk)) calc(2*var(--uk)) !important;line-height:1;white-space:nowrap;letter-spacing:-.02em;max-width:100%;box-sizing:border-box;}
-.se-table th:first-child{width:auto;}
+.se-table th:first-child{width:45%;}
 .se-table th.small{width:min(13%,calc(var(--se-osh,56%) / var(--se-oc,1)));}
 .se-table th:last-child{width:12%;text-align:right;padding-right:calc(2*var(--uk));}
 .se-table th:nth-last-child(2){width:15%;}
@@ -1217,6 +1228,7 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
     var tb=el.closest('.se-table'); if(!tb) return;
     var x=el.scrollLeft, all=tb.querySelectorAll(el.classList.contains('se-name')?'.se-name':'.se-prev');
     for(var i=0;i<all.length;i++){ if(all[i]!==el && all[i].scrollLeft!==x) all[i].scrollLeft=x; }
+    if(el.classList.contains('se-prev')) tb.classList.toggle('se-end', el.scrollLeft+el.clientWidth>=el.scrollWidth-1);
   },true);
   function equalize(){
     queued=false; if(busy) return; busy=true;
@@ -5073,7 +5085,7 @@ function renderShell(){
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
   <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
-    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">${esc(nav[0][2]||'🏠')} Go back to menu</a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
+    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
     <div class="main" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
@@ -9643,7 +9655,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(15*var(--uk));"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(44*var(--uk)/${Math.min(Math.max(otherCols.length,1),3)});"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -9657,11 +9669,11 @@ function scoresEntryView(mine){
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE</button></td></tr>`;
+            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE</button></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
-            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b>${newCount?'Update my student list':'Edit my student list / add missing students'}</b></a>
+            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(15*var(--uk));font-weight:900;">${newCount?'Update my student list':'Edit my student list / add missing students'}</b></a>
             <span class="small"> — students you add appear here, just below the list, until their scores are saved.</span>
           </div>
 
