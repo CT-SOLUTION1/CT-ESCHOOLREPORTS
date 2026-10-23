@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-23-26'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-23-32'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -171,6 +171,14 @@ img{max-width:100%;height:auto;}
 .layout.nav-collapsed.nav-open .sidebar a:not(.nav-home){white-space:normal;text-align:center;padding:calc(8*var(--uk)) calc(6*var(--uk));font-size:calc(11*var(--uk));border-left:0;border-bottom:2px solid transparent;background:rgba(255,255,255,.06);}
 .layout.nav-collapsed .main{width:100%;flex:1 1 auto;box-sizing:border-box;}
 .main{flex:1;min-width:280px;padding:26px;max-width:1150px;}
+/* Selection-only screens (Result Analysis, Mark Sheets before any result is shown): the pickers sit in the
+   vertical middle of the screen instead of hugging the top. */
+.center-stage{min-height:calc(100vh - 250px);min-height:calc(100dvh - 250px);display:flex;flex-direction:column;justify-content:center;align-items:center;}
+.center-stage>h2{text-align:center;margin-top:0;}
+.center-stage>.card,.center-stage>.note{width:100%;max-width:780px;box-sizing:border-box;margin-left:auto;margin-right:auto;}
+.center-stage .flex{justify-content:center;}
+.center-stage label{display:block;}
+@media print{.center-stage{min-height:0;}}
 /* Global Back button (see NAVIGATION HISTORY below) */
 .nav-back-bar{margin:0 0 14px;}
 .nav-back-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;line-height:1.2;max-width:100%;text-align:left;}
@@ -2269,7 +2277,7 @@ function navGoBack(){
   // mark sheet reached via Back is as fresh as one opened normally.
   if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet','reportcard'].includes(name)){
     const token = NAV_TOKEN;
-    const p = name==='mastermarksheet' ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
+    const p = (name==='mastermarksheet'||name==='classanalysis') ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
     Promise.resolve(p).then(()=>{
       if(NAV_TOKEN!==token || FORM_DIRTY) return;
       render(); fit();
@@ -8513,10 +8521,11 @@ function marksheetsListView(){
   } else if(cls && mode==='empty'){
     panel = blankMarksheetsCard(pool, cls);
   }
-  return `
+  const msInner = `
   <h2>Mark Sheets</h2>
   <div class="card" style="margin-top:14px;">${body}</div>
   ${panel}`;
+  return panel ? msInner : `<div class="center-stage">${msInner}</div>`;
 }
 function setMarksheetClass(id){ VIEW.params = {msClassId:id, msMode:''}; render(); }
 // ---- Blank Mark Sheets: one printable empty sheet per class + subject, listing only the
@@ -8963,11 +8972,10 @@ function classAnalysisView(){
       <button class="btn" onclick="printLandscape()">Print</button>
     </div>`:''}
   </div>`;
-  if(!cls) return selectorsHtml(false) + `<div class="card"><p class="small">Select a class to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div>`;
-  if(!formKey) return selectorsHtml(false) + `<div class="card"><p class="small">Now choose an analysis form above: Student Performance, Subject Performance (Class-wise), Subject Performance (Level-wise), or show all three at once.</p></div>`;
+  if(!cls) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Select a class to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div></div>`;
+  if(!formKey) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now choose an analysis form above: Student Performance, Subject Performance (Class-wise), Subject Performance (Level-wise), or show all three at once.</p></div></div>`;
   const isA = cls.level==='A';
 
-  const studentStats = classStudentStats(cls, term, year);
   termForSummary = term; yearForSummary = year;
   const classPairs = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).map(s=>[s,cls]);
   const levelPairs = [];
@@ -8991,6 +8999,7 @@ function classAnalysisView(){
     t.avg = t.sat ? t.sum/t.sat : null;
     return statRow(t, cols).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
   };
+  const buildClassWise = ()=>{
   const classRowData = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const classRows = classRowData.map(r=>statRow(r, classGradeCols)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols) : '');
@@ -9001,6 +9010,9 @@ function classAnalysisView(){
     ${classRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 5+classGradeCols.length, cls.level) : ''}
     </table>`;
+  return `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`;
+  };
+  const buildLevelWise = ()=>{
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
   const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
@@ -9015,6 +9027,10 @@ function classAnalysisView(){
     ${levelPairs.length ? resultSummaryRow(levelPairs, 5+classGradeCols.length, cls.level) : ''}
     </table>`;
 
+  return `<div class="card" style="overflow:auto;">${levelWiseHtml}</div>`;
+  };
+  const buildStudents = ()=>{
+  const studentStats = classStudentStats(cls, term, year);
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
     const gradeTxt = isA ? '—' : (r.overallGrade || '—');
@@ -9030,17 +9046,27 @@ function classAnalysisView(){
     ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
   </div>`;
-  const classWiseCard = `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`;
-  const levelWiseCard = `<div class="card" style="overflow:auto;">${levelWiseHtml}</div>`;
-  const formHtml = formKey==='students' ? studentsCardHtml
-    : formKey==='classwise' ? classWiseCard
-    : formKey==='levelwise' ? levelWiseCard
-    : studentsCardHtml + classWiseCard + levelWiseCard;
+  return studentsCardHtml;
+  };
+  const formHtml = formKey==='students' ? buildStudents()
+    : formKey==='classwise' ? buildClassWise()
+    : formKey==='levelwise' ? buildLevelWise()
+    : buildStudents() + buildClassWise() + buildLevelWise();
   return selectorsHtml(true) + `
   <div id="printArea">${formHtml}
   </div>`;
 }
-function setAnalysisParam(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
+// Result Analysis only ever shows ONE term/year, so it loads just that period's score shard
+// (not every historical shard) — and picking a class/form renders at once from what is in memory.
+function setAnalysisParam(key, value){
+  VIEW.params = {...VIEW.params, [key]: value};
+  render();
+  if(key==='term' || key==='year'){
+    const p = VIEW.params, tok = NAV_TOKEN, vw = VIEW;
+    refreshScoresForPeriod(p.term || DB.info.currentTerm, p.year || DB.info.currentYear)
+      .then(()=>{ if(VIEW===vw && NAV_TOKEN===tok && !FORM_DIRTY) render(); }).catch(e=>console.error(e));
+  }
+}
 // Note: Class Analysis is exported as a PDF only (see downloadElementAsPdf / the
 // "dlClassAnalysisPdf" action) — no CSV export is offered for this view by design.
 
@@ -9630,7 +9656,7 @@ function scoresEntryView(mine){
           ${listed.map(s=>`<label class="sr-row">
             <input type="checkbox" name="students" value="${s.id}" ${chosen.has(s.id)?'checked':''}>
             ${esc(s.name)} ${rosterSet && !knownIds.has(s.id) ? '<span class="pill" style="background:var(--gold);color:#3a2c00;">NEW</span>' : ''}
-          </label>`).join('') || (missingOnly ? '<p class="small" style="padding:12px 0;font-weight:700;">No missing or New students yet. Contact Your Admin</p>' : '<p class="small">No students in this class yet — ask the admin to upload the class list first.</p>')}
+          </label>`).join('') || (missingOnly ? '<div role="alert" style="margin:18px 0;padding:26px 16px;text-align:center;background:#fff4e5;border:3px solid #e67e00;border-radius:12px;"><div style="font-size:26px;font-weight:800;color:#8a3b00;line-height:1.3;">No missing or new students found</div><div style="font-size:21px;font-weight:700;color:#0a2a4a;margin-top:10px;line-height:1.35;">Contact your Admin to add them before you can enter their scores.</div></div>' : '<p class="small">No students in this class yet — ask the admin to upload the class list first.</p>')}
           </div>
           <button class="btn btn-big">${listed.length ? 'Submit — save my student list' : 'Back to score sheet'}</button>
         </form>
@@ -11542,7 +11568,7 @@ document.addEventListener('click', async (e)=>{
         const rcRoot = document.getElementById('mainArea'); if(rcRoot) fitOnePage(rcRoot);
       }
       if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet'].includes(arg)){
-        const scoreRefresh = arg==='mastermarksheet'
+        const scoreRefresh = (arg==='mastermarksheet'||arg==='classanalysis')
           ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear)
           : refreshScores();
         scoreRefresh.then(()=>{
@@ -15462,7 +15488,7 @@ function resumeAfterUpdate(){
   render();
   if(RESUME_SCORE_VIEWS.includes(r.v)){
     const tok = NAV_TOKEN;
-    const p = r.v==='mastermarksheet' ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
+    const p = (r.v==='mastermarksheet'||r.v==='classanalysis') ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
     Promise.resolve(p).then(()=>{ if(NAV_TOKEN===tok) render(); }).catch(e=>console.error(e));
   }
 }
