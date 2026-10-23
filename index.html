@@ -4200,10 +4200,18 @@ function computeSubjectRows(st, cls, term, year){
 // (the sum of their subject averages), not on the plain average, so a learner scored in more subjects ranks ahead of one with
 // fewer subjects at a similar level; A-Level keeps total Points (which also grows with more subjects). Ties are broken by the
 // number of subjects scored, then by the average. (The Average column on the lists still shows the plain average.)
-function rankKeyOf(d, level){ return { m: level==='A' ? d.totalPoints : d.sumAvg, n: d.countAvg, t: d.avgPct }; }
-function rankCmp(a, b){ return (b.m-a.m) || (b.n-a.n) || (b.t-a.t); }
-function rankTie(a, b){ return a.m===b.m && a.n===b.n && a.t===b.t; }
-function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, term, year); return rankKeyOf(d, cls.level); }
+// Ranking order (strict priority): 1) RESULT — a learner with RESULT 2 can never rank above one with RESULT 1 (O-Level;
+// other levels have no RESULT so everyone counts as equal here); 2) NUMBER OF SUBJECTS SCORED — more subjects always beats
+// fewer, even when the total/average of the learner with fewer subjects is higher; 3) total marks (Points at A-Level);
+// 4) average. Only a complete tie on all four shares a position.
+function rankKeyOf(d, level, st, cls, term, year){
+  let r = 0;
+  if(st && cls && level==='O'){ r = (reportResultFor(d.rows, null, cls, null, st, term, year)===2) ? 1 : 0; }
+  return { r, m: level==='A' ? d.totalPoints : d.sumAvg, n: d.countAvg, t: d.avgPct };
+}
+function rankCmp(a, b){ return ((a.r||0)-(b.r||0)) || (b.n-a.n) || (b.m-a.m) || (b.t-a.t); }
+function rankTie(a, b){ return (a.r||0)===(b.r||0) && a.m===b.m && a.n===b.n && a.t===b.t; }
+function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, term, year); return rankKeyOf(d, cls.level, st, cls, term, year); }
 // classPosition() is called once PER STUDENT from every whole-class view (Master Mark
 // Sheet, Class Analysis, Report Cards) — so without caching, ranking a class of N
 // students redid the full O(N) ranking pass N times (O(N^2) overall), redundantly
@@ -9189,7 +9197,7 @@ function masterMarkSheetView(forExport){
   if(isLevelSheet){
     // Whole level, best first — same metric as the report-card position (Average %, or Points at A-Level).
     const pool = DB.students.filter(st=>st.status!=='left' && (DB.classes.find(c=>c.id===st.classId)||{}).level===level)
-      .map(st=>{ const c = clsOf(st); const d = computeSubjectRows(st, c, term, year); return {st, k: rankKeyOf(d, c.level)}; })
+      .map(st=>{ const c = clsOf(st); const d = computeSubjectRows(st, c, term, year); return {st, k: rankKeyOf(d, c.level, st, c, term, year)}; })
       .sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
     levelPosOf = new Map(); let pp = 0;
     pool.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, pool[i-1].k)) pp = i+1; levelPosOf.set(r.st.id, {position:pp, size:pool.length}); });
@@ -9375,7 +9383,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const data = pool.map(st=>{
     const c = DB.classes.find(x=>x.id===st.classId);
     const d = computeSubjectRows(st, c, term, year);
-    return {st, c, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, c.level),
+    return {st, c, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, c.level, st, c, term, year),
       maxP: isA ? maxPointsFor(st, c) : 100,
       grade: isP ? null : gradeFor('', d.avgPct, c.level),
       agg: isP ? primaryAggregate(st, c, term, year) : null};
