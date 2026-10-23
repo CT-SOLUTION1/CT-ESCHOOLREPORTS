@@ -1135,27 +1135,30 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 @supports (height:1svh){.se-wrap.se-score{--se-h:calc(100svh - 2svh - 52*var(--uk));}}
 /* Score table: every column (Student, earlier tests, the column being entered, Actions) must fit the screen at once, so
    text is a normal readable size, names and action buttons wrap instead of forcing the table wider than the page. */
-.se-wrap.se-score{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-.se-table{width:100%;table-layout:auto;--se-fs:calc(14*var(--uk));--se-row:calc(36*var(--uk));}
-.se-table tr{height:var(--se-row);}
-.se-table th,.se-table td{padding:calc(3*var(--uk)) calc(4*var(--uk));font-size:var(--se-fs);line-height:1.25;white-space:nowrap;vertical-align:middle;text-align:center;}
+.se-wrap.se-score{overflow-x:hidden;}
+.se-table{width:100%;max-width:100%;table-layout:fixed;--se-fs:calc(12*var(--uk));--se-row:0px;}
+.se-table tr{height:auto;}
+.se-table th,.se-table td{padding:calc(1*var(--uk)) calc(4*var(--uk));font-size:var(--se-fs);line-height:1.1;white-space:nowrap;vertical-align:middle;text-align:center;}
 .se-table td.small{font-size:var(--se-fs);}
 /* Clear row separators + alternate shading, and the row being typed in lights up — so a mark can't land on the wrong student. */
-.se-table tr{border-bottom:2px solid var(--blue,#1f5fa8);}
-.se-table td,.se-table th{border-bottom:2px solid var(--blue,#1f5fa8);}
+.se-table tr{border-bottom:1px solid var(--blue,#1f5fa8);}
+.se-table td,.se-table th{border-bottom:1px solid var(--blue,#1f5fa8);}
 .se-table tr:nth-child(even) td{background:#eef4fb;}
 .se-table tr:focus-within td{background:#fff3c4 !important;}
 .se-table th{position:sticky;top:0;z-index:2;font-size:calc(11*var(--uk));line-height:1.2;white-space:normal;}
 .se-table th .small{font-size:calc(9.5*var(--uk));}
 /* Student names: wrap onto two lines rather than push other columns off screen. */
-.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:600;font-size:calc(14*var(--uk));letter-spacing:-.02em;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
+.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(12*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
 .se-table td:first-child .pill{font-size:calc(9*var(--uk));padding:1px 5px;}
 .se-table th:not(:first-child),.se-table td:not(:first-child){padding-left:calc(2*var(--uk));padding-right:calc(2*var(--uk));}
-.se-table td.small{font-size:calc(14*var(--uk));}
-.se-table td input{font-size:calc(14*var(--uk));line-height:1.2;height:calc(30*var(--uk));min-height:0;padding:0 calc(4*var(--uk));box-sizing:border-box;width:100% !important;min-width:calc(44*var(--uk));max-width:calc(58*var(--uk)) !important;margin:0 auto;display:block;text-align:center;}
-.se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(11*var(--uk));padding:calc(3*var(--uk)) calc(4*var(--uk)) !important;line-height:1.2;white-space:nowrap;}
+.se-table td.small{font-size:calc(12*var(--uk));white-space:normal;word-break:break-all;}
+.se-table td input{font-size:calc(13*var(--uk));line-height:1;height:calc(22*var(--uk));min-height:0;padding:0 calc(4*var(--uk));box-sizing:border-box;width:100% !important;min-width:0;max-width:100% !important;margin:0 auto;display:block;text-align:center;}
+.se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(11*var(--uk));padding:calc(1*var(--uk)) calc(4*var(--uk)) !important;line-height:1.1;white-space:nowrap;}
+.se-table th:first-child{width:36%;}
+.se-table th:last-child{width:23%;}
+.se-table th:nth-last-child(2){width:17%;}
 .se-table td.flex{display:table-cell;}
-.se-table td.flex .btn-outline,.se-table td.flex .btn-danger{display:block;width:100%;margin:calc(2*var(--uk)) 0;}
+.se-table td.flex .btn-outline,.se-table td.flex .btn-danger{display:block;width:100%;margin:calc(1*var(--uk)) 0;}
 .sr-list .sr-row{display:flex;align-items:center;gap:calc(10*var(--uk));height:var(--se-row);padding:0 calc(4*var(--uk));margin:0;box-sizing:border-box;font-weight:400;text-transform:none;line-height:1.4;white-space:nowrap;min-width:0;border-bottom:1px solid #e6edf4;font-size:clamp(calc(13*var(--uk)),calc(var(--se-row)*.5),calc(18*var(--uk)));}
 .sr-list .sr-row:last-child{border-bottom:0;}
 .sr-list .sr-row input[type=checkbox]{flex:none;margin:0;width:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;height:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;}
