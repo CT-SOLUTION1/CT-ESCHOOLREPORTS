@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-22-8'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-22-9'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -957,20 +957,27 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .tile-grid-3 .tile-icon{font-size:calc(30*var(--uk));}
 .tile-grid-3 .tile-label{font-size:calc(12*var(--uk));letter-spacing:.01em;}
 /* Enter Scores: choosing class/subject, paper, assessment, term, maximum mark */
-/* Enter Scores picker: every size is capped by a share of the SCREEN HEIGHT (svh, with vh fallback),
-   so the whole form — down to the Submit button — always fits on one screen. Pure CSS: nothing is
-   measured or re-calculated, so it can't jump back after a re-render, rotation or toolbar change.
-   On tall screens the normal sizes (--uk) apply; the vh caps only bite when the screen is short. */
+/* ENTER SCORES — opening page fills the visible screen, one section per band with even spacing.
+   .scores-screen is at least as tall as the space left under the top bar (--shell-top is set once per
+   render by the small script below; it measures the container's TOP only, never its height, so nothing
+   can flip back). The card stretches to the bottom and its sections spread out evenly. Every size is
+   also capped by a share of the screen height (svh, vh fallback) so it never overflows the screen. */
+.scores-screen{display:flex;flex-direction:column;min-height:calc(100vh - var(--shell-top,150px) - 14px);min-height:calc(100svh - var(--shell-top,150px) - 14px);}
+.scores-screen>h2{margin:0 0 .3em;}
+.scores-screen>.pick-main{flex:1 1 auto;display:flex;flex-direction:column;margin-bottom:0;}
+.pick-main form{flex:1 1 auto;display:flex;flex-direction:column;justify-content:space-between;gap:min(calc(10*var(--uk)),1vh);}
+.pick-sec{padding:min(calc(6*var(--uk)),.5vh) 0 min(calc(10*var(--uk)),1vh);border-bottom:1px solid #dbe6f3;}
+.pick-sec.pick-go{border-bottom:0;padding-bottom:0;}
 .score-pick h3{font-size:calc(19*var(--uk));font-size:min(calc(19*var(--uk)),2.4vh);font-size:min(calc(19*var(--uk)),2.4svh);margin:0 0 .4em;}
-.score-pick label{font-size:calc(14*var(--uk));margin:calc(14*var(--uk)) 0 calc(6*var(--uk));
-  font-size:min(calc(14*var(--uk)),1.8vh);margin:min(calc(14*var(--uk)),.9vh) 0 min(calc(6*var(--uk)),.4vh);
-  font-size:min(calc(14*var(--uk)),1.8svh);margin:min(calc(14*var(--uk)),.9svh) 0 min(calc(6*var(--uk)),.4svh);}
+.score-pick label{font-size:calc(14*var(--uk));margin:calc(10*var(--uk)) 0 calc(6*var(--uk));
+  font-size:min(calc(14*var(--uk)),1.9vh);margin:min(calc(10*var(--uk)),.8vh) 0 min(calc(6*var(--uk)),.5vh);
+  font-size:min(calc(14*var(--uk)),1.9svh);margin:min(calc(10*var(--uk)),.8svh) 0 min(calc(6*var(--uk)),.5svh);}
 .score-pick select,.score-pick input{font-size:calc(17*var(--uk));padding:calc(12*var(--uk)) calc(12*var(--uk));border-radius:calc(7*var(--uk));
-  font-size:min(calc(17*var(--uk)),2.3vh);padding:min(calc(12*var(--uk)),1.2vh) calc(12*var(--uk));
-  font-size:min(calc(17*var(--uk)),2.3svh);padding:min(calc(12*var(--uk)),1.2svh) calc(12*var(--uk));}
-.score-pick .btn{font-size:calc(17*var(--uk));padding:calc(13*var(--uk)) calc(22*var(--uk));border-radius:calc(8*var(--uk));
-  font-size:min(calc(17*var(--uk)),2.3vh);padding:min(calc(13*var(--uk)),1.3vh) calc(22*var(--uk));margin-top:min(calc(14*var(--uk)),1.2vh) !important;
-  font-size:min(calc(17*var(--uk)),2.3svh);padding:min(calc(13*var(--uk)),1.3svh) calc(22*var(--uk));margin-top:min(calc(14*var(--uk)),1.2svh) !important;}
+  font-size:min(calc(17*var(--uk)),2.4vh);padding:min(calc(12*var(--uk)),1.3vh) calc(12*var(--uk));
+  font-size:min(calc(17*var(--uk)),2.4svh);padding:min(calc(12*var(--uk)),1.3svh) calc(12*var(--uk));}
+.score-pick .btn{font-size:calc(17*var(--uk));padding:calc(13*var(--uk)) calc(22*var(--uk));border-radius:calc(8*var(--uk));width:100%;
+  font-size:min(calc(17*var(--uk)),2.4vh);padding:min(calc(13*var(--uk)),1.5vh) calc(22*var(--uk));margin-top:0 !important;
+  font-size:min(calc(17*var(--uk)),2.4svh);padding:min(calc(13*var(--uk)),1.5svh) calc(22*var(--uk));}
 /* Assessment type + its test list: one full-width field per line, so "-- choose assessment type --" is never cut off. */
 .score-pick .pick-stack{grid-template-columns:1fr !important;gap:0;}
 .score-pick select{text-overflow:clip;}
@@ -1014,6 +1021,28 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
   window.addEventListener('orientationchange', function(){ setTimeout(schedule, 300); setTimeout(schedule, 900); });
   window.addEventListener('load', function(){ schedule(); setTimeout(schedule, 500); setTimeout(schedule, 1700); });
   try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(schedule); }catch(e){}
+})();
+</script>
+<script id="cte-scores-screen">
+/* Sets --shell-top (distance from the top of the page to the Enter Scores screen). Measures position only,
+   never height, so it cannot feed back into the layout. */
+(function(){
+  var raf=0;
+  function run(){
+    raf=0;
+    try{
+      var el=document.querySelector('.scores-screen'); if(!el) return;
+      var top=el.getBoundingClientRect().top+(window.pageYOffset||0);
+      var cur=parseFloat(el.style.getPropertyValue('--shell-top'))||0;
+      if(Math.abs(cur-top)>1) el.style.setProperty('--shell-top', Math.round(top)+'px');
+    }catch(e){}
+  }
+  function schedule(){ if(!raf) raf=requestAnimationFrame(run); }
+  function start(){ try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){} schedule(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+  window.addEventListener('resize',schedule);
+  window.addEventListener('orientationchange',function(){ setTimeout(schedule,300); });
+  window.addEventListener('load',function(){ schedule(); setTimeout(schedule,600); });
 })();
 </script>
 </head>
@@ -9459,9 +9488,9 @@ function scoresEntryView(mine){
     const firstCls = firstA ? DB.classes.find(c=>c.id===firstA.classId) : null;
     const firstIsPrimary = !!(firstCls && firstCls.level==='P');
     return `
-  <div class="card score-pick" style="margin-top:14px;">
+  <div class="card score-pick pick-main" style="margin-top:14px;">
     <form data-form="pickPaper">
-      <div>
+      <div class="pick-sec">
         <div><label>Subject / class assignment</label>
           <select name="assignId" id="assignSel" required>
             <option value="">-- click here to choose what to mark --</option>
@@ -9472,7 +9501,7 @@ function scoresEntryView(mine){
         </div>
         <div id="paperFieldWrap" style="${firstIsPrimary?'display:none;':''}"><label>Paper</label><select name="paper" ${firstIsPrimary?'':'required'} id="paperSelect"><option value="">-- choose paper --</option></select></div>
       </div>
-      <div class="grid2 pick-stack">
+      <div class="grid2 pick-stack pick-sec">
         <div><label>Assessment type</label><select name="kind" id="kindSel" required>
           <option value="">-- choose assessment type --</option>
           <option value="AOI">${esc(examConfig().cwLabel)} (continuous assessment test)</option>
@@ -9489,17 +9518,19 @@ function scoresEntryView(mine){
         </div>
       </div>
       ${!isAdmin ? `
-      <div class="grid2">
+      <div class="grid2 pick-sec">
         <div><label>Term (${esc(String(DB.info.currentYear))} academic year)</label><select name="teacherTerm" id="teacherTermSel">
           ${['Term 1','Term 2','Term 3'].map(t=>`<option value="${t}" ${t===DB.info.currentTerm?'selected':''}>${t}</option>`).join('')}
         </select></div>
         <div><label>School's current term</label><input type="text" value="${esc(DB.info.currentTerm)}" disabled></div>
       </div>
 ` : ''}
+      <div class="pick-sec">
       <label>What was this test/exam marked out of? <span style="color:var(--danger);">*compulsory</span></label>
       <input name="maxScore" id="maxScoreInput" type="number" min="1" step="1" value="" placeholder="Type the maximum mark here — required" required>
+      </div>
 
-      <button class="btn" style="margin-top:14px;">Submit — load student list</button>
+      <div class="pick-sec pick-go"><button class="btn" style="margin-top:14px;">Submit — load student list</button></div>
     </form>
   </div>`;
   })();
@@ -9516,11 +9547,11 @@ function scoresEntryView(mine){
   </div>` : '';
   const pastPeriodBanner = isPastPeriod ? `
   <div class="note" style="border-color:var(--danger);color:var(--danger);margin-top:14px;">⚠ You're entering/editing scores for <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the school's current period (${esc(DB.info.currentTerm)}, ${esc(String(DB.info.currentYear))}). Use this only to complete or correct a historical record.</div>` : '';
-  return `
+  return `<div class="${pickerSubmitted?'':'scores-screen'}">
   <h2>${CUR.role==='admin'?'Enter / Download Scores':'Enter Scores'}</h2>
   ${periodPickerCard}${pastPeriodBanner}
   ${pickerCard}${pickerSummaryBar}
-  ${studentRows}`;
+  ${studentRows}</div>`;
 }
 
 /* ---------- Parent ---------- */
