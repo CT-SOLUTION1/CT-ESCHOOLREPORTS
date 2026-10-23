@@ -158,6 +158,17 @@ img{max-width:100%;height:auto;}
 .sidebar{width:230px;background:var(--navy);color:#dce8f5;padding:16px 0;}
 .sidebar a{display:block;padding:12px 22px;color:#dce8f5;text-decoration:none;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;border-left:4px solid transparent;}
 .sidebar a.active,.sidebar a:hover{background:rgba(255,255,255,.08);border-left:4px solid var(--gold);}
+/* Pages other than the dashboard: the blue menu tucks away so the page can use the whole screen. Only one clear Dashboard bar
+   stays; tapping it shows every option (as a grid), and choosing one re-renders the page with the menu tucked away again. */
+.sidebar a.nav-home{display:none;}
+.layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
+.layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
+.layout.nav-collapsed .sidebar a.nav-home{display:block;text-align:center;padding:calc(9*var(--uk)) calc(12*var(--uk));font-size:calc(15*var(--uk));font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-left:0;border-bottom:3px solid var(--gold);background:rgba(255,255,255,.1);color:#fff;}
+.layout.nav-collapsed:not(.nav-open) .sidebar a:not(.nav-home){display:none;}
+.layout.nav-collapsed.nav-open .sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(3*var(--uk));padding:0 0 calc(6*var(--uk));}
+.layout.nav-collapsed.nav-open .sidebar a.nav-home{grid-column:1 / -1;}
+.layout.nav-collapsed.nav-open .sidebar a:not(.nav-home){white-space:normal;text-align:center;padding:calc(8*var(--uk)) calc(6*var(--uk));font-size:calc(11*var(--uk));border-left:0;border-bottom:2px solid transparent;background:rgba(255,255,255,.06);}
+.layout.nav-collapsed .main{width:100%;flex:1 1 auto;box-sizing:border-box;}
 .main{flex:1;min-width:280px;padding:26px;max-width:1150px;}
 /* Global Back button (see NAVIGATION HISTORY below) */
 .nav-back-bar{margin:0 0 14px;}
@@ -5061,8 +5072,8 @@ function renderShell(){
     <button class="btn-outline" style="padding:6px 10px;" data-action="toggleVoice" title="${VOICE_ENABLED?'Voice confirmations on — tap to mute':'Voice confirmations muted — tap to unmute'}">${VOICE_ENABLED?'🔊':'🔇'}</button>
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
-  <div class="layout">
-    <div class="sidebar">${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
+  <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
+    <div class="sidebar"><a href="#" class="nav-home" data-action="navMenu" aria-label="Show all menu options">${esc(nav[0][2]||'🏠')} ${esc(nav[0][1])} <span class="nav-arrow">▾</span></a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
     <div class="main" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
@@ -11383,6 +11394,12 @@ document.addEventListener('click', async (e)=>{
       render(); break;
     }
     case 'navBack': playUISound('open'); navGoBack(); break;
+    case 'navMenu': {
+      // Show / hide the full menu on a page where it is tucked away. Pure DOM toggle (no re-render) so nothing typed on the page is lost.
+      const lay = document.querySelector('.layout');
+      if(lay){ const open = lay.classList.toggle('nav-open'); const ar = lay.querySelector('.nav-arrow'); if(ar) ar.textContent = open ? '▴' : '▾'; }
+      playUISound('open'); break;
+    }
     case 'nav': {
       if(schoolGradeGateActive() && arg!=='schoolinfo'){ alert('Please select your school grade to continue.'); break; }
       // A newer version is waiting (or just got deployed): apply it NOW, as the user opens
