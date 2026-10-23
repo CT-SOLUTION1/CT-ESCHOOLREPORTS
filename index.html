@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-22-16'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-22-20'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1122,18 +1122,19 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .se-wrap{--se-h:calc(100vh - var(--se-top,260px) - 2vh);
   --se-row:min(calc(var(--se-h)/var(--se-rows,26)),calc(60*var(--uk)));margin-bottom:calc(8*var(--uk));}
 @supports (height:1svh){.se-wrap{--se-h:calc(100svh - var(--se-top,260px) - 2svh);}}
-.se-table{width:100%;}
+.se-table{width:100%;--se-row:clamp(calc(32*var(--uk)),calc(var(--se-h)/var(--se-rows,26)),calc(80*var(--uk)));}  /* score table: rows never get smaller than 32 screen-px, so names stay readable */
 .se-table tr{height:var(--se-row);}
-.se-table th,.se-table td{padding:0 calc(6*var(--uk));font-size:clamp(calc(12*var(--uk)),calc(var(--se-row)*.5),calc(17*var(--uk)));line-height:1.4;white-space:nowrap;vertical-align:middle;}
-.se-table th{position:sticky;top:0;z-index:2;font-size:clamp(calc(11*var(--uk)),calc(var(--se-row)*.4),calc(14*var(--uk)));}
-.se-table td input{font-size:inherit;height:calc(var(--se-row)*.84);min-height:0;padding:0 calc(6*var(--uk));box-sizing:border-box;width:100%;max-width:calc(130*var(--uk));margin:0;}
-.se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(11*var(--uk));padding:calc(2*var(--uk)) calc(8*var(--uk)) !important;line-height:1.2;}
+.se-table th,.se-table td{padding:0 calc(8*var(--uk));font-size:clamp(calc(16*var(--uk)),calc(var(--se-row)*.52),calc(24*var(--uk)));line-height:1.4;white-space:nowrap;vertical-align:middle;}
+.se-table th{position:sticky;top:0;z-index:2;font-size:clamp(calc(12*var(--uk)),calc(var(--se-row)*.4),calc(15*var(--uk)));}
+.se-table td input{font-size:inherit;height:calc(var(--se-row)*.84);min-height:0;padding:0 calc(6*var(--uk));box-sizing:border-box;width:100%;max-width:calc(150*var(--uk));margin:0;}
+.se-table td .btn-outline,.se-table td .btn-danger{font-size:clamp(calc(12*var(--uk)),calc(var(--se-row)*.36),calc(14*var(--uk)));padding:calc(3*var(--uk)) calc(9*var(--uk)) !important;line-height:1.25;}
 .se-table td.flex{gap:calc(4*var(--uk));flex-wrap:nowrap;}
 .se-table td .btn-outline,.se-table td .btn-danger{white-space:nowrap;}
 .se-table td:first-child,.se-table th:first-child{white-space:nowrap;text-align:left;}
 .sr-list .sr-row{display:flex;align-items:center;gap:calc(10*var(--uk));height:var(--se-row);padding:0 calc(4*var(--uk));margin:0;box-sizing:border-box;font-weight:400;text-transform:none;line-height:1.4;white-space:nowrap;min-width:0;border-bottom:1px solid #e6edf4;font-size:clamp(calc(13*var(--uk)),calc(var(--se-row)*.5),calc(18*var(--uk)));}
 .sr-list .sr-row:last-child{border-bottom:0;}
 .sr-list .sr-row input[type=checkbox]{flex:none;margin:0;width:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;height:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;}
+.btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 </head>
 <body>
@@ -9407,7 +9408,7 @@ function scoresEntryView(mine){
             ${esc(s.name)} ${rosterSet && !knownIds.has(s.id) ? '<span class="pill" style="background:var(--gold);color:#3a2c00;">NEW</span>' : ''}
           </label>`).join('') || '<p class="small">No students in this class yet — ask the admin to upload the class list first.</p>'}
           </div>
-          <button class="btn" style="margin-top:14px;">Submit — save my student list</button>
+          <button class="btn btn-big">Submit — save my student list</button>
         </form>
       </div>
       ${CUR.role==='admin' ? `<div class="card">
@@ -9526,7 +9527,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap" style="--se-rows:${Math.min(Math.max(students.length,8),25)+1};"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap" style="--se-rows:${Math.min(Math.max(students.length,8),16)+1};"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
