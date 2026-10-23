@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-22-20'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-22-23'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1037,6 +1037,15 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
         var cur=parseFloat(el.style.getPropertyValue('--shell-top'))||0;
         if(Math.abs(cur-top)>1) el.style.setProperty('--shell-top', Math.round(top)+'px');
       }
+      var sc=document.querySelector('.se-wrap.se-score');
+      if(sc){
+        var f=sc.closest('form'), key=f?[f.dataset.assign,f.dataset.paper,f.dataset.kind,f.dataset.label].join('|'):'x';
+        if(window.__cteSeKey!==key){
+          window.__cteSeKey=key;
+          var anchor=sc.previousElementSibling||sc;   // the "Remove all students" bar sits just above the table
+          window.scrollTo(0, Math.max(0, anchor.getBoundingClientRect().top+(window.pageYOffset||0)-6));
+        }
+      } else { window.__cteSeKey=null; }
       var se=document.querySelector('.se-wrap');
       if(se){
         var t2=se.getBoundingClientRect().top+(window.pageYOffset||0);
@@ -1122,12 +1131,22 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .se-wrap{--se-h:calc(100vh - var(--se-top,260px) - 2vh);
   --se-row:min(calc(var(--se-h)/var(--se-rows,26)),calc(60*var(--uk)));margin-bottom:calc(8*var(--uk));}
 @supports (height:1svh){.se-wrap{--se-h:calc(100svh - var(--se-top,260px) - 2svh);}}
-.se-table{width:100%;--se-row:clamp(calc(32*var(--uk)),calc(var(--se-h)/var(--se-rows,26)),calc(80*var(--uk)));}  /* score table: rows never get smaller than 32 screen-px, so names stay readable */
+.se-wrap.se-score{--se-h:calc(100vh - 2vh - 52*var(--uk));}   /* score table: the screen minus the 'Remove all' bar above it — page is scrolled to it on opening */
+@supports (height:1svh){.se-wrap.se-score{--se-h:calc(100svh - 2svh - 52*var(--uk));}}
+.se-table{width:100%;--se-fs:clamp(calc(19*var(--uk)),calc(var(--se-h)/var(--se-rows,16)/1.55),calc(28*var(--uk)));--se-row:calc(var(--se-fs)*1.55);}  /* 15 students + header per screen; the row is just the text line, no extra space above/below */
 .se-table tr{height:var(--se-row);}
-.se-table th,.se-table td{padding:0 calc(8*var(--uk));font-size:clamp(calc(16*var(--uk)),calc(var(--se-row)*.52),calc(24*var(--uk)));line-height:1.4;white-space:nowrap;vertical-align:middle;}
-.se-table th{position:sticky;top:0;z-index:2;font-size:clamp(calc(12*var(--uk)),calc(var(--se-row)*.4),calc(15*var(--uk)));}
-.se-table td input{font-size:inherit;height:calc(var(--se-row)*.84);min-height:0;padding:0 calc(6*var(--uk));box-sizing:border-box;width:100%;max-width:calc(150*var(--uk));margin:0;}
-.se-table td .btn-outline,.se-table td .btn-danger{font-size:clamp(calc(12*var(--uk)),calc(var(--se-row)*.36),calc(14*var(--uk)));padding:calc(3*var(--uk)) calc(9*var(--uk)) !important;line-height:1.25;}
+.se-table th,.se-table td{padding:0 calc(8*var(--uk));font-size:var(--se-fs);line-height:1.4;white-space:nowrap;vertical-align:middle;}
+.se-table td.small{font-size:var(--se-fs);}
+/* Clear row separators + alternate shading, and the row being typed in lights up — so a mark can't land on the wrong student. */
+.se-table tr{border-bottom:2px solid var(--blue,#1f5fa8);}
+.se-table td,.se-table th{border-bottom:2px solid var(--blue,#1f5fa8);}
+.se-table tr:nth-child(even) td{background:#eef4fb;}
+.se-table tr:focus-within td{background:#fff3c4 !important;}
+.se-table th{position:sticky;top:0;z-index:2;font-size:clamp(calc(13*var(--uk)),calc(var(--se-fs)*.62),calc(17*var(--uk)));line-height:1.25;}
+/* Student names: clearly the biggest text in the table. */
+.se-table td:first-child{font-size:var(--se-fs);font-weight:600;}
+.se-table td input{font-size:var(--se-fs);line-height:1.2;height:calc(var(--se-row) - 2*var(--uk));min-height:0;padding:0 calc(6*var(--uk));box-sizing:border-box;width:100%;max-width:calc(150*var(--uk));margin:0;display:block;}
+.se-table td .btn-outline,.se-table td .btn-danger{font-size:clamp(calc(12*var(--uk)),calc(var(--se-fs)*.5),calc(14*var(--uk)));padding:calc(2*var(--uk)) calc(8*var(--uk)) !important;line-height:1.2;}
 .se-table td.flex{gap:calc(4*var(--uk));flex-wrap:nowrap;}
 .se-table td .btn-outline,.se-table td .btn-danger{white-space:nowrap;}
 .se-table td:first-child,.se-table th:first-child{white-space:nowrap;text-align:left;}
@@ -9527,7 +9546,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap" style="--se-rows:${Math.min(Math.max(students.length,8),16)+1};"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-rows:${Math.min(Math.max(students.length,8),15)+1};"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
