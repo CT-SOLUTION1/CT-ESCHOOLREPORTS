@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-23-33'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-23-36'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -173,7 +173,7 @@ img{max-width:100%;height:auto;}
 .main{flex:1;min-width:280px;padding:26px;max-width:1150px;}
 /* Selection-only screens (Result Analysis, Mark Sheets before any result is shown): the pickers sit a little
    above the vertical middle (not at the very top), and are enlarged for clear visibility. */
-.center-stage{min-height:calc(100vh - 250px);min-height:calc(100dvh - 250px);display:flex;flex-direction:column;justify-content:center;align-items:center;padding-bottom:14vh;box-sizing:border-box;}
+.center-stage{min-height:calc(100vh - 250px);min-height:calc(100dvh - 250px);display:flex;flex-direction:column;justify-content:center;align-items:center;padding-bottom:30vh;box-sizing:border-box;}
 .center-stage>h2{text-align:center;margin-top:0;font-size:34px;letter-spacing:.5px;}
 .center-stage>.card,.center-stage>.note{width:100%;max-width:960px;box-sizing:border-box;margin-left:auto;margin-right:auto;padding:30px 28px;border-radius:14px;}
 .center-stage .flex{justify-content:center;gap:14px;}
@@ -1088,6 +1088,29 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
   window.addEventListener('load',function(){ schedule(); setTimeout(schedule,600); });
 })();
 </script>
+<script>
+/* ALREADY SCORED column: width = the width of its own title text, so it never wastes space at the sides. */
+(function(){
+  var raf=0;
+  function run(){
+    raf=0;
+    try{
+      document.querySelectorAll('.se-wrap.se-score').forEach(function(w){
+        var t=w.querySelector('.se-ph-title'); if(!t) return;
+        var nat=t.scrollWidth; if(!nat) return;
+        var wpx=Math.ceil(nat+2);   // the sub-column strip has no padding; the swipe-arrow gutter is added in CSS
+        var cur=parseFloat(w.style.getPropertyValue('--se-pw'))||0;
+        if(Math.abs(cur-wpx)>0.5) w.style.setProperty('--se-pw', wpx+'px');
+      });
+    }catch(e){}
+  }
+  function schedule(){ if(!raf) raf=requestAnimationFrame(run); }
+  function start(){ try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){} schedule(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+  window.addEventListener('resize',schedule);
+  window.addEventListener('load',function(){ schedule(); setTimeout(schedule,600); });
+})();
+</script>
 <style id="cte-install-popup-css">
 /* "Install the app" reminder — shown every time the system is opened, only to people NOT running the installed app. */
 #cteInstallPopup{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(10,42,74,.55);padding:calc(20*var(--uk));}
@@ -1192,7 +1215,7 @@ table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-s
 /* ALREADY SCORED: ONE merged column holding a small sub-column per earlier test; it scrolls sideways (header and every row together). */
 .se-prev{overflow-x:auto;overflow-y:hidden;width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .se-prev::-webkit-scrollbar{display:none;}
-.se-pr-in{display:flex;width:max-content;min-width:100%;}
+.se-pr-in{display:flex;width:max-content;min-width:0;}
 .se-pc,.se-sh{flex:none;width:var(--se-cw,12px);box-sizing:border-box;text-align:center;white-space:nowrap;overflow:hidden;}
 .se-pc{font-size:calc(4.5*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;letter-spacing:-.02em;padding:0;display:flex;align-items:center;justify-content:center;height:100%;}
 .se-pc.se-nil{color:var(--muted);font-weight:400;}
@@ -1206,8 +1229,13 @@ table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-s
 .se-table td.se-prevtd.se-more .se-prev{right:calc(6*var(--uk));}
 .se-table td .se-pr-in{height:100%;background:linear-gradient(to right,#1D4E89 0,#1D4E89 calc(0.75*var(--uk)),transparent calc(0.75*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
 .se-table th .se-pr-in{background:linear-gradient(to right,#fff 0,#fff calc(0.75*var(--uk)),transparent calc(0.75*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
-.se-table th.se-prevh{width:calc(44*var(--uk));}
-.se-table th.se-prevh.se-more{width:calc(50*var(--uk));}
+.se-table th.se-prevh{width:var(--se-pw,calc(44*var(--uk)));}
+.se-table th.se-prevh.se-more{width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
+/* The ALREADY SCORED column is exactly as wide as its title (measured in the page); exactly THREE tight sub-columns
+   fit under it, any further tests scroll sideways. The Student column takes whatever width is left. */
+.se-score .se-table th:first-child{width:auto;}
+.se-table th .se-ph-title{display:inline-block;max-width:none;}
+.se-table th.se-prevh{text-align:left;}
 /* more tests than fit: a small arrow in a 6px gutter tells users to swipe sideways; it fades once the end is reached. */
 .se-table th.se-more,.se-table td.se-more{position:relative;padding-right:calc(6*var(--uk)) !important;}
 .se-table th.se-more::after,.se-table td.se-more::after{content:'\25B8';position:absolute;right:calc(1*var(--uk));top:50%;transform:translateY(-50%);font-size:calc(7*var(--uk));line-height:1;font-weight:900;}
@@ -2441,6 +2469,7 @@ async function setShared(key, val){
     } finally { setAppBusy(false); }
   }catch(e){
     console.error(e);
+    if(navigator.onLine===false || classifyDbError(e)==='network') showConnectionModal('save your change'); else
     showFatal(dbErrorMessage(e, 'save your change'));
   }
 }
@@ -9712,7 +9741,8 @@ function scoresEntryView(mine){
       // integrated mark sheet.
       const isP = cls.level==='P';
       const isCurrentCol = c => String(c.paper)===String(sel.paper) && c.kind===sel.kind && (c.kind!=='AOI' || c.label===(sel.label||''));
-      const otherCols = marksheetColumns(students, a.subject).filter(c=>!isCurrentCol(c));
+      const otherCols = marksheetColumns(students, a.subject).filter(c=>!isCurrentCol(c))
+        .filter(c=>students.some(s=>{ const r=scoreCellFor(s.id, a.subject, c, periodTerm, periodYear); return r && r.marks!==''&&r.marks!=null; }));
       // Primary has no concept of papers (a single implicit paper per subject), so the
       // "P1"/"Paper 1" prefix is omitted from every column label and heading here.
       const colLabel = c => (!isP && c.paper!=null && c.paper!=='' ? 'P'+esc(String(c.paper))+' ' : '') + (c.kind==='EOT' ? esc(examConfig(a.classId).eotLabel) : (esc(examConfig(a.classId).cwLabel)+(c.label?': '+esc(c.label):'')));
@@ -9785,7 +9815,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(44*var(--uk)/${Math.min(Math.max(otherCols.length,1),3)});"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -15338,6 +15368,63 @@ function showFatal(msg){
     document.body.prepend(bar); }
   bar.innerHTML = '<b>Something went wrong:</b> ' + esc(String(msg)) + ' <span style="float:right;cursor:pointer;font-weight:800;" onclick="this.parentElement.remove()">✕</span>';
 }
+
+/* ---------- No-internet guard ----------
+   Anything that SAVES, SENDS, UPLOADS or DELETES data is stopped BEFORE it runs when the device is
+   offline, and a big, clear message says to check the connection first. The page is left exactly as it
+   is (nothing is re-rendered or cleared), so scores / forms the user already typed are not lost. */
+function showConnectionModal(action){
+  try{
+    const old = document.getElementById('connModal'); if(old) old.remove();
+    const m = document.createElement('div'); m.id='connModal'; m.setAttribute('role','alertdialog');
+    m.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(10,20,40,.72);display:flex;align-items:center;justify-content:center;padding:16px;font-family:Inter,sans-serif;';
+    m.innerHTML = '<div style="background:#fff;border:5px solid #c0392b;border-radius:16px;max-width:620px;width:100%;padding:28px 22px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5);">'
+      + '<div style="font-size:54px;line-height:1;">📵</div>'
+      + '<div style="font-size:30px;font-weight:800;color:#c0392b;margin:10px 0 8px;line-height:1.25;">CHECK YOUR INTERNET CONNECTION</div>'
+      + '<div style="font-size:23px;font-weight:700;color:#0a2a4a;line-height:1.4;">before you ' + esc(action||'save') + '.</div>'
+      + '<div style="font-size:19px;color:#333;margin-top:14px;line-height:1.45;">Your data is still on this page — <b>do not refresh or close it</b>. Switch on your data / Wi-Fi, then try again.</div>'
+      + '<button type="button" style="margin-top:20px;font-size:22px;font-weight:800;padding:14px 40px;border:0;border-radius:10px;background:#0a2a4a;color:#fff;cursor:pointer;" onclick="document.getElementById(\'connModal\').remove()">OK</button>'
+      + '</div>';
+    document.body.appendChild(m);
+  }catch(e){ alert('CHECK YOUR INTERNET CONNECTION before you '+(action||'save')+'. Your data is still on this page — do not refresh or close it.'); }
+}
+window.addEventListener('online', ()=>{ const m=document.getElementById('connModal'); if(m) m.remove(); });
+const OFFLINE_FORM_LABELS = {
+  saveScores:'save these scores', bulkAddStudents:'upload the students', uploadStaffTemplate:'upload the staff list',
+  uploadFeesCodes:'upload the fees codes', addStudent:'add this student', createAccount:'create this account',
+  assignSubject:'assign this subject', assignBulk:'assign these subjects', addClass:'add this class'
+};
+function offlineActionLabel(type, submitter){
+  if(OFFLINE_FORM_LABELS[type]) return OFFLINE_FORM_LABELS[type];
+  const t = submitter && (submitter.textContent||submitter.value||'').replace(/\s+/g,' ').trim();
+  if(t && t.length<=40) return 'tap “'+t+'”';
+  return 'save';
+}
+const OFFLINE_BLOCK_ACTION = /^(del[A-Z]|delete|approveAcc$|rejectAcc$|closeAcc$|reopenAcc$|resetAccPw$|markStudentLeft$|restoreStudent$|restoreAutoSnapshot$|promote$|removeFromRoster$|removeAllFromRoster$|removeLevelRow$|removeSchoolStamp$|removeTeacherSignature$|confirmEditScores$|lockScoreDeadline$|reopenScoreDeadline$|reopenAllScoreDeadline$|settle|reqMarkItem$|reqUndoStatus$|repairAdmissionNumbers$|resyncFinance$|found(Approve|Close|Reject|Reopen|DeleteSchool|ResetLoginPw|ResetOwnerCode|RestoreSnapshot|EditLogin)$|setRole$|clearRole$|addALevel$|addPFLevel$|addExtraScoreStudent$|toggleTeacherReports$)/;
+document.addEventListener('submit', (e)=>{
+  if(navigator.onLine!==false || DEMO_MODE) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const f = e.target;
+  showConnectionModal(offlineActionLabel(f && f.dataset && f.dataset.form, e.submitter));
+}, true);
+document.addEventListener('click', (e)=>{
+  if(navigator.onLine!==false || DEMO_MODE) return;
+  const el = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
+  if(!el) return;
+  const name = (el.getAttribute('data-action')||'').split(':')[0];
+  if(!OFFLINE_BLOCK_ACTION.test(name)) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const t = (el.textContent||'').replace(/\s+/g,' ').trim();
+  showConnectionModal(t && t.length<=40 ? 'tap “'+t+'”' : 'do this');
+}, true);
+document.addEventListener('change', (e)=>{
+  if(navigator.onLine!==false || DEMO_MODE) return;
+  const t = e.target;
+  if(!t || t.type!=='file' || (t.closest && t.closest('form[data-form]'))) return;
+  e.stopImmediatePropagation();
+  try{ t.value=''; }catch(_){}
+  showConnectionModal('upload this file');
+}, true);
 window.addEventListener('error', (e)=>{ showFatal(e.message); });
 window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.reason.message ? e.reason.message : e.reason); });
 
