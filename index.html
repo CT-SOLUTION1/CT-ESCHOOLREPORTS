@@ -4147,16 +4147,16 @@ function maxPointsFor(st, cls){ const top = aTopPoints(), pf = passFailMaxPoints
 // RESULT shown as the last row of O-Level report cards ONLY (A-Level and Primary cards end at TOTAL / OVERALL):
 //   2 = the student's grades are ALL E (only Es), OR the student MISSED A SUBJECT: has no score in a
 //       subject that other students in the class (who take it) already have scores in;
+//   3 = the student has NO score at all in any subject (all dashes / x) — ranks below everyone else;
 //   1 = anything else.
 // If other students ALSO have no score in that subject (it simply hasn't been marked/done yet), that
 // is not a reason for a 2.
-// Returns null when no RESULT row applies (Primary / A-Level cards, or a student with no subjects) and ''
-// (blank) while the student has no scores at all yet.
+// Returns null when no RESULT row applies (Primary / A-Level cards, or a student with no subjects).
 function reportResultFor(rows, breakdowns, cls, showEOT, st, term, year){
   if(!cls || cls.level!=='O' || !rows || !rows.length) return null;
   const has = (v)=> v!==null && v!==undefined;
   const scored = rows.filter(r=>has(r.avg));
-  if(!scored.length) return '';
+  if(!scored.length) return 3;
   // Missed a subject that other classmates have scores in
   if(scored.length < rows.length && st){
     const mates = DB.students.filter(x=>x.classId===cls.id && x.id!==st.id);
@@ -4177,8 +4177,22 @@ function resultTextFor(st, cls, term, year){
   const r = reportResultFor(d.rows, null, cls, null, st, term, year);
   return (r===null || r==='' || r===undefined) ? '—' : String(r);
 }
+// A subject that has enrolled students but NO scores for any of them yet (term/year) is left out of a learner's
+// subjects — unless it is compulsory for the class, in which case it still counts.
+let _markedSubjCache = {ref:null, ver:-1, key:'', set:null};
+function markedSubjectsFor(cls, term, year){
+  const key = cls.id+'|'+term+'|'+year;
+  if(_markedSubjCache.ref===DB.scores && _markedSubjCache.ver===SCORE_DATA_VERSION && _markedSubjCache.key===key) return _markedSubjCache.set;
+  const set = new Set();
+  DB.students.filter(x=>x.status!=='left' && x.classId===cls.id).forEach(x=>{
+    studentSubjects(x, cls).forEach(sj=>{ if(!set.has(sj) && subjectAverage(x.id, sj, term, year)!==null) set.add(sj); });
+  });
+  _markedSubjCache = {ref:DB.scores, ver:SCORE_DATA_VERSION, key, set};
+  return set;
+}
 function computeSubjectRows(st, cls, term, year){
-  const subs = studentSubjects(st, cls);
+  const marked = markedSubjectsFor(cls, term, year);
+  const subs = studentSubjects(st, cls).filter(sj=> marked.has(sj) || isCompulsorySubjectFor(sj, cls));
   let totalPoints=0, sumAvg=0, countAvg=0;
   const rows = subs.map(subj=>{
     const avg = subjectAverage(st.id, subj, term, year);
@@ -4200,13 +4214,16 @@ function computeSubjectRows(st, cls, term, year){
 // (the sum of their subject averages), not on the plain average, so a learner scored in more subjects ranks ahead of one with
 // fewer subjects at a similar level; A-Level keeps total Points (which also grows with more subjects). Ties are broken by the
 // number of subjects scored, then by the average. (The Average column on the lists still shows the plain average.)
-// Ranking order (strict priority): 1) RESULT — a learner with RESULT 2 can never rank above one with RESULT 1 (O-Level;
+// Ranking order (strict priority): 0) RESULT — Result 1 always above Result 2, and Result 3 (no score at all) always last, whatever the subject count (O-Level;
 // other levels have no RESULT so everyone counts as equal here); 2) NUMBER OF SUBJECTS SCORED — more subjects always beats
 // fewer, even when the total/average of the learner with fewer subjects is higher; 3) total marks (Points at A-Level);
 // 4) average. Only a complete tie on all four shares a position.
 function rankKeyOf(d, level, st, cls, term, year){
   let r = 0;
-  if(st && cls && level==='O'){ r = (reportResultFor(d.rows, null, cls, null, st, term, year)===2) ? 1 : 0; }
+  if(st && cls && level==='O'){
+    const res = reportResultFor(d.rows, null, cls, null, st, term, year);
+    r = (res===3 || !d.countAvg) ? 2 : (res===2 ? 1 : 0);
+  }
   return { r, m: level==='A' ? d.totalPoints : d.sumAvg, n: d.countAvg, t: d.avgPct };
 }
 function rankCmp(a, b){ return ((a.r||0)-(b.r||0)) || (b.n-a.n) || (b.m-a.m) || (b.t-a.t); }
@@ -8898,13 +8915,13 @@ function classStudentStats(cls, term, year){
 function resultSummaryRow(studentClassPairs, colspan, level){
   const bg = 'font-weight:bold;background:#eef1f6;text-align:left;';
   if(level!=='O') return `<tr><td colspan="${colspan}" style="${bg}">RESULT SUMMARY — RESULT (1 or 2) is shown on O-Level report cards only, so there is nothing to count for this level.</td></tr>`;
-  let r1=0, r2=0, none=0;
+  let r1=0, r2=0, r3=0, none=0;
   studentClassPairs.forEach(([st,c])=>{
     const r = resultTextFor(st, c, termForSummary, yearForSummary);
-    if(r==='1') r1++; else if(r==='2') r2++; else none++;
+    if(r==='1') r1++; else if(r==='2') r2++; else if(r==='3') r3++; else none++;
   });
-  const total = r1+r2+none;
-  return `<tr><td colspan="${colspan}" style="${bg}">RESULT SUMMARY — Result 1: ${r1} &nbsp;|&nbsp; Result 2: ${r2}${none?` &nbsp;|&nbsp; No result yet: ${none}`:''} &nbsp;|&nbsp; Total students: ${total}</td></tr>`;
+  const total = r1+r2+r3+none;
+  return `<tr><td colspan="${colspan}" style="${bg}">RESULT SUMMARY — Result 1: ${r1} &nbsp;|&nbsp; Result 2: ${r2}${r3?` &nbsp;|&nbsp; Result 3: ${r3}`:''}${none?` &nbsp;|&nbsp; No result yet: ${none}`:''} &nbsp;|&nbsp; Total students: ${total}</td></tr>`;
 }
 let termForSummary = '', yearForSummary = '';
 function classAnalysisView(){
@@ -9278,7 +9295,7 @@ function masterMarkSheetView(forExport){
   // ---- Summary at the foot of the sheet: how many learners earned each overall Grade (or Primary
   // Division) and each RESULT (1 / 2). Always counted over EVERY learner in the class, never just the
   // page showing on screen, so the numbers match the full downloaded / printed sheet.
-  const sumCounts = {grades:{}, r1:0, r2:0, noRes:0};
+  const sumCounts = {grades:{}, r1:0, r2:0, r3:0, noRes:0};
   allStudents.forEach(st=>{
     const sc = clsOf(st);
     const d = computeSubjectRows(st, sc, term, year);
@@ -9288,7 +9305,7 @@ function masterMarkSheetView(forExport){
     const key = g || '—';
     sumCounts.grades[key] = (sumCounts.grades[key]||0) + 1;
     const rs = resultTextFor(st, sc, term, year);
-    if(rs==='1') sumCounts.r1++; else if(rs==='2') sumCounts.r2++; else sumCounts.noRes++;
+    if(rs==='1') sumCounts.r1++; else if(rs==='2') sumCounts.r2++; else if(rs==='3') sumCounts.r3++; else sumCounts.noRes++;
   });
   const sumGradeKeys = isP
     ? [...new Set([...PLE_DIVISIONS.map(x=>x.name), ...Object.keys(sumCounts.grades)])].filter(k=>k!=='—' || sumCounts.grades[k])
@@ -9303,8 +9320,8 @@ function masterMarkSheetView(forExport){
         <tr><td style="${sTd}text-align:left;">No. of students</td>${sumGradeKeys.map(k=>`<td style="${sTd}">${sumCounts.grades[k]||0}</td>`).join('')}</tr>
       </table>
       ${level==='O' ? `<table style="border-collapse:collapse;font-size:12px;margin-top:8px;">
-        <tr><th style="${sTh}text-align:left;">RESULT</th><th style="${sTh}">1</th><th style="${sTh}">2</th>${sumCounts.noRes?`<th style="${sTh}">None yet</th>`:''}</tr>
-        <tr><td style="${sTd}text-align:left;">No. of students</td><td style="${sTd}">${sumCounts.r1}</td><td style="${sTd}">${sumCounts.r2}</td>${sumCounts.noRes?`<td style="${sTd}">${sumCounts.noRes}</td>`:''}</tr>
+        <tr><th style="${sTh}text-align:left;">RESULT</th><th style="${sTh}">1</th><th style="${sTh}">2</th>${sumCounts.r3?`<th style="${sTh}">3</th>`:''}${sumCounts.noRes?`<th style="${sTh}">None yet</th>`:''}</tr>
+        <tr><td style="${sTd}text-align:left;">No. of students</td><td style="${sTd}">${sumCounts.r1}</td><td style="${sTd}">${sumCounts.r2}</td>${sumCounts.r3?`<td style="${sTd}">${sumCounts.r3}</td>`:''}${sumCounts.noRes?`<td style="${sTd}">${sumCounts.noRes}</td>`:''}</tr>
       </table>` : `<div style="font-size:11px;margin:6px 0 0;">RESULT (1 or 2) is shown on O-Level report cards only.</div>`}
     </div>` : '';
 
