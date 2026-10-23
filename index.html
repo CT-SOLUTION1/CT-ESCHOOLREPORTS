@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-22-23'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-23-26'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -362,7 +362,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .rc-title-block .school.rc-school-medium{font-size:24px;}
 .rc-title-block .school.rc-school-long{font-size:20px;}
 /* Slightly increased header spacing makes the text stack reach the logo height without enlarging the overall report-card layout. */
-.rc-title-block .subtitle{display:inline-block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
+.rc-title-block .subtitle{display:inline-block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--shade-ink,var(--navy));padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 .rc-title-block .meta{font-size:11px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:5px;font-weight:700;}
 
 /* Fees/Requirements Demand Note — deliberately its OWN lightweight card rather than
@@ -379,7 +379,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .dn-title-block .dn-header-text{width:100%;text-align:center;}
 .dn-title-block .dn-school{font-size:19px;font-weight:900;text-transform:uppercase;letter-spacing:0;color:var(--navy);line-height:1.18;margin:2px 0 3px;}
 .dn-title-block .dn-meta{font-size:10.5px;font-style:italic;color:var(--muted);line-height:1.4;margin-top:3px;font-weight:700;}
-.dn-title-block .dn-subtitle{display:inline-block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--navy);padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
+.dn-title-block .dn-subtitle{display:inline-block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;line-height:1.35;margin-top:6px;background:var(--blue-light);color:var(--shade-ink,var(--navy));padding:3px 14px;border-radius:3px;border:1px solid var(--blue);}
 @media print{ #printArea .dn-card{width:190mm !important;max-width:190mm !important;box-shadow:none !important;} }
 /* Frame for every printed / saved-as-PDF document other than report cards (which carry their own). */
 @media print{
@@ -405,7 +405,7 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
    table (see table.rc-perf below). */
 table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
 table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size:12px;overflow-wrap:break-word;word-break:break-word;}
-table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--navy);}
+table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--shade-ink,var(--navy));}
 table.rc-info-table td.val{font-weight:700;}
 table.rc-info-table td.photo-cell{padding:5px;text-align:center;vertical-align:middle;background:#fff;}
 /* PDF capture only: swap to separate borders, which is what actually avoids the
@@ -431,7 +431,7 @@ table.rc-info-table td.photo-cell{padding:5px;text-align:center;vertical-align:m
 .rc-perf-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 
 table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:auto;}
-table.rc-perf th{text-transform:uppercase;background:var(--blue-light);color:var(--navy);border:1.4px solid var(--blue);padding:6px 8px;font-size:10px;font-weight:900;-webkit-text-stroke:.18px currentColor;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
+table.rc-perf th{text-transform:uppercase;background:var(--blue-light);color:var(--shade-ink,var(--navy));border:1.4px solid var(--shade-line,var(--blue));padding:6px 8px;font-size:10px;font-weight:900;-webkit-text-stroke:.18px currentColor;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
 /* Fixed core columns (Subjects, Paper Avg, Final Average, Grade, Descriptor, Teacher
    Initials) always get a guaranteed minimum width so their headers stay on one or two
    clean lines and never get squeezed/overlapped when Course Work test columns are
@@ -455,18 +455,15 @@ table.rc-perf th.rc-th-cw-group{font-size:10px;font-weight:900;text-align:center
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.rc-th-cw-group{font-size:var(--pdf-table-head-size,9px) !important;text-align:center !important;white-space:nowrap !important;overflow:visible !important;word-break:normal !important;}
 table.rc-perf td{border:1.4px solid var(--blue);padding:6px 8px;font-size:12px;text-align:center;}
 table.rc-perf td:first-child{text-align:left;font-weight:900;white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.15;font-size:12px;}
-/* Grade column data cells: shaded the same light-blue as the Grade column header and
-   the Grading Key table below, so the whole "Grade" column reads as one highlighted
-   strip down the report card rather than only its header being tinted. */
-table.rc-perf td.rc-td-grade{background:var(--blue-light);}
+/* Grade column data cells: left uncoloured (normal cell look); only the header is tinted. */
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
-table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);border-top:2.4px solid var(--blue);}
+table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);color:var(--shade-ink,var(--ink));border-top:2.4px solid var(--shade-line,var(--blue));}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
 /* Primary-only grading scale shown immediately below the Performance Summary. */
 table.rc-grading-scale-table{width:100%;border-collapse:collapse;margin:8px 0 10px;table-layout:fixed;}
 table.rc-grading-scale-table th,table.rc-grading-scale-table td{border:1.4px solid var(--blue);padding:5px 6px;text-align:center;font-size:10px;line-height:1.2;}
-table.rc-grading-scale-table th{background:var(--blue-light);color:var(--navy);font-weight:900;text-transform:uppercase;letter-spacing:.02em;}
+table.rc-grading-scale-table th{background:var(--blue-light);color:var(--shade-ink,var(--navy));font-weight:900;text-transform:uppercase;letter-spacing:.02em;}
 /* Primary report-card grading scale: exactly two rows, with each grading band in its own column. */
 table.rc-grading-scale-table tr:first-child th:first-child{width:22%;}
 table.rc-grading-scale-table tr:first-child th:not(:first-child),
@@ -480,10 +477,10 @@ table.rc-grading-scale-table tr:nth-child(2) td:not(:first-child){width:auto;}
    scale the whole card to the fixed A4 frame, so this never pushes content off the page. */
 table.rc-grading-key-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:4px 0 10px;background:var(--blue-light,#E9F1FA) !important;color-scheme:light;forced-color-adjust:none;}
 table.rc-grading-key-table tr{background:var(--blue-light,#E9F1FA) !important;}
-table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;color-scheme:light;forced-color-adjust:none;}
-table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;font-weight:900;background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
-table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
-table.rc-grading-key-table td.gk-desc{background:var(--blue-light,#E9F1FA) !important;color:#0A2A4A !important;-webkit-text-fill-color:#0A2A4A;}
+table.rc-grading-key-table td{border:1px solid var(--blue);padding:2px 5px;font-size:8px;line-height:1.15;text-align:left;vertical-align:middle;background:var(--blue-light,#E9F1FA) !important;color:var(--shade-ink,#0A2A4A) !important;-webkit-text-fill-color:var(--shade-ink,#0A2A4A);color-scheme:light;forced-color-adjust:none;}
+table.rc-grading-key-table td.gk-letter{text-align:center;font-size:8.5px;font-weight:900;background:var(--blue-light,#E9F1FA) !important;color:var(--shade-ink,#0A2A4A) !important;-webkit-text-fill-color:var(--shade-ink,#0A2A4A);}
+table.rc-grading-key-table td.gk-label{font-weight:700;white-space:nowrap;background:var(--blue-light,#E9F1FA) !important;color:var(--shade-ink,#0A2A4A) !important;-webkit-text-fill-color:var(--shade-ink,#0A2A4A);}
+table.rc-grading-key-table td.gk-desc{background:var(--blue-light,#E9F1FA) !important;color:var(--shade-ink,#0A2A4A) !important;-webkit-text-fill-color:var(--shade-ink,#0A2A4A);}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 #pdfCaptureHolder .pdf-report-card table.rc-grading-key-table td{font-size:7.5px !important;padding:2px 4px !important;}
 /* Used only in the offscreen copy of the card that html2canvas screenshots for PDF
@@ -511,9 +508,14 @@ table.rc-perf th.mrg-top{border-bottom:none;}
 table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 /* Seamless visual merging: remove only the internal seam between physical cells used to represent merged rows/headers. Keep outer and vertical borders intact. */
 table.rc-perf td.mrg-top, table.rc-perf td.mrg-bot{border-top:0 !important;border-bottom:0 !important;background:#fff !important;}
-/* Grade column keeps its light-blue tint even where it's a merged (multi-paper) cell. */
-table.rc-perf td.rc-td-grade.mrg-top, table.rc-perf td.rc-td-grade.mrg-bot{background:var(--blue-light) !important;}
 table.rc-perf th.mrg-top, table.rc-perf th.mrg-bot{border-top:0 !important;border-bottom:0 !important;background:var(--blue-light) !important;}
+/* Chosen report-card colour must survive the browser Print dialog / Save-as-PDF too: the print
+   stylesheet forces navy cell borders, which would vanish inside a dark (e.g. black) heading band,
+   so those heading cells use the lightened --shade-line there (undefined for light shades => navy). */
+@media print{
+  #printArea .rc-card table.rc-perf th, #printArea .rc-card table.rc-comments-table th,
+  #printArea .rc-card table.rc-grading-scale-table th, #printArea .rc-card table.rc-perf tr.total td{border-color:var(--shade-line,#0A2A4A) !important;}
+}
 #pdfCaptureHolder .pdf-report-card table.rc-perf td.mrg-top,
 #pdfCaptureHolder .pdf-report-card table.rc-perf td.mrg-bot,
 #pdfCaptureHolder .pdf-report-card table.rc-perf th.mrg-top,
@@ -575,7 +577,7 @@ table.rc-perf th.mrg-top, table.rc-perf th.mrg-bot{border-top:0 !important;borde
 
 table.rc-summary-table{width:100%;border-collapse:collapse;margin:14px 0;table-layout:fixed;}
 table.rc-summary-table td{border:1.4px solid var(--blue);padding:8px 10px;font-size:12px;text-align:center;overflow-wrap:break-word;word-break:break-word;}
-table.rc-summary-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.02em;color:var(--navy);}
+table.rc-summary-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.02em;color:var(--shade-ink,var(--navy));}
 table.rc-summary-table td.val{font-weight:800;}
 /* Project Work: appears only when a student has at least one Project Assessment
    score on file for their current class/term (see reportCardHTML) — same bordered
@@ -588,7 +590,7 @@ table.rc-project-table th{background:var(--blue);color:#fff;font-weight:900;text
 #pdfCaptureHolder .pdf-report-card table.rc-summary-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
 table.rc-comments-table{width:100%;border-collapse:collapse;margin-bottom:16px;table-layout:fixed;}
-table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--blue);padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--navy);text-align:left;}
+table.rc-comments-table th{background:var(--blue-light);border:1.4px solid var(--shade-line,var(--blue));padding:6px 10px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--shade-ink,var(--navy));text-align:left;}
 table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-size:11.5px;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
 #pdfCaptureHolder .pdf-report-card table.rc-comments-table{border-collapse:separate !important;border-spacing:0 !important;width:100% !important;table-layout:fixed !important;}
 
@@ -1190,8 +1192,8 @@ table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-s
 .se-table td.se-prevtd{position:relative;padding:0 !important;}
 .se-table td.se-prevtd .se-prev{position:absolute;left:0;right:0;top:0;bottom:-1px;width:auto;}
 .se-table td.se-prevtd.se-more .se-prev{right:calc(6*var(--uk));}
-.se-table td .se-pr-in{height:100%;background:linear-gradient(to right,#1D4E89 0,#1D4E89 calc(1.5*var(--uk)),transparent calc(1.5*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
-.se-table th .se-pr-in{background:linear-gradient(to right,#fff 0,#fff calc(1.5*var(--uk)),transparent calc(1.5*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
+.se-table td .se-pr-in{height:100%;background:linear-gradient(to right,#1D4E89 0,#1D4E89 calc(0.75*var(--uk)),transparent calc(0.75*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
+.se-table th .se-pr-in{background:linear-gradient(to right,#fff 0,#fff calc(0.75*var(--uk)),transparent calc(0.75*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
 .se-table th.se-prevh{width:calc(44*var(--uk));}
 .se-table th.se-prevh.se-more{width:calc(50*var(--uk));}
 /* more tests than fit: a small arrow in a 6px gutter tells users to swipe sideways; it fades once the end is reached. */
@@ -7167,13 +7169,50 @@ async function purgeTeachers(usernames, accountObjs){
   DB.classes.forEach(c=>{ if(set.has(c.classTeacher)){ c.classTeacher=''; clsChanged=true; } });
   await Promise.all([saveAccounts(), saveAssignments(), clsChanged?saveClasses():Promise.resolve()]);
 }
-function rcShadeStyle(){
+/* ---- Report card shade / theme colour -------------------------------------------------
+   One admin-chosen colour drives every shaded cell (table headings, label cells, grade
+   column, total row, form-title badge). The text colour on top of it is picked
+   AUTOMATICALLY from the colour's brightness (WCAG contrast): light colours keep dark navy
+   text, dark colours (black, navy, maroon...) get white text, so text can never vanish
+   into its background. The same theme object feeds the on-screen card, the browser Print
+   dialog (CSS variables below) and the native jsPDF download (drawReportCardPage). */
+function rcShadeHex(){
   const c = DB.info && DB.info.rcShade;
-  return (typeof c==='string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? `--blue-light:${c};` : '';
+  return (typeof c==='string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? c : '';
+}
+function rcHexToRgb(h){ return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
+function rcRgbToHex(a){ return '#'+a.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+function rcRelLum(rgb){
+  const f = v=>{ v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); };
+  return 0.2126*f(rgb[0]) + 0.7152*f(rgb[1]) + 0.0722*f(rgb[2]);
+}
+// White or dark navy, whichever has the higher contrast ratio against the given fill.
+function rcInkRgbFor(rgb){
+  const L = rcRelLum(rgb);
+  const cWhite = 1.05/(L+0.05);
+  const cNavy  = (L+0.05)/(rcRelLum([10,42,74])+0.05);
+  return cWhite >= cNavy ? [255,255,255] : [10,42,74];
+}
+function rcInkHexFor(hex){ return rcRgbToHex(rcInkRgbFor(rcHexToRgb(hex))); }
+function rcShadeTheme(){
+  const hex = rcShadeHex();
+  if(!hex) return {custom:false, hex:'', fill:[233,241,250], ink:[10,42,74], dark:false, seam:[29,78,137]};
+  const fill = rcHexToRgb(hex), ink = rcInkRgbFor(fill);
+  const dark = ink[0]===255;
+  // Cell borders inside a dark heading band are lightened so the column seams stay visible.
+  const seam = dark ? fill.map(v=>v+(255-v)*0.55) : [29,78,137];
+  return {custom:true, hex, fill, ink, dark, seam};
+}
+function rcShadeStyle(){
+  const t = rcShadeTheme();
+  if(!t.custom) return '';
+  return `--blue-light:${t.hex};--shade-ink:${rcRgbToHex(t.ink)};` + (t.dark ? `--shade-line:${rcRgbToHex(t.seam)};` : '');
 }
 const RC_SHADE_PRESETS = [
   ['', 'Custom (current light blue)'], ['#E6F4EA','Light green'], ['#FFF6D6','Light yellow'], ['#FDE8EF','Light pink'],
-  ['#EEE8FA','Light lavender'], ['#FFE9DB','Light peach'], ['#DFF3F3','Light teal'], ['#EDEFF2','Light grey']
+  ['#EEE8FA','Light lavender'], ['#FFE9DB','Light peach'], ['#DFF3F3','Light teal'], ['#EDEFF2','Light grey'],
+  ['#000000','Black'], ['#0A2A4A','Navy'], ['#14532D','Dark green'], ['#7F1D1D','Maroon'],
+  ['#4C1D95','Deep purple'], ['#374151','Charcoal']
 ];
 async function setRcShade(v){
   if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
@@ -7186,14 +7225,15 @@ function rcShadeCard(){
   const pickerVal = /^#[0-9a-f]{6}$/.test(cur) ? cur : '#e9f1fa';
   return `<div class="card">
     <h3>Table shading colour</h3>
-    <p class="small">Colour used to shade table headings and highlighted cells on every report card. <b>Custom (current light blue)</b> keeps the existing look. Light colours read best.</p>
+    <p class="small">Colour used to shade table headings and highlighted cells on every report card, on screen, when printed and in downloaded PDFs. Text on the shading switches automatically: dark text on light colours, white text on dark colours (e.g. Black). <b>Custom (current light blue)</b> keeps the existing look.</p>
     <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
       ${RC_SHADE_PRESETS.map(([v,label])=>`<button type="button" class="${cur===v.toLowerCase()?'btn':'btn-outline'}" onclick="setRcShade('${v}')"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #1D4E89;vertical-align:-2px;margin-right:6px;background:${v||'#E9F1FA'};"></span>${label}</button>`).join('')}
     </div>
     <div class="flex" style="margin-top:10px;gap:10px;align-items:center;">
       <label style="margin:0;text-transform:none;">Pick your own:</label>
-      <input type="color" id="rcShadePicker" value="${pickerVal}" style="width:56px;height:36px;padding:0;">
+      <input type="color" id="rcShadePicker" value="${pickerVal}" style="width:56px;height:36px;padding:0;" oninput="(function(i){var p=document.getElementById('rcShadePrev');if(p){p.style.background=i.value;p.style.color=rcInkHexFor(i.value);}})(this)">
       <button type="button" class="${(!isPreset)?'btn':'btn-outline'}" onclick="setRcShade(document.getElementById('rcShadePicker').value)">Use this colour</button>
+      <span id="rcShadePrev" style="padding:6px 12px;border-radius:4px;border:1px solid #1D4E89;font-weight:800;font-size:12px;text-transform:uppercase;background:${pickerVal};color:${rcInkHexFor(pickerVal)};">Sample heading</span>
     </div>
   </div>`;
 }
@@ -8387,6 +8427,28 @@ function marksheetPaginationBar(page, totalPages, total, size, startIndex, pageA
   </div>
   <div class="note" style="margin-top:8px;">This page shows students ${from}–${to} on screen for readability. <b>Downloading or printing this mark sheet always includes all ${total} students</b>, no matter which page is shown here.</div>`;
 }
+// Header text for Filled and Blank mark sheets (PDF + print): no "Filled"/"Blank" wording —
+// "MARKSHEET FOR <class>, <term>, <year>" and, underneath, the subject and assessment type(s).
+function marksheetHeaderOpts(classId, subject, kind){
+  const cls = DB.classes.find(c=>c.id===classId);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const cfg = examConfig(classId);
+  let types = [];
+  if(kind==='blank'){
+    if(cfg.cwEnabled){ if(cfg.cwTests.length) cfg.cwTests.forEach(t=>types.push(t.name)); else types.push(cfg.cwLabel); }
+    if(cfg.eotEnabled) types.push(cfg.eotLabel);
+  } else {
+    const {students} = marksheetRoster(classId, subject);
+    marksheetColumns(students, subject).forEach(c=>types.push(c.kind==='EOT' ? cfg.eotLabel : (cfg.cwLabel + (c.label ? ': '+c.label : ''))));
+  }
+  types = [...new Set(types.filter(Boolean))];
+  if(!types.length) types = ['Score'];
+  return {
+    forceTitle: `MARKSHEET FOR ${[cls?cls.name:'', term||'', year||''].filter(Boolean).join(', ')}`,
+    forceSubtitle: `${subject} • Assessment${types.length>1?'s':''}: ${types.join(', ')}`,
+    pageNumberBottom: true, fillPage: true
+  };
+}
 function marksheetsListView(){
   const ctClassIds = classTeacherClassIds();
   const isAdmin = CUR.role==='admin';
@@ -8495,7 +8557,7 @@ function blankMarksheetView(classId, subject){
       <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
       <div class="flex">
         <button class="btn-outline" data-action="dlBlankPdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
-        <button class="btn" onclick="printPortrait()">Print / Save as PDF</button>
+        <button class="btn" data-action="printBlank:${classId}:${encodeURIComponent(subject)}">Print / Save as PDF</button>
         <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
       </div>
     </div>
@@ -9686,7 +9748,7 @@ function scoresEntryView(mine){
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
-            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(17*var(--uk));font-weight:900;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
+            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(7*var(--uk));font-weight:900;white-space:nowrap;display:inline-block;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
             <span class="small"> — students you add appear here, just below the list, until their scores are saved.</span>
           </div>
 
@@ -10652,7 +10714,17 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const pageH = pdf.internal.pageSize.getHeight();
   const M = 26; // outer page margin, points
   const cardX = M, cardY = M, cardW = pageW - M*2, cardH = pageH - M*2;
-  const navy = [10,42,74], blueLight = [233,241,250], muted = [90,113,137], ink=[19,36,54];
+  const navy = [10,42,74], muted = [90,113,137], ink=[19,36,54];
+  // Admin-chosen report-card colour (Report Cards > Table shading colour). With nothing chosen this
+  // is exactly the original light blue + navy text. With a colour chosen, every shaded cell uses it
+  // and its text flips to white/navy automatically so it is always readable (black => white text).
+  const _shade = rcShadeTheme();
+  const blueLight = _shade.fill;
+  const shadeInk = _shade.custom ? _shade.ink : navy;      // labels sitting on the shade
+  const shadeInkBody = _shade.custom ? _shade.ink : ink;   // values sitting on the shade
+  const hdrFill = _shade.custom ? _shade.fill : [29,78,137];
+  const hdrInk  = _shade.custom ? _shade.ink  : [255,255,255];
+  const hdrSeam = _shade.custom ? _shade.seam.map(v=>Math.round(v)) : [255,255,255];
   let cy = cardY + 14; // running vertical cursor
 
   function setC(rgb){ pdf.setTextColor(rgb[0],rgb[1],rgb[2]); }
@@ -10746,7 +10818,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
   setDrawC(navy); pdf.setLineWidth(0.6);
   pdf.roundedRect(boxX, boxY, boxW, boxH, 1.5, 1.5, 'FD');
-  centerText(formTitleLbl, textX, textW, metaY, 9.5, 'bold', navy);
+  centerText(formTitleLbl, textX, textW, metaY, 9.5, 'bold', shadeInk);
   cy = titleTop + 54;
   setDrawC(navy); line(contentX, cy, contentX+contentW, cy, 1.2);
   cy += 12 + gapBoost;
@@ -10776,9 +10848,9 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
     pdf.rect(contentX, ry, lblW, infoRowH, 'F'); pdf.rect(contentX, ry, lblW, infoRowH);
     pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH, 'F'); pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH);
-    leftText(infoRows[i][0], contentX+4, ry+infoRowH-5, 7.5, 'bold', navy);
+    leftText(infoRows[i][0], contentX+4, ry+infoRowH-5, 7.5, 'bold', shadeInk);
     leftText(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5, 8.5, 'bold', ink);
-    leftText(infoRows[i][2], contentX+lblW+valW+4, ry+infoRowH-5, 7.5, 'bold', navy);
+    leftText(infoRows[i][2], contentX+lblW+valW+4, ry+infoRowH-5, 7.5, 'bold', shadeInk);
     leftText(String(infoRows[i][3]), contentX+lblW*2+valW+4, ry+infoRowH-5, 8.5, 'bold', ink);
   }
   if(hasPhoto){
@@ -10841,21 +10913,21 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const headerTopH = hasCwGroup ? 12 : 0;
   const headerBottomH = hasCwGroup ? 20 : headerH;
   setDrawC([29,78,137]); pdf.setLineWidth(0.6);
-  pdf.setFillColor(29,78,137); pdf.rect(contentX, cy, contentW, headerH, 'F');
+  pdf.setFillColor(hdrFill[0],hdrFill[1],hdrFill[2]); pdf.rect(contentX, cy, contentW, headerH, 'F');
   cols.forEach(c=>{
-    pdf.setLineWidth(0.6); pdf.setDrawColor(255,255,255);
+    pdf.setLineWidth(0.6); pdf.setDrawColor(hdrSeam[0],hdrSeam[1],hdrSeam[2]);
     const isCw = c.key==='cwavg' || c.key.indexOf('cw_')===0;
     if(hasCwGroup && isCw){
       // bottom-level cell; the group header is drawn once across all CW columns below.
       pdf.rect(c.x, cy+headerTopH, c.width, headerBottomH);
       const lines = wrap(c.label, c.width-4, 6.2, 'bold');
       const startY = cy+headerTopH+headerBottomH/2 - ((lines.length-1)*6.5)/2 + 2.5;
-      lines.forEach((ln,i)=>centerText(ln, c.x, c.width, startY+i*6.5, 6.2, 'bold', [255,255,255]));
+      lines.forEach((ln,i)=>centerText(ln, c.x, c.width, startY+i*6.5, 6.2, 'bold', hdrInk));
     } else {
       pdf.rect(c.x, cy, c.width, headerH);
       const lines = wrap(c.label, c.width-4, 6.6, 'bold');
       const startY = cy + headerH/2 - ((lines.length-1)*7)/2 + 3;
-      lines.forEach((ln,i)=>centerText(ln, c.x, c.width, startY+i*7, 6.6, 'bold', [255,255,255]));
+      lines.forEach((ln,i)=>centerText(ln, c.x, c.width, startY+i*7, 6.6, 'bold', hdrInk));
     }
   });
   if(hasCwGroup){
@@ -10863,7 +10935,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     if(cwCols.length){
       const gx=cwCols[0].x, gw=cwCols[cwCols.length-1].x+cwCols[cwCols.length-1].width-gx;
       pdf.rect(gx, cy, gw, headerTopH);
-      centerText(data.cfg.cwLabel.toUpperCase(), gx, gw, cy+8.5, 7.2, 'bold', [255,255,255]);
+      centerText(data.cfg.cwLabel.toUpperCase(), gx, gw, cy+8.5, 7.2, 'bold', hdrInk);
     }
   }
   cy += headerH;
@@ -10881,11 +10953,6 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     const rowHeights = entry.paperRows.map(()=>perRowH);
     const groupH = rowHeights.reduce((a,b)=>a+b,0);
     const groupTop = cy;
-
-    // Grade column: filled light-blue for its full (possibly multi-paper-row) height,
-    // matching the on-screen Grade column header and the Grading Key table below —
-    // painted before the border-drawing loop so the cell borders remain crisp on top.
-    { const grc0 = colX('grade'); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]); pdf.rect(grc0.x, groupTop, grc0.width, groupH, 'F'); }
 
     entry.paperRows.forEach((pr, idx)=>{
       const rh = rowHeights[idx];
@@ -10940,18 +11007,18 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   cols.forEach(c=>{ pdf.setLineWidth(0.6); pdf.rect(c.x, cy, c.width, totRowH); });
   const labelSpanCols = data.isP ? ['subject'] : ['subject','papers'];
   const labelW = labelSpanCols.reduce((a,k)=>a + (colX(k)?colX(k).width:0), 0);
-  leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', navy);
+  leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', shadeInk);
   if(data.showCW){
     if(data.useCwTestCols){ data.cwTests.forEach(t=>{ const c=colX('cw_'+t.name); centerText('', c.x, c.width, cy+totRowH-5, bodySize); }); }
-    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold');
+    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null);
   }
-  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
-  if(!data.isP){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
-  { const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
-  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
-  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
-  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold'); }
-  { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize); }
+  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
+  if(!data.isP){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
+  { const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
+  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
+  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
+  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
+  { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize, 'normal', _shade.custom ? _shade.ink : null); }
   cy += totRowH;
   // ---- RESULT row: two merged cells — the word RESULT : and the result itself (1 or 2) ----
   if(data.result!==null && data.result!==undefined){
@@ -10959,8 +11026,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
     pdf.rect(contentX, cy, contentW, resH, 'F');
     pdf.setLineWidth(0.9); pdf.rect(contentX, cy, half, resH); pdf.rect(contentX+half, cy, half, resH);
-    centerText('RESULT :', contentX, half, cy+resH-4.5, bodySize+2, 'bold', [0,0,0]);
-    centerText(String(data.result), contentX+half, half, cy+resH-4, bodySize+4, 'bold', [0,0,0]);
+    centerText('RESULT :', contentX, half, cy+resH-4.5, bodySize+2, 'bold', _shade.custom ? _shade.ink : [0,0,0]);
+    centerText(String(data.result), contentX+half, half, cy+resH-4, bodySize+4, 'bold', _shade.custom ? _shade.ink : [0,0,0]);
     cy += resH;
   }
   cy += 14 + gapBoost;
@@ -11018,7 +11085,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       if(isLbl){ pdf.rect(rx, ry, sumColW, sumRowH, 'F'); pdf.rect(rx, ry, sumColW, sumRowH); }
       const val = row[ci];
       const lines = wrap(String(val), sumColW-6, isLbl?6.5:8, isLbl?'bold':'normal');
-      centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, isLbl?'bold':'normal', isLbl?navy:ink);
+      centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, isLbl?'bold':'normal', isLbl?shadeInk:ink);
     }
   });
   cy += sumRowH*2 + 14 + gapBoost;
@@ -11045,13 +11112,13 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       // fill instead of blueLight unless we explicitly reset it right here — this was
       // exactly why the label/description columns rendered dark with near-invisible text.
       pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
-      pdf.rect(rx, cy, gkLetterW, rh, 'FD'); centerText(row.grade, rx, gkLetterW, cy+rh/2+2, 7, 'bold', ink); rx += gkLetterW;
+      pdf.rect(rx, cy, gkLetterW, rh, 'FD'); centerText(row.grade, rx, gkLetterW, cy+rh/2+2, 7, 'bold', shadeInkBody); rx += gkLetterW;
       pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
-      pdf.rect(rx, cy, gkLabelW, rh, 'FD'); centerText(row.label, rx, gkLabelW, cy+rh/2+2, 6.5, 'bold', ink); rx += gkLabelW;
+      pdf.rect(rx, cy, gkLabelW, rh, 'FD'); centerText(row.label, rx, gkLabelW, cy+rh/2+2, 6.5, 'bold', shadeInkBody); rx += gkLabelW;
       pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
       pdf.rect(rx, cy, gkDescW, rh, 'FD');
       const dy0 = cy + rh/2 - ((descLines.length-1)*6.5)/2 + 2;
-      descLines.forEach((ln,i)=>leftText(ln, rx+3, dy0+i*6.5, 6.5, 'normal', ink));
+      descLines.forEach((ln,i)=>leftText(ln, rx+3, dy0+i*6.5, 6.5, 'normal', shadeInkBody));
       cy += rh;
     });
     cy += 10 + gapBoost;
@@ -12010,7 +12077,8 @@ Continue?`);
       const subject = subjEnc?decodeURIComponent(subjEnc):'';
       const term = DB.info.currentTerm, year = DB.info.currentYear;
       await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
-        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||''
+        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
+        ...marksheetHeaderOpts(classId, subject, 'blank')
       });
       break;
     }
@@ -12032,7 +12100,8 @@ Continue?`);
         // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
         const term = DB.info.currentTerm, year = DB.info.currentYear;
         await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
-          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||''
+          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
+          ...marksheetHeaderOpts(classId, subject, 'filled')
         });
       } finally {
         render();
@@ -12059,8 +12128,14 @@ Continue?`);
       // page currently showing on screen, in portrait to save pages.
       document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
       { const _c = DB.classes.find(c=>c.id===classId);
-        printPortrait({title:`${_c?_c.name:''} — ${subject}`, subtitle:`${DB.info.currentTerm||''}, ${DB.info.currentYear||''}`}); }
+        printPortrait({title:`${_c?_c.name:''} — ${subject}`, subtitle:`${DB.info.currentTerm||''}, ${DB.info.currentYear||''}`, ...marksheetHeaderOpts(classId, subject, 'filled')}); }
       render();
+      break;
+    }
+    case 'printBlank': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      const subject = subjEnc?decodeURIComponent(subjEnc):'';
+      printPortrait({...marksheetHeaderOpts(classId, subject, 'blank')});
       break;
     }
     case 'spMode': {
@@ -14617,6 +14692,8 @@ function printPortrait(opts){
         const h3 = area.querySelector('h3'), sm = area.querySelector('p.small');
         if(!titleTxt && h3) titleTxt = h3.textContent;
         if(!metaTxt && sm) metaTxt = sm.textContent;
+        if(opts.forceTitle) titleTxt = opts.forceTitle;
+        if(opts.forceSubtitle) metaTxt = opts.forceSubtitle;
       }
       const footerEls = isMaster ? [...area.querySelectorAll('.mm-summary, p.small, .mm-footer')] : [];
       const footerHtml = footerEls.map(e=>e.outerHTML).join('');
@@ -14640,7 +14717,7 @@ function printPortrait(opts){
         pg.className = 'ms-print-page';
         pg.innerHTML = `<div class="mm-header">${logo}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>`
           + (titleTxt?`<div class="mm-title">${esc(titleTxt)}</div>`:'')
-          + `<div class="mm-meta">${esc([metaTxt,`Page ${pi+1} of ${pages.length}`].filter(Boolean).join('  •  '))}</div></div>`;
+          + `<div class="mm-meta">${esc([metaTxt, opts.pageNumberBottom ? '' : `Page ${pi+1} of ${pages.length}`].filter(Boolean).join('  •  '))}</div></div>`;
         const t = table.cloneNode(false);
         if(colPct){
           t.classList.add('ms-fixed');
@@ -14654,7 +14731,13 @@ function printPortrait(opts){
         const tb = document.createElement('tbody');
         rows.forEach(r=>tb.appendChild(r.cloneNode(true)));
         t.appendChild(tb);
-        pg.appendChild(t);
+        if(opts.fillPage){
+          // Full pages: the table is stretched so its rows fill the page down to the page number.
+          pg.classList.add('ms-fill');
+          const wrap = document.createElement('div'); wrap.className = 'ms-tbl' + (rows.length>=PER_PAGE ? ' ms-full' : '');
+          wrap.appendChild(t); pg.appendChild(wrap);
+        } else pg.appendChild(t);
+        if(opts.pageNumberBottom){ const n=document.createElement('div'); n.className='ms-pgnum'; n.textContent=`Page ${pi+1} of ${pages.length}`; pg.appendChild(n); }
         if(pi===pages.length-1 && footerHtml){ const f=document.createElement('div'); f.style.marginTop='8px'; f.innerHTML=footerHtml; pg.appendChild(f); }
         out.appendChild(pg);
       });
@@ -14668,6 +14751,9 @@ function printPortrait(opts){
   st.textContent = '@page{ size: A4 ' + (opts.landscape?'landscape':'portrait') + '; margin:8mm; }'
     + '@media print{'
     + ' .ms-print-page{break-after:page;page-break-after:always;} .ms-print-page:last-child{break-after:auto;page-break-after:auto;}'
+    + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:262mm;box-sizing:border-box;}'
+    + ' .ms-print-page.ms-fill .ms-tbl.ms-full{flex:1 1 auto;min-height:0;} .ms-print-page.ms-fill .ms-tbl.ms-full table{height:100%;}'
+    + ' .ms-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}'
     + ' .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
     + ' #printArea .mm-header{padding-bottom:6px;margin-bottom:8px;} #printArea .mm-header .mm-logo{width:48px;height:48px;} #printArea .mm-header .mm-school{font-size:18px;}'
     + ' #printArea table{width:100% !important;min-width:0 !important;table-layout:auto;border-collapse:collapse;}'
@@ -14822,7 +14908,9 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
   const pageH = pdf.internal.pageSize.getHeight();
   const margin = PDF_FRAME_CONTENT; // keeps every table inside the page frame
   const usableW = pageW - margin*2;
-  const usableH = pageH - margin*2;
+  // Mark sheets put "Page x of y" at the foot of the page, so a small strip is kept free for it.
+  const pgNumStrip = opts.pageNumberBottom ? 16 : 0;
+  const usableH = pageH - margin*2 - pgNumStrip;
 
   const holder = document.createElement('div');
   holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.top='0';
@@ -14914,7 +15002,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
         headHtml = `<div style="text-align:center;border-bottom:2px solid #0A2A4A;padding-bottom:8px;margin-bottom:10px;">`
           + `${logo}<span style="font-family:Georgia,serif;font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:.03em;color:#0A2A4A;vertical-align:middle;">${esc(section.school)}</span>`
           + (section.title ? `<div style="font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#1D4E89;margin-top:5px;">${esc(section.title)}</div>` : '')
-          + `<div style="font-size:12px;color:#5A7189;margin-top:4px;">${esc([section.subtitle, `Page ${ci+1} of ${chunks.length}`].filter(Boolean).join('  •  '))}</div></div>`;
+          + `<div style="font-size:12px;color:#5A7189;margin-top:4px;">${esc([section.subtitle, opts.pageNumberBottom ? '' : `Page ${ci+1} of ${chunks.length}`].filter(Boolean).join('  •  '))}</div></div>`;
       } else if(ci===0){
         if(section.title) headHtml += `<h3 style="margin:0 0 4px;">${esc(section.title)}</h3>`;
         if(section.subtitle) headHtml += `<p style="margin:0 0 10px;font-size:12px;color:#5A7189;">${esc(section.subtitle)}</p>`;
@@ -14941,9 +15029,25 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       closeStyle.textContent = '.pg-fit th:last-child,.pg-fit td:last-child{border-right:2px solid #0A2A4A !important;}';
       pageWrap.appendChild(closeStyle);
       const maxRatio = usableH/usableW;
+      if(opts.fillPage && opts.rowsPerPage){
+        // Stretch (or tighten) the row height so a full page of learners fills the sheet from the
+        // header down to the page-number strip, with no empty band at the bottom. A short last page
+        // keeps exactly the same row height as the full ones.
+        const targetH = maxRatio * pageWrap.offsetWidth;
+        const k = Math.max(1, chunks[ci].length);
+        const nRows = Math.max(opts.rowsPerPage, k);
+        let rowH = 20;
+        for(let it=0; it<8; it++){
+          fitStyle.textContent = `.pg-fit tbody td{padding-top:0 !important;padding-bottom:0 !important;vertical-align:middle !important;height:${rowH}px !important;}`;
+          const diff = targetH - pageWrap.offsetHeight - (nRows-k)*rowH;
+          if(Math.abs(diff) < 0.5) break;
+          rowH = Math.max(8, rowH + diff/k);
+        }
+      } else {
       for(const [padV, hV] of [[7,0],[5,0],[4,0],[3,0],[2,0],[1,0],[1,26],[1,24],[1,22],[1,20],[1,18],[1,16]]){
         fitStyle.textContent = `.pg-fit th,.pg-fit td{padding-top:${padV}px !important;padding-bottom:${padV}px !important;${hV?`height:${hV}px !important;`:''}}`;
         if(pageWrap.offsetHeight/pageWrap.offsetWidth <= maxRatio) break;
+      }
       }
 
       const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
@@ -14955,6 +15059,10 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       firstPageOverall = false;
       drawPdfFrame(pdf);
       pdf.addImage(img, 'JPEG', margin + (usableW-w)/2, margin, w, h);
+      if(opts.pageNumberBottom){
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(10,42,74);
+        pdf.text(`Page ${ci+1} of ${chunks.length}`, pageW/2, pageH - margin - 4, {align:'center'});
+      }
     }
   }
 
@@ -14983,8 +15091,8 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
     const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
     const bodyRows = thead ? [...table.querySelectorAll('tbody tr')] : [...table.querySelectorAll('tr')].slice(1);
     return {
-      title: (titleEl && titleEl.textContent) || opts.title || '',
-      subtitle: (descEl && descEl.textContent) || opts.subtitle || '',
+      title: opts.forceTitle || (titleEl && titleEl.textContent) || opts.title || '',
+      subtitle: opts.forceSubtitle || (descEl && descEl.textContent) || opts.subtitle || '',
       school: opts.school || '',
       headRows, bodyRows
     };
