@@ -163,7 +163,7 @@ img{max-width:100%;height:auto;}
 .sidebar a.nav-home{display:none;}
 .layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
 .layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
-.layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:calc(100% - 16*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(9*var(--uk)) calc(12*var(--uk));font-size:calc(14*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
+.layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
 .layout.nav-collapsed .sidebar a.nav-home:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .layout.nav-collapsed:not(.nav-open) .sidebar a:not(.nav-home){display:none;}
 .layout.nav-collapsed.nav-open .sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(3*var(--uk));padding:0 0 calc(6*var(--uk));}
@@ -1180,10 +1180,18 @@ table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-s
 .se-prev::-webkit-scrollbar{display:none;}
 .se-pr-in{display:flex;width:max-content;min-width:100%;}
 .se-pc,.se-sh{flex:none;width:var(--se-cw,12px);box-sizing:border-box;text-align:center;white-space:nowrap;overflow:hidden;}
-.se-pc{font-size:calc(4.5*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;letter-spacing:-.02em;border-left:1.5px solid #1D4E89;padding:calc(1*var(--uk)) 0;}
+.se-pc{font-size:calc(4.5*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;letter-spacing:-.02em;padding:0;display:flex;align-items:center;justify-content:center;height:100%;}
 .se-pc.se-nil{color:var(--muted);font-weight:400;}
 .se-table th.se-prevh,.se-table td.se-prevtd{padding-left:0;padding-right:0;}
 .se-table th.se-prevh,.se-table td.se-prevtd{box-sizing:border-box;}
+
+/* Sub-column dividers: drawn ONCE as a repeating background on the scrolling strip, and the strip fills the whole cell
+   (even over the row border), so each divider is one unbroken vertical line from the top of the column to the bottom. */
+.se-table td.se-prevtd{position:relative;padding:0 !important;}
+.se-table td.se-prevtd .se-prev{position:absolute;left:0;right:0;top:0;bottom:-1px;width:auto;}
+.se-table td.se-prevtd.se-more .se-prev{right:calc(6*var(--uk));}
+.se-table td .se-pr-in{height:100%;background:linear-gradient(to right,#1D4E89 0,#1D4E89 calc(1.5*var(--uk)),transparent calc(1.5*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
+.se-table th .se-pr-in{background:linear-gradient(to right,#fff 0,#fff calc(1.5*var(--uk)),transparent calc(1.5*var(--uk))) 0 0 / var(--se-cw,12px) 100% repeat-x;}
 .se-table th.se-prevh{width:calc(44*var(--uk));}
 .se-table th.se-prevh.se-more{width:calc(50*var(--uk));}
 /* more tests than fit: a small arrow in a 6px gutter tells users to swipe sideways; it fades once the end is reached. */
@@ -1193,7 +1201,7 @@ table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-s
 .se-table td.se-more::after{color:var(--blue,#1f5fa8);}
 .se-table.se-end .se-more::after{opacity:.2;}
 .se-ph-title{font-size:calc(5*var(--uk));font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:calc(1*var(--uk));padding-bottom:calc(1.5*var(--uk));border-bottom:1px solid rgba(255,255,255,.85);text-align:center;white-space:nowrap;overflow:hidden;}
-table.data-table.se-table th .se-sh{font-size:calc(4*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.1;letter-spacing:-.02em;border-left:1.5px solid #fff;padding:calc(1*var(--uk)) 0;display:block;}
+table.data-table.se-table th .se-sh{font-size:calc(4*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.1;letter-spacing:-.02em;border-left:0;padding:calc(1*var(--uk)) 0;display:block;}
 /* Column headers: bold WHITE words on solid colour (blue for every column; green marks the column being entered now). */
 table.data-table.se-table th,table.data-table.se-table th a,table.data-table.se-table th .small,.se-table th .se-hmax{color:#fff !important;}
 table.data-table.se-table th{background:var(--blue,#1f5fa8) !important;font-weight:800;}
@@ -9516,23 +9524,28 @@ function scoresEntryView(mine){
       const chosen = new Set(rosterSet ? a.studentIds : []);
       const knownIds = new Set(a.studentIds||[]);
       const compulsory = isCompulsorySubjectFor(a.subject, cls);
-      const allChosen = eligible.length>0 && eligible.every(s=>chosen.has(s.id));
+      // Once a roster exists, this screen is only for ADDING: show just the students who
+      // aren't on the list yet (unticked earlier or newly admitted). Existing ones are
+      // managed with the REMOVE button on the score sheet.
+      const missingOnly = rosterSet;
+      const listed = missingOnly ? eligible.filter(s=>!knownIds.has(s.id)) : eligible;
+      const allChosen = listed.length>0 && listed.every(s=>chosen.has(s.id));
       studentRows = `
       <div class="card">
-        <h3>${esc(a.subject)} — ${esc(cls.name)} — Select your students</h3>
-        <form data-form="saveRoster" data-assign="${a.id}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
-          ${compulsory && eligible.length ? `
+        <h3>${esc(a.subject)} — ${esc(cls.name)} — ${missingOnly?'Add missing students':'Select your students'}</h3>
+        <form data-form="saveRoster" data-assign="${a.id}" data-missing-only="${missingOnly?'1':''}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
+          ${compulsory && listed.length ? `
           <label style="display:flex;gap:8px;align-items:center;padding:5px 2px 10px;font-weight:600;text-transform:none;">
             <input type="checkbox" data-select-all-students="1" style="width:auto;" ${allChosen?'checked':''}>
             Select all students
           </label>` : ''}
           <div class="se-wrap sr-list" style="--se-rows:${Math.min(Math.max(eligible.length,8),25)};border:1px solid #cfd9e3;border-radius:6px;padding:0 10px;">
-          ${(rosterSet ? [...a.studentIds.map(id=>eligible.find(x=>x.id===id)).filter(Boolean), ...eligible.filter(x=>!knownIds.has(x.id))] : eligible).map(s=>`<label class="sr-row">
+          ${listed.map(s=>`<label class="sr-row">
             <input type="checkbox" name="students" value="${s.id}" ${chosen.has(s.id)?'checked':''}>
             ${esc(s.name)} ${rosterSet && !knownIds.has(s.id) ? '<span class="pill" style="background:var(--gold);color:#3a2c00;">NEW</span>' : ''}
-          </label>`).join('') || '<p class="small">No students in this class yet — ask the admin to upload the class list first.</p>'}
+          </label>`).join('') || (missingOnly ? '<p class="small" style="padding:12px 0;font-weight:700;">No missing or New students yet. Contact Your Admin</p>' : '<p class="small">No students in this class yet — ask the admin to upload the class list first.</p>')}
           </div>
-          <button class="btn btn-big">Submit — save my student list</button>
+          <button class="btn btn-big">${listed.length ? 'Submit — save my student list' : 'Back to score sheet'}</button>
         </form>
       </div>
       ${CUR.role==='admin' ? `<div class="card">
@@ -9673,7 +9686,7 @@ function scoresEntryView(mine){
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
-            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(15*var(--uk));font-weight:900;">${newCount?'Update my student list':'Edit my student list / add missing students'}</b></a>
+            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(17*var(--uk));font-weight:900;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
             <span class="small"> — students you add appear here, just below the list, until their scores are saved.</span>
           </div>
 
@@ -14163,7 +14176,8 @@ document.addEventListener('submit', async (e)=>{
         const prev = Array.isArray(a.studentIds) ? a.studentIds : [];
         const wasSet = Array.isArray(a.studentIds);
         const added = ticked.filter(id=>!prev.includes(id));
-        a.studentIds = [...prev.filter(id=>ticked.includes(id)), ...added];
+        const missingOnlyMode = form.dataset.missingOnly==='1';
+        a.studentIds = missingOnlyMode ? [...prev, ...added] : [...prev.filter(id=>ticked.includes(id)), ...added];
         if(wasSet && added.length){
           const key = `${DB.info.currentTerm}|${DB.info.currentYear}`;
           const cur = (a.pending && a.pending.key===key && Array.isArray(a.pending.ids)) ? a.pending.ids : [];
