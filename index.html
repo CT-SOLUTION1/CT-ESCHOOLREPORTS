@@ -1136,7 +1136,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* Score table: every column (Student, earlier tests, the column being entered, Actions) must fit the screen at once, so
    text is a normal readable size, names and action buttons wrap instead of forcing the table wider than the page. */
 .se-wrap.se-score{overflow-x:hidden;}
-.se-table{width:100%;max-width:100%;table-layout:fixed;--se-fs:calc(12*var(--uk));--se-row:max(calc(22*var(--uk)),min(calc(var(--se-h)/19),calc(30*var(--uk))));}
+.se-table{width:100%;max-width:100%;table-layout:fixed;--se-fs:calc(12*var(--uk));--se-row:max(calc(18*var(--uk)),min(calc(var(--se-h)/21),calc(30*var(--uk))));}
 .se-table tr{height:var(--se-row);}
 .se-table th,.se-table td{padding:calc(1*var(--uk)) calc(4*var(--uk));font-size:var(--se-fs);line-height:1.1;white-space:nowrap;vertical-align:middle;text-align:center;}
 .se-table td.small{font-size:var(--se-fs);}
@@ -1148,7 +1148,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .se-table th{position:sticky;top:0;z-index:2;font-size:calc(11*var(--uk));line-height:1.2;white-space:normal;}
 .se-table th .small{font-size:calc(9.5*var(--uk));}
 /* Student names: wrap onto two lines rather than push other columns off screen. */
-.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(12*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
+.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(11.5*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
 .se-name{overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;line-height:1.1;}
 .se-name::-webkit-scrollbar{display:none;}
 .se-nm{display:inline-block;}
@@ -1160,16 +1160,28 @@ table.data-table.se-table td.small[style*="muted"]{font-weight:400;color:var(--m
 table.data-table.se-table th.small{font-size:var(--se-hfs,calc(9.5*var(--uk))) !important;font-weight:700;line-height:1.1;word-break:break-word;overflow:hidden;}
 .se-table th.small a{color:inherit;text-decoration:none;}
 .se-hmax{font-weight:700;opacity:.95;}
+.se-sh .se-hmax{display:block;}
+/* ALREADY SCORED: ONE merged column holding a small sub-column per earlier test; it scrolls sideways (header and every row together). */
+.se-prev{overflow-x:auto;overflow-y:hidden;width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.se-prev::-webkit-scrollbar{display:none;}
+.se-pr-in{display:flex;width:max-content;min-width:100%;}
+.se-pc,.se-sh{flex:none;width:var(--se-cw,42px);box-sizing:border-box;text-align:center;white-space:nowrap;}
+.se-pc{font-size:calc(8*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;border-left:1px solid #cfd9e3;padding:calc(2*var(--uk)) 0;}
+.se-pc.se-nil{color:var(--muted);font-weight:400;}
+.se-table th.se-prevh,.se-table td.se-prevtd{padding-left:0;padding-right:0;}
+.se-table th.se-prevh{width:min(34%,max(calc(var(--se-oc,1) * var(--se-cw,42px) + 4*var(--uk)),calc(74*var(--uk))));}
+.se-ph-title{font-size:calc(7.5*var(--uk));font-weight:800;letter-spacing:.03em;margin-bottom:calc(1*var(--uk));text-align:center;white-space:nowrap;}
+table.data-table.se-table th .se-sh{font-size:calc(7*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.15;border-left:1px solid rgba(255,255,255,.4);padding:calc(1*var(--uk)) 0;display:block;}
 /* Column headers: bold WHITE words on solid colour (blue for every column; green marks the column being entered now). */
 table.data-table.se-table th,table.data-table.se-table th a,table.data-table.se-table th .small,.se-table th .se-hmax{color:#fff !important;}
 table.data-table.se-table th{background:var(--blue,#1f5fa8) !important;font-weight:800;}
 table.data-table.se-table th:nth-last-child(2){background:#0f6b3a !important;}
-.se-table td input{font-size:calc(13*var(--uk));line-height:1;height:calc(var(--se-row) - 4*var(--uk));min-height:0;padding:0 calc(4*var(--uk));box-sizing:border-box;width:100% !important;min-width:0;max-width:100% !important;margin:0 auto;display:block;text-align:center;}
+.se-table td input{font-size:calc(12*var(--uk));line-height:1;height:calc(var(--se-row) - 3*var(--uk));min-height:0;padding:0 calc(4*var(--uk));box-sizing:border-box;width:100% !important;min-width:0;max-width:100% !important;margin:0 auto;display:block;text-align:center;}
 /* Only the action buttons (REMOVE / DELETE / Clear X) are tiny; headers and names keep their own sizes. The selector
    is written to win over the generic table.data-table rules. */
 table.data-table.se-table th:last-child,
-table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-danger{font-size:calc(6.5*var(--uk)) !important;}
-.se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(6.5*var(--uk));padding:calc(2*var(--uk)) calc(3*var(--uk)) !important;line-height:1;white-space:nowrap;}
+table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-danger{font-size:calc(5.5*var(--uk)) !important;}
+.se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(5.5*var(--uk));padding:calc(2*var(--uk)) calc(2*var(--uk)) !important;line-height:1;white-space:nowrap;letter-spacing:-.02em;max-width:100%;box-sizing:border-box;}
 .se-table th:first-child{width:auto;}
 .se-table th.small{width:min(13%,calc(var(--se-osh,56%) / var(--se-oc,1)));}
 .se-table th:last-child{width:12%;text-align:right;padding-right:calc(2*var(--uk));}
@@ -1177,7 +1189,7 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .se-table td.flex{display:table-cell;}
 .se-table td.flex{white-space:nowrap;text-align:right !important;padding-left:0;padding-right:calc(2*var(--uk));}
 .se-table td.flex .btn-outline,.se-table td.flex .btn-danger{display:block;width:fit-content;margin:calc(1*var(--uk)) 0 calc(1*var(--uk)) auto;}
-.sr-list .sr-row{display:flex;align-items:center;gap:calc(10*var(--uk));height:var(--se-row);padding:0 calc(4*var(--uk));margin:0;box-sizing:border-box;font-weight:400;text-transform:none;line-height:1.4;white-space:nowrap;min-width:0;border-bottom:1px solid #e6edf4;font-size:clamp(calc(13*var(--uk)),calc(var(--se-row)*.5),calc(18*var(--uk)));}
+.sr-list .sr-row{display:flex;align-items:center;gap:calc(10*var(--uk));height:var(--se-row);padding:0 calc(4*var(--uk));margin:0;box-sizing:border-box;font-weight:400;text-transform:none;line-height:1.4;white-space:nowrap;min-width:0;border-bottom:1px solid #7f9bb8;font-size:clamp(calc(13*var(--uk)),calc(var(--se-row)*.5),calc(18*var(--uk)));}
 .sr-list .sr-row:last-child{border-bottom:0;}
 .sr-list .sr-row input[type=checkbox]{flex:none;margin:0;width:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;height:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
@@ -1187,12 +1199,12 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
    All names are given the same scroll width so a short name can't block the swipe. Nothing else on the table moves. */
 (function(){
   var driver=null, busy=false, queued=false;
-  function pick(e){ var n=e.target&&e.target.closest?e.target.closest('.se-name'):null; if(n) driver=n; }
+  function pick(e){ var n=e.target&&e.target.closest?e.target.closest('.se-name,.se-prev'):null; if(n) driver=n; }
   ['touchstart','mousedown','wheel','pointerdown'].forEach(function(t){document.addEventListener(t,pick,{passive:true,capture:true});});
   document.addEventListener('scroll',function(e){
-    var el=e.target; if(!el||!el.classList||!el.classList.contains('se-name')||el!==driver) return;
+    var el=e.target; if(!el||!el.classList||!(el.classList.contains('se-name')||el.classList.contains('se-prev'))||el!==driver) return;
     var tb=el.closest('.se-table'); if(!tb) return;
-    var x=el.scrollLeft, all=tb.querySelectorAll('.se-name');
+    var x=el.scrollLeft, all=tb.querySelectorAll(el.classList.contains('se-name')?'.se-name':'.se-prev');
     for(var i=0;i<all.length;i++){ if(all[i]!==el && all[i].scrollLeft!==x) all[i].scrollLeft=x; }
   },true);
   function equalize(){
@@ -4149,9 +4161,16 @@ function computeSubjectRows(st, cls, term, year){
     const t = teacherForSubjectClass(subj, cls.id);
     return {subject:subj, avg, grade, pts, teacherInit: t?initials(t.name):'--'};
   });
-  return { rows, totalPoints, avgPct: countAvg? sumAvg/countAvg : 0 };
+  return { rows, totalPoints, avgPct: countAvg? sumAvg/countAvg : 0, sumAvg, countAvg };
 }
-function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, term, year); return cls.level==='A' ? d.totalPoints : d.avgPct; }
+// RANKING: the number of subjects a learner has scored in counts. Primary / O-Level learners are ranked on their TOTAL marks
+// (the sum of their subject averages), not on the plain average, so a learner scored in more subjects ranks ahead of one with
+// fewer subjects at a similar level; A-Level keeps total Points (which also grows with more subjects). Ties are broken by the
+// number of subjects scored, then by the average. (The Average column on the lists still shows the plain average.)
+function rankKeyOf(d, level){ return { m: level==='A' ? d.totalPoints : d.sumAvg, n: d.countAvg, t: d.avgPct }; }
+function rankCmp(a, b){ return (b.m-a.m) || (b.n-a.n) || (b.t-a.t); }
+function rankTie(a, b){ return a.m===b.m && a.n===b.n && a.t===b.t; }
+function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, term, year); return rankKeyOf(d, cls.level); }
 // classPosition() is called once PER STUDENT from every whole-class view (Master Mark
 // Sheet, Class Analysis, Report Cards) — so without caching, ranking a class of N
 // students redid the full O(N) ranking pass N times (O(N^2) overall), redundantly
@@ -4165,11 +4184,11 @@ function computeClassRankings(cls, term, year){
   const key = cls.id+'|'+term+'|'+year;
   if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
   const peers = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
-  const scored = peers.map(s=>({id:s.id, m:metricFor(s, cls, term, year)})).sort((a,b)=>b.m-a.m);
+  const scored = peers.map(s=>({id:s.id, k:metricFor(s, cls, term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
   const map = new Map();
   let position = scored.length;
   for(let i=0;i<scored.length;i++){
-    if(i===0 || scored[i].m < scored[i-1].m) position = i+1;
+    if(i===0 || !rankTie(scored[i].k, scored[i-1].k)) position = i+1;
     map.set(scored[i].id, {position, size:peers.length});
   }
   _rankCache = {scoresRef:DB.scores, key, map};
@@ -9077,10 +9096,10 @@ function masterMarkSheetView(forExport){
   if(isLevelSheet){
     // Whole level, best first — same metric as the report-card position (Average %, or Points at A-Level).
     const pool = DB.students.filter(st=>st.status!=='left' && (DB.classes.find(c=>c.id===st.classId)||{}).level===level)
-      .map(st=>{ const c = clsOf(st); const d = computeSubjectRows(st, c, term, year); return {st, m: isA ? d.totalPoints : d.avgPct}; })
-      .sort((a,b)=> b.m-a.m || (a.st.name||'').localeCompare(b.st.name||''));
+      .map(st=>{ const c = clsOf(st); const d = computeSubjectRows(st, c, term, year); return {st, k: rankKeyOf(d, c.level)}; })
+      .sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
     levelPosOf = new Map(); let pp = 0;
-    pool.forEach((r,i)=>{ if(i===0 || r.m < pool[i-1].m) pp = i+1; levelPosOf.set(r.st.id, {position:pp, size:pool.length}); });
+    pool.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, pool[i-1].k)) pp = i+1; levelPosOf.set(r.st.id, {position:pp, size:pool.length}); });
     allStudents = pool.map(r=>r.st);
   } else {
     allStudents = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
@@ -9263,13 +9282,13 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const data = pool.map(st=>{
     const c = DB.classes.find(x=>x.id===st.classId);
     const d = computeSubjectRows(st, c, term, year);
-    return {st, c, avgPct:d.avgPct, pts:d.totalPoints, m: isA ? d.totalPoints : d.avgPct,
+    return {st, c, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, c.level),
       maxP: isA ? maxPointsFor(st, c) : 100,
       grade: isP ? null : gradeFor('', d.avgPct, c.level),
       agg: isP ? primaryAggregate(st, c, term, year) : null};
-  }).sort((a,b)=> b.m-a.m || (a.st.name||'').localeCompare(b.st.name||''));
+  }).sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
   let pos = 0;
-  data.forEach((r,i)=>{ if(i===0 || r.m < data[i-1].m) pos = i+1; r.pos = pos; });
+  data.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, data[i-1].k)) pos = i+1; r.pos = pos; });
   const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 25);
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}`;
@@ -9553,7 +9572,7 @@ function scoresEntryView(mine){
         // a mark recorded for this column already (every otherCol has at least one).
         let colMax = sel.maxScore||100;
         for(const s of students){ const r=scoreCellFor(s.id, a.subject, c, term, year); if(r){ colMax = r.max; break; } }
-        return `<th class="small" style="font-weight:600;"><a href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="${colLabel(c)} — click to edit this test's scores">${colLabelShort(c)}</a><span class="se-hmax"> (${esc(colMax)})</span></th>`;
+        return `<a class="se-sh" href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="${colLabel(c)} — click to edit this test's scores">${colLabelShort(c)}<span class="se-hmax"> (${esc(colMax)})</span></a>`;
       }).join('');
       const currentColLabel = (!isP && sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?(esc(examConfig(a.classId).cwLabel)+(sel.label?': '+esc(sel.label):'')):esc(examConfig(a.classId).eotLabel));
       const missKey = missingMarkersKey(a.id, sel.paper, sel.kind, sel.label||'');
@@ -9613,7 +9632,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score${otherCols.length>=6?' se-many':''}" style="--se-rows:${Math.min(Math.max(students.length,8),15)+1};--se-oc:${Math.max(otherCols.length,1)};--se-osh:${otherCols.length>=6?60:56}%;--se-ocfs:calc(${otherCols.length<=4?14:otherCols.length<=6?13:otherCols.length<=8?12:10}*var(--uk));--se-hfs:calc(${otherCols.length>=6?8.5:9.5}*var(--uk));"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(30*var(--uk));"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -9621,14 +9640,14 @@ function scoresEntryView(mine){
             const delScoreBtn = existingRow ? `<button type="button" class="btn-danger" style="padding:4px 10px;" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE</button>` : '';
             const otherCells = otherCols.map(c=>{
               const row = scoreCellFor(s.id, a.subject, c, term, year);
-              return row ? `<td class="small">${esc(row.marks)}</td>` : `<td class="small" style="color:var(--muted);">—</td>`;
+              return row ? `<span class="se-pc">${esc(row.marks)}</span>` : `<span class="se-pc se-nil">—</span>`;
             }).join('');
             const isMissing = !existingRow && missSet.has(s.id);
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCells}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE</button></td></tr>`;
-          }).join('') || `<tr><td colspan="${otherCols.length+3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
+            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE</button></td></tr>`;
+          }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
             ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b>${newCount?'Update my student list':'Edit my student list / add missing students'}</b></a>
