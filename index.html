@@ -1176,13 +1176,13 @@ table.data-table.se-table th.small{font-size:var(--se-hfs,calc(9.5*var(--uk))) !
 .se-prev{overflow-x:auto;overflow-y:hidden;width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .se-prev::-webkit-scrollbar{display:none;}
 .se-pr-in{display:flex;width:max-content;min-width:100%;}
-.se-pc,.se-sh{flex:none;width:var(--se-cw,42px);box-sizing:border-box;text-align:center;white-space:nowrap;}
-.se-pc{font-size:calc(8*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;border-left:1px solid #cfd9e3;padding:calc(2*var(--uk)) 0;}
+.se-pc,.se-sh{flex:1 0 var(--se-cw,15px);width:var(--se-cw,15px);box-sizing:border-box;text-align:center;white-space:nowrap;overflow:hidden;}
+.se-pc{font-size:calc(5*var(--uk));font-weight:700;color:#0A2A4A;line-height:1.1;letter-spacing:-.02em;border-left:1px solid #cfd9e3;padding:calc(1*var(--uk)) 0;}
 .se-pc.se-nil{color:var(--muted);font-weight:400;}
 .se-table th.se-prevh,.se-table td.se-prevtd{padding-left:0;padding-right:0;}
-.se-table th.se-prevh{width:min(34%,max(calc(var(--se-oc,1) * var(--se-cw,42px) + 4*var(--uk)),calc(74*var(--uk))));}
-.se-ph-title{font-size:calc(7.5*var(--uk));font-weight:800;letter-spacing:.03em;margin-bottom:calc(1*var(--uk));text-align:center;white-space:nowrap;}
-table.data-table.se-table th .se-sh{font-size:calc(7*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.15;border-left:1px solid rgba(255,255,255,.4);padding:calc(1*var(--uk)) 0;display:block;}
+.se-table th.se-prevh{width:min(26%,max(calc(var(--se-oc,1) * var(--se-cw,15px) + 2*var(--uk)),calc(54*var(--uk))));}
+.se-ph-title{font-size:calc(5.5*var(--uk));font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:calc(1*var(--uk));padding-bottom:calc(1.5*var(--uk));border-bottom:1px solid rgba(255,255,255,.85);text-align:center;white-space:nowrap;overflow:hidden;}
+table.data-table.se-table th .se-sh{font-size:calc(4.5*var(--uk));font-weight:700;color:#fff !important;text-decoration:none;line-height:1.1;letter-spacing:-.02em;border-left:1px solid rgba(255,255,255,.4);padding:calc(1*var(--uk)) 0;display:block;}
 /* Column headers: bold WHITE words on solid colour (blue for every column; green marks the column being entered now). */
 table.data-table.se-table th,table.data-table.se-table th a,table.data-table.se-table th .small,.se-table th .se-hmax{color:#fff !important;}
 table.data-table.se-table th{background:var(--blue,#1f5fa8) !important;font-weight:800;}
@@ -5073,7 +5073,7 @@ function renderShell(){
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
   <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
-    <div class="sidebar"><a href="#" class="nav-home" data-action="navMenu" aria-label="Show all menu options">${esc(nav[0][2]||'🏠')} ${esc(nav[0][1])} <span class="nav-arrow">▾</span></a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
+    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">${esc(nav[0][2]||'🏠')} Go back to menu</a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
     <div class="main" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
@@ -9643,7 +9643,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(30*var(--uk));"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(15*var(--uk));"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
