@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-23-32'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-23-33'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -171,14 +171,18 @@ img{max-width:100%;height:auto;}
 .layout.nav-collapsed.nav-open .sidebar a:not(.nav-home){white-space:normal;text-align:center;padding:calc(8*var(--uk)) calc(6*var(--uk));font-size:calc(11*var(--uk));border-left:0;border-bottom:2px solid transparent;background:rgba(255,255,255,.06);}
 .layout.nav-collapsed .main{width:100%;flex:1 1 auto;box-sizing:border-box;}
 .main{flex:1;min-width:280px;padding:26px;max-width:1150px;}
-/* Selection-only screens (Result Analysis, Mark Sheets before any result is shown): the pickers sit in the
-   vertical middle of the screen instead of hugging the top. */
-.center-stage{min-height:calc(100vh - 250px);min-height:calc(100dvh - 250px);display:flex;flex-direction:column;justify-content:center;align-items:center;}
-.center-stage>h2{text-align:center;margin-top:0;}
-.center-stage>.card,.center-stage>.note{width:100%;max-width:780px;box-sizing:border-box;margin-left:auto;margin-right:auto;}
-.center-stage .flex{justify-content:center;}
-.center-stage label{display:block;}
-@media print{.center-stage{min-height:0;}}
+/* Selection-only screens (Result Analysis, Mark Sheets before any result is shown): the pickers sit a little
+   above the vertical middle (not at the very top), and are enlarged for clear visibility. */
+.center-stage{min-height:calc(100vh - 250px);min-height:calc(100dvh - 250px);display:flex;flex-direction:column;justify-content:center;align-items:center;padding-bottom:14vh;box-sizing:border-box;}
+.center-stage>h2{text-align:center;margin-top:0;font-size:34px;letter-spacing:.5px;}
+.center-stage>.card,.center-stage>.note{width:100%;max-width:960px;box-sizing:border-box;margin-left:auto;margin-right:auto;padding:30px 28px;border-radius:14px;}
+.center-stage .flex{justify-content:center;gap:14px;}
+.center-stage label{display:block;font-size:20px;font-weight:700;margin-bottom:8px;}
+.center-stage select,.center-stage input{font-size:20px;min-height:56px;padding:10px 14px;max-width:100% !important;width:100%;box-sizing:border-box;}
+.center-stage button{font-size:18px;padding:14px 22px;min-height:54px;}
+.center-stage .small,.center-stage .note{font-size:18px;line-height:1.5;}
+@media (max-width:700px){.center-stage{padding-bottom:6vh;}.center-stage>h2{font-size:26px;}.center-stage>.card{padding:20px 16px;}}
+@media print{.center-stage{min-height:0;padding-bottom:0;}}
 /* Global Back button (see NAVIGATION HISTORY below) */
 .nav-back-bar{margin:0 0 14px;}
 .nav-back-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;line-height:1.2;max-width:100%;text-align:left;}
