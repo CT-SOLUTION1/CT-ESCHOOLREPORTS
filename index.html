@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-22-9'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-22-11'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1043,6 +1043,66 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
   window.addEventListener('resize',schedule);
   window.addEventListener('orientationchange',function(){ setTimeout(schedule,300); });
   window.addEventListener('load',function(){ schedule(); setTimeout(schedule,600); });
+})();
+</script>
+<style id="cte-install-popup-css">
+/* "Install the app" reminder — shown every time the system is opened, only to people NOT running the installed app. */
+#cteInstallPopup{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(10,42,74,.55);padding:calc(20*var(--uk));}
+#cteInstallPopup .ip-card{background:#fff;color:var(--ink,#1b2a3a);width:100%;max-width:calc(520*var(--uk));border-radius:calc(14*var(--uk));padding:calc(26*var(--uk));box-shadow:0 12px 40px rgba(0,0,0,.35);text-align:center;border-top:calc(6*var(--uk)) solid var(--gold,#d4a017);}
+#cteInstallPopup .ip-icon{font-size:calc(44*var(--uk));line-height:1;}
+#cteInstallPopup h3{margin:calc(10*var(--uk)) 0 calc(8*var(--uk));font-size:calc(22*var(--uk));color:var(--navy,#0a2a4a);}
+#cteInstallPopup p{margin:0 0 calc(10*var(--uk));font-size:calc(16*var(--uk));line-height:1.45;}
+#cteInstallPopup .ip-steps{background:#eef4fb;border-radius:calc(10*var(--uk));padding:calc(12*var(--uk)) calc(14*var(--uk));text-align:left;font-size:calc(15*var(--uk));line-height:1.5;margin:calc(6*var(--uk)) 0 calc(12*var(--uk));display:none;}
+#cteInstallPopup .ip-row{display:flex;gap:calc(12*var(--uk));margin-top:calc(14*var(--uk));}
+#cteInstallPopup button{flex:1;font-size:calc(17*var(--uk));font-weight:700;padding:calc(13*var(--uk)) calc(10*var(--uk));border-radius:calc(9*var(--uk));cursor:pointer;font-family:inherit;}
+#cteInstallPopup .ip-yes{background:var(--blue,#1f5fa8);color:#fff;border:2px solid var(--blue,#1f5fa8);}
+#cteInstallPopup .ip-no{background:#fff;color:var(--blue,#1f5fa8);border:2px solid var(--blue,#1f5fa8);}
+@media print{#cteInstallPopup{display:none !important;}}
+</style>
+<script id="cte-install-popup">
+/* Every time the system is opened (even several times a day, and even when already logged in), people using it in a normal browser
+   tab — i.e. NOT the installed app — get a pop-up asking them to install the app, or to ignore it.
+   Uses the existing install logic (installPWA / isPWAInstalled / DEFERRED_INSTALL_PROMPT). */
+(function(){
+  var shownThisLoad=false;   // once per opening of the system (page load), not once per day
+  function installed(){
+    try{ return (typeof isPWAInstalled==='function') ? isPWAInstalled() :
+      ((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone===true); }catch(e){ return false; }
+  }
+  function close(){ var el=document.getElementById('cteInstallPopup'); if(el) el.remove(); }
+  function show(){
+    if(document.getElementById('cteInstallPopup') || installed() || shownThisLoad) return;
+    shownThisLoad=true;   // only once per opening, so re-renders never bring it back
+    var ua=navigator.userAgent||'';
+    var ios=/iphone|ipad|ipod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints>1);
+    var el=document.createElement('div'); el.id='cteInstallPopup';
+    el.setAttribute('role','dialog'); el.setAttribute('aria-modal','true');
+    el.innerHTML='<div class="ip-card"><div class="ip-icon">📲</div>'+
+      '<h3>Install the CT-E SOLUTIONS app</h3>'+
+      '<p>For faster opening, the latest updates and an easier way to use the system, please install the app on your device.</p>'+
+      '<div class="ip-steps" id="ipSteps"></div>'+
+      '<div class="ip-row"><button type="button" class="ip-no" id="ipNo">Ignore</button>'+
+      '<button type="button" class="ip-yes" id="ipYes">Install App</button></div></div>';
+    document.body.appendChild(el);
+    var steps=el.querySelector('#ipSteps');
+    el.querySelector('#ipNo').addEventListener('click', close);
+    el.addEventListener('click', function(e){ if(e.target===el) close(); });
+    el.querySelector('#ipYes').addEventListener('click', function(){
+      if(!ios && typeof DEFERRED_INSTALL_PROMPT!=='undefined' && DEFERRED_INSTALL_PROMPT && typeof installPWA==='function'){
+        close(); installPWA(); return;
+      }
+      // iPhone/iPad and browsers that can't open an install box from a button: show the steps right here.
+      steps.style.display='block';
+      steps.innerHTML = ios
+        ? '<b>On iPhone / iPad:</b><br>1. Tap the <b>Share</b> button in Safari.<br>2. Choose <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>, then open the app from your Home Screen.'
+        : '<b>To install:</b><br>1. Open your browser menu (⋮ or ☰).<br>2. Choose <b>Install app</b> or <b>Add to Home screen</b>.<br>3. Confirm, then open the app from your home screen.';
+      el.querySelector('#ipYes').textContent='Got it';
+      el.querySelector('#ipYes').onclick=close;
+    });
+  }
+  window.addEventListener('appinstalled', close);
+  function start(){ setTimeout(show, 1800); }   // short delay so the screen and the browser's own install event are ready
+  if(document.readyState==='complete') start(); else window.addEventListener('load', start);
 })();
 </script>
 </head>
