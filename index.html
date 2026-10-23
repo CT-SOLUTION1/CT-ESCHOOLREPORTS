@@ -1154,16 +1154,26 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .se-nm{display:inline-block;}
 .se-table td:first-child .pill{font-size:calc(9*var(--uk));padding:1px 5px;}
 .se-table th:not(:first-child),.se-table td:not(:first-child){padding-left:calc(2*var(--uk));padding-right:calc(2*var(--uk));}
-.se-table td.small{font-size:calc(12*var(--uk));white-space:normal;word-break:break-all;}
+/* Earlier-test scores: big, bold, dark and never wrapped, so every student's marks read clearly on a single line. */
+table.data-table.se-table td.small{font-size:var(--se-ocfs,calc(13*var(--uk)));font-weight:800;color:#0A2A4A;white-space:nowrap;word-break:normal;text-align:center;letter-spacing:-.01em;}
+table.data-table.se-table td.small[style*="muted"]{font-weight:400;color:var(--muted);}
+table.data-table.se-table th.small{font-size:var(--se-hfs,calc(9.5*var(--uk))) !important;font-weight:700;line-height:1.1;word-break:break-word;overflow:hidden;}
+.se-table th.small a{color:inherit;text-decoration:none;}
+.se-hmax{font-weight:700;opacity:.95;}
+/* Column headers: bold WHITE words on solid colour (blue for every column; green marks the column being entered now). */
+table.data-table.se-table th,table.data-table.se-table th a,table.data-table.se-table th .small,.se-table th .se-hmax{color:#fff !important;}
+table.data-table.se-table th{background:var(--blue,#1f5fa8) !important;font-weight:800;}
+table.data-table.se-table th:nth-last-child(2){background:#0f6b3a !important;}
 .se-table td input{font-size:calc(13*var(--uk));line-height:1;height:calc(var(--se-row) - 4*var(--uk));min-height:0;padding:0 calc(4*var(--uk));box-sizing:border-box;width:100% !important;min-width:0;max-width:100% !important;margin:0 auto;display:block;text-align:center;}
 /* Only the action buttons (REMOVE / DELETE / Clear X) are tiny; headers and names keep their own sizes. The selector
    is written to win over the generic table.data-table rules. */
 table.data-table.se-table th:last-child,
 table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-danger{font-size:calc(6.5*var(--uk)) !important;}
 .se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(6.5*var(--uk));padding:calc(2*var(--uk)) calc(3*var(--uk)) !important;line-height:1;white-space:nowrap;}
-.se-table th:first-child{width:47%;}
-.se-table th:last-child{width:11%;text-align:right;padding-right:calc(2*var(--uk));}
-.se-table th:nth-last-child(2){width:16%;}
+.se-table th:first-child{width:auto;}
+.se-table th.small{width:min(13%,calc(var(--se-osh,56%) / var(--se-oc,1)));}
+.se-table th:last-child{width:12%;text-align:right;padding-right:calc(2*var(--uk));}
+.se-table th:nth-last-child(2){width:15%;}
 .se-table td.flex{display:table-cell;}
 .se-table td.flex{white-space:nowrap;text-align:right !important;padding-left:0;padding-right:calc(2*var(--uk));}
 .se-table td.flex .btn-outline,.se-table td.flex .btn-danger{display:block;width:fit-content;margin:calc(1*var(--uk)) 0 calc(1*var(--uk)) auto;}
@@ -9534,12 +9544,16 @@ function scoresEntryView(mine){
       // Primary has no concept of papers (a single implicit paper per subject), so the
       // "P1"/"Paper 1" prefix is omitted from every column label and heading here.
       const colLabel = c => (!isP && c.paper!=null && c.paper!=='' ? 'P'+esc(String(c.paper))+' ' : '') + (c.kind==='EOT' ? esc(examConfig(a.classId).eotLabel) : (esc(examConfig(a.classId).cwLabel)+(c.label?': '+esc(c.label):'')));
+      // Earlier-test headers: each test's whole title becomes ONE short code (initials of its words, up to 3 letters, plus any
+      // numbers) — e.g. "Course Work: Test 1" -> "CWT1", "End of Term" -> "EOT". The full name stays in the header's tooltip.
+      const abbrTest = t => { let L='', D=''; String(t).split(/[^\p{L}\p{N}]+/u).filter(Boolean).forEach(w=>{ if(/^\p{N}+$/u.test(w)){ D+=w; } else { const up=w.match(/^(\p{Lu}{2,})(\p{N}*)$/u); if(up){ L+=up[1]; D+=up[2]; } else { L+=w[0].toUpperCase(); const d=w.match(/\p{N}+$/u); if(d) D+=d[0]; } } }); return (L.slice(0,3)+D) || String(t); };
+      const colLabelShort = c => esc((!isP && c.paper!=null && c.paper!=='' ? 'P'+String(c.paper)+' ' : '') + abbrTest(c.kind==='EOT' ? examConfig(a.classId).eotLabel : (examConfig(a.classId).cwLabel+(c.label?' '+c.label:''))));
       const otherColHeaders = otherCols.map(c=>{
         // All scores in a column share the same max, so pull it off whichever student has
         // a mark recorded for this column already (every otherCol has at least one).
         let colMax = sel.maxScore||100;
         for(const s of students){ const r=scoreCellFor(s.id, a.subject, c, term, year); if(r){ colMax = r.max; break; } }
-        return `<th class="small" style="font-weight:600;"><a href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="Click to edit this test's scores">${colLabel(c)}</a></th>`;
+        return `<th class="small" style="font-weight:600;"><a href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="${colLabel(c)} — click to edit this test's scores">${colLabelShort(c)}</a><span class="se-hmax"> (${esc(colMax)})</span></th>`;
       }).join('');
       const currentColLabel = (!isP && sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?(esc(examConfig(a.classId).cwLabel)+(sel.label?': '+esc(sel.label):'')):esc(examConfig(a.classId).eotLabel));
       const missKey = missingMarkersKey(a.id, sel.paper, sel.kind, sel.label||'');
@@ -9599,7 +9613,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-rows:${Math.min(Math.max(students.length,8),15)+1};"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score${otherCols.length>=6?' se-many':''}" style="--se-rows:${Math.min(Math.max(students.length,8),15)+1};--se-oc:${Math.max(otherCols.length,1)};--se-osh:${otherCols.length>=6?60:56}%;--se-ocfs:calc(${otherCols.length<=4?14:otherCols.length<=6?13:otherCols.length<=8?12:10}*var(--uk));--se-hfs:calc(${otherCols.length>=6?8.5:9.5}*var(--uk));"><table class="data-table se-table"><tr><th>Student</th>${otherColHeaders}<th style="background:#eaf3ff;">${currentColLabel}<br><span class="small" style="font-weight:400;">(entering now, /${sel.maxScore||100})</span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -9607,7 +9621,7 @@ function scoresEntryView(mine){
             const delScoreBtn = existingRow ? `<button type="button" class="btn-danger" style="padding:4px 10px;" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE</button>` : '';
             const otherCells = otherCols.map(c=>{
               const row = scoreCellFor(s.id, a.subject, c, term, year);
-              return row ? `<td class="small">${esc(row.marks)}/${esc(row.max)}</td>` : `<td class="small" style="color:var(--muted);">—</td>`;
+              return row ? `<td class="small">${esc(row.marks)}</td>` : `<td class="small" style="color:var(--muted);">—</td>`;
             }).join('');
             const isMissing = !existingRow && missSet.has(s.id);
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
