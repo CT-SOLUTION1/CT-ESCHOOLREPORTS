@@ -1495,6 +1495,11 @@ table.sp-students td:nth-child(4){text-align:left;}
 </script>
 <style id="cte-thin-lists">
 @media screen{
+  /* Report-card list and Student Performance list: a small gap at the left end so the tick boxes / POS column are clear of the screen edge */
+  .layout .main:has(table.rc-list) .card:has(> table.rc-list),
+  .layout .main:has(table.sp-students) .card:has(> table.sp-students),
+  .layout .main.main-wide .card[data-orient]:has(> table.sp-students){padding-left:calc(9*var(--uk)) !important;padding-right:calc(3*var(--uk)) !important;}
+  table.rc-list td:first-child,table.rc-list th:first-child,table.sp-students td:first-child,table.sp-students th:first-child{text-align:center !important;}
   /* REPORT CARD: same A4 layout, but only a hairline gap at either end of the screen (phones/tablets fill the width) */
   .main.main-rc{padding-left:2px !important;padding-right:2px !important;box-sizing:border-box;}
   @media (max-width:900px){.main.main-rc{max-width:none !important;width:100% !important;flex:1 1 100% !important;}.main.main-rc .rc-card:not(.pdf-report-card){max-width:100% !important;}}
@@ -1514,7 +1519,7 @@ table.sp-students td:nth-child(4){text-align:left;}
   /* the one-sentence RESULT SUMMARY line spans the whole table and is the only text allowed to wrap */
   table.ra-table td[colspan]{width:1px;white-space:normal !important;}
   /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
-  label.rc-sel-lbl{font-size:calc(14.5*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
+  label.rc-sel-lbl{font-size:calc(13.5*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
   select[onchange^="filterClass"], #rcSearch{min-height:calc(32*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
 /* PRINTED / DOWNLOADED LISTS (everything except report cards): light 0.5px rules.
@@ -8629,12 +8634,12 @@ function reportsListView(){
       <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
       ${selectedCount ? `<button class="btn-outline" onclick="clearReportSelection()">Clear selection</button>` : ''}
     </div>` : ''}
-    <table class="data-table rc-list"><tr>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
-    ${listStudents.map(s=>{
+    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
+    ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
+      return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
-    }).join('') || `<tr><td colspan="${isAdmin?5:4}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
+    }).join('') || `<tr><td colspan="${isAdmin?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
     })()}
   </div>`;
@@ -9397,7 +9402,7 @@ function classAnalysisView(){
   <div class="card" data-orient="portrait" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
-    <table class="data-table ra-table sp-students"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
+    <table class="data-table ra-table sp-students"><tr><th>RANK</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
     ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
