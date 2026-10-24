@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-62'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-64'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1108,6 +1108,28 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* Dashboards scale with the screen: bigger screen = bigger content, same layout always (full-width 5 / 3 tiles per line, stacked, no scrolling).
    Only when the screen is too short for square tiles do the tiles become slightly wider than tall. */
 .ad-fit.th-set .tile-grid .tile{aspect-ratio:auto !important;height:var(--th) !important;}
+
+/* Clear, visible gaps between the tiles, the enrollment table, the counts and the term dates; term dates listed one below the other. */
+.ad-fit.ad-admin,.ad-fit.td-fit{gap:calc(12*var(--uk)) !important;}
+.ad-fit .ad-rest{gap:calc(12*var(--uk)) !important;}
+.ad-fit .ad-side{row-gap:calc(12*var(--uk)) !important;}
+.ad-side>.ad-dates{flex-direction:column !important;align-items:stretch !important;justify-content:flex-start !important;gap:calc(6*var(--uk)) !important;}
+.ad-dates>div{flex:none;display:flex;align-items:center;gap:calc(8*var(--uk));}
+.ad-dates label{margin:0;flex:none;}
+.ad-dates input{flex:1 1 auto;width:auto;min-width:0;}
+.td-dates{flex-direction:column !important;gap:calc(4*var(--uk)) !important;}
+.tile.tile-st{justify-content:space-around;}
+.tile.tile-st .tile-label{font-size:9.5cqw !important;line-height:1 !important;letter-spacing:0 !important;white-space:nowrap;}
+
+/* Taller controls: dashboard term dates, report-card class filter + name search, enter-scores pickers, enrollment rows. */
+.ad-dates input{min-height:calc(26*var(--uk)) !important;padding:calc(6*var(--uk)) calc(6*var(--uk)) !important;font-size:calc(12*var(--uk)) !important;}
+.ad-dates label{font-size:calc(12*var(--uk)) !important;}
+.td-dates>div{padding:calc(4*var(--uk)) 0;font-size:calc(12*var(--uk));}
+form[data-form="setTerm"] input,form[data-form="setTerm"] select{min-height:calc(34*var(--uk)) !important;padding-top:calc(8*var(--uk)) !important;padding-bottom:calc(8*var(--uk)) !important;box-sizing:border-box;}
+select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !important;padding:calc(9*var(--uk)) calc(10*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
+.score-pick select,.score-pick input:not([type="checkbox"]):not([type="hidden"]){min-height:calc(42*var(--uk)) !important;padding-top:calc(9*var(--uk)) !important;padding-bottom:calc(9*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
+.ad-enrol table tr{height:calc(24*var(--uk)*var(--es,1)) !important;}
+.ad-enrol table td{padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -5282,9 +5304,10 @@ function featureTilesHTML(role, excludeKey){
       <span class="tile-label">RESULT</span>
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">ANALYSIS</span>
-    </button>` : (role==='admin' && k==='students') ? `<button type="button" class="tile tile-orange" data-action="nav:${k}" aria-label="${esc(l)}">
+    </button>` : (role==='admin' && k==='students') ? `<button type="button" class="tile tile-orange tile-st" data-action="nav:${k}" aria-label="${esc(l)}">
+      <span class="tile-label">ADD NEW OR</span>
       <span class="tile-icon">${icon}</span>
-      <span class="tile-label">${l}</span>
+      <span class="tile-label">VIEW STUDENTS</span>
     </button>` : (role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label rc-word">ENTER</span>
       <span class="tile-icon">${icon}</span>
@@ -8670,7 +8693,7 @@ function marksheetHeaderOpts(classId, subject, kind){
   types = [...new Set(types.filter(Boolean))];
   if(!types.length) types = ['Score'];
   return {
-    forceTitle: `MARKSHEET FOR ${[cls?cls.name:'', term||'', year||''].filter(Boolean).join(', ')}`,
+    forceTitle: `${isSecondarySchool()?'SCORE SHEET':'MARKSHEET'} FOR ${[cls?cls.name:'', term||'', year||''].filter(Boolean).join(', ')}`,
     forceSubtitle: `${subject} • Assessment${types.length>1?'s':''}: ${types.join(', ')}`,
     pageNumberBottom: true, fillPage: true
   };
@@ -16011,6 +16034,37 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   window.addEventListener('orientationchange',sched);
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(sched);
   document.addEventListener('DOMContentLoaded',sched);
+})();
+</script>
+<script id="cte-score-sheets-name">
+/* O'-Level / A'-Level (secondary) schools: "Mark Sheet(s)" is called "Score Sheet(s)" everywhere on screen, in print/PDF pages,
+   and in pop-up messages. Only visible text is changed, never button actions or internal names. */
+(function(){
+  function on(){ try{ return typeof isSecondarySchool==='function' && isSecondarySchool(); }catch(e){ return false; } }
+  function fix(t){
+    return t.replace(/MARK ?SHEET(S?)/g,'SCORE SHEET$1').replace(/Mark ?[Ss]heet(s?)/g,'Score Sheet$1').replace(/mark ?sheet(s?)/g,'score sheet$1');
+  }
+  var TEST=/mark ?sheet/i, SKIP={SCRIPT:1,STYLE:1,TEXTAREA:1};
+  function doNode(n){
+    if(n.nodeType===3){ if(TEST.test(n.nodeValue)) n.nodeValue=fix(n.nodeValue); return; }
+    if(n.nodeType!==1 || SKIP[n.nodeName]) return;
+    var w=document.createTreeWalker(n,NodeFilter.SHOW_TEXT,null), x, list=[];
+    while((x=w.nextNode())){ if(TEST.test(x.nodeValue) && !SKIP[x.parentNode.nodeName]) list.push(x); }
+    for(var i=0;i<list.length;i++) list[i].nodeValue=fix(list[i].nodeValue);
+    var els=n.querySelectorAll('[placeholder],[title],[aria-label]');
+    for(var j=0;j<els.length;j++){ ['placeholder','title','aria-label'].forEach(function(a){ var v=els[j].getAttribute(a); if(v && TEST.test(v)) els[j].setAttribute(a,fix(v)); }); }
+  }
+  new MutationObserver(function(ms){
+    if(!on()) return;
+    for(var i=0;i<ms.length;i++){
+      var m=ms[i];
+      if(m.type==='characterData'){ if(TEST.test(m.target.nodeValue)) m.target.nodeValue=fix(m.target.nodeValue); }
+      else for(var k=0;k<m.addedNodes.length;k++) doNode(m.addedNodes[k]);
+    }
+  }).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+  document.addEventListener('DOMContentLoaded',function(){ if(on()) doNode(document.body); });
+  // pop-up messages too
+  ['alert','confirm'].forEach(function(f){ var o=window[f]; window[f]=function(m){ return o.call(window, (on() && typeof m==='string') ? fix(m) : m); }; });
 })();
 </script>
 </body>
