@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-52'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-54'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1062,6 +1062,13 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .tile.tile-orange:hover,.tile.tile-orange:active{background:#d96a00 !important;}
 .tile.tile-orange .tile-label{color:#fff !important;font-weight:900 !important;-webkit-text-stroke:.9px #fff !important;text-shadow:0 0 1px #fff;}
 .tile.tile-orange .tile-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
+
+/* All dashboard tiles: thick pink outline, bold thick labels. Result Analysis reads RESULT / icon / ANALYSIS. */
+.tile-grid button.tile{border:calc(3*var(--uk)) solid #FF4FA3 !important;box-sizing:border-box;}
+.tile-grid .tile .tile-label{font-weight:900 !important;-webkit-text-stroke:.7px currentColor !important;}
+.tile.tile-orange .tile-label{-webkit-text-stroke:1px #fff !important;}
+.tile.tile-ra{justify-content:space-around;}
+.tile.tile-ra .tile-label{font-size:15cqw !important;line-height:1 !important;letter-spacing:0 !important;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -5225,10 +5232,18 @@ function navByRoleRaw(role){
 function featureTilesHTML(role, excludeKey){
   const items = navByRole(role).filter(([k])=>k!==excludeKey);
   if(!items.length) return '';
+  if(role==='admin'){ // Result Analysis and Finance & Requirements trade places on the dashboard
+    const a = items.findIndex(x=>x[0]==='classanalysis'), b = items.findIndex(x=>x[0]==='finance');
+    if(a>-1 && b>-1){ const t = items[a]; items[a] = items[b]; items[b] = t; }
+  }
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
   return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:(role==='teacher'?` style="--tr:${Math.ceil(items.length/3)}"`:'')}>${items.map(([k,l,icon])=>`
-    ${((role==='admin' && k==='students') || ((role==='admin'||role==='teacher') && k==='classanalysis')) ? `<button type="button" class="tile tile-orange" data-action="nav:${k}" aria-label="${esc(l)}">
+    ${((role==='admin'||role==='teacher') && k==='classanalysis') ? `<button type="button" class="tile tile-orange tile-ra" data-action="nav:${k}" aria-label="${esc(l)}">
+      <span class="tile-label">RESULT</span>
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label">ANALYSIS</span>
+    </button>` : (role==='admin' && k==='students') ? `<button type="button" class="tile tile-orange" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${l}</span>
     </button>` : (role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
