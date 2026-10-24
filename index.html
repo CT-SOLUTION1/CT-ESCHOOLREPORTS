@@ -1422,6 +1422,22 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .sr-list .sr-row:nth-child(even){background:#eef4fb;}
 .sr-list .sr-row input[type=checkbox]{margin-right:calc(4*var(--uk));}
 .sr-list .sr-row input[type=checkbox]{flex:none;margin:0;width:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;height:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;}
+/* ---- Tile, enter-scores student list and report-card list refinements ---- */
+.tile.tile-st{gap:2%;}
+.tile.tile-st .tile-label{font-size:12cqw !important;line-height:1.05 !important;letter-spacing:0 !important;white-space:nowrap;text-align:center;}
+/* Enter-scores student picker: 1.5 line spacing, roomy rows, no empty leading column, names 1px smaller. */
+.se-wrap.sr-list{padding-left:0 !important;padding-right:0 !important;}
+.sr-list .sr-row{height:auto !important;min-height:0 !important;line-height:1.5 !important;font-size:calc(15*var(--uk)) !important;padding:calc(9*var(--uk)) calc(8*var(--uk)) calc(9*var(--uk)) 0 !important;gap:calc(12*var(--uk)) !important;}
+.sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(20*var(--uk)) !important;height:calc(20*var(--uk)) !important;}
+/* Report-card list: names in the same font as the enter-scores list; slimmer Action column, 1px smaller buttons. */
+table.rc-list td.stu-name{font-size:calc(15*var(--uk)) !important;text-align:left;}
+table.rc-list th:last-child,table.rc-list td:last-child{width:1%;white-space:nowrap;padding-left:calc(4*var(--uk));padding-right:calc(4*var(--uk));}
+table.rc-list td:last-child .btn-outline{font-size:calc(12*var(--uk)) !important;padding:calc(4*var(--uk)) calc(7*var(--uk)) !important;}
+/* Result Analysis · Student Performance: names 1px bigger; the other columns shrink to fit their content so the Name column gets the room. */
+table.sp-students td.stu-name{font-size:calc(14*var(--uk)) !important;white-space:nowrap;}
+table.sp-students th,table.sp-students td{padding-left:calc(4*var(--uk));padding-right:calc(4*var(--uk));}
+table.sp-students th:not(:nth-child(3)):not(:nth-child(4)),table.sp-students td:not(:nth-child(3)):not(:nth-child(4)){width:1%;white-space:nowrap;}
+table.sp-students td:nth-child(4){font-size:calc(12*var(--uk));line-height:1.2;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -5305,9 +5321,11 @@ function featureTilesHTML(role, excludeKey){
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">ANALYSIS</span>
     </button>` : (role==='admin' && k==='students') ? `<button type="button" class="tile tile-orange tile-st" data-action="nav:${k}" aria-label="${esc(l)}">
-      <span class="tile-label">ADD NEW OR</span>
+      <span class="tile-label">ADD NEW</span>
+      <span class="tile-label">OR</span>
       <span class="tile-icon">${icon}</span>
-      <span class="tile-label">VIEW STUDENTS</span>
+      <span class="tile-label">VIEW</span>
+      <span class="tile-label">STUDENTS</span>
     </button>` : (role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label rc-word">ENTER</span>
       <span class="tile-icon">${icon}</span>
@@ -8514,11 +8532,11 @@ function reportsListView(){
       <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
       ${selectedCount ? `<button class="btn-outline" onclick="clearReportSelection()">Clear selection</button>` : ''}
     </div>` : ''}
-    <table class="data-table"><tr>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
+    <table class="data-table rc-list"><tr>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
     ${listStudents.map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
       return `<tr>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
-      <td><button class="btn-outline" data-action="viewReport:${s.id}">Open report card</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
+      <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${isAdmin?5:4}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
     })()}
@@ -9268,7 +9286,7 @@ function classAnalysisView(){
   <div class="card" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
-    <table class="data-table"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
+    <table class="data-table sp-students"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
     ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
