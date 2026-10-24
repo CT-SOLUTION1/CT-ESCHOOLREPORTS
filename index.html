@@ -1249,30 +1249,48 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
     raf=0;
     try{
       document.querySelectorAll('.se-wrap.se-score').forEach(function(w){
-        var th=w.querySelector('th.se-prevh'), t=w.querySelector('.se-ph-title'); if(!t||!th) return;
+        var tb=w.querySelector('table.se-table'); if(!tb) return;
+        var th=w.querySelector('th.se-prevh'), t=w.querySelector('.se-ph-title');
         var tw=w.clientWidth; if(!tw) return;
-        var inn=th.querySelector('.se-pr-in'); var n=inn?inn.children.length:0; if(!n) n=1;
-        var titleW=Math.ceil(t.scrollWidth+2); if(titleW<3) return;
-        // 1) natural width of the widest sub-column content (header or mark), measured with room to spare
-        w.style.setProperty('--se-cw','300px');
-        var maxc=0, els=w.querySelectorAll('.se-sh,.se-pc'), rg=document.createRange();
-        for(var i=0;i<els.length;i++){ rg.selectNodeContents(els[i]); var cw0=rg.getBoundingClientRect().width; if(cw0>maxc) maxc=cw0; }
-        var cw=Math.max(8, Math.ceil(maxc)+2);
-        // 2) the column is as wide as its sub-columns need (never narrower than its title); spare title width is shared out
-        var need=Math.max(n*cw, titleW);
-        // 3) the other columns (entering + Actions) stay at their own tight widths; the Student column keeps room for its longest name
-        var ths=w.querySelectorAll('table.se-table tr:first-child > th'), others=0;
-        for(var j=0;j<ths.length;j++){ if(ths[j]!==th && j>0) others+=ths[j].offsetWidth; }
-        // Student column is only as wide as the longest name (capped at 45% of the screen; longer names swipe sideways)
-        var sNat=0, nms=w.querySelectorAll('.se-nm'); for(var k=0;k<nms.length;k++){ rg.selectNodeContents(nms[k]); var nw=rg.getBoundingClientRect().width; if(nw>sNat) sNat=nw; }
-        var reserve=Math.min(Math.ceil(sNat)+12, tw*0.45);
-        var maxPrev=tw-others-reserve-6, more=false, pw=need;
-        if(need>maxPrev){ pw=Math.max(titleW, Math.floor(maxPrev)); more=true; }   // too many tests for the screen: strip scrolls sideways
-        else cw=need/n;
-        w.style.setProperty('--se-cw', cw+'px');
-        w.style.setProperty('--se-pw', pw+'px');
-        th.classList.toggle('se-more', more);
-        w.querySelectorAll('td.se-prevtd').forEach(function(td){ td.classList.toggle('se-more', more); });
+        var uk=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-k'))||1;
+        var rg=document.createRange();
+        // real text width of an element (tight around the words, not the width of a block's box)
+        function textW(el){
+          var m=0, wk=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false), n;
+          while((n=wk.nextNode())){ if(!/\S/.test(n.nodeValue)) continue; rg.selectNodeContents(n); var x=rg.getBoundingClientRect().width; if(x>m) m=x; }
+          return m;
+        }
+        var ths=tb.querySelectorAll('tr:first-child > th'), others=0;
+        for(var j=1;j<ths.length;j++){ if(ths[j]!==th) others+=ths[j].offsetWidth; }
+        // ---- Student column: as wide as the longest name (or its heading); names longer than the room swipe sideways
+        var sNat=0, nms=tb.querySelectorAll('.se-nm'); for(var k=0;k<nms.length;k++){ var nw=textW(nms[k]); if(nw>sNat) sNat=nw; }
+        var h0=ths[0]?textW(ths[0]):0; if(h0>sNat) sNat=h0;
+        var c0=tb.querySelector('td:first-child'), pad0=0;
+        if(c0){ var cs0=getComputedStyle(c0); pad0=(parseFloat(cs0.paddingLeft)||0)+(parseFloat(cs0.paddingRight)||0)+2; }
+        var sW=Math.ceil(sNat)+2;
+        // ---- ALREADY SCORED column: as wide as its sub-columns need
+        var pw=0, cw=0, more=false, gut=6*uk;
+        if(th && t){
+          var inn=th.querySelector('.se-pr-in'); var n=inn?inn.children.length:0; if(!n) n=1;
+          var titleW=Math.ceil(t.scrollWidth+2);
+          var maxc=0, els=tb.querySelectorAll('.se-sh,.se-pc');
+          for(var i=0;i<els.length;i++){ var cw0=textW(els[i]); if(cw0>maxc) maxc=cw0; }
+          cw=Math.max(8, Math.ceil(maxc)+3);
+          var need=Math.max(n*cw, titleW);
+          var room=tw-others-(sW+pad0);
+          if(need<=room){ pw=need; cw=need/n; }                    // everything fits: no scrolling, no gaps
+          else { more=true; pw=Math.max(titleW, Math.floor(room-gut)); }   // too many tests: this strip swipes sideways
+        }
+        // ---- still too wide? let the Student names take the squeeze (they swipe sideways)
+        var total=sW+pad0+others+(th?pw+(more?gut:0):0);
+        if(total>tw){ sW=Math.max(60*uk, Math.floor(sW-(total-tw))); }
+        w.style.setProperty('--se-nw', sW+'px');
+        if(th){
+          w.style.setProperty('--se-cw', cw+'px');
+          w.style.setProperty('--se-pw', pw+'px');
+          th.classList.toggle('se-more', more);
+          w.querySelectorAll('td.se-prevtd').forEach(function(td){ td.classList.toggle('se-more', more); });
+        }
       });
     }catch(e){}
   }
@@ -1529,6 +1547,7 @@ table.sp-students td:nth-child(4){text-align:left;}
      sideways), ALREADY SCORED grows with its sub-columns, the entering and Actions columns stay tight. */
   .se-wrap.se-score .se-table{table-layout:auto;width:auto;max-width:100%;}   /* the table is only as wide as its columns: no idle space between them */
   .se-wrap.se-score .se-table th:first-child{width:auto;}
+  .se-wrap.se-score .se-table .se-name{width:var(--se-nw,auto);}
   .se-wrap.se-score .se-table th:not(:first-child){white-space:nowrap;}
   .se-wrap.se-score .se-table th:not(:first-child) .se-en span{white-space:nowrap;}
   .se-wrap.se-score .se-table th.se-prevh{min-width:var(--se-pw,calc(44*var(--uk)));}
