@@ -1427,17 +1427,26 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .tile.tile-st .tile-label{font-size:12cqw !important;line-height:1.05 !important;letter-spacing:0 !important;white-space:nowrap;text-align:center;}
 /* Enter-scores student picker: 1.5 line spacing, roomy rows, no empty leading column, names 1px smaller. */
 .se-wrap.sr-list{padding-left:0 !important;padding-right:0 !important;}
-.sr-list .sr-row{height:auto !important;min-height:0 !important;line-height:1.5 !important;font-size:calc(15*var(--uk)) !important;padding:calc(9*var(--uk)) calc(8*var(--uk)) calc(9*var(--uk)) 0 !important;gap:calc(12*var(--uk)) !important;}
-.sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(20*var(--uk)) !important;height:calc(20*var(--uk)) !important;}
+.sr-list .sr-row{height:max(calc(19*var(--uk)),min(calc(var(--se-h)/20),calc(24*var(--uk)))) !important;min-height:0 !important;line-height:1.1 !important;font-size:calc(14.5*var(--uk)) !important;padding:0 calc(8*var(--uk)) 0 0 !important;gap:calc(10*var(--uk)) !important;border-bottom:0.5px solid #4a6f94 !important;}
+.sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(16*var(--uk)) !important;height:calc(16*var(--uk)) !important;}
 /* Report-card list: names in the same font as the enter-scores list; slimmer Action column, 1px smaller buttons. */
-table.rc-list td.stu-name{font-size:calc(15*var(--uk)) !important;text-align:left;}
-table.rc-list th:last-child,table.rc-list td:last-child{width:1%;white-space:nowrap;padding-left:calc(4*var(--uk));padding-right:calc(4*var(--uk));}
-table.rc-list td:last-child .btn-outline{font-size:calc(12*var(--uk)) !important;padding:calc(4*var(--uk)) calc(7*var(--uk)) !important;}
-/* Result Analysis · Student Performance: names 1px bigger; the other columns shrink to fit their content so the Name column gets the room. */
-table.sp-students td.stu-name{font-size:calc(14*var(--uk)) !important;white-space:nowrap;}
-table.sp-students th,table.sp-students td{padding-left:calc(4*var(--uk));padding-right:calc(4*var(--uk));}
-table.sp-students th:not(:nth-child(3)):not(:nth-child(4)),table.sp-students td:not(:nth-child(3)):not(:nth-child(4)){width:1%;white-space:nowrap;}
-table.sp-students td:nth-child(4){font-size:calc(12*var(--uk));line-height:1.2;}
+/* Report-card list + Student Performance list: the whole table stacks to the screen width (no sideways scrolling, nothing cut off).
+   Names stay on ONE line; the other columns give up their idle space (tight padding, small wrapping text, stacked buttons). */
+table.data-table.rc-list,table.data-table.sp-students{display:table !important;width:100% !important;max-width:100%;table-layout:auto;overflow:visible !important;white-space:normal;}
+table.rc-list thead,table.sp-students thead{display:table-header-group !important;}
+table.rc-list tbody,table.sp-students tbody{display:table-row-group !important;}
+table.rc-list tr,table.sp-students tr{display:table-row !important;width:auto !important;}
+table.rc-list th,table.rc-list td,table.sp-students th,table.sp-students td{padding:calc(4*var(--uk)) calc(3*var(--uk)) !important;line-height:1.25;}
+table.rc-list th,table.sp-students th{font-size:calc(9*var(--uk)) !important;letter-spacing:0;}
+.card:has(> table.rc-list),.card:has(> table.sp-students){padding-left:calc(5*var(--uk)) !important;padding-right:calc(5*var(--uk)) !important;overflow-x:auto !important;}
+/* report-card list + student performance list: ONE size (13px), bold, everything on a single line; whole table stacks to the screen. */
+table.rc-list td,table.sp-students td{font-size:calc(13*var(--uk)) !important;font-weight:700 !important;white-space:nowrap !important;}
+table.rc-list td.stu-name,table.sp-students td.stu-name{font-size:calc(13*var(--uk)) !important;font-weight:800 !important;text-align:left;}
+table.rc-list td:first-child:has(input),table.rc-list th:first-child:has(input){width:1%;}
+table.rc-list td:last-child,table.rc-list th:last-child{width:1%;}
+table.rc-list td:last-child .btn-outline{display:block;width:100%;box-sizing:border-box;margin:calc(2*var(--uk)) 0 !important;font-size:calc(13*var(--uk)) !important;font-weight:700 !important;padding:calc(3*var(--uk)) calc(5*var(--uk)) !important;white-space:nowrap;}
+table.rc-list th:not(:nth-child(2)):not(:nth-child(3)),table.sp-students th:not(:nth-child(3)):not(:nth-child(4)){width:1%;}
+table.sp-students th:not(:nth-child(3)):not(:nth-child(4)),table.sp-students td:not(:nth-child(3)):not(:nth-child(4)){width:1%;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
