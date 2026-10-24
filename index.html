@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-41'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-45'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -977,11 +977,35 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* --uk = one real screen pixel (the app is laid out at 1280px and shrunk on phones, so plain px
    come out tiny there). Sizes below are moderate: readable, not oversized. */
 :root{--uk:calc(var(--ui-k,1) * 1px);}
-/* Admin dashboard: strictly FIVE tiles on every line, on every screen */
-.tile-grid.tile-grid-5{grid-template-columns:repeat(5,minmax(0,1fr)) !important;gap:calc(10*var(--uk));}
-.tile-grid-5 .tile{padding:calc(12*var(--uk)) calc(4*var(--uk));min-height:calc(80*var(--uk));gap:calc(5*var(--uk));border-radius:calc(11*var(--uk));}
-.tile-grid-5 .tile-icon{font-size:calc(26*var(--uk));}
-.tile-grid-5 .tile-label{font-size:calc(10.5*var(--uk));letter-spacing:0;}
+/* Admin dashboard: strictly FIVE SQUARE tiles on every line, on every screen. The whole tile block is sized from the
+   screen height too (--tr = number of rows), so every tile is visible at once without scrolling. */
+.tile-grid.tile-grid-5{grid-template-columns:repeat(5,minmax(0,1fr)) !important;gap:calc(6*var(--uk));
+  width:min(100%, calc((100vh - 235px) / var(--tr,4) * 5));width:min(100%, calc((100dvh - 235px) / var(--tr,4) * 5));margin-left:auto;margin-right:auto;}
+.tile-grid-5 .tile{aspect-ratio:1 / 1;min-height:0;height:auto;padding:3%;gap:3%;border-radius:calc(10*var(--uk));container-type:inline-size;overflow:hidden;box-sizing:border-box;}
+.tile-grid-5 .tile-icon{font-size:calc(24*var(--uk));font-size:28cqw;line-height:1;}
+.tile-grid-5 .tile-label{font-size:calc(8*var(--uk));font-size:12cqw;letter-spacing:0;line-height:1.12;-webkit-text-stroke:0;}
+/* Admin dashboard: EVERYTHING (tiles, finance, counts, tables) fits one screen. Tiles take ~40% of the height; the rest is compact. */
+.ad-fit{height:calc(100vh - 140*var(--uk));height:calc(100dvh - 140*var(--uk));display:flex;flex-direction:column;gap:calc(6*var(--uk));min-height:0;overflow:hidden;}
+.ad-head{flex:none;}
+.ad-logo{width:calc(36*var(--uk));height:calc(36*var(--uk));border-radius:calc(8*var(--uk));object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;}
+.ad-school{font-size:calc(16*var(--uk));line-height:1.15;}
+.ad-fit h2{font-size:calc(17*var(--uk));}
+.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((37vh) / var(--tr,4) * 5));width:min(100%, calc((37dvh) / var(--tr,4) * 5));}
+.ad-rest{flex:1 1 0;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:calc(8*var(--uk));}
+.ad-rest .card{margin:0;padding:calc(8*var(--uk));min-height:0;box-sizing:border-box;}
+.ad-rest h3{font-size:calc(12*var(--uk));margin:0 0 calc(3*var(--uk));}
+.ad-rest .small,.ad-rest p{font-size:calc(10*var(--uk));margin:0 0 calc(4*var(--uk));}
+.ad-rest .btn,.ad-rest .btn-gold,.ad-rest .btn-outline{font-size:calc(10*var(--uk));padding:calc(5*var(--uk)) calc(8*var(--uk));min-height:0;}
+.ad-enrol{display:flex;flex-direction:column;}
+.ad-scroll{flex:1;min-height:0;overflow:auto;}
+.ad-enrol table th,.ad-enrol table td{font-size:calc(10*var(--uk));padding:calc(2*var(--uk)) calc(5*var(--uk));}
+.ad-side{display:flex;flex-direction:column;gap:calc(6*var(--uk));min-height:0;overflow:auto;}
+.ad-side>.card:not(.ad-counts .card){display:flex;align-items:center;justify-content:space-between;gap:calc(8*var(--uk));flex:none;}
+.ad-side>.card h3,.ad-side>.card p{margin:0;}
+.ad-side>.card .small:not(h3){display:none;}
+.ad-side>.card p.small b{display:inline;}
+.ad-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(6*var(--uk));}
+.ad-counts .card h1{margin:0;font-size:calc(15*var(--uk));line-height:1.1;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -5147,7 +5171,7 @@ function featureTilesHTML(role, excludeKey){
   if(!items.length) return '';
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
-  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}">${items.map(([k,l,icon])=>`
+  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:''}>${items.map(([k,l,icon])=>`
     <button type="button" class="tile${WIDE_TILE_KEYS.includes(k)?' tile-wide':''}" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${l}</span>
@@ -6877,41 +6901,45 @@ function financeStudentView(studentId){
 function adminDashboard(){
   const i = DB.info;
   return `
-  <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
-    ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
+  <div class="ad-fit">
+  <div class="flex ad-head" style="align-items:center;gap:12px;">
+    ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" class="ad-logo">`:''}
     <div>
-      <div class="school-name-big" style="font-size:20px;line-height:1.2;">${esc(i.schoolName||'')}</div>
+      <div class="school-name-big ad-school">${esc(i.schoolName||'')}</div>
       <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)}</h2>
     </div>
   </div>
   ${backupReminderBanner()}
   ${featureTilesHTML('admin','dashboard')}
-  <div class="card"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
-  <div class="grid3">
-    <div class="card"><div class="small">CLASSES</div><h1 style="margin:4px 0;">${DB.classes.length}</h1></div>
-    <div class="card"><div class="small">STUDENTS</div><h1 style="margin:4px 0;">${DB.students.filter(s=>s.status!=='left').length}</h1></div>
-    <div class="card"><div class="small">TERM / YEAR</div><h1 style="margin:4px 0;">${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</h1></div>
-  </div>
-  <div class="card">
-    <h3>Enrollment by class</h3>
-    ${DB.classes.length ? `<table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Students</th></tr>
-    ${DB.classes.map(c=>{
-      const count = DB.students.filter(s=>s.classId===c.id && s.status!=='left').length;
-      return `<tr><td>${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${count}</td></tr>`;
-    }).join('')}
-    </table>` : '<p class="small">No classes yet — add a class first.</p>'}
-  </div>
-  <div class="card">
-    <h3>Old Students</h3>
-    <div class="grid3">
-      <div class="card"><div class="small">TOTAL OLD STUDENTS</div><h1 style="margin:4px 0;">${DB.students.filter(s=>s.status==='left').length}</h1></div>
+  <div class="ad-rest">
+    <div class="card ad-enrol">
+      <h3>Enrollment by class</h3>
+      <div class="ad-scroll">
+      ${DB.classes.length ? (()=>{
+        const cur = DB.students.filter(s=>s.status!=='left');
+        let tb=0, tg=0, tt=0;
+        const rows = DB.classes.map(c=>{
+          const st = cur.filter(s=>s.classId===c.id);
+          const b = st.filter(s=>s.gender==='Male').length, g = st.filter(s=>s.gender==='Female').length;
+          tb+=b; tg+=g; tt+=st.length;
+          return `<tr><td style="text-align:left;font-weight:700;">${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${b}</td><td>${g}</td><td style="font-weight:800;">${st.length}</td></tr>`;
+        }).join('');
+        return `<table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Boys</th><th>Girls</th><th>Total</th></tr>${rows}
+        <tr style="font-weight:800;background:#eef1f6;"><td style="text-align:left;">TOTAL</td><td></td><td></td><td>${tb}</td><td>${tg}</td><td>${tt}</td></tr></table>`;
+      })() : '<p class="small">No classes yet — add a class first.</p>'}
+      </div>
     </div>
-    <button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button>
+    <div class="ad-side">
+      <div class="ad-counts">
+        <div class="card"><div class="small">CLASSES</div><h1>${DB.classes.length}</h1></div>
+        <div class="card"><div class="small">STUDENTS</div><h1>${DB.students.filter(s=>s.status!=='left').length}</h1></div>
+        <div class="card"><div class="small">TERM / YEAR</div><h1>${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</h1></div>
+      </div>
+      <div class="card"><h3>FINANCE AND REQUIREMENTS</h3><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
+      <div class="card"><h3>Old Students: ${DB.students.filter(s=>s.status==='left').length}</h3><button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button></div>
+      <div class="card"><h3>Year, Term & Promotion</h3><p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b></p><button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button></div>
+    </div>
   </div>
-  <div class="card">
-    <h3>Year, Term & Promotion</h3>
-    <p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b>. Term/Year settings, score deadlines, and promoting students to their next class have been combined into one place.</p>
-    <button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button>
   </div>`;
 }
 
