@@ -1424,7 +1424,8 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .sr-list .sr-row input[type=checkbox]{flex:none;margin:0;width:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;height:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;}
 /* ---- Tile, enter-scores student list and report-card list refinements ---- */
 .tile.tile-st{gap:2%;}
-.tile.tile-st .tile-label{font-size:12cqw !important;line-height:1.05 !important;letter-spacing:0 !important;white-space:nowrap;text-align:center;}
+.tile.tile-st .tile-icon{font-size:20cqw !important;}
+.tile.tile-st .tile-label{font-size:16.5cqw !important;font-weight:900 !important;-webkit-text-stroke:.6px #000 !important;line-height:1 !important;letter-spacing:0 !important;text-transform:uppercase;white-space:nowrap;text-align:center;}
 /* Enter-scores student picker: 1.5 line spacing, roomy rows, no empty leading column, names 1px smaller. */
 .se-wrap.sr-list{padding-left:0 !important;padding-right:0 !important;}
 .sr-list .sr-row{height:auto !important;min-height:0 !important;line-height:1.2 !important;font-size:calc(12*var(--uk)) !important;font-weight:700 !important;padding:calc(2*var(--uk)) calc(6*var(--uk)) calc(2*var(--uk)) 0 !important;gap:calc(8*var(--uk)) !important;border-bottom:0.5px solid #4a6f94 !important;}
@@ -1440,7 +1441,11 @@ table.rc-list th,table.sp-students th{padding:calc(var(--tf,12)*.2px) calc(var(-
 table.rc-list th,table.sp-students th{font-size:calc(var(--tf,12)*.75px) !important;letter-spacing:0;line-height:1.15;}
 .card:has(> table.rc-list),.card:has(> table.sp-students){padding-left:calc(5*var(--uk)) !important;padding-right:calc(5*var(--uk)) !important;overflow:visible !important;}
 /* The three student lists share the Enter Scores sheet's name font (12px). Tight rows divided by 0.5px lines, columns packed with no idle gaps, one line per cell (only column headings may wrap), no sideways scrolling. */
-table.data-table.rc-list,table.data-table.sp-students{width:auto !important;max-width:100%;}
+table.data-table.rc-list,table.data-table.sp-students{max-width:100%;}
+/* these two pages use the full screen width: no side margins, cards flush to the edges */
+.main:has(table.rc-list),.main:has(table.sp-students){padding-left:0 !important;padding-right:0 !important;}
+.main:has(table.rc-list) .card:has(> table.rc-list),.main:has(table.sp-students) .card:has(> table.sp-students){margin-left:0 !important;margin-right:0 !important;padding-left:0 !important;padding-right:0 !important;border-radius:0 !important;border-left:0 !important;border-right:0 !important;}
+.main:has(table.rc-list) .rc-topbar,.main:has(table.sp-students) .rc-topbar{padding:0 calc(6*var(--uk));}
 table.rc-list td,table.sp-students td{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;white-space:nowrap !important;text-align:left;border-width:0.5px !important;}
 table.rc-list th,table.sp-students th{border-width:0.5px !important;white-space:normal;text-align:left;}
 table.rc-list td.stu-name,table.sp-students td.stu-name{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;}
@@ -16100,14 +16105,18 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 })();
 </script>
 <script>
-/* Report-card list & Student Performance list: start at 12px and, only if the screen is too narrow for one-line rows, shrink the whole table's font in 0.25px steps until it fits — no sideways scrolling, nothing cut. */
+/* Report-card list & Student Performance list: zoom the whole table (font, padding, buttons together) to the largest size at which its one-line rows still fit the screen width exactly — edge to edge, no sideways scrolling, nothing cut. */
 (function(){
   function fit(){
     document.querySelectorAll('table.rc-list,table.sp-students').forEach(function(t){
       var box=t.parentElement; if(!box) return;
       var cs=getComputedStyle(box), avail=box.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
-      var f=12; t.style.setProperty('--tf',f);
-      var g=0; while(t.offsetWidth>avail+1 && f>6 && g++<40){ f-=0.25; t.style.setProperty('--tf',f); }
+      if(avail<=0) return;
+      t.style.width='auto';
+      var lo=5, hi=22, best=5;
+      for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
+      t.style.setProperty('--tf',best);
+      t.style.width='100%';
     });
   }
   var q=0; function sched(){ if(q) return; q=requestAnimationFrame(function(){ q=0; try{fit();}catch(e){} }); }
