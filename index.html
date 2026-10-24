@@ -1495,6 +1495,14 @@ table.sp-students td:nth-child(4){text-align:left;}
 </script>
 <style id="cte-thin-lists">
 @media screen{
+  /* REPORT CARD: same A4 layout, but only a hairline gap at either end of the screen (phones/tablets fill the width) */
+  .main.main-rc{padding-left:2px !important;padding-right:2px !important;box-sizing:border-box;}
+  @media (max-width:900px){.main.main-rc{max-width:none !important;width:100% !important;flex:1 1 100% !important;}.main.main-rc .rc-card:not(.pdf-report-card){max-width:100% !important;}}
+  /* RESULT ANALYSIS: use the whole screen width, leaving only a hairline gap at either end */
+  .main.main-wide{max-width:none !important;width:100% !important;flex:1 1 100% !important;padding-left:2px !important;padding-right:2px !important;box-sizing:border-box;}
+  .main.main-wide .card[data-orient]{padding-left:2px !important;padding-right:2px !important;border-radius:6px;}
+  .main.main-wide #printArea{width:100%;}
+  .main.main-wide table.ra-table.data-table{width:100% !important;}
   /* RESULT ANALYSIS forms: tight columns that match their contents, no sideways scroll — wide tables stack (wrap) and fit the screen */
   .card[data-orient]{overflow:visible !important;}
   table.ra-table.data-table{display:table !important;width:max-content !important;min-width:0 !important;overflow:visible !important;white-space:nowrap !important;table-layout:auto !important;margin:0;}
@@ -1506,7 +1514,7 @@ table.sp-students td:nth-child(4){text-align:left;}
   /* the one-sentence RESULT SUMMARY line spans the whole table and is the only text allowed to wrap */
   table.ra-table td[colspan]{width:1px;white-space:normal !important;}
   /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
-  label.rc-sel-lbl{font-size:calc(16*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
+  label.rc-sel-lbl{font-size:calc(14.5*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
   select[onchange^="filterClass"], #rcSearch{min-height:calc(32*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
 /* PRINTED / DOWNLOADED LISTS (everything except report cards): light 0.5px rules.
@@ -5445,7 +5453,7 @@ function renderShell(){
   </div>
   <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
     <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
-    <div class="main" id="mainArea">${navBackBar()}${renderView(view)}</div>
+    <div class="main${view==='classanalysis'?' main-wide':''}${(view==='reportcard'||view==='preport')?' main-rc':''}" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
 // Views that touch student/teacher bio data, account credentials, subject assignment,
@@ -9412,8 +9420,10 @@ function setAnalysisParam(key, value){
   render();
   if(key==='term' || key==='year'){
     const p = VIEW.params, tok = NAV_TOKEN, vw = VIEW;
+    const sig = a=>Array.isArray(a)?(a.length+':'+(a.length?a[a.length-1].id:'')):'';
+    const before = sig(DB.scores);
     refreshScoresForPeriod(p.term || DB.info.currentTerm, p.year || DB.info.currentYear)
-      .then(()=>{ if(VIEW===vw && NAV_TOKEN===tok && !FORM_DIRTY) render(); }).catch(e=>console.error(e));
+      .then(()=>{ if(VIEW===vw && NAV_TOKEN===tok && !FORM_DIRTY && sig(DB.scores)!==before) render(); }).catch(e=>console.error(e));
   }
 }
 // Note: Class Analysis is exported as a PDF only (see downloadElementAsPdf / the
@@ -11904,7 +11914,6 @@ document.addEventListener('click', async (e)=>{
       // still in flight are waited for, and they land straight on the page they tapped.
       if(updateOnNavigate(arg)) break;
       VIEW = {name:arg, params:{}};
-      playUISound('open');
       // Render immediately with whatever's already in memory — DB.scores is
       // kept fresh locally on every save via upsertScores/deleteScores, so
       // it's rarely more than a few minutes stale. Waiting on a network round
@@ -11914,6 +11923,7 @@ document.addEventListener('click', async (e)=>{
       // same screen when it lands (myNavToken guards against a stale refresh
       // overwriting a screen they've since navigated away from).
       render();
+      setTimeout(()=>playUISound('open'),0); // after first paint, never before it
       // 'preport' (parent's "Report Card" nav tile) renders a .rc-card just like the
       // admin/teacher 'viewReport' action does, so it needs the same A4-fill pass —
       // otherwise a short card viewed this way stays its natural (short) height on
@@ -11927,6 +11937,8 @@ document.addEventListener('click', async (e)=>{
           : refreshScores();
         scoreRefresh.then(()=>{
           if(NAV_TOKEN!==myNavToken) return;
+          // Result Analysis picker screen shows no scores: skip the pointless second render.
+          if(arg==='classanalysis' && !(VIEW.params&&(VIEW.params.classId||VIEW.params.level))) return;
           render();
           if(arg==='preport'){
             const rcRoot2 = document.getElementById('mainArea'); if(rcRoot2) fitOnePage(rcRoot2);
@@ -12800,7 +12812,7 @@ Continue?`)) break;
 });
 function renderShellWithContent(innerHtml){
   const shell = renderShell();
-  return shell.replace(/<div class="main"[^>]*>[\s\S]*<\/div>\s*<\/div>\s*$/, ()=>`<div class="main" id="mainArea">${navBackBar()}${innerHtml}</div></div>`);
+  return shell.replace(/<div class="main[^"]*"[^>]*>[\s\S]*<\/div>\s*<\/div>\s*$/, ()=>`<div class="main${VIEW&&VIEW.name==='classanalysis'?' main-wide':''}${VIEW&&(VIEW.name==='reportcard'||VIEW.name==='preport')?' main-rc':''}" id="mainArea">${navBackBar()}${innerHtml}</div></div>`);
 }
 // Called from the "Viewing period" dropdown on a report card to switch which
 // term/year is displayed, without losing any of the data underneath it.
