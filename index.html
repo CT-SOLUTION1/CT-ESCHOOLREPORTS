@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-49'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-50'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1026,6 +1026,34 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(6*var(--uk));}
 .ad-counts .card{padding:calc(7*var(--uk)) calc(10*var(--uk)) !important;}
 .ad-counts .card h1{margin:calc(2*var(--uk)) 0 0;font-size:calc(18*var(--uk));line-height:1.1;}
+
+/* Admin dashboard: class names, levels and the counts start at their normal size and are shrunk (by the
+   fit script below) only as far as needed so the whole text shows, with no cut-off letters or words. */
+.fit-t{display:inline-block;white-space:nowrap;max-width:none;vertical-align:middle;}
+.ad-enrol table th:nth-child(1),.ad-enrol table td:nth-child(1){width:26%;}
+.ad-enrol table th:nth-child(2),.ad-enrol table td:nth-child(2){width:24%;}
+.ad-enrol table th:nth-child(3),.ad-enrol table td:nth-child(3){width:14%;}
+.ad-enrol table th:nth-child(n+4),.ad-enrol table td:nth-child(n+4){width:12%;}
+.ad-enrol table td:nth-child(1),.ad-enrol table td:nth-child(2){overflow:hidden;text-overflow:clip;}
+.ad-counts .card{min-width:0;overflow:hidden;}
+.ad-counts .card .small,.ad-counts .card h1{white-space:nowrap;overflow:hidden;text-overflow:clip;}
+.ad-counts .card h1{font-size:calc(15*var(--uk));}
+
+/* Teacher dashboard: whole page fits one screen (no scrolling). Tiles stay SQUARE, three per line, sized from the
+   screen height; the assignments table takes what is left and its text shrinks to fit. Enter Scores is solid red. */
+.ad-fit .tile-grid.tile-grid-3{flex:none;margin:0 auto;max-width:none;gap:calc(6*var(--uk));
+  width:min(100%, calc((38vh) / var(--tr,3) * 3));width:min(100%, calc((38dvh) / var(--tr,3) * 3));}
+.td-fit .tile-grid-3 .tile{aspect-ratio:1 / 1;min-height:0;height:auto;padding:3%;gap:3%;border-radius:calc(10*var(--uk));container-type:inline-size;overflow:hidden;box-sizing:border-box;}
+.td-fit .tile-grid-3 .tile-icon{font-size:26cqw;line-height:1;}
+.td-fit .tile-grid-3 .tile-label{font-size:12cqw;letter-spacing:0;line-height:1.1;-webkit-text-stroke:0;}
+.td-fit .tile-grid-3 .tile.tile-red .tile-icon{font-size:34cqw !important;}
+.td-fit .tile-grid-3 .tile.tile-red .rc-word{font-size:21cqw !important;}
+.td-fit .tile.tile-scores{background:#C8102E !important;}
+.td-fit .tile-grid-3 .tile.tile-scores .rc-word{font-size:19cqw !important;font-weight:900 !important;-webkit-text-stroke:1.2px #fff !important;paint-order:stroke fill;text-shadow:0 0 1px #fff,0 0 1px #fff;letter-spacing:.01em !important;}
+.td-rest{overflow:hidden;}
+.td-assign{flex:1 1 auto;overflow:hidden;display:block;}
+.td-assign table{width:100%;font-size:var(--fs,calc(9*var(--uk))) !important;}
+.td-assign table th,.td-assign table td{font-size:inherit !important;line-height:1.1;padding:calc(1*var(--uk)) calc(3*var(--uk)) !important;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -5191,8 +5219,12 @@ function featureTilesHTML(role, excludeKey){
   if(!items.length) return '';
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
-  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:''}>${items.map(([k,l,icon])=>`
-    ${WIDE_TILE_KEYS.includes(k) ? `<button type="button" class="tile tile-wide tile-red" data-action="nav:${k}" aria-label="${esc(l)}">
+  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:(role==='teacher'?` style="--tr:${Math.ceil(items.length/3)}"`:'')}>${items.map(([k,l,icon])=>`
+    ${(role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
+      <span class="tile-label rc-word">ENTER</span>
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label rc-word">SCORES</span>
+    </button>` : WIDE_TILE_KEYS.includes(k) ? `<button type="button" class="tile tile-wide tile-red" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label rc-word">REPORT</span>
       <span class="tile-icon">${icon}</span>
       <span class="tile-label rc-word">CARDS</span>
@@ -6946,7 +6978,7 @@ function adminDashboard(){
           const st = cur.filter(s=>s.classId===c.id);
           const b = st.filter(s=>s.gender==='Male').length, g = st.filter(s=>s.gender==='Female').length;
           tb+=b; tg+=g; tt+=st.length;
-          return `<tr><td style="text-align:left;font-weight:700;">${esc(c.name)}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${b}</td><td>${g}</td><td style="font-weight:800;">${st.length}</td></tr>`;
+          return `<tr><td style="text-align:left;font-weight:700;"><span class="fit-t" data-fit>${esc(c.name)}</span></td><td><span class="fit-t" data-fit>${esc(levelLabel(c))}</span></td><td>${esc(c.stream||'—')}</td><td>${b}</td><td>${g}</td><td style="font-weight:800;">${st.length}</td></tr>`;
         }).join('');
         return `<table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Boys</th><th>Girls</th><th>Total</th></tr>${rows}
         <tr style="font-weight:800;background:#eef1f6;"><td style="text-align:left;">TOTAL</td><td></td><td></td><td>${tb}</td><td>${tg}</td><td>${tt}</td></tr></table>`;
@@ -6955,9 +6987,9 @@ function adminDashboard(){
     </div>
     <div class="ad-side">
       <div class="ad-counts">
-        <div class="card"><div class="small">CLASSES</div><h1>${DB.classes.length}</h1></div>
-        <div class="card"><div class="small">STUDENTS</div><h1>${DB.students.filter(s=>s.status!=='left').length}</h1></div>
-        <div class="card"><div class="small">TERM / YEAR</div><h1>${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</h1></div>
+        <div class="card"><div class="small"><span class="fit-t" data-fit>CLASSES</span></div><h1><span class="fit-t" data-fit>${DB.classes.length}</span></h1></div>
+        <div class="card"><div class="small"><span class="fit-t" data-fit>STUDENTS TOTAL</span></div><h1><span class="fit-t" data-fit>${DB.students.filter(s=>s.status!=='left').length}</span></h1></div>
+        <div class="card"><div class="small"><span class="fit-t" data-fit>TERM / YEAR</span></div><h1><span class="fit-t" data-fit>${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</span></h1></div>
       </div>
       <div class="card ad-fin"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
       <div class="card"><h3>Old Students: ${DB.students.filter(s=>s.status==='left').length}</h3><button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button></div>
@@ -9688,19 +9720,22 @@ function teacherDashboard(){
   const mine = liveAssignments(DB.assignments.filter(a=>a.teacherUsername===CUR.username));
   const i = DB.info;
   return `
-  <div class="flex" style="align-items:center;gap:12px;margin-bottom:4px;">
-    ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;">`:''}
+  <div class="ad-fit td-fit">
+  <div class="flex ad-head" style="align-items:center;gap:12px;">
+    ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" class="ad-logo">`:''}
     <div>
-      <div class="school-name-big" style="font-size:20px;line-height:1.2;">${esc(i.schoolName||'')}</div>
-      <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)}</h2>
+      <div class="school-name-big ad-school">${esc(i.schoolName||'')}</div>
+      <h2 style="margin:2px 0 0;">Welcome, ${esc(CUR.name)} <span class="small" style="font-weight:400;">· Staff initials: <b>${initials(CUR.name)}</b></span></h2>
     </div>
   </div>
-  <p class="small">Your staff initials on report cards: <b>${initials(CUR.name)}</b></p>
   ${featureTilesHTML('teacher','tdash')}
-  <div class="card"><h3>Your subject assignments</h3>
+  <div class="ad-rest td-rest">
+  <div class="card td-assign" data-fit-h><h3>Your subject assignments</h3>
   <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Papers</th></tr>
   ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId); return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(a.papers.join(', '))}</td></tr>`; }).join('') || '<tr><td colspan="3">No assignments yet.</td></tr>'}
-  </table></div>`;
+  </table></div>
+  </div>
+  </div>`;
 }
 
 // Admin-only: lets scoresEntryView load/save a term & year OTHER than the school's
@@ -15797,6 +15832,48 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 (async function(){
   try{ await loadAll(); render(); resumeAfterUpdate(); preloadHeavyLibsWhenIdle(); }
   catch(e){ showFatal(e.message); document.getElementById('app').innerHTML='<div style="padding:40px;">Could not start. See error above.</div>'; }
+})();
+</script>
+<script id="cte-fit-text">
+/* Shrinks [data-fit] text only until it is fully visible inside its cell/card (never grows past its CSS size). */
+(function(){
+  var q=0;
+  function fit(){
+    q=0;
+    var els=document.querySelectorAll('[data-fit]');
+    for(var n=0;n<els.length;n++){
+      var el=els[n], box=el.parentElement; if(!box) continue;
+      el.style.fontSize='';
+      var cs=getComputedStyle(box);
+      var avail=box.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+      if(avail<=0) continue;
+      var size=parseFloat(getComputedStyle(el).fontSize)||10, min=3;
+      var guard=0;
+      while(el.getBoundingClientRect().width>avail+0.5 && size>min && guard++<80){
+        size-=0.25; el.style.fontSize=size+'px';
+      }
+    }
+  }
+  function fitH(){
+    var bs=document.querySelectorAll('[data-fit-h]');
+    for(var n=0;n<bs.length;n++){
+      var b=bs[n], t=b.querySelector('table'); if(!t) continue;
+      b.style.removeProperty('--fs');
+      var size=parseFloat(getComputedStyle(t).fontSize)||9, g=0;
+      while(b.scrollHeight>b.clientHeight+1 && size>3 && g++<120){
+        size-=0.25; b.style.setProperty('--fs',size+'px');
+      }
+    }
+  }
+  var _fit=fit; fit=function(){ _fit(); fitH(); };
+  function sched(){ if(!q) q=requestAnimationFrame(fit); }
+  new MutationObserver(function(m){
+    for(var i=0;i<m.length;i++){ if(m[i].addedNodes.length){ sched(); return; } }
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  window.addEventListener('resize',sched);
+  window.addEventListener('orientationchange',sched);
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(sched);
+  document.addEventListener('DOMContentLoaded',sched);
 })();
 </script>
 </body>
