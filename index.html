@@ -1427,8 +1427,8 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .tile.tile-st .tile-label{font-size:12cqw !important;line-height:1.05 !important;letter-spacing:0 !important;white-space:nowrap;text-align:center;}
 /* Enter-scores student picker: 1.5 line spacing, roomy rows, no empty leading column, names 1px smaller. */
 .se-wrap.sr-list{padding-left:0 !important;padding-right:0 !important;}
-.sr-list .sr-row{height:max(calc(17*var(--uk)),min(calc(var(--se-h)/20),calc(22*var(--uk)))) !important;min-height:0 !important;line-height:1.1 !important;font-size:calc(13*var(--uk)) !important;padding:0 calc(8*var(--uk)) 0 0 !important;gap:calc(10*var(--uk)) !important;border-bottom:0.5px solid #4a6f94 !important;}
-.sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(15*var(--uk)) !important;height:calc(15*var(--uk)) !important;}
+.sr-list .sr-row{height:auto !important;min-height:0 !important;line-height:1.2 !important;font-size:calc(12*var(--uk)) !important;font-weight:700 !important;padding:calc(2*var(--uk)) calc(6*var(--uk)) calc(2*var(--uk)) 0 !important;gap:calc(8*var(--uk)) !important;border-bottom:0.5px solid #4a6f94 !important;}
+.sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(14*var(--uk)) !important;height:calc(14*var(--uk)) !important;}
 /* Report-card list: names in the same font as the enter-scores list; slimmer Action column, 1px smaller buttons. */
 /* Report-card list + Student Performance list: the whole table stacks to the screen width (no sideways scrolling, nothing cut off).
    Names stay on ONE line; the other columns give up their idle space (tight padding, small wrapping text, stacked buttons). */
@@ -1436,17 +1436,19 @@ table.data-table.rc-list,table.data-table.sp-students{display:table !important;w
 table.rc-list thead,table.sp-students thead{display:table-header-group !important;}
 table.rc-list tbody,table.sp-students tbody{display:table-row-group !important;}
 table.rc-list tr,table.sp-students tr{display:table-row !important;width:auto !important;}
-table.rc-list th,table.rc-list td,table.sp-students th,table.sp-students td{padding:calc(var(--tf,12)*.28px) calc(var(--tf,12)*.25px) !important;line-height:1.2;}
+table.rc-list th,table.sp-students th{padding:calc(var(--tf,12)*.2px) calc(var(--tf,12)*.35px) !important;}
 table.rc-list th,table.sp-students th{font-size:calc(var(--tf,12)*.75px) !important;letter-spacing:0;line-height:1.15;}
 .card:has(> table.rc-list),.card:has(> table.sp-students){padding-left:calc(5*var(--uk)) !important;padding-right:calc(5*var(--uk)) !important;overflow:visible !important;}
-/* report-card list + student performance list: one size (12px, shrinks automatically only if a screen is too narrow), bold, single lines, no side scrolling. */
-table.rc-list td,table.sp-students td{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;white-space:nowrap !important;}
-table.rc-list td.stu-name,table.sp-students td.stu-name{font-size:calc(var(--tf,12)*1px) !important;font-weight:800 !important;text-align:left;}
-table.rc-list td:first-child:has(input),table.rc-list th:first-child:has(input){width:1%;}
-table.rc-list td:last-child,table.rc-list th:last-child{width:1%;white-space:nowrap !important;}
-table.rc-list td:last-child .btn-outline{display:inline-block;width:auto;box-sizing:border-box;margin:0 calc(var(--tf,12)*.15px) !important;font-size:calc((var(--tf,12) - 1)*1px) !important;font-weight:700 !important;padding:calc(var(--tf,12)*.2px) calc(var(--tf,12)*.4px) !important;border-width:1px !important;white-space:nowrap;line-height:1.2;}
-table.rc-list th:not(:nth-child(2)):not(:nth-child(3)),table.sp-students th:not(:nth-child(3)):not(:nth-child(4)){width:1%;}
-table.sp-students th:not(:nth-child(3)):not(:nth-child(4)),table.sp-students td:not(:nth-child(3)):not(:nth-child(4)){width:1%;}
+/* The three student lists share the Enter Scores sheet's name font (12px). Tight rows divided by 0.5px lines, columns packed with no idle gaps, one line per cell (only column headings may wrap), no sideways scrolling. */
+table.data-table.rc-list,table.data-table.sp-students{width:auto !important;max-width:100%;}
+table.rc-list td,table.sp-students td{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;white-space:nowrap !important;text-align:left;border-width:0.5px !important;}
+table.rc-list th,table.sp-students th{border-width:0.5px !important;white-space:normal;text-align:left;}
+table.rc-list td.stu-name,table.sp-students td.stu-name{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;}
+table.rc-list td,table.sp-students td{padding:calc(var(--tf,12)*.12px) calc(var(--tf,12)*.35px) !important;line-height:1.2;}
+table.rc-list td:last-child .btn-outline{display:inline-block;width:auto;box-sizing:border-box;margin:0 calc(var(--tf,12)*.12px) !important;font-size:calc((var(--tf,12) - 1)*1px) !important;font-weight:700 !important;padding:calc(var(--tf,12)*.1px) calc(var(--tf,12)*.35px) !important;border-width:1px !important;white-space:nowrap;line-height:1.2;}
+table.sp-students td:not(:nth-child(3)){text-align:center;}
+table.sp-students td:nth-child(4){text-align:left;}
+.rc-topbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 6px;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -8509,8 +8511,10 @@ function reportsListView(){
     <p class="small">Teachers can currently <b>${tAllowed?'view':'not view'}</b> report cards${tAllowed?'':' — the "View Report Cards" option is hidden from every teacher'}. Printing and downloading is always Admin only.</p>
     <button type="button" class="${tAllowed?'btn-danger':'btn'}" data-action="toggleTeacherReports">${tAllowed?'Switch OFF teacher access':'Switch ON teacher access'}</button>
   </div>` : '';
+  const rcCollapsed = !!VIEW.params.classId;
+  const rcTopBar = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="RC_QUERY='';filterClass('')">◀ Back</button><b>${esc((visibleClasses.find(c=>c.id===VIEW.params.classId)||{}).name||'')}</b>${isAdmin?`<button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>`:''}</div>`;
   return `
-  <h2>Report Cards</h2>
+  ${rcCollapsed ? rcTopBar : `<h2>Report Cards</h2>
   ${teacherAccessCard}
   ${isAdmin ? rcShadeCard() : ''}
   <div class="card">
@@ -8527,7 +8531,7 @@ function reportsListView(){
     ${isAdmin ? `<div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>
     </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
-  </div>
+  </div>`}
   <div class="card">
     ${(!VIEW.params.classId && !RC_QUERY.trim()) ? `<p class="small">Select a class above, or search a student by name, to see the report card list.</p>` : (()=>{
       const listStudents = rcListedStudents(VIEW.params.classId);
@@ -9306,7 +9310,8 @@ function classAnalysisView(){
     : formKey==='classwise' ? buildClassWise()
     : formKey==='levelwise' ? buildLevelWise()
     : buildStudents() + buildClassWise() + buildLevelWise();
-  return selectorsHtml(true) + `
+  const anTop = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="setAnalysisParam('form','')">◀ Back</button><b>${esc(cls.name)} — ${esc(term)}, ${esc(String(year))}</b><button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button><button class="btn" onclick="printLandscape()">Print</button></div>`;
+  return anTop + `
   <div id="printArea">${formHtml}
   </div>`;
 }
@@ -10187,8 +10192,8 @@ function scoresEntryView(mine){
   const pastPeriodBanner = isPastPeriod ? `
   <div class="note" style="border-color:var(--danger);color:var(--danger);margin-top:14px;">⚠ You're entering/editing scores for <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the school's current period (${esc(DB.info.currentTerm)}, ${esc(String(DB.info.currentYear))}). Use this only to complete or correct a historical record.</div>` : '';
   return `<div class="${pickerSubmitted?'':'scores-screen'}">
-  <h2>${CUR.role==='admin'?'Enter / Download Scores':'Enter Scores'}</h2>
-  ${periodPickerCard}${pastPeriodBanner}
+  ${pickerSubmitted?'':`<h2>${CUR.role==='admin'?'Enter / Download Scores':'Enter Scores'}</h2>`}
+  ${pickerSubmitted?'':periodPickerCard}${pastPeriodBanner}
   ${pickerCard}${pickerSummaryBar}
   ${studentRows}</div>`;
 }
