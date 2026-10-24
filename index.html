@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-48'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-49'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -977,9 +977,10 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* --uk = one real screen pixel (the app is laid out at 1280px and shrunk on phones, so plain px
    come out tiny there). Sizes below are moderate: readable, not oversized. */
 :root{--uk:calc(var(--ui-k,1) * 1px);}
-.tile.tile-blue{background:#1D4E89 !important;border-color:#0f3563 !important;box-shadow:0 2px 8px rgba(29,78,137,.45);}
-.tile.tile-blue:hover,.tile.tile-blue:active{background:#16407320 !important;background:#163f73 !important;border-color:#0a2a4a !important;}
-.tile.tile-blue .tile-label{color:#fff !important;}
+.tile.tile-red{background:#C8102E !important;border:2px solid #7d0a1d !important;box-shadow:0 3px 10px rgba(200,16,46,.5);container-type:inline-size;justify-content:space-around;padding:3% !important;overflow:hidden;}
+.tile.tile-red:hover,.tile.tile-red:active{background:#a50d26 !important;}
+.tile.tile-red .rc-word{color:#fff !important;font-size:21cqw !important;font-weight:900 !important;-webkit-text-stroke:.6px #fff !important;letter-spacing:0 !important;line-height:1 !important;text-transform:uppercase;}
+.tile.tile-red .tile-icon{font-size:34cqw !important;line-height:1 !important;}
 /* Admin dashboard: strictly FIVE SQUARE tiles on every line, on every screen. The whole tile block is sized from the
    screen height too (--tr = number of rows), so every tile is visible at once without scrolling. */
 .tile-grid.tile-grid-5{grid-template-columns:repeat(5,minmax(0,1fr)) !important;gap:calc(6*var(--uk));
@@ -994,7 +995,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-school{font-size:calc(11*var(--uk)) !important;line-height:1.1;}
 .ad-fit .ad-head h2{font-size:calc(11*var(--uk)) !important;margin:0 !important;font-weight:600;}
 .ad-logo{width:calc(26*var(--uk)) !important;height:calc(26*var(--uk)) !important;}
-.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((25vh) / var(--tr,4) * 5));width:min(100%, calc((25dvh) / var(--tr,4) * 5));}
+.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((26vh) / var(--tr,4) * 5));width:min(100%, calc((26dvh) / var(--tr,4) * 5));}
 .ad-rest{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:calc(6*var(--uk));}
 .ad-rest .card{margin:0;padding:calc(8*var(--uk));min-height:0;box-sizing:border-box;}
 .ad-rest h3{font-size:calc(12*var(--uk));margin:0 0 calc(3*var(--uk));}
@@ -1005,14 +1006,19 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-enrol table{width:100%;table-layout:fixed;}
 .ad-enrol table th,.ad-enrol table td{font-size:calc(9*var(--uk)) !important;line-height:1.05;padding:calc(1*var(--uk)) calc(2*var(--uk)) !important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:auto;}
 .ad-enrol table tr{height:calc(14*var(--uk));}
-.ad-enrol table th:first-child,.ad-enrol table td:first-child{width:30%;}
+.ad-enrol table th:first-child,.ad-enrol table td:first-child{width:28%;}
+.ad-enrol table th{font-size:calc(6.5*var(--uk)) !important;letter-spacing:0 !important;overflow:visible !important;text-overflow:clip !important;padding-left:0 !important;padding-right:0 !important;font-weight:800;}
 .ad-enrol{padding:calc(6*var(--uk)) !important;}
 .ad-side{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(6*var(--uk));min-height:0;overflow:visible;}
 .ad-side>.ad-counts{grid-column:1 / -1;}
-.ad-side>.card:not(.ad-counts .card):not(.ad-fin){flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:calc(5*var(--uk));}
-.ad-side>.card:not(.ad-counts .card):not(.ad-fin){display:flex;align-items:center;justify-content:space-between;gap:calc(8*var(--uk));flex:none;}
+.ad-side>.ad-fin{grid-column:span 2;}
+.ad-side>.ad-term{grid-column:1 / -1;display:flex !important;flex-direction:row !important;align-items:center !important;justify-content:space-between !important;gap:calc(12*var(--uk));}
+.ad-side>.ad-term .small{display:block !important;}
+.ad-side>.ad-term .btn{flex:none;white-space:nowrap;}
+.ad-side>.card:not(.ad-counts .card):not(.ad-fin):not(.ad-term){flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:calc(5*var(--uk));}
+.ad-side>.card:not(.ad-counts .card):not(.ad-fin):not(.ad-term){display:flex;align-items:center;justify-content:space-between;gap:calc(8*var(--uk));flex:none;}
 .ad-side>.card h3,.ad-side>.card p{margin:0;}
-.ad-side>.card:not(.ad-fin) .small:not(h3){display:none;}
+.ad-side>.card:not(.ad-fin):not(.ad-term) .small:not(h3){display:none;}
 .ad-side>.card:not(.ad-fin) p.small b{display:inline;}
 .ad-fin{flex:none;}
 .ad-fin h3{margin-bottom:calc(3*var(--uk)) !important;}
@@ -5186,10 +5192,14 @@ function featureTilesHTML(role, excludeKey){
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
   return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:''}>${items.map(([k,l,icon])=>`
-    <button type="button" class="tile${WIDE_TILE_KEYS.includes(k)?' tile-wide tile-blue':''}" data-action="nav:${k}">
+    ${WIDE_TILE_KEYS.includes(k) ? `<button type="button" class="tile tile-wide tile-red" data-action="nav:${k}" aria-label="${esc(l)}">
+      <span class="tile-label rc-word">REPORT</span>
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label rc-word">CARDS</span>
+    </button>` : `<button type="button" class="tile" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${l}</span>
-    </button>`).join('')}</div>`;
+    </button>`}`).join('')}</div>`;
 }
 function renderShell(){
   const nav = navByRole(CUR.role);
@@ -6951,7 +6961,7 @@ function adminDashboard(){
       </div>
       <div class="card ad-fin"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
       <div class="card"><h3>Old Students: ${DB.students.filter(s=>s.status==='left').length}</h3><button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button></div>
-      <div class="card"><h3>Year, Term & Promotion</h3><p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b></p><button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button></div>
+      <div class="card ad-term"><div><h3>Year, Term & Promotion</h3><p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b>. Term/Year settings, score deadlines, and promoting students to their next class have been combined into one place.</p></div><button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button></div>
     </div>
   </div>
   </div>`;
