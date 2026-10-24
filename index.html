@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-23-36'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-41'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -977,6 +977,11 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* --uk = one real screen pixel (the app is laid out at 1280px and shrunk on phones, so plain px
    come out tiny there). Sizes below are moderate: readable, not oversized. */
 :root{--uk:calc(var(--ui-k,1) * 1px);}
+/* Admin dashboard: strictly FIVE tiles on every line, on every screen */
+.tile-grid.tile-grid-5{grid-template-columns:repeat(5,minmax(0,1fr)) !important;gap:calc(10*var(--uk));}
+.tile-grid-5 .tile{padding:calc(12*var(--uk)) calc(4*var(--uk));min-height:calc(80*var(--uk));gap:calc(5*var(--uk));border-radius:calc(11*var(--uk));}
+.tile-grid-5 .tile-icon{font-size:calc(26*var(--uk));}
+.tile-grid-5 .tile-label{font-size:calc(10.5*var(--uk));letter-spacing:0;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -1263,6 +1268,11 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .se-table td.flex .btn-outline,.se-table td.flex .btn-danger{display:block;width:fit-content;margin:calc(1*var(--uk)) 0 calc(1*var(--uk)) auto;}
 .sr-list .sr-row{display:flex;align-items:center;gap:calc(10*var(--uk));height:var(--se-row);padding:0 calc(4*var(--uk));margin:0;box-sizing:border-box;font-weight:400;text-transform:none;line-height:1.4;white-space:nowrap;min-width:0;border-bottom:1px solid #7f9bb8;font-size:clamp(calc(13*var(--uk)),calc(var(--se-row)*.5),calc(18*var(--uk)));}
 .sr-list .sr-row:last-child{border-bottom:0;}
+/* Student names in lists are bold for visibility; the tick-box lists give every student their own separated row. */
+.stu-name{font-weight:800 !important;color:#0A2A4A;}
+.sr-list .sr-row{font-weight:800 !important;color:#0A2A4A;height:var(--se-row) !important;min-height:0 !important;gap:calc(14*var(--uk)) !important;padding:0 calc(8*var(--uk)) !important;border-bottom:2px solid #7f9bb8 !important;}
+.sr-list .sr-row:nth-child(even){background:#eef4fb;}
+.sr-list .sr-row input[type=checkbox]{margin-right:calc(4*var(--uk));}
 .sr-list .sr-row input[type=checkbox]{flex:none;margin:0;width:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;height:clamp(calc(16*var(--uk)),calc(var(--se-row)*.5),calc(24*var(--uk))) !important;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
@@ -5137,7 +5147,7 @@ function featureTilesHTML(role, excludeKey){
   if(!items.length) return '';
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
-  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':''}">${items.map(([k,l,icon])=>`
+  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}">${items.map(([k,l,icon])=>`
     <button type="button" class="tile${WIDE_TILE_KEYS.includes(k)?' tile-wide':''}" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${l}</span>
@@ -6121,7 +6131,7 @@ function feesClassTableView(d, term, year){
       if(sum.balance<=0 && sum.agreed>0) return `<td>Nil</td>`;
       return `<td>—</td>`;
     }).join('');
-    return `<tr><td><input type="checkbox" style="width:auto;" ${SELECTED_FEE_NOTES.has(s.id)?'checked':''} onchange="toggleFeeNoteSelect('${s.id}')"></td><td>${esc(s.admNo)}</td><td>${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${agreedCell}</td>${lastBalCell}${instCells}<td>${money(sum.balance)}</td><td class="flex"><button type="button" class="btn-outline" data-action="financeStudent:${s.id}">Update Fees</button> <button type="button" class="btn-outline" data-action="printDemandNote:${s.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download</button></td></tr>`;
+    return `<tr><td><input type="checkbox" style="width:auto;" ${SELECTED_FEE_NOTES.has(s.id)?'checked':''} onchange="toggleFeeNoteSelect('${s.id}')"></td><td>${esc(s.admNo)}</td><td class="stu-name">${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${agreedCell}</td>${lastBalCell}${instCells}<td>${money(sum.balance)}</td><td class="flex"><button type="button" class="btn-outline" data-action="financeStudent:${s.id}">Update Fees</button> <button type="button" class="btn-outline" data-action="printDemandNote:${s.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download</button></td></tr>`;
   }).join('');
 
   const feesFileName = `${(isAll?'All_Students':cls.name).replace(/\s+/g,'_')}_fees_${term.replace(/\s+/g,'_')}_${year}.pdf`;
@@ -6199,7 +6209,7 @@ function feesAnalysisView(d){
     out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Class</h3><table class="data-table"><tr><th>Class</th><th>Students</th><th>Collected</th><th>Outstanding</th></tr>${byClass.map(x=>`<tr><td>${esc(x.c.name)}</td><td>${x.count}</td><td>${money(x.collected)}</td><td>${money(x.outstanding)}</td></tr>`).join('') || '<tr><td colspan="4">No students yet.</td></tr>'}</table></div>`;
   }
 
-  out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Student${isAll?'':` — ${esc(cls.name)}`}</h3><table class="data-table"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Paid This ${periodWord}</th><th>This ${periodWord} Balance</th><th>Total Outstanding (all-time)</th></tr>${rows.map(({s,paid,ownBalance,cum})=>{ const clx=DB.classes.find(c=>c.id===s.classId); return `<tr><td>${esc(s.admNo)}</td><td>${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${money(paid)}</td><td>${money(ownBalance)}</td><td style="${cum>0?'color:var(--danger);font-weight:700;':'color:var(--good);font-weight:700;'}">${cum>0?money(cum):'Cleared'}</td></tr>`; }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}</table></div>`;
+  out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Student${isAll?'':` — ${esc(cls.name)}`}</h3><table class="data-table"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Paid This ${periodWord}</th><th>This ${periodWord} Balance</th><th>Total Outstanding (all-time)</th></tr>${rows.map(({s,paid,ownBalance,cum})=>{ const clx=DB.classes.find(c=>c.id===s.classId); return `<tr><td>${esc(s.admNo)}</td><td class="stu-name">${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${money(paid)}</td><td>${money(ownBalance)}</td><td style="${cum>0?'color:var(--danger);font-weight:700;':'color:var(--good);font-weight:700;'}">${cum>0?money(cum):'Cleared'}</td></tr>`; }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}</table></div>`;
 
   return out;
 }
@@ -6278,7 +6288,7 @@ function requirementsAnalysisView(d){
   out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">By Student${isAll?'':` — ${esc(cls.name)}`}</h3><table class="data-table"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Demanded</th><th>Status</th></tr>${rows.map(({s,reqs,outstanding})=>{
     const clx = DB.classes.find(c=>c.id===s.classId);
     const status = !reqs.length ? '—' : (!outstanding.length ? '<span style="color:var(--good);font-weight:700;">Cleared</span>' : `<span style="color:var(--danger);font-weight:700;" title="${esc(outstanding.map(r=>r.name).join(', '))}">${outstanding.length} outstanding</span>`);
-    return `<tr><td>${esc(s.admNo)}</td><td>${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${reqs.length}</td><td>${status}</td></tr>`;
+    return `<tr><td>${esc(s.admNo)}</td><td class="stu-name">${esc(s.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${reqs.length}</td><td>${status}</td></tr>`;
   }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}</table></div>`;
 
   return out;
@@ -6505,7 +6515,7 @@ function requirementsClassView(d, term, year){
       return `<td title="${esc(title)}"><input type="checkbox" style="width:auto;" ${checked?'checked':''} onchange="toggleRequirementSubmitted('${r.id}','${st.id}',this.checked,this)"></td>`;
     }).join('');
     const lastBalCell = requirementLastTermBalanceCell(st, d);
-    return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td><input type="checkbox" style="width:auto;" ${SELECTED_REQ_NOTES.has(st.id)?'checked':''} onchange="toggleReqNoteSelect('${st.id}')"></td><td>${esc(st.admNo)}</td>${lastBalCell}<td>${esc(st.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}${cells}<td class="flex"><button type="button" class="btn-outline" data-action="financeStudent:${st.id}">View</button> <button type="button" class="btn-outline" data-action="printReqDemandNote:${st.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${st.id}">⬇ Download</button></td></tr>`;
+    return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td><input type="checkbox" style="width:auto;" ${SELECTED_REQ_NOTES.has(st.id)?'checked':''} onchange="toggleReqNoteSelect('${st.id}')"></td><td>${esc(st.admNo)}</td>${lastBalCell}<td class="stu-name">${esc(st.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}${cells}<td class="flex"><button type="button" class="btn-outline" data-action="financeStudent:${st.id}">View</button> <button type="button" class="btn-outline" data-action="printReqDemandNote:${st.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${st.id}">⬇ Download</button></td></tr>`;
   }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}
   </table></div></div></div>`;
 
@@ -6667,7 +6677,7 @@ function financeAdvancedView(){
   <div class="card"><h3>5. Student Financial & Requirements Follow-up</h3>
   <label>Search</label><input placeholder="Search by name or admission number…" oninput="filterFinanceRows(this.value)">
   <table class="data-table" id="financeStudentTable"><tr><th>Admission No.</th><th>Student</th><th>Class</th><th>Total Paid</th><th>Balance</th><th>Requirements</th><th>Action</th></tr>
-  ${active.map(st=>{const sum=studentFinanceSummary(st,d);const cl=DB.classes.find(c=>c.id===st.classId);const prog=studentReqProgress(st,d);return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td>${esc(st.admNo)}</td><td>${esc(st.name)}</td><td>${cl?esc(cl.name):'—'}</td><td>${money(sum.paid)}</td><td>${money(sum.balance)}</td><td>${prog.total?`${prog.submitted} / ${prog.total}`:'—'}</td><td><button class="btn-outline" data-action="financeStudent:${st.id}">View / Update</button></td></tr>`;}).join('')}
+  ${active.map(st=>{const sum=studentFinanceSummary(st,d);const cl=DB.classes.find(c=>c.id===st.classId);const prog=studentReqProgress(st,d);return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td>${esc(st.admNo)}</td><td class="stu-name">${esc(st.name)}</td><td>${cl?esc(cl.name):'—'}</td><td>${money(sum.paid)}</td><td>${money(sum.balance)}</td><td>${prog.total?`${prog.submitted} / ${prog.total}`:'—'}</td><td><button class="btn-outline" data-action="financeStudent:${st.id}">View / Update</button></td></tr>`;}).join('')}
   </table></div>
 
   ${feesRegisterSectionHTML(d, active)}
@@ -6716,7 +6726,7 @@ function feesRegisterSectionHTML(d, active){
     <div class="card"><div class="small">TOTAL BALANCE (to date)</div><h1>${money(totals.balance)}</h1></div>
   </div>
   <div style="overflow-x:auto;"><table class="data-table" style="margin-top:12px;min-width:640px;"><tr><th>Adm No.</th><th>Student</th><th>Class</th><th>Invoiced</th><th>Paid</th><th>Balance</th><th>Action</th></tr>
-  ${rows.length? rows.map(st=>{ const sum=studentFinanceSummaryFor(st, regTerm, regYear, d); const cl=DB.classes.find(c=>c.id===st.classId); return `<tr><td>${esc(st.admNo)}</td><td>${esc(st.name)}</td><td>${cl?esc(cl.name):'—'}</td><td>${money(sum.due)}</td><td>${money(sum.paid)}</td><td style="color:${sum.balance>0?'var(--danger)':'var(--good)'};">${money(sum.balance)}</td><td><button class="btn-outline" data-action="financeStudent:${st.id}">View / Update</button></td></tr>`;}).join('') : '<tr><td colspan="7">No students in this class.</td></tr>'}
+  ${rows.length? rows.map(st=>{ const sum=studentFinanceSummaryFor(st, regTerm, regYear, d); const cl=DB.classes.find(c=>c.id===st.classId); return `<tr><td>${esc(st.admNo)}</td><td class="stu-name">${esc(st.name)}</td><td>${cl?esc(cl.name):'—'}</td><td>${money(sum.due)}</td><td>${money(sum.paid)}</td><td style="color:${sum.balance>0?'var(--danger)':'var(--good)'};">${money(sum.balance)}</td><td><button class="btn-outline" data-action="financeStudent:${st.id}">View / Update</button></td></tr>`;}).join('') : '<tr><td colspan="7">No students in this class.</td></tr>'}
   </table></div>
   </div>`;
 }
@@ -8334,7 +8344,7 @@ function reportsListView(){
     <table class="data-table"><tr>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
     ${listStudents.map(s=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td>${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
+      return `<tr>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">Open report card</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${isAdmin?5:4}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
@@ -9016,11 +9026,22 @@ function classAnalysisView(){
   // ---- Subject Performance: BOTH views are shown automatically for the selected class —
   // class-wise (this class) and level-wise (every class of this class's level combined).
   const classGradeCols = gradeColsFor(cls.level);
-  const statRow = (r, cols)=>{
-    const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
-    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}</tr>`;
+  // Teacher(s) responsible for a subject in this class: whoever actually saved its scores this term
+  // (read off the score rows); falls back to the teacher(s) the subject is assigned to.
+  const teacherNamesFor = (subj)=>{
+    const ids = new Set(DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).map(s=>s.id));
+    const users = [];
+    DB.scores.forEach(sc=>{ if(sc.subject===subj && sc.term===term && sc.year==year && sc.teacher && ids.has(sc.studentId) && !users.includes(sc.teacher)) users.push(sc.teacher); });
+    let names = users.map(u=>DB.accounts.find(a=>a.username===u)).filter(a=>a && a.role==='teacher').map(a=>a.name);
+    if(!names.length) names = DB.assignments.filter(a=>a.classId===cls.id && a.subject===subj).map(a=>DB.accounts.find(x=>x.username===a.teacherUsername)).filter(Boolean).map(a=>a.name);
+    return [...new Set(names)];
   };
-  const totalsRow = (list, cols)=>{
+  const statRow = (r, cols, withTeacher)=>{
+    const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
+    const tCell = withTeacher ? `<td style="text-align:left;font-weight:700;">${r.subject==='TOTAL' ? '' : (esc(teacherNamesFor(r.subject).join(', ')) || '—')}</td>` : '';
+    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
+  };
+  const totalsRow = (list, cols, withTeacher)=>{
     const t = {subject:'TOTAL', enrolled:0, sat:0, sum:0, max:null, min:null, grades:{}};
     list.forEach(r=>{
       t.enrolled += r.enrolled; t.sat += r.sat;
@@ -9030,18 +9051,18 @@ function classAnalysisView(){
       cols.forEach(g=>{ t.grades[g] = (t.grades[g]||0) + (r.grades[g]||0); });
     });
     t.avg = t.sat ? t.sum/t.sat : null;
-    return statRow(t, cols).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
+    return statRow(t, cols, withTeacher).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
   };
   const buildClassWise = ()=>{
   const classRowData = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
-  const classRows = classRowData.map(r=>statRow(r, classGradeCols)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols) : '');
+  const classRows = classRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols, true) : '');
   const classWiseHtml = `
     <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${classRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
-    ${classPairs.length ? resultSummaryRow(classPairs, 5+classGradeCols.length, cls.level) : ''}
+    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
+    ${classRows || `<tr><td colspan="${6+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    ${classPairs.length ? resultSummaryRow(classPairs, 6+classGradeCols.length, cls.level) : ''}
     </table>`;
   return `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`;
   };
@@ -9067,7 +9088,7 @@ function classAnalysisView(){
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
     const gradeTxt = isA ? '—' : (r.overallGrade || '—');
-    return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td><td style="font-weight:800;">${r.result}</td></tr>`;
+    return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td class="stu-name" style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td><td style="font-weight:800;">${r.result}</td></tr>`;
   }).join('');
 
   const studentsCardHtml = `
@@ -11842,7 +11863,16 @@ Continue?`);
       if(!row) break;
       if(CUR.role==='teacher' && row.teacher && row.teacher!==CUR.username){ alert('You can only delete scores you entered yourself.'); break; }
       if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, row.kind)){ alert(`The score submission deadline (${fmtDateTime(scoreDeadlineFor(row.kind).deadline)}) has passed, so this can't be changed. Ask your admin to reopen score entry for you.`); break; }
-      const sure = confirm(`Delete this score (${row.marks}/${row.max})? It will be removed from the mark sheet and from the student's report card.`);
+      const dsStu = DB.students.find(st=>st.id===row.studentId);
+      const dsTest = row.kind==='EOT' ? examConfig(dsStu&&dsStu.classId).eotLabel : (examConfig(dsStu&&dsStu.classId).cwLabel+(row.label?': '+row.label:''));
+      const sure = await askPasswordConfirm({
+        title:'DELETE A SAVED SCORE',
+        action:`You are about to PERMANENTLY DELETE the score ${row.marks}/${row.max} saved for ${dsStu?dsStu.name:'this student'} in ${row.subject} (${dsTest}, ${row.term} ${row.year}).`,
+        effects:[
+          'The score is removed from the database and from every mark sheet immediately.',
+          'It disappears from the student\'s report card, and the subject average, grade, class position and class analysis are recalculated without it.',
+          'It cannot be undone: you would have to type the score in again and submit it.'],
+        confirmLabel:'Yes, delete this score'});
       if(!sure) break;
       await deleteScores([row]);
       const scoreStudent = DB.students.find(st=>st.id===row.studentId);
@@ -12096,7 +12126,11 @@ Continue?`);
       if(!a) break;
       if(CUR.role==='teacher' && a.teacherUsername!==CUR.username){ alert('This is not your subject list.'); break; }
       const st = DB.students.find(x=>x.id===studentId);
-      const sure = confirm(`Remove ${st?st.name:'this student'} from your ${a.subject} list?\n\nThis only takes them off your marking list for this subject — it does not delete the student or any scores already saved for them.`);
+      const clsR = DB.classes.find(c=>c.id===a.classId);
+      const sure = await askPasswordConfirm({
+        title:'REMOVE STUDENT FROM YOUR LIST',
+        action:`You are about to REMOVE ${st?st.name:'this student'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}.`,
+        effects: rosterRemovalEffects(a.subject), confirmLabel:'Yes, remove this student'});
       if(!sure) break;
       a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>id!==studentId) : a.studentIds;
       await saveAssignments(); render();
@@ -12108,7 +12142,11 @@ Continue?`);
       if(!a) break;
       if(CUR.role==='teacher' && a.teacherUsername!==CUR.username){ alert('This is not your subject list.'); break; }
       const n = Array.isArray(a.studentIds) ? a.studentIds.length : 0;
-      const sure = confirm(`Remove ALL ${n} student${n===1?'':'s'} from your ${a.subject} list?\n\nThis only empties your marking list for this subject — it does not delete any student or any scores already saved. You can tick your students again afterwards with "Edit my student list".`);
+      const clsR = DB.classes.find(c=>c.id===a.classId);
+      const sure = await askPasswordConfirm({
+        title:`REMOVE ALL ${n} STUDENT${n===1?'':'S'} FROM YOUR LIST`,
+        action:`You are about to REMOVE ALL ${n} student${n===1?'':'s'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}. Your list will be completely empty.`,
+        effects: rosterRemovalEffects(a.subject), confirmLabel:`Yes, remove all ${n}`});
       if(!sure) break;
       a.studentIds = [];
       await saveAssignments(); render();
@@ -12124,6 +12162,17 @@ Continue?`);
       // recorded another way) and just wants the red flag gone.
       const [assignId, paper, kind, labelEnc, studentId] = (arg||'').split(':');
       const label = labelEnc ? decodeURIComponent(labelEnc) : '';
+      const cmStu = DB.students.find(st=>st.id===studentId);
+      const cmAsn = DB.assignments.find(x=>x.id===assignId);
+      const cmOk = await askPasswordConfirm({
+        title:'CLEAR THE "X" (MISSING MARK) FLAG',
+        action:`You are about to CLEAR the red X flag for ${cmStu?cmStu.name:'this student'}${cmAsn?' in '+cmAsn.subject:''}${label?' ('+label+')':''}. No score is entered by this.`,
+        effects:[
+          'The student will no longer be marked as having a missing score for this test, so the reminder to enter it disappears.',
+          'The student will still have NO mark for this test: it stays empty on the mark sheet and is left out of their average until a score is typed and submitted.',
+          'Only do this if the score is not really missing (for example, it was a mistake or is recorded elsewhere).'],
+        confirmLabel:'Yes, clear the X'});
+      if(!cmOk) break;
       const key = missingMarkersKey(assignId, paper, kind, label);
       if(MISSING_MARKERS[key]) MISSING_MARKERS[key].delete(studentId);
       render();
@@ -15369,6 +15418,50 @@ function showFatal(msg){
   bar.innerHTML = '<b>Something went wrong:</b> ' + esc(String(msg)) + ' <span style="float:right;cursor:pointer;font-weight:800;" onclick="this.parentElement.remove()">✕</span>';
 }
 
+/* ---------- Password-protected confirmation ----------
+   Used before risky actions (removing students from a marking list). Shows exactly what will happen and its
+   possible effects, and only continues when the signed-in user types their own password correctly. */
+function askPasswordConfirm(opts){
+  return new Promise(resolve=>{
+    const old=document.getElementById('pwConfirm'); if(old) old.remove();
+    const m=document.createElement('div'); m.id='pwConfirm'; m.setAttribute('role','alertdialog');
+    m.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(10,20,40,.72);display:flex;align-items:center;justify-content:center;padding:14px;font-family:Inter,sans-serif;overflow:auto;';
+    const li=(opts.effects||[]).map(x=>'<li style="margin:6px 0;">'+esc(x)+'</li>').join('');
+    m.innerHTML='<div style="background:#fff;border:5px solid #c0392b;border-radius:16px;max-width:640px;width:100%;padding:22px 20px;box-shadow:0 10px 40px rgba(0,0,0,.5);max-height:96vh;overflow:auto;">'
+      +'<div style="font-size:26px;font-weight:800;color:#c0392b;line-height:1.25;">⚠ '+esc(opts.title)+'</div>'
+      +'<div style="font-size:19px;font-weight:700;color:#0a2a4a;margin-top:12px;line-height:1.4;">'+esc(opts.action)+'</div>'
+      +'<div style="font-size:17px;font-weight:800;color:#8a3b00;margin-top:12px;">Possible effects:</div>'
+      +'<ul style="font-size:17px;color:#222;line-height:1.4;margin:6px 0 0;padding-left:22px;">'+li+'</ul>'
+      +'<div style="font-size:18px;font-weight:700;margin-top:16px;color:#0a2a4a;">Enter your password to continue:</div>'
+      +'<input id="pwConfirmInput" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;font-size:22px;min-height:54px;padding:8px 12px;margin-top:6px;border:2px solid #0a2a4a;border-radius:10px;">'
+      +'<div id="pwConfirmErr" style="color:#c0392b;font-size:18px;font-weight:800;min-height:24px;margin-top:6px;"></div>'
+      +'<div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;">'
+      +'<button type="button" id="pwConfirmOk" style="flex:1;min-width:140px;font-size:20px;font-weight:800;padding:14px;border:0;border-radius:10px;background:#c0392b;color:#fff;cursor:pointer;">'+esc(opts.confirmLabel||'Yes, remove')+'</button>'
+      +'<button type="button" id="pwConfirmNo" style="flex:1;min-width:140px;font-size:20px;font-weight:800;padding:14px;border:2px solid #0a2a4a;border-radius:10px;background:#fff;color:#0a2a4a;cursor:pointer;">Cancel</button>'
+      +'</div></div>';
+    document.body.appendChild(m);
+    const inp=m.querySelector('#pwConfirmInput'), err=m.querySelector('#pwConfirmErr');
+    const done=v=>{ m.remove(); resolve(v); };
+    const tryOk=()=>{
+      const real=CUR && CUR.password;
+      if(!real){ err.textContent='No password is set on this account, so this cannot be confirmed. Ask your admin.'; return; }
+      if(inp.value!==real){ err.textContent='Wrong password. Nothing was changed.'; inp.value=''; inp.focus(); return; }
+      done(true);
+    };
+    m.querySelector('#pwConfirmOk').onclick=tryOk;
+    m.querySelector('#pwConfirmNo').onclick=()=>done(false);
+    inp.addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); tryOk(); } });
+    setTimeout(()=>{ try{ inp.focus(); }catch(e){} },50);
+  });
+}
+function rosterRemovalEffects(subject){
+  return [
+    'The student(s) will no longer appear on YOUR marking list or in Enter Scores for '+subject+'.',
+    'For optional subjects (and every A-Level subject) they will no longer count as taking '+subject+': it can disappear from their report card, mark sheets and class analysis, and change their average / points and class position.',
+    'Scores already saved are not deleted from the database, but they may stop showing anywhere once the student is off the list.',
+    'To undo it you must tick the student(s) again under "Edit my student list / add missing students".'
+  ];
+}
 /* ---------- No-internet guard ----------
    Anything that SAVES, SENDS, UPLOADS or DELETES data is stopped BEFORE it runs when the device is
    offline, and a big, clear message says to check the connection first. The page is left exactly as it
