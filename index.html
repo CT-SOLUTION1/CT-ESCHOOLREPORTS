@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-45'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-46'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -988,9 +988,10 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-fit{height:calc(100vh - 140*var(--uk));height:calc(100dvh - 140*var(--uk));display:flex;flex-direction:column;gap:calc(6*var(--uk));min-height:0;overflow:hidden;}
 .ad-head{flex:none;}
 .ad-logo{width:calc(36*var(--uk));height:calc(36*var(--uk));border-radius:calc(8*var(--uk));object-fit:cover;flex-shrink:0;border:1px solid #cfd9e3;}
-.ad-school{font-size:calc(16*var(--uk));line-height:1.15;}
-.ad-fit h2{font-size:calc(17*var(--uk));}
-.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((37vh) / var(--tr,4) * 5));width:min(100%, calc((37dvh) / var(--tr,4) * 5));}
+.ad-school{font-size:calc(11*var(--uk)) !important;line-height:1.1;}
+.ad-fit .ad-head h2{font-size:calc(11*var(--uk)) !important;margin:0 !important;font-weight:600;}
+.ad-logo{width:calc(26*var(--uk)) !important;height:calc(26*var(--uk)) !important;}
+.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((33vh) / var(--tr,4) * 5));width:min(100%, calc((33dvh) / var(--tr,4) * 5));}
 .ad-rest{flex:1 1 0;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:calc(8*var(--uk));}
 .ad-rest .card{margin:0;padding:calc(8*var(--uk));min-height:0;box-sizing:border-box;}
 .ad-rest h3{font-size:calc(12*var(--uk));margin:0 0 calc(3*var(--uk));}
@@ -998,14 +999,22 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-rest .btn,.ad-rest .btn-gold,.ad-rest .btn-outline{font-size:calc(10*var(--uk));padding:calc(5*var(--uk)) calc(8*var(--uk));min-height:0;}
 .ad-enrol{display:flex;flex-direction:column;}
 .ad-scroll{flex:1;min-height:0;overflow:auto;}
-.ad-enrol table th,.ad-enrol table td{font-size:calc(10*var(--uk));padding:calc(2*var(--uk)) calc(5*var(--uk));}
+.ad-enrol table{width:100%;table-layout:fixed;}
+.ad-enrol table th,.ad-enrol table td{font-size:calc(9.5*var(--uk)) !important;line-height:1.05;padding:calc(1*var(--uk)) calc(2*var(--uk)) !important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:auto;}
+.ad-enrol table tr{height:calc(16*var(--uk));}
+.ad-enrol table th:first-child,.ad-enrol table td:first-child{width:30%;}
+.ad-enrol{padding:calc(6*var(--uk)) !important;}
 .ad-side{display:flex;flex-direction:column;gap:calc(6*var(--uk));min-height:0;overflow:auto;}
-.ad-side>.card:not(.ad-counts .card){display:flex;align-items:center;justify-content:space-between;gap:calc(8*var(--uk));flex:none;}
+.ad-side>.card:not(.ad-counts .card):not(.ad-fin){display:flex;align-items:center;justify-content:space-between;gap:calc(8*var(--uk));flex:none;}
 .ad-side>.card h3,.ad-side>.card p{margin:0;}
-.ad-side>.card .small:not(h3){display:none;}
-.ad-side>.card p.small b{display:inline;}
+.ad-side>.card:not(.ad-fin) .small:not(h3){display:none;}
+.ad-side>.card:not(.ad-fin) p.small b{display:inline;}
+.ad-fin{flex:none;}
+.ad-fin h3{margin-bottom:calc(3*var(--uk)) !important;}
+.ad-fin p.small{margin-bottom:calc(6*var(--uk)) !important;}
 .ad-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(6*var(--uk));}
-.ad-counts .card h1{margin:0;font-size:calc(15*var(--uk));line-height:1.1;}
+.ad-counts .card{padding:calc(10*var(--uk)) !important;}
+.ad-counts .card h1{margin:calc(3*var(--uk)) 0 0;font-size:calc(20*var(--uk));line-height:1.1;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -6935,7 +6944,7 @@ function adminDashboard(){
         <div class="card"><div class="small">STUDENTS</div><h1>${DB.students.filter(s=>s.status!=='left').length}</h1></div>
         <div class="card"><div class="small">TERM / YEAR</div><h1>${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</h1></div>
       </div>
-      <div class="card"><h3>FINANCE AND REQUIREMENTS</h3><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
+      <div class="card ad-fin"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
       <div class="card"><h3>Old Students: ${DB.students.filter(s=>s.status==='left').length}</h3><button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button></div>
       <div class="card"><h3>Year, Term & Promotion</h3><p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b></p><button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button></div>
     </div>
