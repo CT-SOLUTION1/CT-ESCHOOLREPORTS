@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-50'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-52'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -995,7 +995,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-school{font-size:calc(11*var(--uk)) !important;line-height:1.1;}
 .ad-fit .ad-head h2{font-size:calc(11*var(--uk)) !important;margin:0 !important;font-weight:600;}
 .ad-logo{width:calc(26*var(--uk)) !important;height:calc(26*var(--uk)) !important;}
-.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((26vh) / var(--tr,4) * 5));width:min(100%, calc((26dvh) / var(--tr,4) * 5));}
+.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((26vh * var(--tsc,1)) / var(--tr,4) * 5));width:min(100%, calc((26dvh * var(--tsc,1)) / var(--tr,4) * 5));}
 .ad-rest{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:calc(6*var(--uk));}
 .ad-rest .card{margin:0;padding:calc(8*var(--uk));min-height:0;box-sizing:border-box;}
 .ad-rest h3{font-size:calc(12*var(--uk));margin:0 0 calc(3*var(--uk));}
@@ -1042,7 +1042,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* Teacher dashboard: whole page fits one screen (no scrolling). Tiles stay SQUARE, three per line, sized from the
    screen height; the assignments table takes what is left and its text shrinks to fit. Enter Scores is solid red. */
 .ad-fit .tile-grid.tile-grid-3{flex:none;margin:0 auto;max-width:none;gap:calc(6*var(--uk));
-  width:min(100%, calc((38vh) / var(--tr,3) * 3));width:min(100%, calc((38dvh) / var(--tr,3) * 3));}
+  width:min(100%, calc((38vh * var(--tsc,1)) / var(--tr,3) * 3));width:min(100%, calc((38dvh * var(--tsc,1)) / var(--tr,3) * 3));}
 .td-fit .tile-grid-3 .tile{aspect-ratio:1 / 1;min-height:0;height:auto;padding:3%;gap:3%;border-radius:calc(10*var(--uk));container-type:inline-size;overflow:hidden;box-sizing:border-box;}
 .td-fit .tile-grid-3 .tile-icon{font-size:26cqw;line-height:1;}
 .td-fit .tile-grid-3 .tile-label{font-size:12cqw;letter-spacing:0;line-height:1.1;-webkit-text-stroke:0;}
@@ -1054,6 +1054,14 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .td-assign{flex:1 1 auto;overflow:hidden;display:block;}
 .td-assign table{width:100%;font-size:var(--fs,calc(9*var(--uk))) !important;}
 .td-assign table th,.td-assign table td{font-size:inherit !important;line-height:1.1;padding:calc(1*var(--uk)) calc(3*var(--uk)) !important;}
+
+/* Admin dashboard: Term & Year stacked on two lines; ADD NEW or VIEW STUDENTS tile is orange with heavy lettering. */
+.ad-counts .card h1.ad-ty{line-height:1.15;white-space:normal;overflow:visible;}
+.ad-counts .card h1.ad-ty .fit-t{display:inline-block;}
+.tile.tile-orange{background:#F57C00 !important;border:2px solid #b85a00 !important;box-shadow:0 3px 10px rgba(245,124,0,.5);}
+.tile.tile-orange:hover,.tile.tile-orange:active{background:#d96a00 !important;}
+.tile.tile-orange .tile-label{color:#fff !important;font-weight:900 !important;-webkit-text-stroke:.9px #fff !important;text-shadow:0 0 1px #fff;}
+.tile.tile-orange .tile-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -5220,7 +5228,10 @@ function featureTilesHTML(role, excludeKey){
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
   return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:(role==='teacher'?` style="--tr:${Math.ceil(items.length/3)}"`:'')}>${items.map(([k,l,icon])=>`
-    ${(role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
+    ${((role==='admin' && k==='students') || ((role==='admin'||role==='teacher') && k==='classanalysis')) ? `<button type="button" class="tile tile-orange" data-action="nav:${k}" aria-label="${esc(l)}">
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label">${l}</span>
+    </button>` : (role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label rc-word">ENTER</span>
       <span class="tile-icon">${icon}</span>
       <span class="tile-label rc-word">SCORES</span>
@@ -5230,7 +5241,7 @@ function featureTilesHTML(role, excludeKey){
       <span class="tile-label rc-word">CARDS</span>
     </button>` : `<button type="button" class="tile" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
-      <span class="tile-label">${l}</span>
+      <span class="tile-label">${(role==='admin' && k==='databackup') ? 'BACK UP' : l}</span>
     </button>`}`).join('')}</div>`;
 }
 function renderShell(){
@@ -6989,7 +7000,7 @@ function adminDashboard(){
       <div class="ad-counts">
         <div class="card"><div class="small"><span class="fit-t" data-fit>CLASSES</span></div><h1><span class="fit-t" data-fit>${DB.classes.length}</span></h1></div>
         <div class="card"><div class="small"><span class="fit-t" data-fit>STUDENTS TOTAL</span></div><h1><span class="fit-t" data-fit>${DB.students.filter(s=>s.status!=='left').length}</span></h1></div>
-        <div class="card"><div class="small"><span class="fit-t" data-fit>TERM / YEAR</span></div><h1><span class="fit-t" data-fit>${esc(i.currentTerm||'—')} / ${esc(String(i.currentYear||''))}</span></h1></div>
+        <div class="card"><div class="small"><span class="fit-t" data-fit>TERM &amp; YEAR</span></div><h1 class="ad-ty"><span class="fit-t" data-fit>${esc(i.currentTerm||'—')}</span><br><span class="fit-t" data-fit>${esc(String(i.currentYear||'—'))}</span></h1></div>
       </div>
       <div class="card ad-fin"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
       <div class="card"><h3>Old Students: ${DB.students.filter(s=>s.status==='left').length}</h3><button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button></div>
@@ -15865,7 +15876,17 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
       }
     }
   }
-  var _fit=fit; fit=function(){ _fit(); fitH(); };
+  function fitAll(){
+    var ps=document.querySelectorAll('.ad-fit');
+    for(var n=0;n<ps.length;n++){
+      var el=ps[n], sc=1, g=0;
+      el.style.removeProperty('--tsc');
+      while(el.scrollHeight>el.clientHeight+1 && sc>0.3 && g++<50){
+        sc-=0.03; el.style.setProperty('--tsc',sc.toFixed(2));
+      }
+    }
+  }
+  var _fit=fit; fit=function(){ _fit(); fitAll(); fitH(); };
   function sched(){ if(!q) q=requestAnimationFrame(fit); }
   new MutationObserver(function(m){
     for(var i=0;i<m.length;i++){ if(m[i].addedNodes.length){ sched(); return; } }
