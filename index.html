@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-58'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-62'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1073,6 +1073,41 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* Admin dashboard ends exactly at the counts: no empty space below, still capped to one screen. */
 .ad-fit.ad-admin{height:auto;max-height:calc(100vh - 140*var(--uk));max-height:calc(100dvh - 140*var(--uk));}
 .ad-admin .ad-rest{flex:0 1 auto;}
+
+/* Dashboards use the full width: from the blue menu's edge to the right edge of the screen. */
+.main:has(> .ad-fit){max-width:none;padding:calc(6*var(--uk)) calc(3*var(--uk));}
+.ad-fit:not(.fit-ready){visibility:hidden;}
+.ad-fit .tile-grid.tile-grid-5{grid-template-columns:repeat(var(--cols,5),minmax(0,1fr)) !important;}
+.ad-fit .tile-grid.tile-grid-3{grid-template-columns:repeat(var(--cols,3),minmax(0,1fr)) !important;width:calc(100% * var(--tsc,1)) !important;}
+/* Term dates: editable by the admin below the counts; read-only for teachers below the assignments. */
+.ad-side>.ad-dates{display:flex !important;flex-direction:row !important;align-items:flex-end !important;justify-content:space-between !important;gap:calc(10*var(--uk));}
+.ad-dates>div{flex:1 1 0;min-width:0;}
+.ad-dates label{display:block;font-size:calc(11*var(--uk));font-weight:800;color:#0A2A4A;white-space:nowrap;margin:0 0 calc(2*var(--uk));}
+.ad-dates input{width:100%;box-sizing:border-box;font-size:calc(11*var(--uk));padding:calc(3*var(--uk)) calc(4*var(--uk));min-height:0;}
+.td-dates{flex:none;display:flex;flex-direction:row;justify-content:space-between;gap:calc(10*var(--uk));font-size:calc(11*var(--uk));color:#0A2A4A;}
+.td-dates b{font-weight:900;}
+
+/* Strict standards: 5 square tiles per line (admin) / 3 (teacher), always spanning the full width beside the blue menu.
+   The page is never squeezed to shrink the tiles; if it is taller than the screen it simply scrolls. */
+.ad-fit.ad-admin,.ad-fit.td-fit{height:auto !important;max-height:none !important;overflow:visible !important;}
+.ad-fit .tile-grid.tile-grid-5,.ad-fit .tile-grid.tile-grid-3{width:100% !important;}
+.td-fit .td-assign{flex:none;overflow:visible;}
+
+/* No scrolling: when 5 (admin) / 3 (teacher) square tiles across the full width would make the page taller than the screen,
+   the tiles move to the left (sized to the screen height) and the rest of the dashboard stacks beside them on the right. */
+.ad-fit.ad-split{display:grid !important;grid-template-columns:var(--tw) minmax(0,1fr);column-gap:calc(4*var(--uk));row-gap:calc(4*var(--uk));align-content:start;overflow:hidden !important;}
+.ad-fit.ad-split>*{min-width:0;}
+.ad-fit.ad-split>.ad-head,.ad-fit.ad-split>.note{grid-column:1 / -1;}
+.ad-fit.ad-split>.tile-grid{grid-column:1;grid-row:2;width:100% !important;margin:0 !important;}
+.ad-fit.ad-split>.ad-rest{grid-column:2;grid-row:2;height:var(--bh);overflow:hidden;display:flex;flex-direction:column;}
+.td-fit.ad-split .td-assign{flex:1 1 auto;overflow:hidden;}
+.ad-enrol table th,.ad-enrol table td{font-size:calc(9*var(--uk)*var(--es,1)) !important;}
+.ad-enrol table th{font-size:calc(6.5*var(--uk)*var(--es,1)) !important;}
+.ad-enrol table tr{height:calc(14*var(--uk)*var(--es,1));}
+
+/* Dashboards scale with the screen: bigger screen = bigger content, same layout always (full-width 5 / 3 tiles per line, stacked, no scrolling).
+   Only when the screen is too short for square tiles do the tiles become slightly wider than tall. */
+.ad-fit.th-set .tile-grid .tile{aspect-ratio:auto !important;height:var(--th) !important;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -5242,7 +5277,7 @@ function featureTilesHTML(role, excludeKey){
   }
   // The report-card tile of each role (admin: reports, teacher: treports, parent: preport) is drawn double-length (two tiles wide).
   const WIDE_TILE_KEYS = ['reports','treports','preport'];
-  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:(role==='teacher'?` style="--tr:${Math.ceil(items.length/3)}"`:'')}>${items.map(([k,l,icon])=>`
+  return `<div class="tile-grid${role==='teacher'?' tile-grid-3':(role==='admin'?' tile-grid-5':'')}"${role==='admin'?` style="--tr:${Math.ceil(items.length/5)}"`:(role==='teacher'?` style="--tr:${Math.ceil(items.length/3)}"`:'')}${role==='admin'?' data-autocols="5,5"':(role==='teacher'?' data-autocols="3,3"':'')}>${items.map(([k,l,icon])=>`
     ${((role==='admin'||role==='teacher') && k==='classanalysis') ? `<button type="button" class="tile tile-orange tile-ra" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label">RESULT</span>
       <span class="tile-icon">${icon}</span>
@@ -7020,6 +7055,10 @@ function adminDashboard(){
         <div class="card"><div class="small"><span class="fit-t" data-fit>CLASSES</span></div><h1><span class="fit-t" data-fit>${DB.classes.length}</span></h1></div>
         <div class="card"><div class="small"><span class="fit-t" data-fit>STUDENTS TOTAL</span></div><h1><span class="fit-t" data-fit>${DB.students.filter(s=>s.status!=='left').length}</span></h1></div>
         <div class="card"><div class="small"><span class="fit-t" data-fit>TERM &amp; YEAR</span></div><h1 class="ad-ty"><span class="fit-t" data-fit>${esc(i.currentTerm||'—')}</span><br><span class="fit-t" data-fit>${esc(String(i.currentYear||'—'))}</span></h1></div>
+      </div>
+      <div class="card ad-term ad-dates">
+        <div><label for="adTermEnd">${esc(i.currentTerm||'Term')} ends on</label><input type="date" id="adTermEnd" data-terminfo="termEndDate" value="${esc(i.termEndDate||'')}"></div>
+        <div><label for="adNextBegin">Next term begins on</label><input type="date" id="adNextBegin" data-terminfo="nextTermBeginDate" value="${esc(i.nextTermBeginDate||'')}"></div>
       </div>
     </div>
   </div>
@@ -9761,6 +9800,7 @@ function teacherDashboard(){
   <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Papers</th></tr>
   ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId); return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${esc(a.papers.join(', '))}</td></tr>`; }).join('') || '<tr><td colspan="3">No assignments yet.</td></tr>'}
   </table></div>
+  <div class="card td-dates"><div>${esc(i.currentTerm||'Term')} ends on: <b>${fmtDate(i.termEndDate)}</b></div><div>Next term begins on: <b>${fmtDate(i.nextTermBeginDate)}</b></div></div>
   </div>
   </div>`;
 }
@@ -15892,8 +15932,52 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
       }
     }
   }
+  function fitCols(){
+    var gs=document.querySelectorAll('.tile-grid[data-autocols]');
+    for(var n=0;n<gs.length;n++){
+      var g=gs[n], box=g.closest('.ad-fit'); if(!box) continue;
+      var pr=g.dataset.autocols.split(','), mn=+pr[0]||3, mx=+pr[1]||mn, cnt=g.children.length;
+      g.style.removeProperty('--cols'); box.style.removeProperty('--tsc');
+      var W=g.parentElement.clientWidth, cs=getComputedStyle(g), gap=parseFloat(cs.columnGap)||2;
+      var H, bcs=getComputedStyle(box);
+      if(box.classList.contains('ad-admin')){
+        var maxH=parseFloat(bcs.maxHeight)||box.clientHeight, others=0, kids=box.children;
+        for(var j=0;j<kids.length;j++){ if(kids[j]!==g) others+=Math.max(kids[j].offsetHeight,kids[j].scrollHeight); }
+        H=maxH-others-(kids.length-1)*(parseFloat(bcs.rowGap)||0);
+      } else { H=box.clientHeight*0.6; }
+      var pick=mx;
+      for(var c=mn;c<=mx;c++){
+        var tile=(W-gap*(c-1))/c, rows=Math.ceil(cnt/c);
+        if(rows*tile+gap*(rows-1)<=H){ pick=c; break; }
+      }
+      g.style.setProperty('--cols',pick);
+    }
+  }
+  function fitScale(){
+    var bs=document.querySelectorAll('.ad-fit.ad-admin,.ad-fit.td-fit');
+    for(var n=0;n<bs.length;n++){
+      var box=bs[n], g=box.querySelector('.tile-grid'); if(!g) continue;
+      box.classList.remove('ad-split','th-set');
+      ['--tw','--bh','--es','--th','--uk'].forEach(function(v){ box.style.removeProperty(v); });
+      var W=box.clientWidth; if(W<=0) continue;
+      var top=box.getBoundingClientRect().top+(window.pageYOffset||0);
+      var cap=(window.innerHeight||document.documentElement.clientHeight)-top-10;
+      var cols=parseInt(getComputedStyle(g).getPropertyValue('--cols'))||(box.classList.contains('td-fit')?3:5);
+      var rows=Math.ceil(g.children.length/cols), u=W/412, rg=parseFloat(getComputedStyle(box).rowGap)||0;
+      for(var i=0;i<45;i++){
+        box.style.setProperty('--uk',u.toFixed(3)+'px');
+        box.classList.remove('th-set'); box.style.removeProperty('--th');
+        if(box.scrollHeight<=cap+1) break;                      // square tiles fit: done
+        var gap=parseFloat(getComputedStyle(g).columnGap)||2, tileW=(W-gap*(cols-1))/cols, others=0, kids=box.children;
+        for(var j=0;j<kids.length;j++){ if(kids[j]!==g) others+=Math.max(kids[j].offsetHeight,kids[j].scrollHeight)+rg; }
+        var th=(cap-others-rg-gap*(rows-1))/rows;
+        if(th>=tileW*0.7){ box.style.setProperty('--th',th.toFixed(1)+'px'); box.classList.add('th-set'); break; }
+        u*=0.95;
+      }
+    }
+  }
   function fitAll(){
-    var ps=document.querySelectorAll('.ad-fit');
+    var ps=document.querySelectorAll('.ad-fit:not(.ad-admin):not(.td-fit)');
     for(var n=0;n<ps.length;n++){
       var el=ps[n], sc=1, g=0;
       el.style.removeProperty('--tsc');
@@ -15902,12 +15986,28 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
       }
     }
   }
-  var _fit=fit; fit=function(){ _fit(); fitAll(); fitH(); };
+  var _fit=fit; fit=function(){ fitCols(); fitScale(); _fit(); fitAll(); fitH();
+    var fs=document.querySelectorAll('.ad-fit:not(.fit-ready)'); for(var z=0;z<fs.length;z++) fs[z].classList.add('fit-ready'); };
   function sched(){ if(!q) q=requestAnimationFrame(fit); }
   new MutationObserver(function(m){
     for(var i=0;i<m.length;i++){ if(m[i].addedNodes.length){ sched(); return; } }
   }).observe(document.documentElement,{childList:true,subtree:true});
   window.addEventListener('resize',sched);
+  // sizes come from --ui-k and the viewport, which can still change a moment after load: fit again when they do
+  new MutationObserver(sched).observe(document.documentElement,{attributes:true,attributeFilter:['style']});
+  try{ if(window.visualViewport) window.visualViewport.addEventListener('resize',sched); }catch(e){}
+  setTimeout(sched,500); setTimeout(sched,1700);
+  // the dashboard is never left hidden if something goes wrong while fitting
+  setTimeout(function(){ var fs=document.querySelectorAll('.ad-fit:not(.fit-ready)'); for(var z=0;z<fs.length;z++) fs[z].classList.add('fit-ready'); },1200);
+  // admin edits the term dates right on the dashboard
+  document.addEventListener('change',function(e){
+    var t=e.target; if(!t||!t.dataset||!t.dataset.terminfo) return;
+    try{
+      if(typeof CUR==='undefined'||CUR.role!=='admin') return;
+      DB.info[t.dataset.terminfo]=t.value||'';
+      saveInfo().catch(function(err){ console.error(err); alert('Could not save the date. Please try again.'); });
+    }catch(err){ console.error(err); }
+  });
   window.addEventListener('orientationchange',sched);
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(sched);
   document.addEventListener('DOMContentLoaded',sched);
