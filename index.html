@@ -1249,11 +1249,30 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
     raf=0;
     try{
       document.querySelectorAll('.se-wrap.se-score').forEach(function(w){
-        var t=w.querySelector('.se-ph-title'); if(!t) return;
-        var nat=t.scrollWidth; if(!nat) return;
-        var wpx=Math.ceil(nat+2);   // the sub-column strip has no padding; the swipe-arrow gutter is added in CSS
-        var cur=parseFloat(w.style.getPropertyValue('--se-pw'))||0;
-        if(Math.abs(cur-wpx)>0.5) w.style.setProperty('--se-pw', wpx+'px');
+        var th=w.querySelector('th.se-prevh'), t=w.querySelector('.se-ph-title'); if(!t||!th) return;
+        var tw=w.clientWidth; if(!tw) return;
+        var inn=th.querySelector('.se-pr-in'); var n=inn?inn.children.length:0; if(!n) n=1;
+        var titleW=Math.ceil(t.scrollWidth+2); if(titleW<3) return;
+        // 1) natural width of the widest sub-column content (header or mark), measured with room to spare
+        w.style.setProperty('--se-cw','300px');
+        var maxc=0, els=w.querySelectorAll('.se-sh,.se-pc'), rg=document.createRange();
+        for(var i=0;i<els.length;i++){ rg.selectNodeContents(els[i]); var cw0=rg.getBoundingClientRect().width; if(cw0>maxc) maxc=cw0; }
+        var cw=Math.max(8, Math.ceil(maxc)+2);
+        // 2) the column is as wide as its sub-columns need (never narrower than its title); spare title width is shared out
+        var need=Math.max(n*cw, titleW);
+        // 3) the other columns (entering + Actions) stay at their own tight widths; the Student column keeps room for its longest name
+        var ths=w.querySelectorAll('table.se-table tr:first-child > th'), others=0;
+        for(var j=0;j<ths.length;j++){ if(ths[j]!==th && j>0) others+=ths[j].offsetWidth; }
+        // Student column is only as wide as the longest name (capped at 45% of the screen; longer names swipe sideways)
+        var sNat=0, nms=w.querySelectorAll('.se-nm'); for(var k=0;k<nms.length;k++){ rg.selectNodeContents(nms[k]); var nw=rg.getBoundingClientRect().width; if(nw>sNat) sNat=nw; }
+        var reserve=Math.min(Math.ceil(sNat)+12, tw*0.45);
+        var maxPrev=tw-others-reserve-6, more=false, pw=need;
+        if(need>maxPrev){ pw=Math.max(titleW, Math.floor(maxPrev)); more=true; }   // too many tests for the screen: strip scrolls sideways
+        else cw=need/n;
+        w.style.setProperty('--se-cw', cw+'px');
+        w.style.setProperty('--se-pw', pw+'px');
+        th.classList.toggle('se-more', more);
+        w.querySelectorAll('td.se-prevtd').forEach(function(td){ td.classList.toggle('se-more', more); });
       });
     }catch(e){}
   }
@@ -1500,6 +1519,25 @@ table.sp-students td:nth-child(4){text-align:left;}
   .layout .main:has(table.sp-students) .card:has(> table.sp-students),
   .layout .main.main-wide .card[data-orient]:has(> table.sp-students){padding-left:calc(9*var(--uk)) !important;padding-right:calc(3*var(--uk)) !important;}
   table.rc-list td:first-child,table.rc-list th:first-child,table.sp-students td:first-child,table.sp-students th:first-child{text-align:center !important;}
+  /* Report-card list: clearly visible tick boxes (they scale with the table), and the Combination / Subjects
+     column shrinks to its content: only its header may wrap, the contents stay on one line */
+  table.rc-list input[type=checkbox]{width:calc(var(--tf,12)*1.9px) !important;height:calc(var(--tf,12)*1.9px) !important;min-width:0 !important;min-height:0 !important;margin:0 !important;padding:0 !important;vertical-align:middle;}
+  table.rc-list th.rc-combo{white-space:normal !important;width:1%;line-height:1.1;}
+  table.rc-list td.rc-combo{white-space:nowrap !important;width:1%;}
+  .ra-loading{display:block;margin-top:8px;font-weight:800;font-size:calc(15*var(--uk));color:var(--blue,#0A5BA8);}
+  /* ENTER SCORES table: columns hug their contents. Student takes only what is left over (its names still swipe
+     sideways), ALREADY SCORED grows with its sub-columns, the entering and Actions columns stay tight. */
+  .se-wrap.se-score .se-table{table-layout:auto;width:auto;max-width:100%;}   /* the table is only as wide as its columns: no idle space between them */
+  .se-wrap.se-score .se-table th:first-child{width:auto;}
+  .se-wrap.se-score .se-table th:not(:first-child){white-space:nowrap;}
+  .se-wrap.se-score .se-table th:not(:first-child) .se-en span{white-space:nowrap;}
+  .se-wrap.se-score .se-table th.se-prevh{min-width:var(--se-pw,calc(44*var(--uk)));}
+  .se-wrap.se-score .se-table th.se-prevh.se-more{min-width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
+  .se-wrap.se-score .se-table th:nth-last-child(2){min-width:calc(46*var(--uk));}
+  /* Student Performance form: nothing below the table, so it can fill the page */
+  .layout .main:has(table.sp-students.sp-fill){padding-bottom:0 !important;}
+  .layout .main:has(table.sp-students.sp-fill) .card:has(> table.sp-students){padding-bottom:0 !important;margin-bottom:0 !important;}
+  table.sp-students td{vertical-align:middle;}
   /* REPORT CARD: same A4 layout, but only a hairline gap at either end of the screen (phones/tablets fill the width) */
   .main.main-rc{padding-left:2px !important;padding-right:2px !important;box-sizing:border-box;}
   @media (max-width:900px){.main.main-rc{max-width:none !important;width:100% !important;flex:1 1 100% !important;}.main.main-rc .rc-card:not(.pdf-report-card){max-width:100% !important;}}
@@ -1519,9 +1557,10 @@ table.sp-students td:nth-child(4){text-align:left;}
   /* the one-sentence RESULT SUMMARY line spans the whole table and is the only text allowed to wrap */
   table.ra-table td[colspan]{width:1px;white-space:normal !important;}
   /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
-  label.rc-sel-lbl{font-size:calc(13.5*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
+  label.rc-sel-lbl{font-size:calc(12.5*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
   select[onchange^="filterClass"], #rcSearch{min-height:calc(32*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
+@media print{table.sp-students tr{height:auto !important;}}
 /* PRINTED / DOWNLOADED LISTS (everything except report cards): light 0.5px rules.
    Print: applied only while a list is being printed (body.print-thin, set by printFramed(true)).
    PDF download: applied to the capture root via .pdf-thin (see html2canvasBold(el, opts, true)). */
@@ -1558,6 +1597,10 @@ table.sp-students td:nth-child(4){text-align:left;}
   #printArea .lp-page:last-child{break-after:auto;page-break-after:auto;}
   #printArea .lp-page.lp-port{page:lp-port;min-height:258mm;}
   #printArea .lp-page.lp-land{page:lp-land;min-height:172mm;}
+  /* Student Performance pages: the table grows to the page-number line, rows share the height, words a little larger */
+  #printArea .lp-page.lp-fill table{flex:1 1 auto;}
+  #printArea .lp-page.lp-fill table th, #printArea .lp-page.lp-fill table td{font-size:12px !important;vertical-align:middle;}
+  #printArea .lp-page.lp-fill table th{font-size:11px !important;}
   #printArea .lp-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}
   #printArea .lp-page .mm-header{padding-bottom:6px;margin-bottom:8px;}
   #printArea .lp-page .mm-header .mm-logo{width:48px;height:48px;}
@@ -8634,10 +8677,10 @@ function reportsListView(){
       <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
       ${selectedCount ? `<button class="btn-outline" onclick="clearReportSelection()">Clear selection</button>` : ''}
     </div>` : ''}
-    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th>Combination/Subjects</th><th>Action</th></tr>
+    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
     ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td>${esc(comboLabel(s,cls))}</td>
+      return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${isAdmin?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
@@ -9420,7 +9463,21 @@ function classAnalysisView(){
 }
 // Result Analysis only ever shows ONE term/year, so it loads just that period's score shard
 // (not every historical shard) — and picking a class/form renders at once from what is in memory.
-function setAnalysisParam(key, value){
+function setAnalysisParam(key, value, _go){
+  if(VIEW && VIEW.name==='classanalysis' && (key==='classId'||key==='level') && value){
+    const sel = document.querySelector('select[onchange*="setAnalysisParam(\''+key+'\'"]');
+    if(sel && !sel.dataset.raBusy){
+      sel.dataset.raBusy = '1';                       // the chosen class/level simply stays shown in the box
+      document.querySelectorAll('.center-stage select, .center-stage button').forEach(x=>{ if(x!==sel) x.disabled = true; });
+      const msg = document.createElement('div'); msg.className = 'ra-loading'; msg.setAttribute('role','status');
+      msg.textContent = '⏳ Loading ' + (key==='level' ? 'level' : 'class') + ' analysis… please wait';
+      sel.insertAdjacentElement('afterend', msg);
+      const vw = VIEW;
+      // let the browser paint the message first, then do the heavy work
+      requestAnimationFrame(()=>setTimeout(()=>{ if(VIEW===vw) setAnalysisParam(key, value, true); }, 0));
+      return;
+    }
+  }
   VIEW.params = {...VIEW.params, [key]: value};
   render();
   if(key==='term' || key==='year'){
@@ -15137,7 +15194,9 @@ function printListPaged(opts){
     const dataRows = allRows.filter(r=>!isSummary(r));
     const sumRows = allRows.filter(isSummary);
     const orient = card.getAttribute('data-orient') || defOrient;
-    const per = rowsFor(orient);
+    let per = rowsFor(orient);
+    const fill = table.classList.contains('sp-students');
+    if(fill && dataRows.length>=35) per = 35;   // 35+ students: full pages of 35 that are stretched to fill the sheet
     const chunks = [];
     for(let i=0;i<dataRows.length;i+=per) chunks.push(dataRows.slice(i,i+per));
     if(!chunks.length) chunks.push([]);
@@ -15155,7 +15214,7 @@ function printListPaged(opts){
     }catch(e){ colPct = null; }
     const h3 = card.querySelector('h3'), sm = card.querySelector('p.small');
     return {
-      table, headRows, chunks, orient, colPct,
+      table, headRows, chunks, orient, colPct, fill,
       title: (h3 && h3.textContent) || opts.title || '',
       meta: [(sm && sm.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  ')
     };
@@ -15169,7 +15228,7 @@ function printListPaged(opts){
       sc.chunks.forEach(rows=>{
         pn++;
         const pg = document.createElement('div');
-        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land');
+        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land') + (sc.fill && rows.filter(r=>!isSummary(r)).length>=35 ? ' lp-fill' : '');
         pg.innerHTML = `<div class="mm-header">${logo}<span class="mm-school">${esc(school)}</span>`
           + (sc.title?`<div class="mm-title">${esc(sc.title)}</div>`:'')
           + (sc.meta?`<div class="mm-meta">${esc(sc.meta)}</div>`:'') + `</div>`;
@@ -15505,7 +15564,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     holder.innerHTML = '';
     holder.appendChild(measureTable);
     // Narrow tables (few columns) are stretched so the sheet fills the page side to side.
-    const tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, orientation==='portrait' ? 720 : 1000);
+    const tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, section.fillPage ? 560 : (orientation==='portrait' ? 720 : 1000));
     const headerH = measureThead.offsetHeight || 0;
     const bodyTrs = [...measureTbody.rows];
     const rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 22);
@@ -15590,13 +15649,14 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       const fitStyle = document.createElement('style');
       pageWrap.appendChild(fitStyle);
       const maxRatio = usableH/usableW;
-      if(opts.fillPage && opts.rowsPerPage){
+      const fillThisPage = section.fillPage && chunks[ci].filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=35;  // only a page holding 35+ students is stretched
+      if(fillThisPage || (opts.fillPage && opts.rowsPerPage)){
         // Stretch (or tighten) the row height so a full page of learners fills the sheet from the
         // header down to the page-number strip, with no empty band at the bottom. A short last page
         // keeps exactly the same row height as the full ones.
         const targetH = maxRatio * pageWrap.offsetWidth;
         const k = Math.max(1, chunks[ci].length);
-        const nRows = Math.max(opts.rowsPerPage, k);
+        const nRows = fillThisPage ? k : Math.max(opts.rowsPerPage, k);
         let rowH = 20;
         for(let it=0; it<8; it++){
           fitStyle.textContent = `.pg-fit tbody td{padding-top:0 !important;padding-bottom:0 !important;vertical-align:middle !important;height:${rowH}px !important;}`;
@@ -15661,11 +15721,16 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
       subtitle: opts.forceSubtitle || [(descEl && descEl.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  '),
       school: opts.school || (DB.info && DB.info.schoolName) || '',
       orientation: card.getAttribute('data-orient') || opts.orientation || '',
+      fillPage: table.classList.contains('sp-students') && bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=35,   // Student Performance with 35+ students: pages are filled
       headRows, bodyRows
     };
   }).filter(Boolean);
   if(!sections.length){ alert('Nothing to export yet.'); return; }
-  await renderTableSectionsAsPdf(sections, filename, opts);
+  // The on-screen "fill the screen" row heights must not leak into the PDF's own page layout.
+  const savedH = [];
+  sections.forEach(sec=>sec.bodyRows.concat(sec.headRows).forEach(r=>{ if(r && r.style && r.style.height){ savedH.push([r,r.style.height]); r.style.height=''; } }));
+  try{ await renderTableSectionsAsPdf(sections, filename, opts); }
+  finally{ savedH.forEach(([r,h])=>{ r.style.height=h; }); }
 }
 /* ---------- Master Mark Sheet export: its table isn't wrapped in a .card (it uses
    its own .mm-page/.mm-tablewrap layout) and its header spans TWO <tr> rows in
@@ -16331,11 +16396,29 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
       var box=t.parentElement; if(!box) return;
       var cs=getComputedStyle(box), avail=box.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
       if(avail<=0) return;
+      var sp=t.classList.contains('sp-students');
+      var fillIt=false;
+      if(sp){
+        for(var r0=0;r0<t.rows.length;r0++) t.rows[r0].style.height='';   // start from natural row height
+        var cnt=0; for(var r1=1;r1<t.rows.length;r1++){ var c1=t.rows[r1].cells; if(!(c1.length===1 && c1[0].colSpan>1)) cnt++; }
+        fillIt = cnt>=35;                                                 // fill the page only for 35 students or more
+        t.classList.toggle('sp-fill', fillIt);
+      }
       t.style.width='auto';
-      var lo=5, hi=22, best=5;
+      var lo=5, hi=fillIt?30:22, best=5;
       for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
       t.style.setProperty('--tf',best);
       t.style.width='100%';
+      // Student Performance form: fill the page down to the bottom edge (no blank space under it) by sharing
+      // the spare height between the rows; a long class that is taller than the screen just scrolls as usual.
+      if(fillIt && !document.body.classList.contains('print-thin') && !t.closest('.pdf-thin')){
+        var topAbs=t.getBoundingClientRect().top+(window.pageYOffset||0);
+        var availH=window.innerHeight-topAbs-2, n=t.rows.length, h=t.offsetHeight;
+        if(n && availH>h+1){
+          var add=(availH-h)/n;
+          for(var r=0;r<n;r++){ var tr=t.rows[r]; tr.style.height=(tr.offsetHeight+add)+'px'; }
+        }
+      }
     });
   }
   var q=0; function sched(){ if(q) return; q=requestAnimationFrame(function(){ q=0; try{fit();}catch(e){} }); }
