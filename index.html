@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-54'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-56'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1064,11 +1064,15 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .tile.tile-orange .tile-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
 
 /* All dashboard tiles: thick pink outline, bold thick labels. Result Analysis reads RESULT / icon / ANALYSIS. */
-.tile-grid button.tile{border:calc(3*var(--uk)) solid #FF4FA3 !important;box-sizing:border-box;}
+.tile-grid button.tile{border:0.5px solid #FF4FA3 !important;box-sizing:border-box;}
 .tile-grid .tile .tile-label{font-weight:900 !important;-webkit-text-stroke:.7px currentColor !important;}
 .tile.tile-orange .tile-label{-webkit-text-stroke:1px #fff !important;}
 .tile.tile-ra{justify-content:space-around;}
 .tile.tile-ra .tile-label{font-size:15cqw !important;line-height:1 !important;letter-spacing:0 !important;}
+
+/* Admin dashboard ends exactly at the counts: no empty space below, still capped to one screen. */
+.ad-fit.ad-admin{height:auto;max-height:calc(100vh - 140*var(--uk));max-height:calc(100dvh - 140*var(--uk));}
+.ad-admin .ad-rest{flex:0 1 auto;}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -6983,7 +6987,7 @@ function financeStudentView(studentId){
 function adminDashboard(){
   const i = DB.info;
   return `
-  <div class="ad-fit">
+  <div class="ad-fit ad-admin">
   <div class="flex ad-head" style="align-items:center;gap:12px;">
     ${i.logo?`<img loading="lazy" decoding="async" src="${i.logo}" alt="" class="ad-logo">`:''}
     <div>
@@ -7017,9 +7021,6 @@ function adminDashboard(){
         <div class="card"><div class="small"><span class="fit-t" data-fit>STUDENTS TOTAL</span></div><h1><span class="fit-t" data-fit>${DB.students.filter(s=>s.status!=='left').length}</span></h1></div>
         <div class="card"><div class="small"><span class="fit-t" data-fit>TERM &amp; YEAR</span></div><h1 class="ad-ty"><span class="fit-t" data-fit>${esc(i.currentTerm||'—')}</span><br><span class="fit-t" data-fit>${esc(String(i.currentYear||'—'))}</span></h1></div>
       </div>
-      <div class="card ad-fin"><h3>FINANCE AND REQUIREMENTS</h3><p class="small">Secure financial management, fee tracking, student payments, balances and school requirements follow-up.</p><button class="btn-gold" data-action="nav:finance">Open Finance & Requirements</button></div>
-      <div class="card"><h3>Old Students: ${DB.students.filter(s=>s.status==='left').length}</h3><button type="button" class="btn-outline" data-action="nav:oldstudents">View Old Students</button></div>
-      <div class="card ad-term"><div><h3>Year, Term & Promotion</h3><p class="small">Current: <b>${esc(i.currentTerm||'—')}, ${esc(String(i.currentYear||''))}</b>. Term/Year settings, score deadlines, and promoting students to their next class have been combined into one place.</p></div><button type="button" class="btn" data-action="nav:promote">Open Year, Term & Promotion</button></div>
     </div>
   </div>
   </div>`;
