@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-64'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-69'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1493,6 +1493,77 @@ table.sp-students td:nth-child(4){text-align:left;}
   if(document.body) start(); else document.addEventListener('DOMContentLoaded',start);
 })();
 </script>
+<style id="cte-thin-lists">
+@media screen{
+  /* RESULT ANALYSIS forms: tight columns that match their contents, no sideways scroll — wide tables stack (wrap) and fit the screen */
+  .card[data-orient]{overflow:visible !important;}
+  table.ra-table.data-table{display:table !important;width:max-content !important;min-width:0 !important;overflow:visible !important;white-space:nowrap !important;table-layout:auto !important;margin:0;}
+  table.ra-table.data-table thead{display:table-header-group !important;}
+  table.ra-table.data-table tbody{display:table-row-group !important;}
+  table.ra-table.data-table tr{display:table-row !important;width:auto !important;}
+  table.ra-table th, table.ra-table td{padding:4px 6px !important;font-size:12px !important;line-height:1.25;white-space:nowrap !important;}
+  table.ra-table th{font-size:10px !important;letter-spacing:0 !important;}
+  /* the one-sentence RESULT SUMMARY line spans the whole table and is the only text allowed to wrap */
+  table.ra-table td[colspan]{width:1px;white-space:normal !important;}
+  /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
+  label.rc-sel-lbl{font-size:calc(16*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
+  select[onchange^="filterClass"], #rcSearch{min-height:calc(32*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
+}
+/* PRINTED / DOWNLOADED LISTS (everything except report cards): light 0.5px rules.
+   Print: applied only while a list is being printed (body.print-thin, set by printFramed(true)).
+   PDF download: applied to the capture root via .pdf-thin (see html2canvasBold(el, opts, true)). */
+@media print{
+  body.print-thin.print-frame::after{border:3px solid #0A2A4A !important;box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 3.5px #0A2A4A !important;}
+  body.print-thin.print-frame #printArea table.data-table,
+  body.print-thin.print-frame #printArea table.report-table,
+  body.print-thin.print-frame #printArea table.mm-table,
+  body.print-thin.print-frame #printArea table.ims-table,
+  body.print-thin.print-frame #printArea table.as-table{border:0.5px solid #0A2A4A !important;}
+  body.print-thin.print-frame #printArea table.data-table th,
+  body.print-thin.print-frame #printArea table.report-table th,
+  body.print-thin.print-frame #printArea table.mm-table th,
+  body.print-thin.print-frame #printArea table.ims-table th,
+  body.print-thin.print-frame #printArea table.as-table th,
+  body.print-thin.print-frame #printArea table.data-table td,
+  body.print-thin.print-frame #printArea table.report-table td,
+  body.print-thin.print-frame #printArea table.mm-table td,
+  body.print-thin.print-frame #printArea table.ims-table td,
+  body.print-thin.print-frame #printArea table.as-table td,
+  body.print-thin.print-frame #printArea table.data-table th:last-child,
+  body.print-thin.print-frame #printArea table.report-table th:last-child,
+  body.print-thin.print-frame #printArea table.mm-table th:last-child,
+  body.print-thin.print-frame #printArea table.ims-table th:last-child,
+  body.print-thin.print-frame #printArea table.as-table th:last-child,
+  body.print-thin.print-frame #printArea table.data-table td:last-child,
+  body.print-thin.print-frame #printArea table.report-table td:last-child,
+  body.print-thin.print-frame #printArea table.mm-table td:last-child,
+  body.print-thin.print-frame #printArea table.ims-table td:last-child,
+  body.print-thin.print-frame #printArea table.as-table td:last-child{border-width:0.5px !important;border-style:solid !important;border-color:#0A2A4A !important;}
+  body.print-thin.print-frame #printArea table tr.total td{border-top-width:0.5px !important;}
+  /* list pages built by printListPaged() */
+  #printArea .lp-page{display:flex;flex-direction:column;box-sizing:border-box;break-after:page;page-break-after:always;}
+  #printArea .lp-page:last-child{break-after:auto;page-break-after:auto;}
+  #printArea .lp-page.lp-port{page:lp-port;min-height:258mm;}
+  #printArea .lp-page.lp-land{page:lp-land;min-height:172mm;}
+  #printArea .lp-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}
+  #printArea .lp-page .mm-header{padding-bottom:6px;margin-bottom:8px;}
+  #printArea .lp-page .mm-header .mm-logo{width:48px;height:48px;}
+  #printArea .lp-page .mm-header .mm-school{font-size:18px;}
+  #printArea .lp-page table{width:100% !important;min-width:0 !important;display:table !important;border-collapse:collapse !important;}
+  #printArea .lp-page table th, #printArea .lp-page table td{padding:3px 5px !important;font-size:10px !important;height:6mm;white-space:normal !important;word-break:break-word;}
+  #printArea .lp-page table th{font-size:9px !important;}
+  #printArea .lp-page.lp-land table th, #printArea .lp-page.lp-land table td{font-size:9px !important;}
+  #printArea .lp-page.lp-land table th{font-size:8px !important;}
+}
+.pdf-thin.pdf-thin.pdf-thin table,
+.pdf-thin.pdf-thin.pdf-thin table th,
+.pdf-thin.pdf-thin.pdf-thin table td,
+.pdf-thin.pdf-thin.pdf-thin table th:last-child,
+.pdf-thin.pdf-thin.pdf-thin table td:last-child{border-width:0.5px !important;border-style:solid;border-color:#0A2A4A;}
+.pdf-thin.pdf-thin.pdf-thin table.pg-compact th, .pdf-thin.pdf-thin.pdf-thin table.pg-compact td{padding-left:4px !important;padding-right:4px !important;}
+table.pg-compact th, table.pg-compact td{padding-left:4px !important;padding-right:4px !important;font-size:11px !important;}
+table.pg-compact th{font-size:9px !important;}
+</style>
 </head>
 <body>
 <!-- Boot splash: shown the instant the page loads, before any JS/data has run.
@@ -6096,7 +6167,7 @@ function printFinanceTable(exportElId){
   const revert = ()=>{ if(el.id==='printArea') el.id = oldId; window.removeEventListener('afterprint', revert); };
   window.addEventListener('afterprint', revert);
   setTimeout(revert, 15000); // fallback in case a browser never fires afterprint
-  printLandscape();
+  printListPaged({orientation:'landscape'});
 }
 async function downloadFinanceTablePdf(exportElId, filename){
   const el = document.getElementById(exportElId);
@@ -8523,12 +8594,12 @@ function reportsListView(){
   ${teacherAccessCard}
   ${isAdmin ? rcShadeCard() : ''}
   <div class="card">
-    <label>Filter by class</label>
+    <label class="rc-sel-lbl">Filter by class</label>
     <select onchange="filterClass(this.value)">
       <option value="">-- all classes --</option>
       ${visibleClasses.map(c=>`<option value="${c.id}" ${VIEW.params.classId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
     </select>
-    <label style="margin-top:12px;">Search a student by name</label>
+    <label class="rc-sel-lbl" style="margin-top:12px;">Search a student by name</label>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
@@ -9192,7 +9263,6 @@ function classAnalysisView(){
   const sel = VIEW.params;
   // The class starts BLANK (nothing preselected) and so does the analysis form: the user must
   // pick a class, then choose which of the three analysis forms to open.
-  const cls = (sel.classId && visibleClasses.find(c=>c.id===sel.classId)) || null;
   const term = sel.term || DB.info.currentTerm;
   const year = sel.year || DB.info.currentYear;
   const ANALYSIS_FORMS = [
@@ -9202,30 +9272,45 @@ function classAnalysisView(){
     ['all','Show all three forms at once']
   ];
   const formKey = ANALYSIS_FORMS.some(f=>f[0]===sel.form) ? sel.form : '';
+  // Order of selection: 1) analysis form, 2) class (Student Performance / Class-wise / all three) or
+  // level (Level-wise), 3) term and year. For Level-wise, a class of the chosen level is used only to
+  // carry that level through the existing builders.
+  const levelsAvail = ['P','O','A'].filter(l=>visibleClasses.some(c=>c.level===l));
+  const selLevel = levelsAvail.includes(sel.level) ? sel.level : '';
+  const isLevelForm = formKey==='levelwise';
+  const cls = isLevelForm
+    ? (selLevel ? visibleClasses.find(c=>c.level===selLevel) : null)
+    : ((sel.classId && visibleClasses.find(c=>c.id===sel.classId)) || null);
+  const levelWord = l => l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "A'-Level");
   const selectorsHtml = (showButtons)=>`
   <h2>RESULT ANALYSIS</h2>
   <div class="card">
-    <div class="grid3">
-      <div><label>Class</label><select onchange="setAnalysisParam('classId', this.value)">
+    <div><label>1. Analysis form</label>
+      <div class="flex" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+      ${ANALYSIS_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1])}</button>`).join('')}
+      </div></div>
+    ${formKey?`<div class="grid3" style="margin-top:12px;">
+      ${isLevelForm
+        ? `<div><label>2. Level</label><select onchange="setAnalysisParam('level', this.value)">
+        <option value="" ${selLevel?'':'selected'}>— Select level —</option>
+        ${levelsAvail.map(l=>`<option value="${l}" ${l===selLevel?'selected':''}>${esc(levelWord(l))}</option>`).join('')}
+      </select></div>`
+        : `<div><label>2. Class</label><select onchange="setAnalysisParam('classId', this.value)">
         <option value="" ${cls?'':'selected'}>— Select class —</option>
         ${visibleClasses.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-      </select></div>
+      </select></div>`}
       <div><label>Term</label><select onchange="setAnalysisParam('term', this.value)">
         ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
       </select></div>
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setAnalysisParam('year', this.value)"></div>
-    </div>
-    ${cls?`<div style="margin-top:12px;"><label>Analysis form</label>
-      <div class="flex" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
-      ${ANALYSIS_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1])}</button>`).join('')}
-      </div></div>`:''}
+    </div>`:''}
     ${showButtons?`<div class="flex" style="margin-top:14px;">
       <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>
-      <button class="btn" onclick="printLandscape()">Print</button>
+      <button class="btn" onclick="printClassAnalysis()">Print</button>
     </div>`:''}
   </div>`;
-  if(!cls) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Select a class to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div></div>`;
-  if(!formKey) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now choose an analysis form above: Student Performance, Subject Performance (Class-wise), Subject Performance (Level-wise), or show all three at once.</p></div></div>`;
+  if(!formKey) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Start by choosing an analysis form above: Student Performance, Subject Performance (Class-wise), Subject Performance (Level-wise), or all three at once. You will then pick the class (or the level, for Level-wise).</p></div></div>`;
+  if(!cls) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now select ${isLevelForm?'a level':'a class'} to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div></div>`;
   const isA = cls.level==='A';
 
   termForSummary = term; yearForSummary = year;
@@ -9269,11 +9354,11 @@ function classAnalysisView(){
   const classWiseHtml = `
     <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
+    <table class="data-table ra-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
     ${classRows || `<tr><td colspan="${6+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 6+classGradeCols.length, cls.level) : ''}
     </table>`;
-  return `<div class="card" style="overflow:auto;">${classWiseHtml}</div>`;
+  return `<div class="card" data-orient="landscape" style="overflow:auto;">${classWiseHtml}</div>`;
   };
   const buildLevelWise = ()=>{
   const spLevel = cls.level;
@@ -9285,12 +9370,12 @@ function classAnalysisView(){
   const levelWiseHtml = `
     <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)}</h3>
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
-    <table class="data-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    <table class="data-table ra-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
     ${levelRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
     ${levelPairs.length ? resultSummaryRow(levelPairs, 5+classGradeCols.length, cls.level) : ''}
     </table>`;
 
-  return `<div class="card" style="overflow:auto;">${levelWiseHtml}</div>`;
+  return `<div class="card" data-orient="landscape" style="overflow:auto;">${levelWiseHtml}</div>`;
   };
   const buildStudents = ()=>{
   const studentStats = classStudentStats(cls, term, year);
@@ -9301,10 +9386,10 @@ function classAnalysisView(){
   }).join('');
 
   const studentsCardHtml = `
-  <div class="card" style="overflow:auto;">
+  <div class="card" data-orient="portrait" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
-    <table class="data-table sp-students"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
+    <table class="data-table ra-table sp-students"><tr><th>Pos</th><th>Adm No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
     ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
     </table>
@@ -9315,7 +9400,7 @@ function classAnalysisView(){
     : formKey==='classwise' ? buildClassWise()
     : formKey==='levelwise' ? buildLevelWise()
     : buildStudents() + buildClassWise() + buildLevelWise();
-  const anTop = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="setAnalysisParam('form','')">◀ Back</button><b>${esc(cls.name)} — ${esc(term)}, ${esc(String(year))}</b><button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button><button class="btn" onclick="printLandscape()">Print</button></div>`;
+  const anTop = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="setAnalysisParam('form','')">◀ Back</button><b>${esc(isLevelForm ? levelWord(cls.level) : cls.name)} — ${esc(term)}, ${esc(String(year))}</b><button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button><button class="btn" onclick="printClassAnalysis()">Print</button></div>`;
   return anTop + `
   <div id="printArea">${formHtml}
   </div>`;
@@ -12498,7 +12583,7 @@ Continue?`);
       // Class Analysis always exports landscape with every column intact — see
       // downloadTablesAsPdf for why this uses a dedicated row-paginating export
       // instead of the generic canvas-tiling one used by wide mark sheets.
-      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_result_analysis${(VIEW&&VIEW.params&&VIEW.params.form)?'_'+VIEW.params.form:''}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`);
+      await downloadTablesAsPdf('printArea', `${((VIEW&&VIEW.params&&VIEW.params.form)==='levelwise' && cls ? mmLevelLabel(cls.level) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_result_analysis${(VIEW&&VIEW.params&&VIEW.params.form)?'_'+VIEW.params.form:''}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {subtitleSuffix: `${term||''}, ${year||''}`});
       break;
     }
     case 'dlReportCardPdf': {
@@ -12541,7 +12626,7 @@ Continue?`);
       showActionProgress('Preparing Master Mark Sheet for printing…', el);
       await refreshScoresForPeriod(printTermEnc?decodeURIComponent(printTermEnc):DB.info.currentTerm, printYear||DB.info.currentYear);
       document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
-      printPortrait({landscape:true});
+      printPortrait({landscape:true, pageNumberBottom:true});
       render();
       break;
     }
@@ -14914,23 +14999,27 @@ function toPngDataUrl(dataUrl){
 
 // html2canvas wrapper: temporarily marks the captured root with .pdf-bold so tables and rules
 // are rendered with heavy borders in the downloaded PDF (the on-screen look is unchanged).
-async function html2canvasBold(el, opts){
-  el.classList.add('pdf-bold');
+async function html2canvasBold(el, opts, thin){
+  // thin=true is used for printable LISTS (light 0.5px rules); report cards keep the bold look.
+  const cls = thin ? 'pdf-thin' : 'pdf-bold';
+  el.classList.add(cls);
   try{ return await html2canvas(el, opts); }
-  finally{ el.classList.remove('pdf-bold'); }
+  finally{ el.classList.remove(cls); }
 }
 const PDF_FRAME_M = 26;
 const PDF_FRAME_CONTENT = 42;
-function drawPdfFrame(pdf){
+function drawPdfFrame(pdf, isList){
   const w = pdf.internal.pageSize.getWidth(), h = pdf.internal.pageSize.getHeight(), M = PDF_FRAME_M;
   pdf.setDrawColor(10,42,74);
+  // Lists: one THICK outer line + one THIN inner line. Other documents keep their existing frame.
   pdf.setLineWidth(2.8); pdf.rect(M+4, M+4, w-M*2-8, h-M*2-8);
-  pdf.setLineWidth(1.2); pdf.rect(M+8.5, M+8.5, w-M*2-17, h-M*2-17);
+  pdf.setLineWidth(isList ? 0.5 : 1.2); pdf.rect(M+8.5, M+8.5, w-M*2-17, h-M*2-17);
 }
 // Browser Print / Save-as-PDF: same frame on every printed page (see body.print-frame CSS).
-function printFramed(){
+function printFramed(thin){
   document.body.classList.add('print-frame');
-  const done = ()=>{ document.body.classList.remove('print-frame'); window.removeEventListener('afterprint', done); };
+  if(thin) document.body.classList.add('print-thin'); // light 0.5px table rules (lists only, never report cards)
+  const done = ()=>{ document.body.classList.remove('print-frame'); document.body.classList.remove('print-thin'); window.removeEventListener('afterprint', done); };
   window.addEventListener('afterprint', done);
   setTimeout(done, 20000); // fallback in case a browser never fires afterprint
   window.print();
@@ -15006,6 +15095,110 @@ function printLandscape(){
   document.head.appendChild(st);
   printFramed();
   setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
+}
+
+// Prints every table inside #printArea as school-headed pages: letterhead (logo + school name + title)
+// on EVERY page, "Page x of y" pinned to the bottom of every page, light 0.5px rules, and the paper
+// orientation chosen per table (card[data-orient]: 'portrait' or 'landscape', else opts.orientation).
+// The on-screen #printArea is rebuilt page by page for the print and put back exactly as it was.
+function printListPaged(opts){
+  opts = opts || {};
+  const area = document.getElementById('printArea');
+  if(!area){ alert('Nothing to print yet.'); return; }
+  const cards = [...area.querySelectorAll('.card')].filter(c=>c.querySelector('table'));
+  if(!cards.length){ alert('Nothing to print yet.'); return; }
+  const defOrient = opts.orientation || 'landscape';
+  const rowsFor = o => o==='portrait' ? 30 : 17;
+  const isSummary = r => r.cells.length===1 && r.cells[0].colSpan>1;
+  const logo = (DB.info && DB.info.logo) ? `<img src="${DB.info.logo}" class="mm-logo" alt="">` : '';
+  const school = (DB.info && DB.info.schoolName) || '';
+  const secs = cards.map(card=>{
+    const table = card.querySelector('table');
+    const thead = table.querySelector('thead');
+    const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
+    const allRows = thead ? [...table.querySelectorAll('tbody tr')] : [...table.querySelectorAll('tr')].slice(1);
+    const dataRows = allRows.filter(r=>!isSummary(r));
+    const sumRows = allRows.filter(isSummary);
+    const orient = card.getAttribute('data-orient') || defOrient;
+    const per = rowsFor(orient);
+    const chunks = [];
+    for(let i=0;i<dataRows.length;i+=per) chunks.push(dataRows.slice(i,i+per));
+    if(!chunks.length) chunks.push([]);
+    chunks[chunks.length-1] = chunks[chunks.length-1].concat(sumRows);
+    // Real on-screen column proportions, so every page of a table has identical columns.
+    let colPct = null;
+    try{
+      const ref = dataRows[0];
+      const headCols = headRows.length ? [...headRows[headRows.length-1].cells].reduce((a,c)=>a+c.colSpan,0) : 0;
+      if(ref && ref.cells.length===headCols && [...ref.cells].every(c=>c.colSpan===1)){
+        const ws = [...ref.cells].map(c=>c.getBoundingClientRect().width);
+        const tot = ws.reduce((a,b)=>a+b,0);
+        if(tot>0 && ws.every(w=>w>0)) colPct = ws.map(w=>w/tot*100);
+      }
+    }catch(e){ colPct = null; }
+    const h3 = card.querySelector('h3'), sm = card.querySelector('p.small');
+    return {
+      table, headRows, chunks, orient, colPct,
+      title: (h3 && h3.textContent) || opts.title || '',
+      meta: [(sm && sm.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  ')
+    };
+  });
+  const totalPages = secs.reduce((a,sc)=>a+sc.chunks.length, 0);
+  const originalHtml = area.innerHTML;
+  try{
+    const out = document.createElement('div');
+    let pn = 0;
+    secs.forEach(sc=>{
+      sc.chunks.forEach(rows=>{
+        pn++;
+        const pg = document.createElement('div');
+        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land');
+        pg.innerHTML = `<div class="mm-header">${logo}<span class="mm-school">${esc(school)}</span>`
+          + (sc.title?`<div class="mm-title">${esc(sc.title)}</div>`:'')
+          + (sc.meta?`<div class="mm-meta">${esc(sc.meta)}</div>`:'') + `</div>`;
+        const t = sc.table.cloneNode(false);
+        t.style.zoom = ''; // on-screen fit-to-width scaling must not carry into print
+        if(sc.colPct){
+          t.classList.add('ms-fixed');
+          const cg = document.createElement('colgroup');
+          sc.colPct.forEach(w=>{ const c=document.createElement('col'); c.style.width=w.toFixed(3)+'%'; cg.appendChild(c); });
+          t.appendChild(cg);
+        }
+        const th = document.createElement('thead');
+        sc.headRows.forEach(r=>th.appendChild(r.cloneNode(true)));
+        t.appendChild(th);
+        const tb = document.createElement('tbody');
+        rows.forEach(r=>tb.appendChild(r.cloneNode(true)));
+        t.appendChild(tb);
+        pg.appendChild(t);
+        const n = document.createElement('div'); n.className = 'lp-pgnum'; n.textContent = `Page ${pn} of ${totalPages}`;
+        pg.appendChild(n);
+        out.appendChild(pg);
+      });
+    });
+    area.innerHTML = '';
+    area.appendChild(out);
+  }catch(e){ console.warn('list print pagination failed, printing as-is', e); area.innerHTML = originalHtml; }
+
+  const st = document.createElement('style');
+  st.id = 'listPrintOverride';
+  st.textContent = '@page{ size: A4 ' + secs[0].orient + '; margin:8mm; } @page lp-port{ size: A4 portrait; margin:8mm; } @page lp-land{ size: A4 landscape; margin:8mm; }';
+  document.head.appendChild(st);
+  const restore = ()=>{
+    const e = document.getElementById('listPrintOverride'); if(e) e.remove();
+    const a = document.getElementById('printArea'); if(a && a.innerHTML !== originalHtml) a.innerHTML = originalHtml;
+    window.removeEventListener('afterprint', restore);
+  };
+  window.addEventListener('afterprint', restore);
+  setTimeout(restore, 30000); // fallback if a browser never fires afterprint
+  printFramed(true);
+}
+// Result Analysis "Print": school letterhead + page numbers on every page; Student Performance prints on
+// PORTRAIT paper, the two Subject Performance forms (class-wise, level-wise) on LANDSCAPE paper.
+function printClassAnalysis(){
+  const p = (typeof VIEW!=='undefined' && VIEW && VIEW.params) || {};
+  const term = p.term || DB.info.currentTerm, year = p.year || DB.info.currentYear;
+  printListPaged({orientation:'landscape', subtitleSuffix: `${term||''}, ${year||''}`});
 }
 // Portrait print for mark sheets (landscape for the General Mark Sheets): 35 learners per page, school letterhead on EVERY page.
 // The on-screen #printArea is temporarily rebuilt into one block per page (page-break
@@ -15085,8 +15278,9 @@ function printPortrait(opts){
           const wrap = document.createElement('div'); wrap.className = 'ms-tbl' + (rows.length>=PER_PAGE ? ' ms-full' : '');
           wrap.appendChild(t); pg.appendChild(wrap);
         } else pg.appendChild(t);
-        if(opts.pageNumberBottom){ const n=document.createElement('div'); n.className='ms-pgnum'; n.textContent=`Page ${pi+1} of ${pages.length}`; pg.appendChild(n); }
         if(pi===pages.length-1 && footerHtml){ const f=document.createElement('div'); f.style.marginTop='8px'; f.innerHTML=footerHtml; pg.appendChild(f); }
+        if(opts.pageNumberBottom && !opts.fillPage){ pg.classList.add('ms-pgfoot'); pg.style.minHeight = opts.landscape ? '172mm' : '258mm'; }
+        if(opts.pageNumberBottom){ const n=document.createElement('div'); n.className='ms-pgnum'; n.textContent=`Page ${pi+1} of ${pages.length}`; pg.appendChild(n); }
         out.appendChild(pg);
       });
       area.innerHTML = '';
@@ -15100,6 +15294,7 @@ function printPortrait(opts){
     + '@media print{'
     + ' .ms-print-page{break-after:page;page-break-after:always;} .ms-print-page:last-child{break-after:auto;page-break-after:auto;}'
     + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:262mm;box-sizing:border-box;}'
+    + ' .ms-print-page.ms-pgfoot{display:flex;flex-direction:column;box-sizing:border-box;}'
     + ' .ms-print-page.ms-fill .ms-tbl.ms-full{flex:1 1 auto;min-height:0;} .ms-print-page.ms-fill .ms-tbl.ms-full table{height:100%;}'
     + ' .ms-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}'
     + ' .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
@@ -15117,7 +15312,7 @@ function printPortrait(opts){
   };
   window.addEventListener('afterprint', restore);
   setTimeout(restore, 30000); // fallback if a browser never fires afterprint
-  printFramed();
+  printFramed(true);
 }
 async function downloadElementAsPdf(elementId, filename, opts={}){
   const el = document.getElementById(elementId);
@@ -15221,7 +15416,7 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
       const img = tile.toDataURL('image/jpeg',0.95);
       if(!first) pdf.addPage();
       first = false;
-      drawPdfFrame(pdf);
+      drawPdfFrame(pdf, true);
       pdf.addImage(img,'JPEG',PDF_FRAME_CONTENT,PDF_FRAME_CONTENT, sw*scale, sh*scale);
       if(multiPage){
         pdf.setFontSize(7); pdf.setTextColor(150);
@@ -15250,15 +15445,14 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
   try{
   try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; }
   const { jsPDF } = window.jspdf;
-  const orientation = opts.orientation || 'landscape';
-  const pdf = new jsPDF(orientation==='portrait'?'p':'l', 'pt', 'a4');
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
+  // Every list gets the school letterhead on each page and "Page x of y" at the foot of each page.
+  opts = Object.assign({}, opts, {pageNumberBottom:true});
+  // Each section may have its own paper orientation (e.g. Subject Performance = portrait).
+  const secOrient = sec => (sec && sec.orientation) || opts.orientation || 'landscape';
+  const pdf = new jsPDF(secOrient(sections[0])==='portrait'?'p':'l', 'pt', 'a4');
   const margin = PDF_FRAME_CONTENT; // keeps every table inside the page frame
-  const usableW = pageW - margin*2;
-  // Mark sheets put "Page x of y" at the foot of the page, so a small strip is kept free for it.
-  const pgNumStrip = opts.pageNumberBottom ? 16 : 0;
-  const usableH = pageH - margin*2 - pgNumStrip;
+  // A strip is kept free at the bottom of every page for the page number.
+  const pgNumStrip = 16;
 
   const holder = document.createElement('div');
   holder.style.position='fixed'; holder.style.left='-9999px'; holder.style.top='0';
@@ -15269,6 +15463,11 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
   let firstPageOverall = true;
 
   for(const section of sections){
+    const orientation = secOrient(section);
+    const pageW = orientation==='portrait' ? 595.28 : 841.89;
+    const pageH = orientation==='portrait' ? 841.89 : 595.28;
+    const usableW = pageW - margin*2;
+    const usableH = pageH - margin*2 - pgNumStrip;
     const headRows = section.headRows.filter(Boolean);
     const bodyRows = section.bodyRows;
 
@@ -15279,7 +15478,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     // Mark Sheet's paper-number sub-header under each subject — measure and repeat
     // correctly as a whole unit.
     const measureTable = document.createElement('table');
-    measureTable.className = 'data-table';
+    measureTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '');
     const measureThead = document.createElement('thead');
     headRows.forEach(r=>measureThead.appendChild(r.cloneNode(true)));
     measureTable.appendChild(measureThead);
@@ -15325,7 +15524,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     for(let ci=0; ci<chunks.length; ci++){
       showActionProgress(`${progressLabel} — page ${ci+1} of ${chunks.length}`);
       const pageTable = document.createElement('table');
-      pageTable.className = 'data-table';
+      pageTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '');
       pageTable.style.width = tableW+'px';
       const thead = document.createElement('thead');
       headRows.forEach(r=>thead.appendChild(r.cloneNode(true)));
@@ -15373,9 +15572,6 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       pageTable.classList.add('pg-fit');
       const fitStyle = document.createElement('style');
       pageWrap.appendChild(fitStyle);
-      const closeStyle = document.createElement('style'); // closing vertical line on the last column
-      closeStyle.textContent = '.pg-fit th:last-child,.pg-fit td:last-child{border-right:2px solid #0A2A4A !important;}';
-      pageWrap.appendChild(closeStyle);
       const maxRatio = usableH/usableW;
       if(opts.fillPage && opts.rowsPerPage){
         // Stretch (or tighten) the row height so a full page of learners fills the sheet from the
@@ -15398,19 +15594,24 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       }
       }
 
-      const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'});
+      const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'}, true); // light 0.5px list rules
       const img = canvas.toDataURL('image/jpeg', 0.95);
       let w = usableW;
       let h = canvas.height*usableW/canvas.width;
       if(h > usableH){ const k = usableH/h; w *= k; h = usableH; } // shrink to fit, never distort
-      if(!firstPageOverall) pdf.addPage();
+      if(!firstPageOverall) pdf.addPage('a4', orientation==='portrait'?'p':'l');
       firstPageOverall = false;
-      drawPdfFrame(pdf);
+      drawPdfFrame(pdf, true);
       pdf.addImage(img, 'JPEG', margin + (usableW-w)/2, margin, w, h);
-      if(opts.pageNumberBottom){
-        pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(10,42,74);
-        pdf.text(`Page ${ci+1} of ${chunks.length}`, pageW/2, pageH - margin - 4, {align:'center'});
-      }
+    }
+  }
+  // "Page x of y" at the bottom of EVERY page, numbered across the whole document.
+  { const total = pdf.getNumberOfPages();
+    for(let pn=1; pn<=total; pn++){
+      pdf.setPage(pn);
+      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(10,42,74);
+      pdf.text(`Page ${pn} of ${total}`, pw/2, ph - margin - 4, {align:'center'});
     }
   }
 
@@ -15440,8 +15641,9 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
     const bodyRows = thead ? [...table.querySelectorAll('tbody tr')] : [...table.querySelectorAll('tr')].slice(1);
     return {
       title: opts.forceTitle || (titleEl && titleEl.textContent) || opts.title || '',
-      subtitle: opts.forceSubtitle || (descEl && descEl.textContent) || opts.subtitle || '',
-      school: opts.school || '',
+      subtitle: opts.forceSubtitle || [(descEl && descEl.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  '),
+      school: opts.school || (DB.info && DB.info.schoolName) || '',
+      orientation: card.getAttribute('data-orient') || opts.orientation || '',
       headRows, bodyRows
     };
   }).filter(Boolean);
@@ -16122,6 +16324,33 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   var q=0; function sched(){ if(q) return; q=requestAnimationFrame(function(){ q=0; try{fit();}catch(e){} }); }
   new MutationObserver(function(m){ for(var i=0;i<m.length;i++){ if(m[i].addedNodes.length){ sched(); return; } } }).observe(document.documentElement,{childList:true,subtree:true});
   window.addEventListener('resize',sched); window.addEventListener('orientationchange',sched);
+})();
+</script>
+<script>
+/* Result Analysis tables: every cell stays on ONE line; a table wider than its card is scaled down
+   (never scrolled) so every column appears fully on screen. */
+(function(){
+  var raf=0;
+  function fit(){
+    raf=0;
+    var tbs=document.querySelectorAll('table.ra-table');
+    for(var i=0;i<tbs.length;i++){
+      var t=tbs[i]; t.style.zoom='';
+      var host=t.parentElement; if(!host) continue;
+      var cs=getComputedStyle(host);
+      var avail=host.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+      var w=t.offsetWidth;
+      if(avail>0 && w>avail+1) t.style.zoom=String(Math.max(0.2,(avail-1)/w));
+    }
+  }
+  function sched(){ if(!raf) raf=requestAnimationFrame(fit); }
+  window.addEventListener('resize',sched); window.addEventListener('orientationchange',sched);
+  function start(){
+    var app=document.getElementById('app')||document.body;
+    try{ new MutationObserver(sched).observe(app,{childList:true,subtree:true}); }catch(e){}
+    sched();
+  }
+  if(document.body) start(); else document.addEventListener('DOMContentLoaded',start);
 })();
 </script>
 </body>
