@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-56'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-24-58'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -995,7 +995,7 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-school{font-size:calc(11*var(--uk)) !important;line-height:1.1;}
 .ad-fit .ad-head h2{font-size:calc(11*var(--uk)) !important;margin:0 !important;font-weight:600;}
 .ad-logo{width:calc(26*var(--uk)) !important;height:calc(26*var(--uk)) !important;}
-.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:min(100%, calc((26vh * var(--tsc,1)) / var(--tr,4) * 5));width:min(100%, calc((26dvh * var(--tsc,1)) / var(--tr,4) * 5));}
+.ad-fit .tile-grid.tile-grid-5{flex:none;margin:0 auto;width:calc(100% * var(--tsc,1));gap:calc(2*var(--uk)) !important;}
 .ad-rest{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:calc(6*var(--uk));}
 .ad-rest .card{margin:0;padding:calc(8*var(--uk));min-height:0;box-sizing:border-box;}
 .ad-rest h3{font-size:calc(12*var(--uk));margin:0 0 calc(3*var(--uk));}
@@ -1041,8 +1041,8 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 
 /* Teacher dashboard: whole page fits one screen (no scrolling). Tiles stay SQUARE, three per line, sized from the
    screen height; the assignments table takes what is left and its text shrinks to fit. Enter Scores is solid red. */
-.ad-fit .tile-grid.tile-grid-3{flex:none;margin:0 auto;max-width:none;gap:calc(6*var(--uk));
-  width:min(100%, calc((38vh * var(--tsc,1)) / var(--tr,3) * 3));width:min(100%, calc((38dvh * var(--tsc,1)) / var(--tr,3) * 3));}
+.ad-fit .tile-grid.tile-grid-3{flex:none;margin:0 auto;max-width:none;gap:calc(2*var(--uk)) !important;
+  width:min(100%, calc((50vh * var(--tsc,1)) / var(--tr,3) * 3));width:min(100%, calc((50dvh * var(--tsc,1)) / var(--tr,3) * 3));}
 .td-fit .tile-grid-3 .tile{aspect-ratio:1 / 1;min-height:0;height:auto;padding:3%;gap:3%;border-radius:calc(10*var(--uk));container-type:inline-size;overflow:hidden;box-sizing:border-box;}
 .td-fit .tile-grid-3 .tile-icon{font-size:26cqw;line-height:1;}
 .td-fit .tile-grid-3 .tile-label{font-size:12cqw;letter-spacing:0;line-height:1.1;-webkit-text-stroke:0;}
@@ -1060,13 +1060,13 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-counts .card h1.ad-ty .fit-t{display:inline-block;}
 .tile.tile-orange{background:#F57C00 !important;border:2px solid #b85a00 !important;box-shadow:0 3px 10px rgba(245,124,0,.5);}
 .tile.tile-orange:hover,.tile.tile-orange:active{background:#d96a00 !important;}
-.tile.tile-orange .tile-label{color:#fff !important;font-weight:900 !important;-webkit-text-stroke:.9px #fff !important;text-shadow:0 0 1px #fff;}
+.tile.tile-orange .tile-label{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.6px #000 !important;text-shadow:none !important;}
 .tile.tile-orange .tile-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
 
 /* All dashboard tiles: thick pink outline, bold thick labels. Result Analysis reads RESULT / icon / ANALYSIS. */
 .tile-grid button.tile{border:0.5px solid #FF4FA3 !important;box-sizing:border-box;}
 .tile-grid .tile .tile-label{font-weight:900 !important;-webkit-text-stroke:.7px currentColor !important;}
-.tile.tile-orange .tile-label{-webkit-text-stroke:1px #fff !important;}
+.tile.tile-orange .tile-label{-webkit-text-stroke:.6px #000 !important;}
 .tile.tile-ra{justify-content:space-around;}
 .tile.tile-ra .tile-label{font-size:15cqw !important;line-height:1 !important;letter-spacing:0 !important;}
 
@@ -15897,8 +15897,8 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
     for(var n=0;n<ps.length;n++){
       var el=ps[n], sc=1, g=0;
       el.style.removeProperty('--tsc');
-      while(el.scrollHeight>el.clientHeight+1 && sc>0.3 && g++<50){
-        sc-=0.03; el.style.setProperty('--tsc',sc.toFixed(2));
+      while(el.scrollHeight>el.clientHeight+1 && sc>0.3 && g++<80){
+        sc-=0.02; el.style.setProperty('--tsc',sc.toFixed(2));
       }
     }
   }
