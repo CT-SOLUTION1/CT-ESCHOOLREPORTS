@@ -521,6 +521,9 @@ table.rc-perf th.mrg-bot{border-top:none;background:var(--blue-light);}
 /* Seamless visual merging: remove only the internal seam between physical cells used to represent merged rows/headers. Keep outer and vertical borders intact. */
 table.rc-perf td.mrg-top, table.rc-perf td.mrg-bot{border-top:0 !important;border-bottom:0 !important;background:#fff !important;}
 table.rc-perf th.mrg-top, table.rc-perf th.mrg-bot{border-top:0 !important;border-bottom:0 !important;background:var(--blue-light) !important;}
+/* One continuous line closes the Academic Performance table above its column-header titles (merged header cells have no top border of their own) */
+table.rc-perf{border-top:1.4px solid var(--shade-line,var(--blue));}
+table.rc-perf tr:first-child > th, table.rc-perf thead tr:first-child > th{border-top:1.4px solid var(--shade-line,var(--blue)) !important;}
 /* Chosen report-card colour must survive the browser Print dialog / Save-as-PDF too: the print
    stylesheet forces navy cell borders, which would vanish inside a dark (e.g. black) heading band,
    so those heading cells use the lightened --shade-line there (undefined for light shades => navy). */
@@ -1542,6 +1545,7 @@ table.sp-students td:nth-child(4){text-align:left;}
   table.rc-list input[type=checkbox]{width:calc(var(--tf,12)*1.9px) !important;height:calc(var(--tf,12)*1.9px) !important;min-width:0 !important;min-height:0 !important;margin:0 !important;padding:0 !important;vertical-align:middle;}
   table.rc-list th.rc-combo{white-space:normal !important;width:1%;line-height:1.1;}
   table.rc-list td.rc-combo{white-space:nowrap !important;width:1%;}
+.dl-loading{opacity:.85 !important;pointer-events:none !important;cursor:progress !important;}
   .ra-loading{display:block;margin-top:8px;font-weight:800;font-size:calc(15*var(--uk));color:var(--blue,#0A5BA8);}
   /* ENTER SCORES table: columns hug their contents. Student takes only what is left over (its names still swipe
      sideways), ALREADY SCORED grows with its sub-columns, the entering and Actions columns stay tight. */
@@ -1576,8 +1580,8 @@ table.sp-students td:nth-child(4){text-align:left;}
   /* the one-sentence RESULT SUMMARY line spans the whole table and is the only text allowed to wrap */
   table.ra-table td[colspan]{width:1px;white-space:normal !important;}
   /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
-  label.rc-sel-lbl{font-size:calc(12.5*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
-  select[onchange^="filterClass"], #rcSearch{min-height:calc(32*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
+  label.rc-sel-lbl{font-size:calc(11*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
+  select[onchange^="filterClass"], #rcSearch{font-size:calc(13*var(--uk)) !important;min-height:calc(31*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
 @media print{table.sp-students tr{height:auto !important;}}
 /* PRINTED / DOWNLOADED LISTS (everything except report cards): light 0.5px rules.
@@ -16470,6 +16474,66 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
     sched();
   }
   if(document.body) start(); else document.addEventListener('DOMContentLoaded',start);
+})();
+</script>
+<script>
+/* Every Download / Print / PDF / CSV button shows "Loading..." the moment it is tapped, and returns to normal when the file is
+   delivered, the print dialog opens, or (at the latest) after a safety timeout. A second tap while loading is ignored. */
+(function(){
+  var RX=/(download|print|pdf|csv|export)/i, ACT=/^(dl|download|print|bulkpdf|singlepdf|export)/i, MIN=700, MAX=20000;
+  var cur=null;
+  function label(b){ return (b.textContent||b.value||'').replace(/\s+/g,' ').trim(); }
+  function isTarget(b){
+    if(b.disabled || b.dataset.noLoading) return false;
+    var a=b.getAttribute('data-action')||'', o=b.getAttribute('onclick')||'', t=label(b);
+    if(ACT.test(a) || /(Pdf|PDF|Csv|CSV)$/.test(a)) return true;
+    if(/(print|download|pdf|csv)/i.test(o)) return true;
+    return t.length<70 && /(^|\b)(download|print|pdf|csv)/i.test(t);
+  }
+  function stop(force){
+    var c=cur; if(!c) return;
+    var wait=force?0:Math.max(0, MIN-(Date.now()-c.t0));
+    setTimeout(function(){
+      if(cur!==c) return; cur=null; clearTimeout(c.timer);
+      var b=c.b; b.classList.remove('dl-loading'); b.removeAttribute('aria-busy');
+      if(c.marker && b.innerHTML===c.marker) b.innerHTML=c.orig;   // only undo our own text; a button that restored itself is left alone
+    }, wait);
+  }
+  document.addEventListener('click', function(e){
+    var b=e.target.closest && e.target.closest('button,a,[role=button],input[type=button],input[type=submit]');
+    if(!b) return;
+    if(cur && cur.b===b){ e.preventDefault(); e.stopPropagation(); return; }
+    if(cur || !isTarget(b)) return;
+    var c=cur={b:b, t0:Date.now(), orig:b.innerHTML, marker:'', timer:0};
+    // wait one tick so the button's own handler has already read its label (some swap it to "Preparing...")
+    setTimeout(function(){
+      if(cur!==c) return;
+      if(b.tagName==='INPUT'){ c.marker=''; }
+      else { c.marker='<b>\u23F3 Loading\u2026</b>'; b.innerHTML=c.marker; }
+      b.classList.add('dl-loading'); b.setAttribute('aria-busy','true');
+    },0);
+    c.timer=setTimeout(function(){ stop(true); }, MAX);
+  }, true);
+  // completion signals
+  window.addEventListener('beforeprint', function(){ stop(false); });
+  window.addEventListener('afterprint', function(){ stop(false); });
+  function wrap(name, sync){
+    var f=window[name]; if(typeof f!=='function' || f.__dlw) return;
+    var w=function(){
+      var r; try{ r=f.apply(this, arguments); }catch(err){ stop(false); throw err; }
+      if(r && typeof r.then==='function'){ r.then(function(){ stop(false); }, function(){ stop(false); }); }
+      else if(sync){ setTimeout(function(){ stop(false); }, 1200); }
+      return r;
+    };
+    w.__dlw=1; try{ window[name]=w; }catch(err){}
+  }
+  ['showDeliveredToast','downloadCsv'].forEach(function(n){ wrap(n,true); });
+  ['downloadElementAsPdf','downloadTablesAsPdf','downloadMasterMarkSheetPdf','downloadMarksheetPDF','downloadReportCardPdf',
+   'downloadSelectedReportsPdf','downloadSelectedDemandNotesPdf','downloadDemandNoteFor','downloadDemandNoteElement',
+   'downloadFinanceTablePdf','downloadFounderSystemBackup','downloadFounderSnapshot','downloadFounderSchoolBackup'].forEach(function(n){ wrap(n,false); });
+  ['printFramed','printLandscape','printPortrait','printListPaged','printClassAnalysis','printFinanceTable','printDemandNoteFor',
+   'printSelectedDemandNotes','printSelectedReports','downloadFeesCodeList','downloadBulkStudentTemplate','downloadStaffTemplate',
+   'downloadMarksheetCSV'].forEach(function(n){ wrap(n,true); });
 })();
 </script>
 </body>
