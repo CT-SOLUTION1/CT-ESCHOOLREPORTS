@@ -273,6 +273,11 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .ok-banner{background:#0f5c33;color:#fff;text-align:center;padding:6px 14px;font-size:12px;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+/* Promote Students: Class, Current Year and Next class share one line, with taller, clearer controls */
+.grid3.promote-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end;margin-top:6px;}
+.promote-row label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;}
+.promote-row select,.promote-row input{width:100%;box-sizing:border-box;min-height:52px;height:52px;padding:10px 12px;font-size:16px;font-weight:600;}
+@media(max-width:480px){.grid3.promote-row{grid-template-columns:1fr;}}
 .school-name-big{font-size:28px;font-weight:800;font-family:Georgia,serif;color:var(--navy);}
 .photo-thumb{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--blue);}
 .small{font-size:12px;color:var(--muted);}
@@ -7869,22 +7874,25 @@ function studentsView(){
     <h3>Add student</h3>
     <form data-form="addStudent">
       <div class="flex"><div><label>Photo</label><input type="file" name="photo" accept="image/*"></div></div>
-      <label>Full name</label><input name="name" required>
-      <label>Class</label>
+      <div class="grid2">
+        <div><label>Full name</label><input name="name" required></div>
+        <div><label>Gender</label><select name="gender"><option>Male</option><option>Female</option></select></div>
+      </div>
+      <div class="grid2">
+        <div><label>Class</label>
       <select name="classId" id="stuClassSel" required onchange="updateAdmNoPreview(this.value)"><option value="">-- select --</option>
       ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
-      </select>
-      <label>Admission number (automatic)</label>
-      <input id="admNoPreview" value="Select a class to see the next admission number" disabled style="background:#eef2f6;font-weight:700;">
+      </select></div>
+        <div><label>Admission number (automatic)</label>
+      <input id="admNoPreview" value="Select a class to see the next admission number" disabled style="background:#eef2f6;font-weight:700;"></div>
+      </div>
       <p class="small" style="margin-top:2px;">Assigned automatically — this school's initials, the class's admission year and level, then a running 3-digit number per class. It's permanent: this student keeps it for as long as they're at the school, even if later promoted to another class.</p>
-      <label>Gender</label><select name="gender"><option>Male</option><option>Female</option></select>
-      <label>Fees Code No. (optional)</label>
-      <input name="feesCode" placeholder="Leave blank if this school doesn't use fees codes">
-      <div class="note" style="margin-top:10px;">Subjects are never set here. Once this student is in a class, each subject teacher ticks them into their own class list the first time they open it — that tick is what decides which subjects (or, for A-Level, which 3 principals) a student takes.</div>
-      <div class="grid2">
+      <div class="grid3">
+        <div><label>Fees Code No. (optional)</label><input name="feesCode" placeholder="Leave blank if unused"></div>
         <div><label>Fees balance</label><input name="feesBalance" type="number" step="0.01" placeholder="0"></div>
         <div><label>Next term fees</label><input name="nextTermFees" type="number" step="0.01" placeholder="0"></div>
       </div>
+      <div class="note" style="margin-top:10px;">Subjects are never set here. Once this student is in a class, each subject teacher ticks them into their own class list the first time they open it — that tick is what decides which subjects (or, for A-Level, which 3 principals) a student takes.</div>
       <button class="btn" style="margin-top:10px;">Submit — add student</button>
     </form>
   </div>
@@ -7903,21 +7911,6 @@ function studentsView(){
       <label>Student list ${'\u2014'} paste directly, or let it fill in from the file above</label>
       <textarea name="bulkList" id="bulkListArea" rows="8" placeholder="" required></textarea>
       <button class="btn" style="margin-top:10px;">Submit — add all students</button>
-    </form>
-  </div>
-  <div class="card">
-    <h3>Fees pay codes (download &amp; upload)</h3>
-    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
-    <label>Class</label>
-    <select id="feesCodeClassSel">
-      <option value="">-- select class --</option>
-      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
-    </select>
-    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
-    <form data-form="uploadFeesCodes" style="margin-top:12px;">
-      <label>Upload filled list (CSV)</label>
-      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
-      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
     </form>
   </div>
   <div class="card">
@@ -7947,6 +7940,21 @@ function studentsView(){
       </div>
     </div>
     <p class="small" style="margin-top:6px;">Defaults to the current term/year and shows the live class list. Pick a past term/year to see the class list as it stood back then instead — this relies on class changes made using Promote Students, so it's most reliable going forward from when that history started being tracked.</p>
+  </div>
+  <div class="card">
+    <h3>Fees pay codes (download &amp; upload)</h3>
+    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
+    <label>Class</label>
+    <select id="feesCodeClassSel">
+      <option value="">-- select class --</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
+    </select>
+    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
+    <form data-form="uploadFeesCodes" style="margin-top:12px;">
+      <label>Upload filled list (CSV)</label>
+      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
+      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
+    </form>
   </div>
   <div class="card">
     <div id="studentsTableWrap">${renderStudentsTableHtml()}</div>
@@ -8659,9 +8667,11 @@ function promoteView(){
     <h3>Promote Students</h3>
     <p class="small">Pick the class, type the Current Year this promotion belongs to, then pick the class those students are moving into. There's no "previous year" to fill in — that field was dropped because it caused confusion whenever a class was missed during an earlier round. Just pick the class and submit; a class can be promoted (or re-promoted) at any time, independently of every other class and of the Term settings above.</p>
     <form data-form="promote">
-      <label>Class</label><select name="fromClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
-      <label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required>
-      <label>Next class</label><select name="toClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
+      <div class="grid3 promote-row">
+        <div><label>Class</label><select name="fromClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div><label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required></div>
+        <div><label>Next class</label><select name="toClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select></div>
+      </div>
       <p class="small">Moves every student currently in "Class" into "Next class". Choosing "Old Students" instead moves them out of active classes into Old Students — same as marking them left, but for a whole class at once. Score history is kept, tagged to the term/year it was entered in. Once moved, these students immediately stop appearing on their old class's roster for any subject teacher — they can no longer receive new scores in the class or term they've left.</p>
       <button class="btn" style="margin-top:10px;">Submit — promote class</button>
     </form>
@@ -9439,10 +9449,24 @@ function classAnalysisView(){
     if(!names.length) names = DB.assignments.filter(a=>a.classId===cls.id && a.subject===subj).map(a=>DB.accounts.find(x=>x.username===a.teacherUsername)).filter(Boolean).map(a=>a.name);
     return [...new Set(names)];
   };
+  // Paper(s) of a subject for the Papers column: every paper that has scores saved this term
+  // (whichever teacher entered them) plus the papers assigned to the subject in these classes,
+  // e.g. "1" or "1, 2". Shows "—" when none are on record.
+  const paperLabelsFor = (classList, subj)=>{
+    const clsIds = new Set(classList.map(c=>c.id));
+    const stuIds = new Set(DB.students.filter(s=>s.status!=='left' && clsIds.has(s.classId)).map(s=>s.id));
+    const out = [];
+    const add = p=>{ const v = (p===null||p===undefined) ? '' : String(p).trim(); if(v && !out.includes(v)) out.push(v); };
+    DB.scores.forEach(sc=>{ if(sc.subject===subj && sc.term===term && sc.year==year && stuIds.has(sc.studentId)) add(sc.paper); });
+    DB.assignments.forEach(a=>{ if(a.subject===subj && clsIds.has(a.classId) && Array.isArray(a.papers)) a.papers.forEach(add); });
+    out.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
+    return out.join(', ');
+  };
   const statRow = (r, cols, withTeacher)=>{
     const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
     const tCell = withTeacher ? `<td style="text-align:left;font-weight:700;">${r.subject==='TOTAL' ? '' : (esc(teacherNamesFor(r.subject).join(', ')) || '—')}</td>` : '';
-    return `<tr><td style="text-align:left;">${esc(r.subject)}</td><td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
+    const pCell = `<td>${r.subject==='TOTAL' ? '' : (esc(r.papers||'') || '—')}</td>`;
+    return `<tr><td style="text-align:left;">${esc(r.subject)}</td>${pCell}<td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
   };
   const totalsRow = (list, cols, withTeacher)=>{
     const t = {subject:'TOTAL', enrolled:0, sat:0, sum:0, max:null, min:null, grades:{}};
@@ -9457,15 +9481,15 @@ function classAnalysisView(){
     return statRow(t, cols, withTeacher).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
   };
   const buildClassWise = ()=>{
-  const classRowData = classSubjectsFor(cls).map(subj=>({subject:subj, ...subjectClassStats(cls, subj, term, year)}))
+  const classRowData = classSubjectsFor(cls).map(subj=>({subject:subj, papers:paperLabelsFor([cls], subj), ...subjectClassStats(cls, subj, term, year)}))
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const classRows = classRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols, true) : '');
   const classWiseHtml = `
     <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)}</h3>
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
-    <table class="data-table ra-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
-    ${classRows || `<tr><td colspan="${6+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
-    ${classPairs.length ? resultSummaryRow(classPairs, 6+classGradeCols.length, cls.level) : ''}
+    <table class="data-table ra-table"><tr><th>Subject</th><th>Papers</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
+    ${classRows || `<tr><td colspan="${7+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    ${classPairs.length ? resultSummaryRow(classPairs, 7+classGradeCols.length, cls.level) : ''}
     </table>`;
   return `<div class="card" data-orient="landscape" style="overflow:auto;">${classWiseHtml}</div>`;
   };
@@ -9473,15 +9497,15 @@ function classAnalysisView(){
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
   const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
-  const levelRowData = levelSubjectsFor(spLevel).map(subj=>({subject:subj, ...subjectLevelStats(spLevel, subj, term, year)}))
+  const levelRowData = levelSubjectsFor(spLevel).map(subj=>({subject:subj, papers:paperLabelsFor(levelClasses(spLevel), subj), ...subjectLevelStats(spLevel, subj, term, year)}))
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const levelRows = levelRowData.map(r=>statRow(r, classGradeCols)).join('') + (levelRowData.length ? totalsRow(levelRowData, classGradeCols) : '');
   const levelWiseHtml = `
     <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)}</h3>
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
-    <table class="data-table ra-table"><tr><th>Subject</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${levelRows || `<tr><td colspan="${5+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
-    ${levelPairs.length ? resultSummaryRow(levelPairs, 5+classGradeCols.length, cls.level) : ''}
+    <table class="data-table ra-table"><tr><th>Subject</th><th>Papers</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
+    ${levelRows || `<tr><td colspan="${6+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
+    ${levelPairs.length ? resultSummaryRow(levelPairs, 6+classGradeCols.length, cls.level) : ''}
     </table>`;
 
   return `<div class="card" data-orient="landscape" style="overflow:auto;">${levelWiseHtml}</div>`;
