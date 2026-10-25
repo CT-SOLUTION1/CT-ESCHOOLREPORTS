@@ -9522,12 +9522,13 @@ function classAnalysisViewCore(){
   const classGradeCols = gradeColsFor(cls.level);
   // Teacher(s) responsible for a subject in this class: whoever actually saved its scores this term
   // (read off the score rows); falls back to the teacher(s) the subject is assigned to.
-  const teacherNamesFor = (subj, paper)=>{
-    const ids = new Set(DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).map(s=>s.id));
+  const teacherNamesFor = (subj, paper, classList)=>{
+    const clsIds = new Set(((classList && classList.length) ? classList : [cls]).map(c=>c.id));
+    const ids = new Set(DB.students.filter(s=>s.status!=='left' && clsIds.has(s.classId)).map(s=>s.id));
     const users = [];
     DB.scores.forEach(sc=>{ if(sc.subject===subj && (paper==null || String(sc.paper)===String(paper)) && sc.term===term && sc.year==year && sc.teacher && ids.has(sc.studentId) && !users.includes(sc.teacher)) users.push(sc.teacher); });
     let names = users.map(u=>DB.accounts.find(a=>a.username===u)).filter(a=>a && a.role==='teacher').map(a=>a.name);
-    if(!names.length) names = DB.assignments.filter(a=>a.classId===cls.id && a.subject===subj && (paper==null || !Array.isArray(a.papers) || !a.papers.length || a.papers.some(x=>String(x)===String(paper)))).map(a=>DB.accounts.find(x=>x.username===a.teacherUsername)).filter(Boolean).map(a=>a.name);
+    if(!names.length) names = DB.assignments.filter(a=>clsIds.has(a.classId) && a.subject===subj && (paper==null || !Array.isArray(a.papers) || !a.papers.length || a.papers.some(x=>String(x)===String(paper)))).map(a=>DB.accounts.find(x=>x.username===a.teacherUsername)).filter(Boolean).map(a=>a.name);
     return [...new Set(names)];
   };
   // Paper(s) of a subject for the Papers column: every paper that has scores saved this term
@@ -9548,27 +9549,44 @@ function classAnalysisViewCore(){
   // Subject name and the grade columns are merged down the whole block (value on the first row, the seam
   // between the rows hidden — same technique as the report card, so print/PDF page splits stay aligned).
   // A subject whose other paper has not been scored yet stays as ONE row, exactly as before.
-  const paperRowsFor = (classList, subj, withT)=>{
+  // Only papers that have actually been scored get a row, so two papers are NEVER squeezed into one row:
+  // two or more scored papers -> one sub-row each under the merged subject; one scored paper -> a single
+  // row showing just that paper (the other paper gets its own row the moment it is scored).
+  const paperInfoFor = (classList, subj, withT)=>{
     const papers = subjectPaperList(classList, subj, term, year);
-    if(papers.length<2) return null;
-    const rows = papers.map(p=>({paper:p, ...paperStatsFor(classList, subj, p, term, year), teachers: withT ? teacherNamesFor(subj, p) : []}));
-    return rows.every(x=>x.sat>0) ? rows : null;
+    const scored = papers.map(p=>({paper:p, ...paperStatsFor(classList, subj, p, term, year)})).filter(x=>x.sat>0);
+    if(scored.length>=2){
+      scored.forEach(x=>{ x.teachers = withT ? teacherNamesFor(subj, x.paper, classList) : []; });
+      return {rows:scored, label:'', solo:null};
+    }
+    if(scored.length===1) return {rows:null, label:String(scored[0].paper), solo:scored[0].paper};
+    return {rows:null, label: papers.length===1 ? String(papers[0]) : '', solo: papers.length===1 ? papers[0] : null};
   };
   const splitStatRows = (r, cols, withTeacher)=>{
     const n = r.paperRows.length;
+    // Same teacher(s) on consecutive papers -> ONE merged Responsible Teacher cell covering those rows.
+    const tKeys = r.paperRows.map(p=>p.teachers.slice().sort().join('|'));
+    const tSame = (i,j)=> j>=0 && j<n && tKeys[i]!=='' && tKeys[i]===tKeys[j];
     return r.paperRows.map((p,i)=>{
       const first = i===0;
       const seam = i===0 ? 'ra-mt' : (i===n-1 ? 'ra-mb' : 'ra-mm');
       const mTd = (content, style)=>`<td class="${seam}"${style?` style="${style}"`:''}>${first?content:'&nbsp;'}</td>`;
       const gradeCells = cols.map(g=>mTd(String(r.grades[g]||0))).join('');
-      const tCell = withTeacher ? `<td style="text-align:left;font-weight:700;">${esc(p.teachers.join(', ')) || '—'}</td>` : '';
+      let tCell = '';
+      if(withTeacher){
+        const sameP = tSame(i,i-1), sameN = tSame(i,i+1);
+        const tName = esc(p.teachers.join(', ')) || '—';
+        tCell = (!sameP && !sameN)
+          ? `<td style="text-align:left;font-weight:700;">${tName}</td>`
+          : `<td class="${!sameP ? 'ra-mt' : (sameN ? 'ra-mm' : 'ra-mb')}" style="text-align:left;font-weight:700;">${sameP ? '&nbsp;' : tName}</td>`;
+      }
       return `<tr${first?'':' class="ra-cont"'}>${mTd(esc(r.subject),'text-align:left;')}<td>${esc(String(p.paper))}</td><td>${p.sat}/${p.enrolled}</td><td>${p.avg==null?'—':p.avg.toFixed(1)+'%'}</td><td>${p.max===null?'—':p.max.toFixed(1)}</td><td>${p.min===null?'—':p.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
     }).join('');
   };
   const statRow = (r, cols, withTeacher)=>{
     if(r.paperRows && r.paperRows.length>1) return splitStatRows(r, cols, withTeacher);
     const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
-    const tCell = withTeacher ? `<td style="text-align:left;font-weight:700;">${r.subject==='TOTAL' ? '' : (esc(teacherNamesFor(r.subject).join(', ')) || '—')}</td>` : '';
+    const tCell = withTeacher ? `<td style="text-align:left;font-weight:700;">${r.subject==='TOTAL' ? '' : (esc(teacherNamesFor(r.subject, r.soloPaper==null ? null : r.soloPaper, r.classList).join(', ')) || '—')}</td>` : '';
     const pCell = `<td>${r.subject==='TOTAL' ? '' : (esc(r.papers||'') || '—')}</td>`;
     return `<tr><td style="text-align:left;">${esc(r.subject)}</td>${pCell}<td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
   };
@@ -9585,7 +9603,7 @@ function classAnalysisViewCore(){
     return statRow(t, cols, withTeacher).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
   };
   const buildClassWise = ()=>{
-  const classRowData = classSubjectsFor(cls).map(subj=>({subject:subj, papers:paperLabelsFor([cls], subj), ...subjectClassStats(cls, subj, term, year), paperRows:paperRowsFor([cls], subj, true)}))
+  const classRowData = classSubjectsFor(cls).map(subj=>{ const pi = paperInfoFor([cls], subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:[cls], ...subjectClassStats(cls, subj, term, year), paperRows:pi.rows}; })
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const classRows = classRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols, true) : '');
   const classWiseHtml = `
@@ -9601,15 +9619,15 @@ function classAnalysisViewCore(){
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
   const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
-  const levelRowData = levelSubjectsFor(spLevel).map(subj=>({subject:subj, papers:paperLabelsFor(levelClasses(spLevel), subj), ...subjectLevelStats(spLevel, subj, term, year), paperRows:paperRowsFor(levelClasses(spLevel), subj, false)}))
+  const levelRowData = levelSubjectsFor(spLevel).map(subj=>{ const pi = paperInfoFor(levelClasses(spLevel), subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:levelClasses(spLevel), ...subjectLevelStats(spLevel, subj, term, year), paperRows:pi.rows}; })
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
-  const levelRows = levelRowData.map(r=>statRow(r, classGradeCols)).join('') + (levelRowData.length ? totalsRow(levelRowData, classGradeCols) : '');
+  const levelRows = levelRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (levelRowData.length ? totalsRow(levelRowData, classGradeCols, true) : '');
   const levelWiseHtml = `
     <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)} — ${esc(assessLabel)}</h3>
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
-    <table class="data-table ra-table"><tr><th>Subject</th><th>Papers</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}</tr>
-    ${levelRows || `<tr><td colspan="${6+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
-    ${levelPairs.length ? resultSummaryRow(levelPairs, 6+classGradeCols.length, cls.level) : ''}
+    <table class="data-table ra-table"><tr><th>Subject</th><th>Papers</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
+    ${levelRows || `<tr><td colspan="${7+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
+    ${levelPairs.length ? resultSummaryRow(levelPairs, 7+classGradeCols.length, cls.level) : ''}
     </table>`;
 
   return `<div class="card" data-orient="landscape" style="overflow:auto;">${levelWiseHtml}</div>`;
@@ -9644,6 +9662,22 @@ function classAnalysisViewCore(){
 }
 // Result Analysis only ever shows ONE term/year, so it loads just that period's score shard
 // (not every historical shard) — and picking a class/form renders at once from what is in memory.
+// The moment a selection activates the next dropdown (form -> assessment type -> class/level), that
+// dropdown is focused and its list of choices is shown straight away for selection. Browsers that cannot
+// open a native list from code instead show the choices as an open list box.
+function raOpenNextDropdown(key){
+  if(!VIEW || VIEW.name!=='classanalysis') return false;
+  const v = VIEW.params || {};
+  let sel = null;
+  if(key==='form' && v.form) sel = document.querySelector('.center-stage select[onchange*="\'assess\'"]');
+  else if(key==='assess' && v.assess) sel = document.querySelector('.center-stage select[onchange*="\'classId\'"], .center-stage select[onchange*="\'level\'"]');
+  if(!sel || sel.disabled) return false;
+  try{ sel.focus(); }catch(e){}
+  let opened = false;
+  try{ if(typeof sel.showPicker==='function'){ sel.showPicker(); opened = true; } }catch(e){}
+  if(!opened){ sel.size = Math.min(sel.options.length, 8); }
+  return true;
+}
 function setAnalysisParam(key, value, _go){
   if(VIEW && VIEW.name==='classanalysis' && (key==='classId'||key==='level') && value){
     const sel = document.querySelector('select[onchange*="setAnalysisParam(\''+key+'\'"]');
@@ -9663,6 +9697,9 @@ function setAnalysisParam(key, value, _go){
   const cascade = key==='form' ? {assess:'', classId:'', level:''} : (key==='assess' ? {classId:'', level:''} : {});
   VIEW.params = {...VIEW.params, ...cascade, [key]: value};
   render();
+  if((key==='form' || key==='assess') && value){
+    if(!raOpenNextDropdown(key)) setTimeout(()=>raOpenNextDropdown(key), 60);
+  }
   if(key==='term' || key==='year'){
     const p = VIEW.params, tok = NAV_TOKEN, vw = VIEW;
     const sig = a=>Array.isArray(a)?(a.length+':'+(a.length?a[a.length-1].id:'')):'';
