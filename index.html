@@ -1554,6 +1554,12 @@ table.sp-students td:nth-child(4){text-align:left;}
   table.rc-list th.rc-combo{white-space:normal !important;width:1%;line-height:1.1;}
   table.rc-list td.rc-combo{white-space:nowrap !important;width:1%;}
 .dl-loading{opacity:.85 !important;pointer-events:none !important;cursor:progress !important;}
+  /* moving dots: opacity/transform only, so they keep moving on the compositor even while the form is being built */
+  .ra-dots{display:inline-flex;gap:.22em;margin-left:.45em;vertical-align:middle;}
+  .ra-dots i{display:inline-block;width:.34em;height:.34em;border-radius:50%;background:currentColor;opacity:.25;will-change:opacity,transform;animation:raDot .9s infinite ease-in-out;}
+  .ra-dots i:nth-child(2){animation-delay:.15s;}
+  .ra-dots i:nth-child(3){animation-delay:.3s;}
+  @keyframes raDot{0%,70%,100%{opacity:.25;transform:translateY(0);}35%{opacity:1;transform:translateY(-.3em);}}
   .ra-loading{display:block;margin-top:6px;font-weight:800;letter-spacing:.04em;font-size:calc(9*var(--uk));color:var(--blue,#0A5BA8);}
   /* ENTER SCORES table: columns hug their contents. Student takes only what is left over (its names still swipe
      sideways), ALREADY SCORED grows with its sub-columns, the entering and Actions columns stay tight. */
@@ -1564,10 +1570,13 @@ table.sp-students td:nth-child(4){text-align:left;}
   .se-wrap.se-score .se-table th:not(:first-child) .se-en span{white-space:nowrap;}
   .se-wrap.se-score .se-table th.se-prevh{min-width:var(--se-pw,calc(44*var(--uk)));}
   .se-wrap.se-score .se-table th.se-prevh.se-more{min-width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
-  .se-wrap.se-score .se-table th:nth-last-child(2){min-width:calc(46*var(--uk));}
+  .se-wrap.se-score .se-table th:nth-last-child(2){min-width:calc(32*var(--uk));padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
+  .se-wrap.se-score .se-table td:nth-last-child(2){padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
+  .se-wrap.se-score .se-table th:last-child, .se-wrap.se-score .se-table td:last-child{padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
   /* ENTER SCORES actions: REMOVE STUDENT / DELETE SCORE / CLEAR X in one small tight line */
   .se-wrap.se-score td.flex{white-space:nowrap !important;text-align:center;}
-  .se-wrap.se-score td.flex .se-act{font-size:calc(4.2*var(--uk)) !important;font-weight:800 !important;letter-spacing:0 !important;padding:calc(2.5*var(--uk)) calc(4*var(--uk)) !important;min-height:0 !important;line-height:1.2 !important;white-space:nowrap !important;margin:0 calc(1.5*var(--uk)) !important;width:auto !important;display:inline-block;}
+  .se-wrap.se-score td.flex .se-actstack{display:flex;flex-direction:column;align-items:stretch;gap:calc(1.2*var(--uk));}
+  .se-wrap.se-score td.flex .se-act{font-size:calc(3.6*var(--uk)) !important;font-weight:800 !important;letter-spacing:0 !important;padding:calc(1.2*var(--uk)) calc(2.2*var(--uk)) !important;min-height:0 !important;height:auto !important;line-height:1.15 !important;white-space:nowrap !important;margin:0 !important;width:100% !important;display:block;text-align:center;border-radius:calc(2.5*var(--uk));}
   /* RESULT ANALYSIS subject forms (class wise / level wise): a small gap at both ends shows that no column is cut */
   .layout .main.main-wide .card[data-orient]:has(table.ra-table:not(.sp-students)){padding-left:calc(6*var(--uk)) !important;padding-right:calc(6*var(--uk)) !important;}
   /* Student Performance form: nothing below the table, so it can fill the page */
@@ -9506,11 +9515,11 @@ function setAnalysisParam(key, value, _go){
       sel.dataset.raBusy = '1';                       // the chosen class/level simply stays shown in the box
       document.querySelectorAll('.center-stage select, .center-stage button').forEach(x=>{ if(x!==sel) x.disabled = true; });
       const msg = document.createElement('div'); msg.className = 'ra-loading'; msg.setAttribute('role','status');
-      msg.textContent = 'LOADING FORM';
+      msg.innerHTML = 'LOADING FORM<span class="ra-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
       sel.insertAdjacentElement('afterend', msg);
       const vw = VIEW;
       // let the browser paint the message first, then do the heavy work
-      requestAnimationFrame(()=>setTimeout(()=>{ if(VIEW===vw) setAnalysisParam(key, value, true); }, 0));
+      requestAnimationFrame(()=>setTimeout(()=>{ if(VIEW===vw) setAnalysisParam(key, value, true); }, 80));
       return;
     }
   }
@@ -10186,6 +10195,7 @@ function scoresEntryView(mine){
         return `<a class="se-sh" href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="${colLabel(c)} — click to edit this test's scores">${colLabelShort(c)}<span class="se-hmax"> (${esc(colMax)})</span></a>`;
       }).join('');
       const currentColLabel = (!isP && sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?(esc(examConfig(a.classId).cwLabel)+(sel.label?': '+esc(sel.label):'')):esc(examConfig(a.classId).eotLabel));
+      const currentColShort = esc((!isP && sel.paper ? 'P'+String(sel.paper)+' ' : '') + abbrTest(sel.kind==='AOI' ? (examConfig(a.classId).cwLabel+(sel.label?' '+sel.label:'')) : examConfig(a.classId).eotLabel));
       const missKey = missingMarkersKey(a.id, sel.paper, sel.kind, sel.label||'');
       const missSet = MISSING_MARKERS[missKey] || new Set();
       const cfgHere = examConfig(a.classId);
@@ -10243,7 +10253,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;">${currentColLabel}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
+          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -10257,7 +10267,7 @@ function scoresEntryView(mine){
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline se-act" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">CLEAR X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>${delScoreBtn}${clearMissingBtn}</td></tr>`;
+            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button></div></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
