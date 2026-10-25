@@ -1129,6 +1129,8 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .ad-dates label{font-size:calc(12*var(--uk)) !important;}
 .td-dates>div{padding:calc(4*var(--uk)) 0;font-size:calc(12*var(--uk));}
 form[data-form="setTerm"] input,form[data-form="setTerm"] select{min-height:calc(34*var(--uk)) !important;padding-top:calc(8*var(--uk)) !important;padding-bottom:calc(8*var(--uk)) !important;box-sizing:border-box;}
+/* Year, Term & Promotion: Term, Year, Term ends and Next term begins boxes are 3px shorter */
+form[data-form="setTerm"] [name="term"],form[data-form="setTerm"] [name="year"],form[data-form="setTerm"] [name="termEndDate"],form[data-form="setTerm"] [name="nextTermBeginDate"]{min-height:calc(31*var(--uk)) !important;padding-top:calc(6.5*var(--uk)) !important;padding-bottom:calc(6.5*var(--uk)) !important;}
 select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !important;padding:calc(9*var(--uk)) calc(10*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .score-pick select,.score-pick input:not([type="checkbox"]):not([type="hidden"]){min-height:calc(42*var(--uk)) !important;padding-top:calc(9*var(--uk)) !important;padding-bottom:calc(9*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .ad-enrol table tr{height:calc(24*var(--uk)*var(--es,1)) !important;}
@@ -1583,6 +1585,9 @@ table.sp-students td:nth-child(4){text-align:left;}
   .layout .main:has(table.sp-students.sp-fill){padding-bottom:0 !important;}
   .layout .main:has(table.sp-students.sp-fill) .card:has(> table.sp-students){padding-bottom:0 !important;margin-bottom:0 !important;}
   table.sp-students td{vertical-align:middle;}
+  /* Student Performance: every column's contents use ONE font size (the zoom the table is fitted to), same weight; headings scale with it */
+  table.ra-table.sp-students td:not([colspan]), table.ra-table.sp-students td.stu-name{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;}
+  table.ra-table.sp-students th{font-size:calc(var(--tf,12)*1px) !important;line-height:1.15 !important;}
   /* REPORT CARD: same A4 layout, but only a hairline gap at either end of the screen (phones/tablets fill the width) */
   .main.main-rc{padding-left:2px !important;padding-right:2px !important;box-sizing:border-box;}
   @media (max-width:900px){.main.main-rc{max-width:none !important;width:100% !important;flex:1 1 100% !important;}.main.main-rc .rc-card:not(.pdf-report-card){max-width:100% !important;}}
@@ -1644,8 +1649,9 @@ table.sp-students td:nth-child(4){text-align:left;}
   #printArea .lp-page.lp-land{page:lp-land;min-height:172mm;}
   /* Student Performance pages: the table grows to the page-number line, rows share the height, words a little larger */
   #printArea .lp-page.lp-fill table{flex:1 1 auto;}
-  #printArea .lp-page.lp-fill table th, #printArea .lp-page.lp-fill table td{font-size:12px !important;vertical-align:middle;}
-  #printArea .lp-page.lp-fill table th{font-size:11px !important;}
+  #printArea .lp-page.lp-fill table th, #printArea .lp-page.lp-fill table td{font-size:12px !important;vertical-align:middle;padding-top:2px !important;padding-bottom:2px !important;height:5.4mm;}
+  #printArea .lp-page.lp-fill.lp-short table{flex:0 0 auto;}   /* last page with fewer than 35: same row height as the full pages, not stretched */
+  #printArea .lp-page.lp-fill.lp-short table td{height:6mm;}
   #printArea .lp-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}
   #printArea .lp-page .mm-header{padding-bottom:6px;margin-bottom:8px;}
   #printArea .lp-page .mm-header .mm-logo{width:48px;height:48px;}
@@ -1653,6 +1659,7 @@ table.sp-students td:nth-child(4){text-align:left;}
   #printArea .lp-page table{width:100% !important;min-width:0 !important;display:table !important;border-collapse:collapse !important;}
   #printArea .lp-page table th, #printArea .lp-page table td{padding:3px 5px !important;font-size:10px !important;height:6mm;white-space:normal !important;word-break:break-word;}
   #printArea .lp-page table th{font-size:9px !important;}
+  #printArea .lp-page table.sp-students th{font-size:10px !important;}   /* Student Performance: headings use the same size as the contents */
   #printArea .lp-page.lp-land table th, #printArea .lp-page.lp-land table td{font-size:9px !important;}
   #printArea .lp-page.lp-land table th{font-size:8px !important;}
 }
@@ -1664,6 +1671,7 @@ table.sp-students td:nth-child(4){text-align:left;}
 .pdf-thin.pdf-thin.pdf-thin table.pg-compact th, .pdf-thin.pdf-thin.pdf-thin table.pg-compact td{padding-left:4px !important;padding-right:4px !important;}
 table.pg-compact th, table.pg-compact td{padding-left:4px !important;padding-right:4px !important;font-size:11px !important;}
 table.pg-compact th{font-size:9px !important;}
+table.pg-compact.pg-sp th, table.pg-compact.pg-sp td{font-size:11px !important;}
 </style>
 </head>
 <body>
@@ -15242,7 +15250,10 @@ function printListPaged(opts){
     const orient = card.getAttribute('data-orient') || defOrient;
     let per = rowsFor(orient);
     const fill = table.classList.contains('sp-students');
-    if(fill && dataRows.length>=35) per = 35;   // 35+ students: full pages of 35 that are stretched to fill the sheet
+    const fillAll = fill && dataRows.length>=35;
+    if(fillAll){
+      per = 35;   // exactly 35 students per printed page
+    }
     const chunks = [];
     for(let i=0;i<dataRows.length;i+=per) chunks.push(dataRows.slice(i,i+per));
     if(!chunks.length) chunks.push([]);
@@ -15260,7 +15271,7 @@ function printListPaged(opts){
     }catch(e){ colPct = null; }
     const h3 = card.querySelector('h3'), sm = card.querySelector('p.small');
     return {
-      table, headRows, chunks, orient, colPct, fill,
+      table, headRows, chunks, orient, colPct, fill: fillAll,
       title: (h3 && h3.textContent) || opts.title || '',
       meta: [(sm && sm.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  ')
     };
@@ -15274,7 +15285,7 @@ function printListPaged(opts){
       sc.chunks.forEach(rows=>{
         pn++;
         const pg = document.createElement('div');
-        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land') + (sc.fill && rows.filter(r=>!isSummary(r)).length>=35 ? ' lp-fill' : '');
+        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land') + (sc.fill ? (rows.filter(r=>!isSummary(r)).length>=35 ? ' lp-fill' : ' lp-fill lp-short') : '');
         pg.innerHTML = `<div class="mm-header">${logo}<span class="mm-school">${esc(school)}</span>`
           + (sc.title?`<div class="mm-title">${esc(sc.title)}</div>`:'')
           + (sc.meta?`<div class="mm-meta">${esc(sc.meta)}</div>`:'') + `</div>`;
@@ -15600,7 +15611,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     // Mark Sheet's paper-number sub-header under each subject — measure and repeat
     // correctly as a whole unit.
     const measureTable = document.createElement('table');
-    measureTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '');
+    measureTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '') + (section.isSp ? ' pg-sp' : '');
     const measureThead = document.createElement('thead');
     headRows.forEach(r=>measureThead.appendChild(r.cloneNode(true)));
     measureTable.appendChild(measureThead);
@@ -15613,7 +15624,15 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     const tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, section.fillPage ? 560 : (orientation==='portrait' ? 720 : 1000));
     const headerH = measureThead.offsetHeight || 0;
     const bodyTrs = [...measureTbody.rows];
-    const rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 22);
+    let rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 22);
+    if(section.fillPage){
+      // Student Performance: how many students really fit one page at the standard font = rows measured with the tightest
+      // padding (1px). Pages are then filled by spreading the spare height over the rows (see the fill step below).
+      const cst = document.createElement('style'); cst.textContent = '.pg-fit tbody td{padding-top:1px !important;padding-bottom:1px !important;}';
+      holder.appendChild(cst); measureTable.classList.add('pg-fit');
+      rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 18);
+      measureTable.classList.remove('pg-fit'); holder.removeChild(cst);
+    }
 
     // The scale that will map this table's full natural width onto the full usable
     // page width — every column always fits, since nothing is ever tiled sideways.
@@ -15642,11 +15661,22 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       });
       chunks.push(cur); // always at least one chunk, even if empty (shows header only)
     }
+    if(section.fillPage){
+      // Student Performance of a 35+ class: exactly 35 students per page (summary line stays on the last page).
+      const isSum = r => r.cells && r.cells.length===1 && r.cells[0].colSpan>1;
+      const flat = chunks.reduce((a,c)=>a.concat(c), []);
+      const data = flat.filter(r=>!isSum(r)), sums = flat.filter(isSum);
+      const bal = [];
+      for(let i=0;i<data.length;i+=35) bal.push(data.slice(i,i+35));
+      if(!bal.length) bal.push([]);
+      bal[bal.length-1] = bal[bal.length-1].concat(sums);
+      chunks.length = 0; bal.forEach(c=>chunks.push(c));
+    }
 
     for(let ci=0; ci<chunks.length; ci++){
       showActionProgress(`${progressLabel} — page ${ci+1} of ${chunks.length}`);
       const pageTable = document.createElement('table');
-      pageTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '');
+      pageTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '') + (section.isSp ? ' pg-sp' : '');
       pageTable.style.width = tableW+'px';
       const thead = document.createElement('thead');
       headRows.forEach(r=>thead.appendChild(r.cloneNode(true)));
@@ -15695,14 +15725,17 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       const fitStyle = document.createElement('style');
       pageWrap.appendChild(fitStyle);
       const maxRatio = usableH/usableW;
-      const fillThisPage = section.fillPage && chunks[ci].filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=35;  // only a page holding 35+ students is stretched
-      if(fillThisPage || (opts.fillPage && opts.rowsPerPage)){
+      const fillThisPage = !!section.fillPage;  // Student Performance of a 35+ class: every page is filled down to the page-number line
+      // Score sheets / marksheets (blank or filled): stretched to the page bottom only when the class has at least one full page of
+      // students; a smaller class keeps normal row heights (its students cannot fill a page).
+      const sheetDataCount = bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length;
+      if(fillThisPage || (opts.fillPage && opts.rowsPerPage && sheetDataCount>=opts.rowsPerPage)){
         // Stretch (or tighten) the row height so a full page of learners fills the sheet from the
         // header down to the page-number strip, with no empty band at the bottom. A short last page
         // keeps exactly the same row height as the full ones.
         const targetH = maxRatio * pageWrap.offsetWidth;
         const k = Math.max(1, chunks[ci].length);
-        const nRows = fillThisPage ? k : Math.max(opts.rowsPerPage, k);
+        const nRows = fillThisPage ? Math.max(35, k) : Math.max(opts.rowsPerPage, k);   // a short last page keeps the full pages' row height
         let rowH = 20;
         for(let it=0; it<8; it++){
           fitStyle.textContent = `.pg-fit tbody td{padding-top:0 !important;padding-bottom:0 !important;vertical-align:middle !important;height:${rowH}px !important;}`;
@@ -15767,6 +15800,7 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
       subtitle: opts.forceSubtitle || [(descEl && descEl.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  '),
       school: opts.school || (DB.info && DB.info.schoolName) || '',
       orientation: card.getAttribute('data-orient') || opts.orientation || '',
+      isSp: table.classList.contains('sp-students'),
       fillPage: table.classList.contains('sp-students') && bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=35,   // Student Performance with 35+ students: pages are filled
       headRows, bodyRows
     };
