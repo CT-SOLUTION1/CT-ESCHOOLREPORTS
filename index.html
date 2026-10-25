@@ -1270,7 +1270,7 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
         var h0=ths[0]?textW(ths[0]):0; if(h0>sNat) sNat=h0;
         var c0=tb.querySelector('td:first-child'), pad0=0;
         if(c0){ var cs0=getComputedStyle(c0); pad0=(parseFloat(cs0.paddingLeft)||0)+(parseFloat(cs0.paddingRight)||0)+2; }
-        var sW=Math.ceil(sNat)+2;
+        var sFull=Math.ceil(sNat)+2, sW=sFull;
         // ---- ALREADY SCORED column: as wide as its sub-columns need
         var pw=0, cw=0, more=false, gut=6*uk;
         if(th && t){
@@ -1281,8 +1281,16 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
           cw=Math.max(8, Math.ceil(maxc)+3);
           var need=Math.max(n*cw, titleW);
           var room=tw-others-(sW+pad0);
-          if(need<=room){ pw=need; cw=need/n; }                    // everything fits: no scrolling, no gaps
-          else { more=true; pw=Math.max(titleW, Math.floor(room-gut)); }   // too many tests: this strip swipes sideways
+          if(need<=room){ pw=need; cw=need/n; }                    // everything fits: full names, no scrolling, no gaps
+          else {
+            // Many earlier tests: the names column gives up room (long names then swipe sideways inside it), but never
+            // drops below ~38% of the screen, nor below the longest name when that is shorter.
+            var minS=Math.min(sFull, Math.floor(tw*0.38)-pad0);
+            sW=Math.max(minS, Math.min(sFull, Math.floor(tw-others-pad0-need-gut)));
+            var room2=tw-others-(sW+pad0);
+            if(need<=room2){ pw=need; cw=need/n; }
+            else { more=true; pw=Math.max(titleW, Math.floor(room2-gut)); }   // still too many tests: this strip swipes sideways
+          }
         }
         // ---- still too wide? let the Student names take the squeeze (they swipe sideways)
         var total=sW+pad0+others+(th?pw+(more?gut:0):0);
@@ -1546,7 +1554,7 @@ table.sp-students td:nth-child(4){text-align:left;}
   table.rc-list th.rc-combo{white-space:normal !important;width:1%;line-height:1.1;}
   table.rc-list td.rc-combo{white-space:nowrap !important;width:1%;}
 .dl-loading{opacity:.85 !important;pointer-events:none !important;cursor:progress !important;}
-  .ra-loading{display:block;margin-top:8px;font-weight:800;font-size:calc(15*var(--uk));color:var(--blue,#0A5BA8);}
+  .ra-loading{display:block;margin-top:6px;font-weight:800;letter-spacing:.04em;font-size:calc(9*var(--uk));color:var(--blue,#0A5BA8);}
   /* ENTER SCORES table: columns hug their contents. Student takes only what is left over (its names still swipe
      sideways), ALREADY SCORED grows with its sub-columns, the entering and Actions columns stay tight. */
   .se-wrap.se-score .se-table{table-layout:auto;width:auto;max-width:100%;}   /* the table is only as wide as its columns: no idle space between them */
@@ -1557,6 +1565,11 @@ table.sp-students td:nth-child(4){text-align:left;}
   .se-wrap.se-score .se-table th.se-prevh{min-width:var(--se-pw,calc(44*var(--uk)));}
   .se-wrap.se-score .se-table th.se-prevh.se-more{min-width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
   .se-wrap.se-score .se-table th:nth-last-child(2){min-width:calc(46*var(--uk));}
+  /* ENTER SCORES actions: REMOVE STUDENT / DELETE SCORE / CLEAR X in one small tight line */
+  .se-wrap.se-score td.flex{white-space:nowrap !important;text-align:center;}
+  .se-wrap.se-score td.flex .se-act{font-size:calc(4.2*var(--uk)) !important;font-weight:800 !important;letter-spacing:0 !important;padding:calc(2.5*var(--uk)) calc(4*var(--uk)) !important;min-height:0 !important;line-height:1.2 !important;white-space:nowrap !important;margin:0 calc(1.5*var(--uk)) !important;width:auto !important;display:inline-block;}
+  /* RESULT ANALYSIS subject forms (class wise / level wise): a small gap at both ends shows that no column is cut */
+  .layout .main.main-wide .card[data-orient]:has(table.ra-table:not(.sp-students)){padding-left:calc(6*var(--uk)) !important;padding-right:calc(6*var(--uk)) !important;}
   /* Student Performance form: nothing below the table, so it can fill the page */
   .layout .main:has(table.sp-students.sp-fill){padding-bottom:0 !important;}
   .layout .main:has(table.sp-students.sp-fill) .card:has(> table.sp-students){padding-bottom:0 !important;margin-bottom:0 !important;}
@@ -9493,7 +9506,7 @@ function setAnalysisParam(key, value, _go){
       sel.dataset.raBusy = '1';                       // the chosen class/level simply stays shown in the box
       document.querySelectorAll('.center-stage select, .center-stage button').forEach(x=>{ if(x!==sel) x.disabled = true; });
       const msg = document.createElement('div'); msg.className = 'ra-loading'; msg.setAttribute('role','status');
-      msg.textContent = '⏳ Loading ' + (key==='level' ? 'level' : 'class') + ' analysis… please wait';
+      msg.textContent = 'LOADING FORM';
       sel.insertAdjacentElement('afterend', msg);
       const vw = VIEW;
       // let the browser paint the message first, then do the heavy work
@@ -10235,16 +10248,16 @@ function scoresEntryView(mine){
             let existing = '';
             const existingRow = existingScoreFor(s.id);
             existing = existingRow ? existingRow.marks : '';
-            const delScoreBtn = existingRow ? `<button type="button" class="btn-danger" style="padding:4px 10px;" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE</button>` : '';
+            const delScoreBtn = existingRow ? `<button type="button" class="btn-danger se-act" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE SCORE</button>` : '';
             const otherCells = otherCols.map(c=>{
               const row = scoreCellFor(s.id, a.subject, c, term, year);
               return row ? `<span class="se-pc">${esc(row.marks)}</span>` : `<span class="se-pc se-nil">—</span>`;
             }).join('');
             const isMissing = !existingRow && missSet.has(s.id);
-            const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline" style="padding:4px 10px;" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">Clear X</button>` : '';
+            const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline se-act" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">CLEAR X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline" style="padding:4px 10px;" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE</button></td></tr>`;
+            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>${delScoreBtn}${clearMissingBtn}</td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
