@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-24-69'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-26-9'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -184,12 +184,39 @@ img{max-width:100%;height:auto;}
 @media (max-width:700px){.center-stage{padding-bottom:6vh;}.center-stage>h2{font-size:26px;}.center-stage>.card{padding:20px 16px;}}
 @media print{.center-stage{min-height:0;padding-bottom:0;}}
 /* Global Back button (see NAVIGATION HISTORY below) */
-.nav-back-bar{margin:0 0 14px;}
+.nav-back-bar{margin:0 0 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.nav-undo-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:#7a5a00;border:2px solid var(--gold,#e0a800);padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;line-height:1.2;max-width:100%;text-align:left;cursor:pointer;}
+.nav-undo-btn:hover{background:var(--gold,#e0a800);color:#3a2c00;}
+.nav-undo-btn .nav-back-to{font-weight:600;opacity:.85;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nav-redo-btn{border-style:dashed;}
+.hist-overlay{position:fixed;inset:0;z-index:99999;background:rgba(10,42,74,.6);display:flex;align-items:center;justify-content:center;padding:12px;}
+.hist-box{background:#fff;color:var(--ink,#0A2A4A);border-radius:14px;max-width:560px;width:100%;max-height:94vh;overflow-y:auto;padding:16px 16px 12px;box-shadow:0 14px 50px rgba(0,0,0,.4);}
+.hist-box h3{margin:0 0 4px;color:var(--navy,#0A2A4A);}
+.hist-redo{width:100%;margin:6px 0 4px;}
+.bin-host{margin:8px 0;}
+.bin-head{font-weight:800;color:var(--navy);margin:10px 0 2px;}
+.bin-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid #cfd9e3;border-radius:8px;padding:8px 10px;margin:6px 0;background:#fbfdff;}
+.bin-main{flex:1 1 200px;min-width:0;overflow-wrap:anywhere;}
+.bin-meta{font-size:12px;color:var(--muted);}
+.bin-left{font-size:12px;font-weight:700;color:#7a5a00;white-space:nowrap;}
+.bin-btn{padding:6px 12px;white-space:nowrap;}
+.rw-wrap{position:relative;margin:10px 0 6px;}
+.rw-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;}
+.rw-col{text-align:center;min-width:0;}
+.rw-h{font-size:12px;font-weight:800;text-transform:uppercase;color:var(--blue,#1f5fa8);height:20px;line-height:16px;}
+.rw-sc{height:150px;overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;border:1px solid var(--blue,#1f5fa8);border-radius:8px;background:#f5f8fc;scrollbar-width:none;}
+.rw-sc::-webkit-scrollbar{display:none;}
+.rw-pad{height:50px;}
+.rw-i{height:50px;line-height:50px;scroll-snap-align:center;font-size:20px;font-weight:600;color:#7b8ba0;cursor:pointer;user-select:none;}
+.rw-i.on{color:var(--navy,#0A2A4A);font-weight:900;font-size:26px;}
+.rw-band{position:absolute;left:0;right:0;top:calc(100% - 100px);height:50px;border-top:2px solid var(--gold,#e0a800);border-bottom:2px solid var(--gold,#e0a800);pointer-events:none;z-index:2;}
+.hist-target{margin:8px 0 2px;font-size:15px;}
+.hist-btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;}
 .nav-back-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;line-height:1.2;max-width:100%;text-align:left;}
 .nav-back-btn:hover{background:var(--blue);color:#fff;}
 .nav-back-btn .nav-back-to{font-weight:600;opacity:.85;}
 .nav-back-btn.auth-back{position:absolute;top:14px;left:14px;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.25);}
-@media print{.nav-back-bar,.nav-back-btn{display:none !important;}}
+@media print{.nav-back-bar,.nav-back-btn,.nav-undo-btn{display:none !important;}}
 table{border-collapse:collapse;width:100%;background:#fff;}
 table.report-table, table.data-table{border:2px solid var(--blue);}
 table.report-table th, table.report-table td, table.data-table th, table.data-table td{border:1px solid var(--blue);padding:7px 9px;font-size:13px;text-align:center;}
@@ -289,12 +316,23 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 h3.stu-find-title{font-size:32px;font-weight:900;letter-spacing:.6px;text-transform:uppercase;line-height:1.15;margin:0 0 8px;color:var(--blue);}
 .stu-back{display:none;}
 #stuPage.stu-results-mode #stuDormant,
+#stuPage.stu-results-mode #stuDormant2,
 #stuPage.stu-results-mode > h2.stu-page-title,
 #stuPage.stu-results-mode .stu-hint{display:none !important;}
 #stuPage.stu-results-mode .stu-back{display:inline-flex;align-items:center;margin-bottom:10px;font-weight:800;}
 #stuPage.stu-results-mode #stuTableCard{min-height:calc(100vh - 230px);min-height:calc(100dvh - 230px);}
 .main:has(#stuPage.stu-results-mode){max-width:none;}
 @media (max-width:700px){h3.stu-find-title{font-size:26px;}}
+/* Bulk upload: Class, Upload and Paste list sit on one line at every screen width */
+.bulk-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);gap:10px;align-items:start;}
+.bulk-row label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;}
+.bulk-row select,.bulk-row input[type=file],.bulk-row textarea{width:100%;box-sizing:border-box;min-width:0;font-size:13px;}
+.bulk-row select,.bulk-row input[type=file]{min-height:52px;height:52px;padding:8px;}
+.bulk-row textarea{min-height:52px;height:52px;padding:8px;resize:vertical;}
+#bulkWordStatus:empty{display:none;}
+@keyframes stuRowFlash{from{background:#ffe680;}to{background:transparent;}}
+tr.stu-row-focus td{animation:stuRowFlash 2.4s ease-out;}
+tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outline-offset:1px;}
 .small{font-size:12px;color:var(--muted);}
 .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .badge-role{background:var(--gold);color:#3a2c00;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:800;text-transform:uppercase;}
@@ -1155,6 +1193,22 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
 .score-pick select,.score-pick input:not([type="checkbox"]):not([type="hidden"]){min-height:calc(42*var(--uk)) !important;padding-top:calc(9*var(--uk)) !important;padding-bottom:calc(9*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .ad-enrol table tr{height:calc(24*var(--uk)*var(--es,1)) !important;}
 .ad-enrol table td{padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
+/* Enrollment table: square corners, and every column only as wide as its own content (no empty space between columns). */
+.card.ad-enrol{border-radius:0 !important;}
+.ad-enrol .ad-scroll{overflow-x:auto;}
+.ad-enrol table{table-layout:auto !important;width:max-content !important;max-width:100%;border-collapse:collapse;border-radius:0 !important;}
+.ad-enrol table th,.ad-enrol table td{width:auto !important;overflow:visible !important;text-overflow:clip !important;white-space:nowrap;border-radius:0 !important;padding-left:calc(5*var(--uk)) !important;padding-right:calc(5*var(--uk)) !important;}
+.ad-enrol table th:first-child,.ad-enrol table td:first-child{text-align:left;}
+/* PC: Term ends / Next term begins on the admin dashboard are zoomed — larger, bolder labels and date boxes for clarity. */
+/* Dates box is only as big as its two date settings: card shrinks to fit, date boxes stop stretching. */
+.ad-side>.ad-dates{width:fit-content !important;max-width:100%;justify-self:start;box-sizing:border-box;}
+.ad-dates input[type=date]{flex:none !important;width:auto !important;}
+@media (min-width:900px){
+  .ad-side>.ad-dates{padding:calc(8*var(--uk)) calc(10*var(--uk)) !important;gap:calc(8*var(--uk)) !important;}
+  .ad-dates>div{gap:calc(14*var(--uk));}
+  .ad-dates label{font-size:calc(17*var(--uk)) !important;font-weight:800 !important;color:var(--navy,#0A2A4A);white-space:nowrap;}
+  .ad-dates input{font-size:calc(18*var(--uk)) !important;font-weight:700 !important;min-height:calc(42*var(--uk)) !important;padding:calc(8*var(--uk)) calc(10*var(--uk)) !important;}
+}
 /* Teacher dashboard: strictly three tiles on every line, on every screen */
 .tile-grid.tile-grid-3{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:calc(12*var(--uk));max-width:calc(900*var(--uk));}
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
@@ -2673,7 +2727,8 @@ function navBackButtonHTML(extraClass){
 }
 function navBackBar(){
   const b = navBackButtonHTML('');
-  return b ? `<div class="nav-back-bar">${b}</div>` : '';
+  const u = undoBarHTML();
+  return (b||u) ? `<div class="nav-back-bar">${b}${u}</div>` : '';
 }
 // Sign-in / sign-up / recovery screens: same trail, button floats top-left.
 function navWrapAuth(html){
@@ -3005,8 +3060,16 @@ function nextAdmissionNumberFromSeq(cls, seq){
 const OLD_STUDENT_RETENTION_TERMS = 2;
 async function pruneOldStudents(){
   if(!SCHOOL_ID || !DB.info) return;
-  const toPurge = DB.students.filter(s=> s.status==='left' && termsBehindCurrent(s.leftTerm, s.leftYear) >= OLD_STUDENT_RETENTION_TERMS);
+  let toPurge = DB.students.filter(s=> s.status==='left' && termsBehindCurrent(s.leftTerm, s.leftYear) >= OLD_STUDENT_RETENTION_TERMS);
   if(!toPurge.length) return;
+  // Recycle Bin first: only students whose copy is safely stored are purged (the rest are tried again next time).
+  { const stored = [];
+    for(const s of toPurge){
+      const sc = DB.scores.filter(x=>x.studentId===s.id);
+      if(await binStash('student', s.name||'Old student', 'Old student — automatic clean-up', {student:s, scores:sc, parents:binParentLinks(s.id)}, {auto:true})) stored.push(s);
+    }
+    toPurge = stored;
+    if(!toPurge.length) return; }
   const purgeIds = new Set(toPurge.map(s=>s.id));
   DB.students = DB.students.filter(s=>!purgeIds.has(s.id));
   DB.scores = DB.scores.filter(sc=>!purgeIds.has(sc.studentId));
@@ -3210,6 +3273,7 @@ function upsertScores(rows){
 function deleteScores(rows){
   rows = Array.isArray(rows) ? rows : [rows];
   if(!rows.length) return Promise.resolve();
+  const snapshot = rows.map(r=>JSON.parse(JSON.stringify(r)));   // what goes into the Recycle Bin
   const idsToRemove = new Set(rows.map(r=>r.id));
   DB.scores = DB.scores.filter(x=>!idsToRemove.has(x.id)); // optimistic local update
   invalidateScoreLookupCache();
@@ -3218,9 +3282,21 @@ function deleteScores(rows){
     const k = scoreShardKey(r.term, r.year);
     (byShard[k] = byShard[k] || {term:r.term, year:r.year, ids:new Set()}).ids.add(r.id);
   });
-  return Promise.all(Object.values(byShard).map(({term,year,ids})=>
-    mergeScoreShard(SCHOOL_ID, term, year, fresh=>fresh.filter(x=>!ids.has(x.id)))
-  ));
+  // Recycle Bin first: the scores are only erased from the database once a copy is safely in the bin.
+  return (async()=>{
+    const stashed = await binStashScores(snapshot);
+    if(!stashed){
+      snapshot.forEach(r=>{ mergeRowIntoShard(DB.scores, r); });   // put them back on screen — nothing was deleted
+      invalidateScoreLookupCache();
+      alert('Could not move the score(s) to the Recycle Bin (check your connection). Nothing was deleted.');
+      try{ render(); }catch(e){}
+      return false;
+    }
+    await Promise.all(Object.values(byShard).map(({term,year,ids})=>
+      mergeScoreShard(SCHOOL_ID, term, year, fresh=>fresh.filter(x=>!ids.has(x.id)))
+    ));
+    return true;
+  })();
 }
 
 // Re-pulls every score shard from the database into DB.scores. Called before
@@ -3321,6 +3397,9 @@ async function loadSchoolData(id){
   DB.info = info; DB.accounts = accounts; DB.classes = classes; DB.students = students;
   DB.assignments = assignments; DB.scores = scores; DB.bands = bands; DB.obands = obands;
   DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
+  undoResetShadow();
+  try{ histEnsure(); }catch(e){}
+  try{ BIN.idx = null; setTimeout(()=>{ if(CUR && CUR.role==='admin') binPurgeExpired().catch(()=>{}); }, 5000); }catch(e){}
 }
 /* ---- Global credential uniqueness (no two accounts anywhere may share a
    username, and no two accounts anywhere may share a password) ---- */
@@ -3526,6 +3605,16 @@ async function purgeSchool(schoolId){
   const snapIndex = await getShared(`sch_${schoolId}_autosnaps_index`, []);
   await Promise.all(snapIndex.map(s=>deleteShared(`sch_${schoolId}_autosnap_${s.ts}`)));
   await deleteShared(`sch_${schoolId}_autosnaps_index`);
+  try{
+    const hIdx = await histGet(histIdxKey(schoolId));
+    for(const k of ((hIdx && hIdx.buckets) || [])){ await deleteShared(k); }
+    await deleteShared(histIdxKey(schoolId));
+  }catch(e){ console.error(e); }
+  try{
+    const bIdx = await binRawGet(binIdxKey(schoolId));
+    for(const m of (Array.isArray(bIdx)?bIdx:[])){ await deleteShared(binItemKey(m.id, schoolId)); }
+    await deleteShared(binIdxKey(schoolId));
+  }catch(e){ console.error(e); }
   await removeSchoolFromUsernameIndex(schoolId);
   REGISTRY = REGISTRY.filter(x=>x.id!==schoolId);
   await saveRegistry();
@@ -3580,15 +3669,747 @@ async function removeSchoolFromUsernameIndex(schoolId){
   if(changed) await setShared(USERNAME_INDEX_KEY, idx);
 }
 async function saveSystemOwner(){ await setShared('system_owner', SYSTEM_OWNER); }
-async function saveInfo(){ await setShared(`sch_${SCHOOL_ID}_info`, DB.info); }
-async function saveAccounts(){ await setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
-async function saveClasses(){ await setShared(`sch_${SCHOOL_ID}_classes`, DB.classes); }
-async function saveStudents(){ await setShared(`sch_${SCHOOL_ID}_students`, DB.students); }
-async function saveAssignments(){ await setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments); }
+async function saveInfo(){ await undoTracked('info', ()=>setShared(`sch_${SCHOOL_ID}_info`, DB.info)); }
+async function saveAccounts(){ await undoTracked('accounts', ()=>setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts)); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
+async function saveClasses(){ await undoTracked('classes', ()=>setShared(`sch_${SCHOOL_ID}_classes`, DB.classes)); }
+async function saveStudents(){ await undoTracked('students', ()=>setShared(`sch_${SCHOOL_ID}_students`, DB.students)); }
+async function saveAssignments(){ await undoTracked('assignments', ()=>setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments)); }
 async function saveScores(){ await saveScoresShardedFor(SCHOOL_ID, DB.scores); }
-async function saveBands(){ await setShared(`sch_${SCHOOL_ID}_bands`, DB.bands); }
-async function saveOBands(){ await setShared(`sch_${SCHOOL_ID}_obands`, DB.obands); }
-async function savePBands(){ await setShared(`sch_${SCHOOL_ID}_pbands`, DB.pbands); }
+async function saveBands(){ await undoTracked('bands', ()=>setShared(`sch_${SCHOOL_ID}_bands`, DB.bands)); }
+async function saveOBands(){ await undoTracked('obands', ()=>setShared(`sch_${SCHOOL_ID}_obands`, DB.obands)); }
+async function savePBands(){ await undoTracked('pbands', ()=>setShared(`sch_${SCHOOL_ID}_pbands`, DB.pbands)); }
+
+/* ============================================================
+   UNDO / REDO  (Owner/Admin only)
+   Every save of the school's main records (students, classes, staff/parent accounts, subject assignments,
+   school settings and grading bands) remembers what that record looked like just before. The "↶ Undo"
+   button beside Back puts the previous version back and saves it, so deletions, removals, promotions,
+   edits and other saved changes can all be taken back; "↷ Redo" re-applies what was undone.
+   Not covered: score entries (teachers' marks), stored photos once deleted, and anything done before
+   the page was opened. The trail lives only in this open session and is cleared on sign-out.
+   ============================================================ */
+var UNDO = {stack:[], redo:[], shadow:{}, sess:null, busy:false, label:'', labelAt:0, irrUntil:0, MAX:15, GROUP_MS:2500};
+const UNDO_COLS = {
+  info:        {get:()=>DB.info,        set:v=>{ const g=schoolGrade(); DB.info=v; keepLockedGrade(g); }, save:()=>saveInfo(),        name:'school settings'},
+  accounts:    {get:()=>DB.accounts,    set:v=>{ DB.accounts=v; },     save:()=>saveAccounts(),    name:'accounts'},
+  classes:     {get:()=>DB.classes,     set:v=>{ DB.classes=v; },      save:()=>saveClasses(),     name:'classes'},
+  students:    {get:()=>DB.students,    set:v=>{ DB.students=v; },     save:()=>saveStudents(),    name:'students'},
+  assignments: {get:()=>DB.assignments, set:v=>{ DB.assignments=v; },  save:()=>saveAssignments(), name:'subject assignments'},
+  bands:       {get:()=>DB.bands,       set:v=>{ DB.bands=v; },        save:()=>saveBands(),       name:'grading bands'},
+  obands:      {get:()=>DB.obands,      set:v=>{ DB.obands=v; },       save:()=>saveOBands(),      name:'grading bands'},
+  pbands:      {get:()=>DB.pbands,      set:v=>{ DB.pbands=v; },       save:()=>savePBands(),      name:'grading bands'}
+};
+const UNDO_LABELS = {
+  delStudent:'Remove student', markStudentLeft:'Mark student as left', restoreStudent:'Restore student',
+  delOldStudentNow:'Delete old student', delClass:'Delete class', delAssign:'Remove subject assignment',
+  approveAcc:'Approve account', rejectAcc:'Reject account', closeAcc:'Close account', reopenAcc:'Reopen account',
+  resetAccPw:'Reset password', delAcc:'Delete account', delTeacherAny:'Delete teacher', editStudentProfile:'Edit student profile'
+};
+function undoSess(){ return CUR ? [CUR.role, CUR.username||'', SCHOOL_ID||''].join('|') : 'anon'; }
+function undoJson(v){ try{ const j = JSON.stringify(v===undefined?null:v); return j===undefined?'null':j; }catch(e){ return null; } }
+function undoResetShadow(){
+  try{ Object.keys(UNDO_COLS).forEach(c=>{ UNDO.shadow[c] = undoJson(UNDO_COLS[c].get()); }); }catch(e){}
+}
+function undoClearAll(){ UNDO.stack = []; UNDO.redo = []; }
+function undoMarkIrreversible(){ undoClearAll(); UNDO.irrUntil = Date.now()+12000; }
+function undoCanRecord(){
+  if(UNDO.busy || !CUR || CUR.role!=='admin') return false;
+  if(Date.now() < UNDO.irrUntil) return false;
+  return (Date.now()-UNDO.labelAt) < 90000;   // only changes the person just asked for, never background saves
+}
+// Wraps one collection's save: notes "before" (the version last saved) and "after" (what is being saved now).
+async function undoTracked(col, doSave){
+  let tok = null;
+  try{
+    const sess = undoSess();
+    if(UNDO.sess!==sess){ UNDO.sess = sess; undoClearAll(); undoResetShadow(); }
+    const before = UNDO.shadow[col];
+    const after = undoJson(UNDO_COLS[col].get());
+    tok = {col, before, after, entry:null, created:false, prevAfter:null};
+    if(after!==null) UNDO.shadow[col] = after;
+    if(before!==undefined && after!==null && before!==after && undoCanRecord()){
+      const now = Date.now();
+      let entry = UNDO.stack[UNDO.stack.length-1];
+      if(!entry || (now - entry.t) > UNDO.GROUP_MS){
+        entry = {label: UNDO.label || 'Change', t: now, changes: []};
+        UNDO.stack.push(entry); tok.created = true;
+        UNDO.redo = [];
+        if(UNDO.stack.length>UNDO.MAX) UNDO.stack.shift();
+      } else entry.t = now;
+      const have = entry.changes.find(c=>c.col===col);
+      if(have){ tok.prevAfter = have.after; have.after = after; }
+      else entry.changes.push({col, before, after});
+      tok.entry = entry; tok.added = !have;
+      // keep memory bounded
+      let size = 0; UNDO.stack.forEach(en=>en.changes.forEach(c=>{ size += (c.before||'').length + (c.after||'').length; }));
+      while(size>40e6 && UNDO.stack.length>1){ const d = UNDO.stack.shift(); d.changes.forEach(c=>{ size -= (c.before||'').length + (c.after||'').length; }); }
+    }
+  }catch(e){ console.error('undo tracking skipped', e); }
+  try{
+    await doSave();
+    if(tok && tok.before!==undefined && tok.after!==null && tok.before!==tok.after) histRecord(col, tok.before, tok.after);
+  }catch(err){
+    // the save did not go through — forget the note so nothing "undoable" exists for it
+    try{
+      if(tok){
+        if(tok.before!==undefined) UNDO.shadow[col] = tok.before;
+        if(tok.entry){
+          if(tok.added) tok.entry.changes = tok.entry.changes.filter(c=>c.col!==col);
+          else { const h = tok.entry.changes.find(c=>c.col===col); if(h && tok.prevAfter!==null) h.after = tok.prevAfter; }
+          if(!tok.entry.changes.length) UNDO.stack = UNDO.stack.filter(en=>en!==tok.entry);
+        }
+      }
+    }catch(e){}
+    throw err;
+  }
+}
+function undoSetLabel(text){
+  let t = (text||'').replace(/\s+/g,' ').trim().replace(/^(Submit|Save)\s*[—–-]\s*/i,'');
+  if(!t) return;
+  if(t.length>46) t = t.slice(0,44)+'…';
+  UNDO.label = t.charAt(0).toUpperCase()+t.slice(1); UNDO.labelAt = Date.now();
+}
+document.addEventListener('click', (e)=>{
+  try{
+    const t = e.target && e.target.closest ? e.target.closest('[data-action],button') : null;
+    if(!t) return;
+    const raw = (t.dataset && t.dataset.action) || '';
+    const name = raw.split(':')[0];
+    if(/^(nav|undoLast|redoLast)/.test(name)) return;
+    if(t.classList && t.classList.contains('nav-undo-btn')) return;
+    undoSetLabel(UNDO_LABELS[name] || t.textContent);
+  }catch(_){}
+}, true);
+document.addEventListener('submit', (e)=>{
+  try{
+    const f = e.target;
+    if(e.submitter && (e.submitter.textContent||'').trim()) undoSetLabel(e.submitter.textContent);
+    else if(f && f.dataset && f.dataset.form) undoSetLabel(f.dataset.form.replace(/([A-Z])/g,' $1').toLowerCase());
+  }catch(_){}
+}, true);
+document.addEventListener('change', (e)=>{
+  try{ if(e.target && e.target.hasAttribute && e.target.hasAttribute('data-terminfo')) undoSetLabel('Change term dates'); }catch(_){}
+}, true);
+function undoBarHTML(){
+  if(!CUR || CUR.role!=='admin') return '';
+  const same = UNDO.sess===undoSess();
+  const u = same ? UNDO.stack[UNDO.stack.length-1] : null;
+  let h = '';
+  if(u) h += `<button type="button" class="nav-undo-btn" data-action="undoLast" title="Undo: ${esc(u.label)}" aria-label="Undo: ${esc(u.label)}">↶ Undo<span class="nav-back-to">${esc(u.label)}</span></button>`;
+  h += `<button type="button" class="nav-undo-btn nav-redo-btn" data-action="openReturn" title="Go back to an earlier time" aria-label="Redo / Return to an earlier time">↷ Redo / Return<span class="nav-back-to">choose how far back</span></button>`;
+  return h;
+}
+async function undoApply(dir){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  const from = dir==='undo' ? UNDO.stack : UNDO.redo;
+  const entry = from[from.length-1];
+  if(!entry) return;
+  if(navigator.onLine===false){ alert('You appear to be offline. Please reconnect and try again.'); return; }
+  const verb = dir==='undo' ? 'Undo' : 'Redo';
+  const names = Array.from(new Set(entry.changes.map(c=>UNDO_COLS[c.col].name))).join(', ');
+  const changedSince = entry.changes.filter(c=> undoJson(UNDO_COLS[c.col].get()) !== (dir==='undo' ? c.after : c.before));
+  let msg = `${verb} "${entry.label}"?\n\nThis puts the ${names} back as they were ${dir==='undo'?'before':'after'} that change.`;
+  if(changedSince.length) msg += `\n\n⚠ Some of these records have changed since then (by someone else, or by something that can't be undone). ${verb} will overwrite those newer changes.`;
+  if(!confirm(msg)) return;
+  UNDO.busy = true;
+  try{
+    for(const c of entry.changes){
+      const json = dir==='undo' ? c.before : c.after;
+      UNDO_COLS[c.col].set(JSON.parse(json));
+      UNDO.shadow[c.col] = json;
+      await UNDO_COLS[c.col].save();
+    }
+    from.pop();
+    (dir==='undo' ? UNDO.redo : UNDO.stack).push(entry);
+    try{ showDeliveredToast(`${dir==='undo'?'Undone':'Redone'}: ${entry.label}`); }catch(e){}
+  }catch(err){
+    console.error(err);
+    alert(`Could not ${dir} that change — please check your connection and try again.`);
+  }finally{
+    UNDO.busy = false;
+  }
+  render();
+}
+function undoLast(){ return undoApply('undo'); }
+function redoLast(){ return undoApply('redo'); }
+
+/* ============================================================
+   TIME MACHINE  — "↷ Redo / Return" button
+   Every saved change to the school's main records is also written to a permanent change log in the
+   database (who, when, and what the changed parts looked like BEFORE). Choosing "x minutes / hours / days /
+   months / years back" replays that log backwards from today's records to rebuild the school's records as they
+   were at that moment, shows what would change, and — after the owner code — puts them back.
+   The log starts the first time this version runs for a school (nothing is needed from existing schools) and
+   is kept for 2 years. Scores, and photos that were deleted from storage, are not part of it.
+   ============================================================ */
+var HIST = {ready:null, seq:{}, reg:{}, n:0, sess:null, KEEP_DAYS:735};
+function hIsObj(x){ return x!==null && typeof x==='object' && !Array.isArray(x); }
+function hEq(a,b){
+  if(a===b) return true;
+  if(Array.isArray(a)){ if(!Array.isArray(b)||a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(!hEq(a[i],b[i])) return false; return true; }
+  if(hIsObj(a)){ if(!hIsObj(b)) return false; const ka=Object.keys(a), kb=Object.keys(b); if(ka.length!==kb.length) return false; for(const k of ka){ if(!(k in b)||!hEq(a[k],b[k])) return false; } return true; }
+  return false;
+}
+function hClone(x){ return x===undefined ? undefined : JSON.parse(JSON.stringify(x)); }
+function hKeyFn(arr){
+  if(!arr.length) return 'any';
+  if(arr.every(x=>hIsObj(x) && x.id!=null && x.id!=='')) return x=>String(x.id);
+  if(arr.every(x=>hIsObj(x) && x.username!=null && x.username!=='')) return x=>String(x.username)+'|'+String(x.role||'');
+  return null;
+}
+// Describes how to turn the AFTER value back into the BEFORE value (only the parts that differ).
+function hDiff(a,b){
+  if(hEq(a,b)) return undefined;
+  if(Array.isArray(a) && Array.isArray(b)){
+    const kf = hKeyFn(a.concat(b));
+    if(kf && kf!=='any'){
+      const ma = new Map(), mb = new Map(); let dup = false;
+      a.forEach((x,i)=>{ const k=kf(x); if(ma.has(k)) dup=true; ma.set(k,{x,i}); });
+      b.forEach(x=>{ const k=kf(x); if(mb.has(k)) dup=true; mb.set(k,x); });
+      if(!dup){
+        const node = {t:'arr', ch:{}, rem:[], add:[]};
+        ma.forEach((v,k)=>{ if(!mb.has(k)) node.rem.push({i:v.i, v:v.x}); else { const d=hDiff(v.x, mb.get(k)); if(d!==undefined) node.ch[k]=d; } });
+        mb.forEach((v,k)=>{ if(!ma.has(k)) node.add.push(k); });
+        if(node.rem.length || node.add.length || Object.keys(node.ch).length) return node;
+      }
+    }
+    return {t:'set', a:a};
+  }
+  if(hIsObj(a) && hIsObj(b)){
+    const c = {};
+    new Set(Object.keys(a).concat(Object.keys(b))).forEach(k=>{
+      if(!(k in b)) c[k] = {t:'set', a:a[k]};
+      else if(!(k in a)) c[k] = {t:'del'};
+      else { const d=hDiff(a[k], b[k]); if(d!==undefined) c[k]=d; }
+    });
+    return {t:'obj', c};
+  }
+  return {t:'set', a:a};
+}
+// Applies one described change backwards to today's value and returns the older value.
+function hInv(cur, node){
+  switch(node.t){
+    case 'set': return hClone(node.a);
+    case 'del': return undefined;
+    case 'obj': {
+      const o = hIsObj(cur) ? cur : {};
+      Object.keys(node.c).forEach(k=>{ const v=hInv(o[k], node.c[k]); if(v===undefined) delete o[k]; else o[k]=v; });
+      return o;
+    }
+    case 'arr': {
+      let arr = Array.isArray(cur) ? cur : [];
+      const kf = hKeyFn(arr.concat(node.rem.map(r=>r.v)));
+      if(!kf || kf==='any') return arr;
+      const addSet = new Set(node.add);
+      arr = arr.filter(x=>!addSet.has(kf(x)));
+      arr.forEach((x,i)=>{ const d=node.ch[kf(x)]; if(d) arr[i]=hInv(x,d); });
+      node.rem.slice().sort((p,q)=>p.i-q.i).forEach(r=>{ arr.splice(Math.min(r.i,arr.length),0,hClone(r.v)); });
+      return arr;
+    }
+  }
+  return cur;
+}
+function histIdxKey(sid){ return `sch_${sid||SCHOOL_ID}_hist_index`; }
+function histDayOf(ms){ return new Date(ms).toISOString().slice(0,10).replace(/-/g,''); }
+async function histGet(key){
+  if(DEMO_MODE) return await getShared(key, null);
+  if(AUTH_READY) await AUTH_READY;
+  const snap = await db.collection(COLLECTION).doc(key).get();
+  return snap.exists ? snap.data() : null;
+}
+async function histAppend(key, entry){
+  if(DEMO_MODE){ const o = (await getShared(key,null)) || {entries:[]}; o.entries.push(entry); await setShared(key,o); return; }
+  if(AUTH_READY) await AUTH_READY;
+  await db.collection(COLLECTION).doc(key).set({entries: firebase.firestore.FieldValue.arrayUnion(entry)}, {merge:true});
+}
+async function histIndexAdd(bucketKey){
+  if(DEMO_MODE){ const o = (await getShared(histIdxKey(),null)) || {}; o.buckets = (o.buckets||[]); if(!o.buckets.includes(bucketKey)) o.buckets.push(bucketKey); await setShared(histIdxKey(),o); return; }
+  await db.collection(COLLECTION).doc(histIdxKey()).set({buckets: firebase.firestore.FieldValue.arrayUnion(bucketKey)}, {merge:true});
+}
+async function histSetSince(ms, force){
+  if(DEMO_MODE){ const o = (await getShared(histIdxKey(),null)) || {}; if(force || !o.since){ o.since = ms; await setShared(histIdxKey(),o); } return; }
+  const cur = await histGet(histIdxKey());
+  if(force || !cur || !cur.since) await db.collection(COLLECTION).doc(histIdxKey()).set({since: ms}, {merge:true});
+}
+// Called when a school's data is loaded: makes sure the log has a start time, and trims entries older than 2 years.
+function histEnsure(){
+  if(!SCHOOL_ID) return;
+  const sid = SCHOOL_ID;
+  HIST.ready = (async()=>{
+    try{
+      await histSetSince(Date.now(), false);
+      if(HIST.sess!==sid){
+        HIST.sess = sid; HIST.seq = {}; HIST.reg = {};
+        const idx = await histGet(histIdxKey(sid));
+        const cutoff = histDayOf(Date.now() - HIST.KEEP_DAYS*86400000);
+        const old = ((idx && idx.buckets) || []).filter(k=>{ const m=/_hist_(\d{8})_/.exec(k); return m && m[1] < cutoff; });
+        for(const k of old){ try{ await deleteShared(k); }catch(e){} }
+        if(old.length && !DEMO_MODE){ try{ await db.collection(COLLECTION).doc(histIdxKey(sid)).set({buckets: firebase.firestore.FieldValue.arrayRemove(...old)}, {merge:true}); }catch(e){} }
+      }
+    }catch(e){ console.error('history setup skipped', e); }
+  })();
+}
+async function histRecord(col, beforeJson, afterJson){
+  try{
+    if(!SCHOOL_ID) return;
+    if(!HIST.ready) histEnsure();
+    if(HIST.ready) await HIST.ready;
+    const node = hDiff(JSON.parse(beforeJson), JSON.parse(afterJson));
+    if(node===undefined) return;
+    const fresh = (Date.now()-UNDO.labelAt) < 90000;
+    const entry = {t: Date.now(), s: ++HIST.n, c: col, n: node,
+      l: (fresh && UNDO.label) ? UNDO.label : 'Automatic change',
+      by: CUR ? String(CUR.name || CUR.username || CUR.role || '') : ''};
+    const day = histDayOf(entry.t);
+    for(let tries=0; tries<4; tries++){
+      const seq = HIST.seq[day] || 0;
+      const key = `sch_${SCHOOL_ID}_hist_${day}_${seq}`;
+      try{
+        await histAppend(key, entry);
+        if(!HIST.reg[key]){ await histIndexAdd(key); HIST.reg[key] = true; }
+        return;
+      }catch(e){ HIST.seq[day] = seq+1; }
+    }
+    await histSetSince(Date.now(), true);   // could not be stored: earlier history can no longer be trusted past this point
+  }catch(e){ console.error('history entry skipped', e); }
+}
+// Reads every logged change after time T.
+async function histLoad(T){
+  const idx = await histGet(histIdxKey());
+  if(!idx || !idx.since) return {since:null, entries:[]};
+  const fromDay = histDayOf(T);
+  const keys = (idx.buckets||[]).filter(k=>{ const m=/_hist_(\d{8})_/.exec(k); return m && m[1] >= fromDay; });
+  const docs = await Promise.all(keys.map(k=>histGet(k)));
+  const entries = [];
+  docs.forEach(d=>{ if(d && Array.isArray(d.entries)) d.entries.forEach(e=>{ if(e && e.t > T) entries.push(e); }); });
+  entries.sort((a,b)=> (b.t-a.t) || ((b.s||0)-(a.s||0)));
+  return {since: idx.since, entries};
+}
+// Rebuilds the records as they stood at T (in memory only).
+async function histPlan(T){
+  const {since, entries} = await histLoad(T);
+  if(!since) return {error:'No change history exists for this school yet. It starts recording from now on.'};
+  if(T < since) return {error:`This school's change history only goes back to ${histFmt(new Date(since))}. Choose a time after that.`, since};
+  const state = {};
+  Object.keys(UNDO_COLS).forEach(c=>{ state[c] = JSON.parse(undoJson(UNDO_COLS[c].get())); });
+  entries.forEach(e=>{ if(Object.prototype.hasOwnProperty.call(state, e.c) && e.n){ const v = hInv(state[e.c], e.n); state[e.c] = (v===undefined ? null : v); } });
+  const changedCols = Object.keys(state).filter(c=> undoJson(state[c]) !== undoJson(UNDO_COLS[c].get()));
+  return {since, state, entries, changedCols};
+}
+function histFmt(d){ try{ return d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return String(d); } }
+function histShort(d){ try{ return d.toLocaleString(undefined,{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return String(d); } }
+function histTarget(v){
+  const d = new Date();
+  d.setFullYear(d.getFullYear()-v.y); d.setMonth(d.getMonth()-v.mo); d.setDate(d.getDate()-v.d);
+  d.setHours(d.getHours()-v.h); d.setMinutes(d.getMinutes()-v.mi);
+  const lim = new Date(); lim.setFullYear(lim.getFullYear()-2);
+  return d < lim ? lim : d;
+}
+function histWheel(id, label, max){
+  let items = ''; for(let i=0;i<=max;i++) items += `<div class="rw-i" data-v="${i}">${i}</div>`;
+  return `<div class="rw-col"><div class="rw-h">${label}</div><div class="rw-sc" id="${id}"><div class="rw-pad"></div>${items}<div class="rw-pad"></div></div></div>`;
+}
+function openReturnDialog(){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  const old = document.getElementById('histOverlay'); if(old) old.remove();
+  const redo = (UNDO.sess===undoSess() && UNDO.redo.length) ? UNDO.redo[UNDO.redo.length-1] : null;
+  const wrap = document.createElement('div');
+  wrap.id = 'histOverlay'; wrap.className = 'hist-overlay';
+  wrap.innerHTML = `<div class="hist-box" role="dialog" aria-modal="true">
+    <h3>↷ Redo / Return to an earlier time</h3>
+    <p class="small">Scroll each wheel to choose how far back to go. The school's records (students, classes, accounts, subject assignments, settings) are shown as they stood then, and you confirm before anything changes.</p>
+    ${redo?`<button type="button" class="btn-outline hist-redo" id="histRedoBtn">↷ Redo the change I just undid: ${esc(redo.label)}</button>`:''}
+    <div id="histBinHost" class="bin-host"></div>
+    <div class="rw-wrap"><div class="rw-band"></div><div class="rw-row">
+      ${histWheel('rwMi','Minutes',59)}${histWheel('rwH','Hours',23)}${histWheel('rwD','Days',30)}${histWheel('rwMo','Months',11)}${histWheel('rwY','Years',2)}
+    </div></div>
+    <div class="hist-target" id="histTarget"></div>
+    <div class="small" id="histInfo">Checking how far back this school's history goes…</div>
+    <div id="histPlanOut"></div>
+    <div class="hist-btns">
+      <button type="button" class="btn-outline" id="histClose">Close</button>
+      <button type="button" class="btn" id="histPreview">Show what will change</button>
+      <button type="button" class="btn-danger" id="histGo" style="display:none;">Return to this time</button>
+    </div></div>`;
+  document.body.appendChild(wrap);
+  const q = id=>wrap.querySelector('#'+id);
+  binFillHost(q('histBinHost'), 5);
+  const ids = {mi:'rwMi', h:'rwH', d:'rwD', mo:'rwMo', y:'rwY'}, maxes = {mi:59,h:23,d:30,mo:11,y:2};
+  const val = k=>{ const el=q(ids[k]); return Math.max(0, Math.min(maxes[k], Math.round(el.scrollTop/50))); };
+  let plan = null, sinceMs = null;
+  const refresh = ()=>{
+    const v = {}; Object.keys(ids).forEach(k=>{ v[k] = val(k); });
+    Object.keys(ids).forEach(k=>{ q(ids[k]).querySelectorAll('.rw-i').forEach(it=>it.classList.toggle('on', Number(it.dataset.v)===v[k])); });
+    const T = histTarget(v);
+    q('histTarget').innerHTML = `Return to: <b>${esc(histFmt(T))}</b>`;
+    q('histPlanOut').innerHTML = ''; q('histGo').style.display = 'none'; plan = null;
+    return T;
+  };
+  Object.keys(ids).forEach(k=>{
+    const el = q(ids[k]);
+    let t = null;
+    el.addEventListener('scroll', ()=>{ clearTimeout(t); t = setTimeout(refresh, 60); });
+    el.querySelectorAll('.rw-i').forEach(it=>it.addEventListener('click', ()=>{ el.scrollTo({top:Number(it.dataset.v)*50, behavior:'smooth'}); }));
+  });
+  q('rwH').scrollTop = 50;          // start at 1 hour back
+  setTimeout(refresh, 30);
+  histGet(histIdxKey()).then(idx=>{
+    if(idx && idx.since){ sinceMs = idx.since; q('histInfo').textContent = `This school's change history starts ${histFmt(new Date(idx.since))} and is kept for 2 years. Scores and deleted photos are not part of it.`; }
+    else q('histInfo').textContent = 'This school\'s change history is just starting — it records from now on.';
+  }).catch(()=>{ q('histInfo').textContent = ''; });
+  const close = ()=>wrap.remove();
+  q('histClose').onclick = close;
+  wrap.addEventListener('click', e=>{ if(e.target===wrap) close(); });
+  if(q('histRedoBtn')) q('histRedoBtn').onclick = async()=>{ close(); await redoLast(); };
+  q('histPreview').onclick = async()=>{
+    const T = refresh(); const btn = q('histPreview');
+    btn.disabled = true; btn.textContent = 'Checking…';
+    try{
+      plan = await histPlan(T.getTime()); plan.T = T;
+      const out = q('histPlanOut');
+      if(plan.error){ out.innerHTML = `<div class="note">${esc(plan.error)}</div>`; return; }
+      if(!plan.changedCols.length){ out.innerHTML = `<div class="note">Nothing in the school's records has changed since then, so there is nothing to return.</div>`; return; }
+      const cnt = (st,c)=>Array.isArray(st[c]) ? st[c].length : null;
+      const rows = [['students','Students'],['classes','Classes'],['accounts','Staff & parent accounts'],['assignments','Subject assignments']]
+        .filter(r=>plan.changedCols.includes(r[0]))
+        .map(r=>{ const now = cnt({[r[0]]:UNDO_COLS[r[0]].get()}, r[0]), then = cnt(plan.state, r[0]); return `<li>${r[1]}: <b>${now}</b> now → <b>${then}</b> then</li>`; }).join('');
+      const settings = plan.changedCols.some(c=>c==='info'||/bands$/.test(c)) ? '<li>School settings / grading bands will also go back</li>' : '';
+      const accNote = plan.changedCols.includes('accounts') ? '<li>⚠ Accounts include <b>passwords</b> — they go back to what they were then</li>' : '';
+      const recent = plan.entries.slice(0,6).map(e=>`<li>${esc(histShort(new Date(e.t)))} — ${esc(e.by||'')}: ${esc(e.l||'')}</li>`).join('');
+      out.innerHTML = `<div class="note"><b>${plan.entries.length}</b> saved change${plan.entries.length===1?'':'s'} since then will be reversed.<ul style="margin:6px 0 0 18px;padding:0;">${rows}${settings}${accNote}</ul>
+        <div class="small" style="margin-top:6px;">Most recent changes that will be reversed:</div><ul class="small" style="margin:2px 0 0 18px;padding:0;">${recent}</ul>
+        <div class="small" style="margin-top:6px;">Scores are not changed. You can undo this afterwards with ↶ Undo.</div></div>`;
+      q('histGo').style.display = '';
+    }catch(e){ console.error(e); q('histPlanOut').innerHTML = `<div class="note">Could not read the history — check the connection and try again.</div>`; }
+    finally{ btn.disabled = false; btn.textContent = 'Show what will change'; }
+  };
+  q('histGo').onclick = async()=>{
+    if(!plan || plan.error || !plan.changedCols.length) return;
+    if(navigator.onLine===false){ alert('You appear to be offline. Please reconnect and try again.'); return; }
+    const when = histFmt(plan.T);
+    if(!(await requireOwnerCode(`return the school's records to ${when}`, 'Return'))) return;
+    const go = q('histGo'); go.disabled = true; go.textContent = 'Returning…';
+    try{
+      const fresh = await histPlan(plan.T.getTime());     // re-read so nothing saved in the meantime is missed
+      if(fresh.error){ alert(fresh.error); return; }
+      const st = fresh.state;
+      // never lock the person doing this out: keep the signed-in admin account
+      if(fresh.changedCols.includes('accounts') && Array.isArray(st.accounts) && CUR && CUR.role==='admin'){
+        const mine = (DB.accounts||[]).find(a=>a.role==='admin' && a.username===CUR.username);
+        if(mine && !st.accounts.some(a=>a.role==='admin' && a.username===CUR.username)) st.accounts.push(mine);
+      }
+      undoSetLabel('Return to '+histShort(plan.T));
+      for(const c of fresh.changedCols){ UNDO_COLS[c].set(st[c]); await UNDO_COLS[c].save(); }
+      close();
+      try{ showDeliveredToast('Returned to '+histShort(plan.T)); }catch(e){}
+      render();
+    }catch(e){ console.error(e); alert('Could not complete the return — please check your connection and try again.'); go.disabled=false; go.textContent='Return to this time'; }
+  };
+}
+
+
+/* ============================================================
+   RECYCLE BIN
+   Nothing that is deleted or removed is erased straight away. Before the real delete happens, a full copy
+   (the record plus whatever was removed along with it) is stored in the school's Recycle Bin and kept for
+   15 days. It is listed under Other Settings -> Recycle Bin (and in the "Redo / Return" box): tapping
+   "Redo" on an item fetches the stored data and puts everything back. Items older than 15 days are erased
+   for good (cleaned up when an Admin signs in / opens the bin). If the copy cannot be stored, the delete is
+   cancelled so nothing is ever lost.
+   Covered: students (incl. old students & the automatic old-student clean-up, with scores), classes,
+   subject assignments, accounts / teachers / rejected sign-ups, scores, marking-list removals, extra subjects,
+   Course Work tests and finance records. Stored per school as  sch_<id>_bin_index  and  sch_<id>_bin_<item>.
+   ============================================================ */
+var BIN = {sid:null, idx:null, busy:false};
+const BIN_KEEP_DAYS = 15;
+const BIN_MS = BIN_KEEP_DAYS*86400000;
+const BIN_ICON = {student:'🎓', scores:'📝', class:'🏫', assignment:'📚', account:'👤', roster:'📋', finance:'💰', subject:'📖', cwtest:'🧪'};
+function binIdxKey(sid){ return `sch_${sid||SCHOOL_ID}_bin_index`; }
+function binItemKey(id, sid){ return `sch_${sid||SCHOOL_ID}_bin_${id}`; }
+// Low-level storage that reports failure to the caller (unlike setShared/getShared, which pop up a full-screen error).
+async function binRawGet(key){
+  if(DEMO_MODE){ try{ const raw = localStorage.getItem('cte_demo_'+key); return raw!==null ? JSON.parse(raw) : null; }catch(e){ return null; } }
+  if(AUTH_READY) await AUTH_READY;
+  const snap = await db.collection(COLLECTION).doc(key).get();
+  return snap.exists ? snap.data().value : null;
+}
+async function binRawSet(key, val){
+  if(DEMO_MODE){ localStorage.setItem('cte_demo_'+key, JSON.stringify(val)); return; }
+  if(AUTH_READY) await AUTH_READY;
+  await db.collection(COLLECTION).doc(key).set({value: val, updatedAt: Date.now()});
+}
+async function binRawDel(key){
+  if(DEMO_MODE){ localStorage.removeItem('cte_demo_'+key); return; }
+  if(AUTH_READY) await AUTH_READY;
+  await db.collection(COLLECTION).doc(key).delete();
+}
+async function binLoad(force){
+  if(!SCHOOL_ID) return [];
+  if(!force && BIN.sid===SCHOOL_ID && Array.isArray(BIN.idx)) return BIN.idx;
+  const idx = await binRawGet(binIdxKey());
+  BIN.sid = SCHOOL_ID; BIN.idx = Array.isArray(idx) ? idx : [];
+  return BIN.idx;
+}
+// Stores a copy. Returns true only when the copy (and its index entry) are safely saved.
+async function binStash(kind, label, sub, data, opts){
+  opts = opts || {};
+  try{
+    if(!SCHOOL_ID) return false;
+    const id = uid('bin');
+    const payload = {kind, data};
+    if(JSON.stringify(payload).length > 900000) throw new Error('item too large for one record');
+    const meta = {id, kind, label:String(label||'Item'), sub:String(sub||''), t:Date.now(),
+      by: opts.auto ? '__auto__' : (CUR ? String(CUR.username||CUR.role||'') : ''),
+      role: opts.auto ? 'admin' : (CUR ? CUR.role : ''),
+      byName: opts.auto ? 'Automatic clean-up' : (CUR ? String(CUR.name||CUR.username||CUR.role||'') : '')};
+    setAppBusy(true);
+    try{
+      await binRawSet(binItemKey(id), payload);
+      const cur = await binRawGet(binIdxKey());
+      const idx = Array.isArray(cur) ? cur : [];
+      idx.push(meta);
+      await binRawSet(binIdxKey(), idx);
+      BIN.sid = SCHOOL_ID; BIN.idx = idx;
+    } finally { setAppBusy(false); }
+    return true;
+  }catch(e){ console.error('Recycle Bin: could not store a copy', e); return false; }
+}
+async function binGuard(kind, label, sub, data){
+  const ok = await binStash(kind, label, sub, data);
+  if(!ok) alert('Could not move this to the Recycle Bin (check your connection and try again). Nothing was deleted.');
+  return ok;
+}
+async function binStashScores(rows){
+  const CH = 1200;
+  const stuName = id=>{ const s = DB.students.find(x=>x.id===id); return s ? s.name : 'a student'; };
+  const n = rows.length, nStu = new Set(rows.map(r=>r.studentId)).size;
+  const subjects = Array.from(new Set(rows.map(r=>r.subject))).slice(0,3).join(', ');
+  const period = rows[0] ? `${rows[0].term||''} ${rows[0].year||''}`.trim() : '';
+  const parts = Math.ceil(n/CH);
+  for(let i=0;i<parts;i++){
+    const chunk = rows.slice(i*CH, (i+1)*CH);
+    const label = n===1 ? `Score ${rows[0].marks}/${rows[0].max} — ${stuName(rows[0].studentId)}, ${rows[0].subject||''}`
+      : `${n} scores of ${nStu} student${nStu===1?'':'s'} — ${subjects}${parts>1?` (part ${i+1} of ${parts})`:''}`;
+    if(!(await binStash('scores', label, period, {rows:chunk}))) return false;
+  }
+  return true;
+}
+function binParentLinks(studentId){
+  return (DB.accounts||[]).filter(a=>a.role==='parent' && (a.studentId===studentId || (Array.isArray(a.studentIds) && a.studentIds.includes(studentId))))
+    .map(a=>({username:a.username, primary:a.studentId===studentId, inIds:Array.isArray(a.studentIds) && a.studentIds.includes(studentId)}));
+}
+function binAsnLabel(a){
+  const c = (DB.classes||[]).find(x=>x.id===a.classId);
+  return `${a.subject||'Subject'}${c?' — '+c.name:''}${a.teacherUsername?' ('+a.teacherUsername+')':''}`;
+}
+function binFinLabel(coll, it){
+  const nm = it.name || it.title || it.item || it.type || it.category || it.description || it.note || '';
+  const st = it.studentId ? ((DB.students||[]).find(s=>s.id===it.studentId)||{}).name : '';
+  const amt = (it.amount!==undefined && it.amount!==null && it.amount!=='') ? ` — ${it.amount}` : '';
+  return ((st ? st+': ' : '') + (nm || 'Record') + amt).trim();
+}
+async function binFinGuard(coll, typeName, item, extra){
+  if(!item) return true;
+  return binGuard('finance', binFinLabel(coll,item), typeName, Object.assign({coll, item}, extra||{}));
+}
+function binVisible(idx){
+  const now = Date.now();
+  return (idx||[]).filter(m=> (now - m.t) <= BIN_MS && CUR && (CUR.role==='admin' || (m.by===CUR.username && m.role===CUR.role)));
+}
+// Erases items kept longer than 15 days (Admin only). Never touches anything younger.
+async function binPurgeExpired(){
+  const idx = await binLoad(true);
+  const now = Date.now();
+  const gone = idx.filter(m=> (now - m.t) > BIN_MS);
+  if(!gone.length) return idx;
+  const done = new Set();
+  for(const m of gone){ try{ await binRawDel(binItemKey(m.id)); done.add(m.id); }catch(e){ console.error(e); } }
+  if(done.size){
+    const fresh = await binRawGet(binIdxKey());
+    const next = (Array.isArray(fresh)?fresh:[]).filter(m=>!done.has(m.id));
+    await binRawSet(binIdxKey(), next);
+    BIN.idx = next;
+    return next;
+  }
+  return idx;
+}
+async function binFillHost(host, limit){
+  if(!host) return;
+  host.innerHTML = '<div class="small">Loading the Recycle Bin…</div>';
+  let idx;
+  try{
+    idx = await binLoad(true);
+    if(CUR && CUR.role==='admin'){ try{ idx = await binPurgeExpired(); }catch(e){ console.error(e); } }
+  }catch(e){
+    console.error(e);
+    host.innerHTML = '<div class="note">Could not read the Recycle Bin — check your connection and try again.</div>';
+    return;
+  }
+  const all = binVisible(idx).sort((a,b)=>b.t-a.t);
+  const items = limit ? all.slice(0,limit) : all;
+  const now = Date.now();
+  const head = limit ? '<div class="bin-head">🗑 Recycle Bin — deleted in the last 15 days</div>' : '';
+  if(!items.length){
+    host.innerHTML = limit ? '' : '<div class="small">The Recycle Bin is empty. Anything you delete will wait here for 15 days.</div>';
+    return;
+  }
+  host.innerHTML = head + items.map(m=>{
+    const left = Math.max(1, Math.ceil((m.t + BIN_MS - now)/86400000));
+    return `<div class="bin-row"><div class="bin-main"><div>${BIN_ICON[m.kind]||'🗑'} <b>${esc(m.label)}</b></div>
+      <div class="bin-meta">${esc(m.sub||'')}${m.sub?' · ':''}deleted ${esc(histShort(new Date(m.t)))}${m.byName?' by '+esc(m.byName):''}</div></div>
+      <div class="bin-left">${left} day${left===1?'':'s'} left</div>
+      <button type="button" class="btn-outline bin-btn" data-bin="${esc(m.id)}">↷ Redo</button></div>`;
+  }).join('') + ((limit && all.length>items.length) ? `<div class="small">+ ${all.length-items.length} more — open <b>Other Settings → Recycle Bin</b> to see them all.</div>` : '');
+  host.querySelectorAll('[data-bin]').forEach(b=>{ b.onclick = ()=>binRestore(b.dataset.bin, host, limit); });
+}
+async function binRestore(id, host, limit){
+  if(BIN.busy || !CUR) return;
+  const meta = (BIN.idx||[]).find(m=>m.id===id);
+  if(!meta){ alert('That item is no longer in the Recycle Bin.'); if(host) binFillHost(host, limit); return; }
+  if(CUR.role!=='admin' && !(meta.by===CUR.username && meta.role===CUR.role)){ alert('Only an Admin can restore this item.'); return; }
+  if(navigator.onLine===false){ alert('You appear to be offline. Please reconnect and try again.'); return; }
+  BIN.busy = true;
+  let note = '';
+  try{
+    let rec = null;
+    try{ rec = await binRawGet(binItemKey(id)); }
+    catch(e){ console.error(e); alert('Could not fetch the deleted data — please check your connection and try again.'); return; }
+    if(!rec || !rec.data){ alert('The saved data for this item could not be found.'); return; }
+    undoSetLabel('Restore: '+meta.label);
+    const res = await binApply(rec.kind || meta.kind, rec.data);
+    if(!res.ok){ alert(res.msg || 'Could not restore this item.'); return; }
+    note = res.note || '';
+    try{
+      await binRawDel(binItemKey(id));
+      const fresh = await binRawGet(binIdxKey());
+      const next = (Array.isArray(fresh)?fresh:[]).filter(m=>m.id!==id);
+      await binRawSet(binIdxKey(), next);
+      BIN.idx = next;
+    }catch(e){ console.error(e); }
+    try{ showDeliveredToast('Restored: '+meta.label); }catch(e){}
+  }catch(e){
+    console.error(e);
+    alert('Could not complete the restore — please check your connection and try again. (The item is still in the Recycle Bin.)');
+    return;
+  }finally{
+    BIN.busy = false;
+  }
+  try{ render(); }catch(e){}
+  if(host && document.body.contains(host)) binFillHost(host, limit);
+  if(note) setTimeout(()=>alert(note), 300);
+}
+// Puts the stored data back. Safe to run twice: only things that are missing are added.
+async function binApply(kind, data){
+  const empty = {ok:false, msg:'This item has no data to restore.'};
+  switch(kind){
+    case 'student': {
+      const st = data.student; if(!st) return empty;
+      const notes = [];
+      if(!DB.students.some(x=>x.id===st.id)){ DB.students.push(st); await saveStudents(); }
+      else notes.push('The student record was already back.');
+      if(!DB.classes.some(c=>c.id===st.classId)) notes.push(`${st.name}'s class no longer exists — please place them in a class.`);
+      const rows = (data.scores||[]).filter(r=>!DB.scores.some(x=>x.id===r.id));
+      if(rows.length) await upsertScores(rows);
+      let ch = false;
+      (data.parents||[]).forEach(p=>{
+        const a = DB.accounts.find(x=>x.role==='parent' && x.username===p.username); if(!a) return;
+        if(p.primary && !a.studentId){ a.studentId = st.id; ch = true; }
+        if(p.inIds && Array.isArray(a.studentIds) && !a.studentIds.includes(st.id)){ a.studentIds.push(st.id); ch = true; }
+      });
+      if(ch) await saveAccounts();
+      return {ok:true, note:notes.join('\n')};
+    }
+    case 'scores': {
+      const rows = (data.rows||[]).filter(r=>!DB.scores.some(x=>x.id===r.id));
+      if(rows.length) await upsertScores(rows);
+      return {ok:true};
+    }
+    case 'class': {
+      const c = data.cls; if(!c) return empty;
+      if(!DB.classes.some(x=>x.id===c.id)){ DB.classes.push(c); await saveClasses(); }
+      const asn = (data.assignments||[]).filter(x=>!DB.assignments.some(y=>y.id===x.id));
+      if(asn.length){ asn.forEach(x=>DB.assignments.push(x)); await saveAssignments(); }
+      return {ok:true};
+    }
+    case 'assignment': {
+      const a = data.assignment; if(!a) return empty;
+      if(!DB.classes.some(c=>c.id===a.classId)) return {ok:false, msg:'The class this subject assignment belonged to no longer exists, so it cannot be restored. Restore the class from the Recycle Bin first (if it is there).'};
+      if(!DB.assignments.some(x=>x.id===a.id)){ DB.assignments.push(a); await saveAssignments(); }
+      return {ok:true, note: (a.teacherUsername && !DB.accounts.some(x=>x.username===a.teacherUsername)) ? `The teacher (${a.teacherUsername}) no longer has an account — restore that account too.` : ''};
+    }
+    case 'account': {
+      const accs = data.accounts||[]; const notes = []; let added = 0;
+      for(const a of accs){
+        if(a.username){
+          if(DB.accounts.some(x=>x.username && x.username.toLowerCase()===a.username.toLowerCase())){ notes.push(`${a.username}: that username is already in use, so it was not added back.`); continue; }
+          if(a.password){
+            const c = await checkCredentialUniqueness(a.username, a.password, {excludeSchoolId:SCHOOL_ID, excludeUsername:a.username});
+            if(c.exactMatch){ notes.push(`${a.username}: that username and password are now used by another account, so it was not added back.`); continue; }
+          }
+        } else if(DB.accounts.some(x=>JSON.stringify(x)===JSON.stringify(a))) continue;
+        DB.accounts.push(a); added++;
+      }
+      if(accs.length && !added && notes.length) return {ok:false, msg:notes.join('\n')};
+      if(added) await saveAccounts();
+      const asn = (data.assignments||[]).filter(x=>!DB.assignments.some(y=>y.id===x.id) && DB.classes.some(c=>c.id===x.classId));
+      if(asn.length){ asn.forEach(x=>DB.assignments.push(x)); await saveAssignments(); }
+      let cch = false;
+      (data.slots||[]).forEach(s=>{ const c = DB.classes.find(x=>x.id===s.classId); if(c && !c.classTeacher){ c.classTeacher = s.teacher; cch = true; } });
+      if(cch) await saveClasses();
+      return {ok:true, note:notes.join('\n')};
+    }
+    case 'roster': {
+      const a = DB.assignments.find(x=>x.id===data.assignId);
+      if(!a) return {ok:false, msg:'That subject assignment no longer exists, so its marking list cannot be restored.'};
+      const have = new Set(Array.isArray(a.studentIds) ? a.studentIds : []);
+      const back = (data.studentIds||[]).filter(i=>!have.has(i) && DB.students.some(s=>s.id===i));
+      a.studentIds = (Array.isArray(a.studentIds) ? a.studentIds : []).concat(back);
+      await saveAssignments();
+      return {ok:true};
+    }
+    case 'finance': {
+      const d = financeData(); const it = data.item; if(!it) return empty;
+      if(data.sfId){
+        const sf = d.shortfalls.find(x=>x.id===data.sfId);
+        if(!sf) return {ok:false, msg:'The shortfall record this settlement belonged to no longer exists.'};
+        sf.settlements = sf.settlements || [];
+        if(!sf.settlements.some(x=>x.id===it.id)) sf.settlements.push(it);
+      } else {
+        d[data.coll] = d[data.coll] || [];
+        if(!d[data.coll].some(x=>x.id===it.id)) d[data.coll].push(it);
+      }
+      (data.reqStatus||[]).forEach(r=>{ const j = JSON.stringify(r); if(!d.reqStatus.some(x=>JSON.stringify(x)===j)) d.reqStatus.push(r); });
+      if(data.coll==='fees' || data.coll==='payments'){ syncAllStudentsFinance(); await Promise.all([saveInfo(), saveStudents()]); }
+      else await saveInfo();
+      return {ok:true};
+    }
+    case 'subject': {
+      if(!data.key || !data.name) return empty;
+      if(!Array.isArray(DB.info[data.key])) DB.info[data.key] = [];
+      if(!DB.info[data.key].includes(data.name)) DB.info[data.key].push(data.name);
+      if(data.lower && Array.isArray(DB.info.oCompulsoryLower) && !DB.info.oCompulsoryLower.includes(data.name)) DB.info.oCompulsoryLower.push(data.name);
+      if(data.upper && Array.isArray(DB.info.oCompulsoryUpper) && !DB.info.oCompulsoryUpper.includes(data.name)) DB.info.oCompulsoryUpper.push(data.name);
+      await saveInfo();
+      return {ok:true};
+    }
+    case 'cwtest': {
+      const t = data.test; if(!t) return empty;
+      if(data.classId){
+        const c = DB.classes.find(x=>x.id===data.classId);
+        if(!c) return {ok:false, msg:'The class this test belonged to no longer exists.'};
+        const cfg = {...(c.examConfig||{})}; cfg.cwTests = Array.isArray(cfg.cwTests) ? cfg.cwTests.slice() : [];
+        if(!cfg.cwTests.some(x=>x.id===t.id)) cfg.cwTests.push(t);
+        c.examConfig = cfg; await saveClasses();
+      } else {
+        const cfg = {...(DB.info.examConfig||{})}; cfg.cwTests = Array.isArray(cfg.cwTests) ? cfg.cwTests.slice() : [];
+        if(!cfg.cwTests.some(x=>x.id===t.id)) cfg.cwTests.push(t);
+        DB.info.examConfig = cfg; await saveInfo();
+      }
+      return {ok:true};
+    }
+  }
+  return {ok:false, msg:'This kind of item cannot be restored.'};
+}
 
 /* ---------- Automatic snapshots (see section 1A above) ---------- */
 // Builds the same shape as a manual/founder backup file, for whichever school is
@@ -3777,6 +4598,7 @@ async function restoreAutoSnapshot(ts){
   const data = migrateBackupData(raw);
   const sure = confirm(`This will REPLACE all current school data with the automatic snapshot from ${data.exportedAt?new Date(data.exportedAt).toLocaleString():'that time'}.\n\nStudents in snapshot: ${data.students.length}\nCurrent students: ${DB.students.length}\n\nThis cannot be undone. Continue?`);
   if(!sure) return;
+  undoMarkIrreversible();
   const _prevGrade = schoolGrade();
   DB.info = data.info; keepLockedGrade(_prevGrade); DB.accounts = data.accounts; DB.classes = data.classes;
   DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores;
@@ -4093,6 +4915,18 @@ async function requireDeleteAuth(what, note){
   }
   alert('You are not allowed to delete this.');
   return false;
+}
+// Owner-code gate for sensitive, hard-to-undo admin actions that are not deletes
+// (promoting students, changing the term or year). Resolves true only when the typed code
+// matches the school's private owner code. `what` completes "Enter your private owner code to ___".
+async function requireOwnerCode(what, confirmLabel){
+  hideActionBanner();
+  if(!CUR || CUR.role!=='admin'){ alert('Only the school Owner/Admin can do that.'); return false; }
+  if(!DB.info.ownerCode){ alert('No owner code has been set for this school yet, so this cannot be done. Please set an owner code first (Finance & Requirements → Owner Code), or contact the Founder.'); return false; }
+  const code = await askSecret('Owner code required', `Enter your private owner code to ${what}.`, confirmLabel||'Confirm');
+  if(code===null) return false;
+  if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was changed.'); return false; }
+  return true;
 }
 function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return d; } }
 function fmtDateTime(d){ if(!d) return '—'; try{ return new Date(d).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return d; } }
@@ -4992,12 +5826,13 @@ function render(){
     if(window.__lastRenderSig !== sig){
       const first = window.__lastRenderSig === undefined;
       window.__lastRenderSig = sig;
-      if(!first) scrollPageToTop();
+      if(!first && !(STU_RETURN && VIEW && VIEW.name==='students')) scrollPageToTop();
     }
   }catch(e){}
   // Keep the install button accurate every time the login dashboard is rendered.
   // This is harmless on browsers that do not expose an install prompt.
   updatePWAInstallState();
+  try{ stuRestoreAnchor(); }catch(e){}
 }
 
 /* ============================================================
@@ -7821,11 +8656,21 @@ function unrecognisedTeachersCard(){
 async function purgeTeachers(usernames, accountObjs){
   const set = new Set(usernames);
   const objs = new Set(accountObjs||[]);
+  { const rmAcc = DB.accounts.filter(a=>objs.has(a) || (a.role==='teacher' && set.has(a.username)));
+    const rmAsn = DB.assignments.filter(x=>set.has(x.teacherUsername));
+    const slots = DB.classes.filter(c=>set.has(c.classTeacher)).map(c=>({classId:c.id, teacher:c.classTeacher}));
+    if(rmAcc.length || rmAsn.length || slots.length){
+      const label = rmAcc.length===1 ? `${rmAcc[0].name||'Teacher'}${rmAcc[0].username?' ('+rmAcc[0].username+')':''}`
+        : (rmAcc.length>1 ? `${rmAcc.length} teacher accounts` : `Teacher entry "${[...set].join(', ')}"`);
+      const sub = rmAsn.length ? `with ${rmAsn.length} subject assignment${rmAsn.length===1?'':'s'}` : 'Teacher account';
+      if(!(await binGuard('account', label, sub, {accounts:rmAcc, assignments:rmAsn, slots}))) return false;
+    } }
   DB.accounts = DB.accounts.filter(a=>!objs.has(a) && !(a.role==='teacher' && set.has(a.username)));
   DB.assignments = DB.assignments.filter(x=>!set.has(x.teacherUsername));
   let clsChanged=false;
   DB.classes.forEach(c=>{ if(set.has(c.classTeacher)){ c.classTeacher=''; clsChanged=true; } });
   await Promise.all([saveAccounts(), saveAssignments(), clsChanged?saveClasses():Promise.resolve()]);
+  return true;
 }
 /* ---- Report card shade / theme colour -------------------------------------------------
    One admin-chosen colour drives every shaded cell (table headings, label cells, grade
@@ -8008,7 +8853,7 @@ async function performBulkTeacherDelete(usernames, btn){
   if(!confirm(`Delete ${usernames.length} teacher account${usernames.length===1?'':'s'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) return;
   showActionProgress('Deleting…', btn);
   try{
-    await purgeTeachers(usernames);
+    if((await purgeTeachers(usernames))===false){ showActionFailure('Nothing was deleted.', btn); return; }
     showActionSuccess(`Deleted ${usernames.length} teacher account${usernames.length===1?'':'s'}`, btn, true);
   }catch(e){
     showActionFailure('Could not delete — please try again.', btn);
@@ -8116,34 +8961,20 @@ function studentsView(){
   </div>
   <div class="card">
     <h3>Bulk upload a class list</h3>
-    <p class="small">Upload a Word document (.docx) or CSV, or paste a list — every student is added to the <b>one class</b> you pick below. Only the <b>Name</b> is required. Add whatever else you already have — <b>Sex, Fees Pay Code, Fees Balance, Next Term Fees</b> — and leave the rest blank; anything missing can be completed later under <b>Edit student bio-data</b>. Admission numbers are assigned automatically, in order, starting at 001 for that class. Subjects are never set here — each subject teacher ticks their own students in once they open their class list.</p>
     <form data-form="bulkAddStudents" autocomplete="off">
-      <label>Class</label>
-      <select name="classId" id="bulkClassSel" required><option value="">-- select --</option>
-      ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
-      </select>
+      <div class="bulk-row">
+        <div><label>Class</label>
+          <select name="classId" id="bulkClassSel" required><option value="">-- select --</option>
+          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
+          </select></div>
+        <div><label>Upload (.docx / CSV)</label>
+          <input type="file" name="wordFile" id="bulkWordFile" accept=".docx,.csv,text/csv"></div>
+        <div><label>Paste list</label>
+          <textarea name="bulkList" id="bulkListArea" rows="3" placeholder="" required></textarea></div>
+      </div>
+      <p class="small" id="bulkWordStatus"></p>
       <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlBulkStudentTemplate">Download template (CSV)</button>
-      <label>Upload Word document (.docx) or CSV file</label>
-      <input type="file" name="wordFile" id="bulkWordFile" accept=".docx,.csv,text/csv">
-      <p class="small" id="bulkWordStatus">Columns, in this order: <b>Name, Sex, Fees Pay Code, Fees Balance, Next Term Fees</b> — one student per row. If the first row has headings (e.g. Name / Sex / Fees Pay Code), columns are matched by heading instead, so any order works and unwanted columns are ignored. The file is read on this device only, then loaded into the editable list below for you to check before submitting.</p>
-      <label>Student list ${'\u2014'} paste directly, or let it fill in from the file above</label>
-      <textarea name="bulkList" id="bulkListArea" rows="8" placeholder="" required></textarea>
       <button class="btn" style="margin-top:10px;">Submit — add all students</button>
-    </form>
-  </div>
-  <div class="card">
-    <h3>Fees pay codes (download &amp; upload)</h3>
-    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
-    <label>Class</label>
-    <select id="feesCodeClassSel">
-      <option value="">-- select class --</option>
-      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
-    </select>
-    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
-    <form data-form="uploadFeesCodes" style="margin-top:12px;">
-      <label>Upload filled list (CSV)</label>
-      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
-      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
     </form>
   </div>
   </div>
@@ -8175,6 +9006,24 @@ function studentsView(){
       </div>
     </div>
     <p class="small stu-hint" style="margin-top:6px;">Defaults to the current term/year and shows the live class list. Pick a past term/year to see the class list as it stood back then instead — this relies on class changes made using Promote Students, so it's most reliable going forward from when that history started being tracked.</p>
+  
+  </div>
+  <div id="stuDormant2">
+  <div class="card">
+    <h3>Fees pay codes (download &amp; upload)</h3>
+    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
+    <label>Class</label>
+    <select id="feesCodeClassSel">
+      <option value="">-- select class --</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
+    </select>
+    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
+    <form data-form="uploadFeesCodes" style="margin-top:12px;">
+      <label>Upload filled list (CSV)</label>
+      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
+      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
+    </form>
+  </div>
   </div>
   <div class="card" id="stuTableCard">
     <div id="studentsTableWrap">${renderStudentsTableHtml()}</div>
@@ -8196,6 +9045,67 @@ function closeStudentResults(){
   VIEW.params.stuSearch = '';
   render();
   window.scrollTo(0,0);
+}
+/* ---- Keep the user's place in the Students table ----
+   Before any row action (Edit profile, Mark as left, Remove, or the bulk versions) the position of that row
+   on screen is remembered, along with the rows next to it. When the table is shown again — straight after the
+   action, or after coming Back from the profile page — the page is scrolled so the same row (or, if that
+   student is gone from the list, the student who took its place) sits exactly where it was, and is highlighted. */
+var STU_RETURN = null;
+function stuCaptureAnchor(id, skipIds){
+  try{
+    if(!VIEW || VIEW.name!=='students'){ STU_RETURN = null; return; }
+    const skip = skipIds instanceof Set ? skipIds : new Set(skipIds ? [].concat(skipIds) : []);
+    skip.add(id);
+    const rows = Array.from(document.querySelectorAll('tr[data-stu-id]'));
+    const idx = rows.findIndex(r=>r.dataset.stuId===id);
+    if(idx<0){ STU_RETURN = null; return; }
+    let nextId=null, prevId=null;
+    for(let i=idx+1;i<rows.length;i++){ if(!skip.has(rows[i].dataset.stuId)){ nextId=rows[i].dataset.stuId; break; } }
+    for(let i=idx-1;i>=0;i--){ if(!skip.has(rows[i].dataset.stuId)){ prevId=rows[i].dataset.stuId; break; } }
+    STU_RETURN = {id, nextId, prevId, offset: rows[idx].getBoundingClientRect().top, scrollY: window.scrollY||0, restored:false};
+  }catch(e){ STU_RETURN = null; }
+}
+function stuScrollerFor(el){
+  for(let p=el.parentElement; p && p!==document.body && p!==document.documentElement; p=p.parentElement){
+    const oy = getComputedStyle(p).overflowY;
+    if((oy==='auto'||oy==='scroll') && p.scrollHeight>p.clientHeight+1) return p;
+  }
+  return null;
+}
+function stuRestoreAnchor(){
+  const a = STU_RETURN;
+  if(!a) return;
+  if(!VIEW || VIEW.name!=='students'){
+    if(VIEW && VIEW.name!=='studentprofile') STU_RETURN = null;   // user went somewhere unrelated: forget it
+    return;
+  }
+  const pick = ()=> document.querySelector('tr[data-stu-id="'+a.id+'"]')
+    || (a.nextId && document.querySelector('tr[data-stu-id="'+a.nextId+'"]'))
+    || (a.prevId && document.querySelector('tr[data-stu-id="'+a.prevId+'"]'));
+  const place = ()=>{
+    const row = pick();
+    if(!row) return null;
+    const delta = row.getBoundingClientRect().top - a.offset;
+    if(Math.abs(delta)>1){
+      const sc = stuScrollerFor(row);
+      if(sc) sc.scrollTop += delta; else window.scrollBy(0, delta);
+    }
+    return row;
+  };
+  const row = place();
+  if(!row) return;
+  if(!a.restored){
+    a.restored = true;
+    row.classList.add('stu-row-focus');
+    setTimeout(()=>row.classList.remove('stu-row-focus'), 2600);
+    const btn = row.querySelector('[data-action^="editStudentProfile"]');
+    if(btn){ try{ btn.focus({preventScroll:true}); }catch(e){} }
+  }
+  // layout can still settle (photos, fonts, fit scripts): re-apply the same offset once more
+  requestAnimationFrame(place);
+  setTimeout(place, 150);
+  setTimeout(()=>{ if(STU_RETURN===a) STU_RETURN = null; }, 700);
 }
 function renderStudentsTableHtml(){
   const classId = VIEW.params.stuClassFilter||'';
@@ -8240,7 +9150,7 @@ function renderStudentsTableHtml(){
     ${list.map(s=>{
       const clsId = isPast ? historicalClassFor(s, periodTerm, periodYear) : s.classId;
       const cls = DB.classes.find(c=>c.id===clsId);
-      return `<tr><td><input type="checkbox" class="stuSelCb" value="${s.id}" style="width:auto;" onchange="updateStuSelCount()"></td><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
+      return `<tr data-stu-id="${s.id}"><td><input type="checkbox" class="stuSelCb" value="${s.id}" style="width:auto;" onchange="updateStuSelCount()"></td><td>${s.photo?`<img loading="lazy" decoding="async" src="${s.photo}" class="photo-thumb">`:'—'}</td><td>${esc(s.name)}</td><td>${esc(s.admNo)}${s.feesCode?` <span class="small" style="color:var(--muted);">(Fees Code: ${esc(s.feesCode)})</span>`:''}</td>
       <td>${cls?esc(cls.name):'—'}${isPast && cls && cls.id!==s.classId ? ' <span class="small" style="color:var(--muted);">(since promoted)</span>' : ''}</td><td>${esc(comboLabel(s,cls))}</td>
       <td class="flex"><button class="btn-outline" data-action="editStudentProfile:${s.id}"><b>Edit profile</b></button> <button class="btn-outline" data-action="markStudentLeft:${s.id}">Mark as left</button> <button class="btn-danger" data-action="delStudent:${s.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="7">No students match.</td></tr>'}
@@ -8269,6 +9179,7 @@ async function performBulkStudentDelete(ids, confirmMsg, btn){
   if(!ids.length){ alert('No students selected.'); return; }
   if(!confirm(confirmMsg)) return;
   if(!(await requireDeleteAuth(`permanently delete ${ids.length} student${ids.length===1?'':'s'}`))) return;
+  stuCaptureAnchor(ids[0], new Set(ids));
   showActionProgress('Deleting…', btn);
   try{
     const idSet = new Set(ids);
@@ -8303,6 +9214,7 @@ async function markSelectedStudentsLeft(btn){
   if(navigator.onLine===false){ alert('You appear to be offline. Please reconnect and try again.'); return; }
   const n = list.length;
   if(!confirm(`Mark ${n} selected student${n===1?'':'s'} as left/completed? They'll move to Old Students and be kept there for two terms, after which their records are permanently deleted.`)) return;
+  stuCaptureAnchor(Array.from(ids)[0], ids);
   showActionProgress('Moving to Old Students…', btn);
   try{
     const d = financeData();
@@ -10421,7 +11333,7 @@ function otherSettingsView(){
   const voices = availableSpeechVoices();
   const currentVoice = selectedSpeechVoice();
   const voiceOptions = voices.map(v=>`<option value="${esc(v.voiceURI)}" data-name="${esc(v.name)}" data-lang="${esc(v.lang)}" ${currentVoice && v.voiceURI===currentVoice.voiceURI?'selected':''}>${esc(v.name)} — ${esc(v.lang)}${v.default?' (Default)':''}</option>`).join('');
-  return `<h2>Other Settings</h2>
+  const html = `<h2>Other Settings</h2>
   <div class="card" style="max-width:760px;">
     <h3 style="margin-top:0;">Voice & Sound Settings</h3>
     <p class="small">Voice confirmations are ON by default. Change the voice, volume and speech behaviour for this device here. These settings are saved on this device.</p>
@@ -10477,7 +11389,14 @@ function otherSettingsView(){
       ${showRecovery ? `<label>${acc && acc.recovery ? 'New recovery code (leave blank to keep)' : 'Set a recovery code (optional)'}</label><input name="recovery">` : ''}
       <button class="btn" style="margin-top:14px;">Update username &amp; password</button>
     </form>
-  </div>`;
+  </div>
+  ${(CUR && (CUR.role==='admin' || CUR.role==='teacher')) ? `<div class="card" style="max-width:760px;">
+    <h3 style="margin-top:0;">🗑 Recycle Bin</h3>
+    <p class="small">Anything ${CUR.role==='admin'?'deleted or removed':'you delete or remove'} lands here first and is kept for <b>15 days</b>. Tap <b>↷ Redo</b> on an item to fetch its data back. After 15 days it is erased for good.</p>
+    <div id="binHost" class="bin-host"></div>
+  </div>` : ''}`;
+  if(CUR && (CUR.role==='admin' || CUR.role==='teacher')) setTimeout(()=>binFillHost(document.getElementById('binHost')), 0);
+  return html;
 }
 /* ---------- Teacher ---------- */
 // Assignments whose class still exists. An assignment can be orphaned if its class was
@@ -12477,6 +13396,9 @@ document.addEventListener('click', async (e)=>{
       render(); break;
     }
     case 'navBack': playUISound('open'); navGoBack(); break;
+    case 'undoLast': await undoLast(); break;
+    case 'redoLast': await redoLast(); break;
+    case 'openReturn': openReturnDialog(); break;
     case 'navMenu': {
       // Show / hide the full menu on a page where it is tucked away. Pure DOM toggle (no re-render) so nothing typed on the page is lost.
       const lay = document.querySelector('.layout');
@@ -12524,7 +13446,7 @@ document.addEventListener('click', async (e)=>{
       break;
     }
     case 'editTeacherProfile': VIEW = {name:'teacherprofile', params:{username:arg}}; render(); break;
-    case 'editStudentProfile': VIEW = {name:'studentprofile', params:{studentId:arg}}; render(); break;
+    case 'editStudentProfile': stuCaptureAnchor(arg); VIEW = {name:'studentprofile', params:{studentId:arg}}; render(); break;
     case 'editClass': VIEW = {name:'classedit', params:{classId:arg}}; render(); break;
     case 'viewReport': {
       if(CUR.role==='teacher' && !teachersMayViewReports()){ alert('The Admin has switched off report card viewing for teachers.'); break; }
@@ -12595,7 +13517,8 @@ Continue?`);
       if(!confirm(`Delete the class "${_delCls.name}"?`
         + (_delAssigns ? `\n\nIts ${_delAssigns} subject/teacher assignment${_delAssigns===1?'':'s'} will also be removed.` : '')
         + (_delStudents ? `\n${_delStudents} student${_delStudents===1?' is':'s are'} currently in this class.` : '')
-        + `\n\nThis cannot be undone.`)) break;
+        + `\n\nIt will be kept in the Recycle Bin (Other Settings) for 15 days, so it can be brought back.`)) break;
+      if(!(await binGuard('class', `Class "${_delCls.name}"`, _delAssigns?`with ${_delAssigns} subject assignment${_delAssigns===1?'':'s'}`:'Class', {cls:_delCls, assignments:DB.assignments.filter(a=>a.classId===arg)}))) break;
       // Deleting a class used to leave behind any subject/teacher assignments that
       // pointed at it — those orphaned assignments had no matching class on lookup,
       // which crashed the Enter Scores page ("Cannot read properties of undefined
@@ -12609,7 +13532,9 @@ Continue?`);
     case 'delStudent': {
       const s = DB.students.find(x=>x.id===arg);
       if(!s) break;
-      if(!(await requireDeleteAuth(`permanently delete ${s.name}`))) break;
+      if(!(await requireDeleteAuth(`delete ${s.name} (it stays in the Recycle Bin for 15 days)`))) break;
+      if(!(await binGuard('student', s.name, 'Student record', {student:s, scores:[], parents:binParentLinks(arg)}))) break;
+      stuCaptureAnchor(arg);
       showActionProgress('Deleting…', el);
       DB.students = DB.students.filter(x=>x.id!==arg);
       await saveStudents(); showActionSuccess(`Student ${s ? s.name : ''} deleted successfully`.replace(/\s+/g,' ').trim(), el, true);
@@ -12620,6 +13545,7 @@ Continue?`);
       const s = DB.students.find(x=>x.id===arg);
       if(!s){ break; }
       if(!confirm(`Mark ${s.name} as left/completed? They'll move to Old Students and be kept there for two terms, after which their record is permanently deleted.`)) break;
+      stuCaptureAnchor(arg);
       s.status = 'left';
       s.leftTerm = DB.info.currentTerm;
       s.leftYear = DB.info.currentYear;
@@ -12655,8 +13581,9 @@ Continue?`);
     case 'delOldStudentNow': {
       const s = DB.students.find(x=>x.id===arg);
       if(!s){ break; }
-      if(!confirm(`Permanently delete ${s.name}'s record now, including their scores? This cannot be undone.`)) break;
-      if(!(await requireDeleteAuth(`permanently delete ${s.name} and their scores`))) break;
+      if(!confirm(`Delete ${s.name}'s record now, including their scores? It will be kept in the Recycle Bin (Other Settings) for 15 days, then erased for good.`)) break;
+      if(!(await requireDeleteAuth(`delete ${s.name} and their scores (kept in the Recycle Bin for 15 days)`))) break;
+      if(!(await binGuard('student', s.name, 'Old student with their scores', {student:s, scores:DB.scores.filter(sc=>sc.studentId===arg), parents:binParentLinks(arg)}))) break;
       showActionProgress('Deleting…', el);
       DB.students = DB.students.filter(x=>x.id!==arg);
       DB.scores = DB.scores.filter(sc=>sc.studentId!==arg);
@@ -12669,9 +13596,10 @@ Continue?`);
       if(s.photo) await deletePhotoFromStorage(s.photo);
       render(); break;
     }
-    case 'delAssign': { const removedAsn=DB.assignments.find(a=>a.id===arg); DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess(`Assignment${removedAsn && removedAsn.subject ? ` for ${removedAsn.subject}` : ''} removed successfully`, el, true); render(); break; }
+    case 'delAssign': { const removedAsn=DB.assignments.find(a=>a.id===arg); if(removedAsn && !(await binGuard('assignment', binAsnLabel(removedAsn), 'Subject assignment', {assignment:removedAsn}))) break; DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess(`Assignment${removedAsn && removedAsn.subject ? ` for ${removedAsn.subject}` : ''} removed successfully`, el, true); render(); break; }
     case 'delOSubject': {
       const name = decodeURIComponent(arg);
+      if(!(await binGuard('subject', name, "O'Level subject", {key:'oExtraSubjects', name, lower:(Array.isArray(DB.info.oCompulsoryLower)&&DB.info.oCompulsoryLower.includes(name)), upper:(Array.isArray(DB.info.oCompulsoryUpper)&&DB.info.oCompulsoryUpper.includes(name))}))) break;
       DB.info.oExtraSubjects = (DB.info.oExtraSubjects||[]).filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryLower)) DB.info.oCompulsoryLower = DB.info.oCompulsoryLower.filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
@@ -12679,11 +13607,13 @@ Continue?`);
     }
     case 'delPSubject': {
       const name = decodeURIComponent(arg);
+      if(!(await binGuard('subject', name, "Primary subject", {key:'pExtraSubjects', name, lower:false, upper:false}))) break;
       DB.info.pExtraSubjects = (DB.info.pExtraSubjects||[]).filter(s=>s!==name);
       await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
     }
     case 'delASubject': {
       const name = decodeURIComponent(arg);
+      if(!(await binGuard('subject', name, "A'Level subject", {key:'aExtraSubjects', name, lower:false, upper:false}))) break;
       DB.info.aExtraSubjects = (DB.info.aExtraSubjects||[]).filter(s=>s!==name);
       await saveInfo(); showActionSuccess(`A' Level subject ${name} removed successfully`, el, true); render(); break;
     }
@@ -12717,6 +13647,8 @@ Continue?`);
     case 'delCwTest': {
       const sure = confirm('Delete this test? Scores already recorded under it stay on file (and keep counting toward the Course Work average) but it will no longer be offered to teachers, and its column will disappear from report cards.');
       if(!sure) break;
+      { const _t = ((DB.info.examConfig||{}).cwTests||[]).find(t=>t.id===arg);
+        if(_t && !(await binGuard('cwtest', _t.name||'Course Work test', 'Test (school-wide)', {classId:null, test:_t}))) break; }
       const cfg = {...(DB.info.examConfig||{})};
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==arg);
       DB.info.examConfig = cfg;
@@ -12734,6 +13666,8 @@ Continue?`);
       if(!cls) break;
       const sure = confirm('Delete this test? Scores already recorded under it stay on file (and keep counting toward the Course Work average) but it will no longer be offered to teachers, and its column will disappear from report cards.');
       if(!sure) break;
+      { const _t = ((cls.examConfig||{}).cwTests||[]).find(t=>t.id===testId);
+        if(_t && !(await binGuard('cwtest', _t.name||'Course Work test', `Test in ${cls.name}`, {classId:cls.id, test:_t}))) break; }
       const cfg = {...(cls.examConfig||{})};
       cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==testId);
       cls.examConfig = cfg;
@@ -12755,11 +13689,11 @@ Continue?`);
       const dsTest = row.kind==='EOT' ? examConfig(dsStu&&dsStu.classId).eotLabel : (examConfig(dsStu&&dsStu.classId).cwLabel+(row.label?': '+row.label:''));
       const sure = await askPasswordConfirm({
         title:'DELETE A SAVED SCORE',
-        action:`You are about to PERMANENTLY DELETE the score ${row.marks}/${row.max} saved for ${dsStu?dsStu.name:'this student'} in ${row.subject} (${dsTest}, ${row.term} ${row.year}).`,
+        action:`You are about to DELETE the score ${row.marks}/${row.max} saved for ${dsStu?dsStu.name:'this student'} in ${row.subject} (${dsTest}, ${row.term} ${row.year}).`,
         effects:[
           'The score is removed from the database and from every mark sheet immediately.',
           'It disappears from the student\'s report card, and the subject average, grade, class position and class analysis are recalculated without it.',
-          'It cannot be undone: you would have to type the score in again and submit it.'],
+          'It is kept in the Recycle Bin (Other Settings) for 15 days — tap ↷ Redo there to bring it back.'],
         confirmLabel:'Yes, delete this score'});
       if(!sure) break;
       await deleteScores([row]);
@@ -12874,6 +13808,7 @@ Continue?`);
     case 'delFinanceFee': {
       if(!confirm('Delete this fee item? Affected student balances will be recalculated without it.')) break;
       const d = financeData();
+      if(!(await binFinGuard('fees','Fee item',d.fees.find(f=>f.id===arg)))) break;
       d.fees = d.fees.filter(f=>f.id!==arg);
       syncAllStudentsFinance();
       await Promise.all([saveInfo(), saveStudents()]);
@@ -12885,6 +13820,7 @@ Continue?`);
       if(!confirm("Delete this payment record? The student's balance will go back up by this amount.")) break;
       const d = financeData();
       const pay = d.payments.find(p=>p.id===arg);
+      if(!(await binFinGuard('payments','Payment record',pay))) break;
       d.payments = d.payments.filter(p=>p.id!==arg);
       if(pay) syncStudentFinance(pay.studentId, d);
       await Promise.all([saveInfo(), saveStudents()]);
@@ -12895,6 +13831,7 @@ Continue?`);
     case 'delRequirement': {
       if(!confirm('Delete this requirement? Its submission records will also be removed.')) break;
       const d = financeData();
+      if(!(await binFinGuard('requirements','Requirement',d.requirements.find(r=>r.id===arg),{reqStatus:d.reqStatus.filter(x=>x.requirementId===arg)}))) break;
       d.requirements = d.requirements.filter(r=>r.id!==arg);
       d.reqStatus = d.reqStatus.filter(x=>x.requirementId!==arg);
       await saveInfo();
@@ -12922,6 +13859,7 @@ Continue?`);
     case 'delExpenseType': {
       if(!confirm('Delete this expense category? Past expense records already saved under it are kept and unaffected.')) break;
       const d = financeData();
+      if(!(await binFinGuard('expenseTypes','Expense category',(d.expenseTypes||[]).find(x=>x.id===arg)))) break;
       d.expenseTypes = d.expenseTypes.filter(x=>x.id!==arg);
       await saveInfo();
       render();
@@ -12932,6 +13870,7 @@ Continue?`);
     case 'delSalary': {
       if(!confirm('Delete this pay record? It will no longer count in the school financial standing.')) break;
       const d = financeData();
+      if(!(await binFinGuard('salaries','Pay record',(d.salaries||[]).find(x=>x.id===arg)))) break;
       d.salaries = d.salaries.filter(x=>x.id!==arg);
       await saveInfo();
       render();
@@ -12941,6 +13880,7 @@ Continue?`);
     case 'delExpense': {
       if(!confirm('Delete this expense record? It will no longer count in the expense analysis or account balance.')) break;
       const d = financeData();
+      if(!(await binFinGuard('expenses','Expense record',(d.expenses||[]).find(x=>x.id===arg)))) break;
       d.expenses = d.expenses.filter(x=>x.id!==arg);
       await saveInfo();
       render();
@@ -12994,6 +13934,7 @@ Continue?`);
       const sf = d.shortfalls.find(x=>x.id===sfId);
       if(!sf) break;
       if(!confirm('Remove this settlement record? The shortfall balance will go back up by this amount.')) break;
+      if(!(await binFinGuard('settlements','Shortfall settlement',(sf.settlements||[]).find(x=>x.id===settleId),{sfId}))) break;
       sf.settlements = (sf.settlements||[]).filter(x=>x.id!==settleId);
       await saveInfo();
       showActionSuccess('Settlement removed', el, true);
@@ -13001,8 +13942,9 @@ Continue?`);
       break;
     }
     case 'delShortfall': {
-      if(!confirm('Delete this shortfall record entirely? This cannot be undone.')) break;
+      if(!confirm('Delete this shortfall record? It will be kept in the Recycle Bin (Other Settings) for 15 days.')) break;
       const d = financeData();
+      if(!(await binFinGuard('shortfalls','Shortfall record',d.shortfalls.find(x=>x.id===arg)))) break;
       d.shortfalls = d.shortfalls.filter(x=>x.id!==arg);
       await saveInfo();
       showActionSuccess('Shortfall record deleted', el, true);
@@ -13030,6 +13972,9 @@ Continue?`);
         action:`You are about to REMOVE ${st?st.name:'this student'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}.`,
         effects: rosterRemovalEffects(a.subject), confirmLabel:'Yes, remove this student'});
       if(!sure) break;
+      if(Array.isArray(a.studentIds) && a.studentIds.includes(studentId)){
+        if(!(await binGuard('roster', `${st?st.name:'A student'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:[studentId]}))) break;
+      }
       a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>id!==studentId) : a.studentIds;
       await saveAssignments(); render();
       break;
@@ -13046,6 +13991,7 @@ Continue?`);
         action:`You are about to REMOVE ALL ${n} student${n===1?'':'s'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}. Your list will be completely empty.`,
         effects: rosterRemovalEffects(a.subject), confirmLabel:`Yes, remove all ${n}`});
       if(!sure) break;
+      if(n>0 && !(await binGuard('roster', `All ${n} student${n===1?'':'s'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:a.studentIds.slice()}))) break;
       a.studentIds = [];
       await saveAssignments(); render();
       break;
@@ -13234,6 +14180,8 @@ Continue?`);
       const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); showActionSuccess('Approved', el); render(); } break; }
     case 'rejectAcc': { const code=prompt('Enter your private owner code to reject:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      { const _rej = DB.accounts.find(a=>a.username===arg);
+        if(_rej && !(await binGuard('account', `${_rej.name||''} (${_rej.username})`, 'Rejected sign-up request', {accounts:[_rej], assignments:[], slots:[]}))) break; }
       DB.accounts = DB.accounts.filter(a=>a.username!==arg); await saveAccounts(); showActionSuccess('Rejected', el); render(); break; }
     case 'closeAcc': { const code=prompt('Enter your private owner code to close this account:'); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
@@ -13254,26 +14202,27 @@ Continue?`);
       const code=prompt(`Enter your private owner code to permanently delete ${bad.length} garbled teacher entr${bad.length===1?'y':'ies'}:`); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
       if(!confirm(`Delete ${bad.length} garbled entr${bad.length===1?'y':'ies'} for good, with any assignments attached? This cannot be undone.`)) break;
-      await purgeTeachers(bad.map(a=>a.username).filter(u=>typeof u==='string'), bad);
+      if((await purgeTeachers(bad.map(a=>a.username).filter(u=>typeof u==='string'), bad))===false) break;
       showActionSuccess('Garbled entries deleted.', el, true); render(); break; }
     case 'delTeacherAny': { const acc = DB.accounts[parseInt(arg,10)]; if(!acc) break;
       const label = (acc.name||'').toString() + (acc.username?` (${acc.username})`:'');
       const code=prompt(`Enter your private owner code to permanently delete ${label||'this teacher'}:`); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
       if(!confirm(`Delete ${label||'this teacher'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) break;
-      await purgeTeachers([acc.username],[acc]);
+      if((await purgeTeachers([acc.username],[acc]))===false) break;
       showActionSuccess('Teacher deleted successfully.', el, true); render(); break; }
     case 'delOrphanTeacher': { let u; try{ u=decodeURIComponent(arg); }catch(e){ u=arg; }
       const code=prompt(`Enter your private owner code to remove "${u}":`); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
       if(!confirm(`Remove "${u}" from all subject assignments and class-teacher slots? This cannot be undone.`)) break;
-      await purgeTeachers([u]);
+      if((await purgeTeachers([u]))===false) break;
       showActionSuccess('Entry removed.', el, true); render(); break; }
     case 'delAcc': { const acc = DB.accounts.find(a=>a.username===arg); if(!acc) break;
       const code=prompt(`Enter your private owner code to permanently delete ${acc.name} (${acc.username}):`); if(code===null) break;
       if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
       const linkedNote = acc.role==='teacher' ? ' Their subject/class assignments will also be removed; scores they already entered stay on record.' : '';
-      if(!confirm(`Delete ${acc.name} (${acc.username}) for good? This cannot be undone.${linkedNote}`)) break;
+      if(!confirm(`Delete ${acc.name} (${acc.username}) ? It stays in the Recycle Bin (Other Settings) for 15 days, then is erased.${linkedNote}`)) break;
+      if(!(await binGuard('account', `${acc.name||''} (${acc.username})`, acc.role==='teacher'?'Teacher account':'Account', {accounts:[acc], assignments:(acc.role==='teacher'?DB.assignments.filter(x=>x.teacherUsername===arg):[]), slots:[]}))) break;
       DB.accounts = DB.accounts.filter(a=>a.username!==arg);
       if(acc.role==='teacher'){ DB.assignments = DB.assignments.filter(x=>x.teacherUsername!==arg); await saveAssignments(); }
       await saveAccounts();
@@ -13434,7 +14383,7 @@ async function loadStudentListFromWord(input){
       const csvLines = txt.split(/\r?\n/).filter(l=>l.trim()!=='' && l.replace(/[,\t]/g,'').trim()!=='' && !l.trim().startsWith('#'));
       if(!csvLines.length){ if(status) status.textContent = 'That CSV file appears to be empty.'; return; }
       if(ta){ const ex = ta.value.trim(); ta.value = ex ? ex + '\n' + csvLines.join('\n') : csvLines.join('\n'); }
-      if(status) status.textContent = `Loaded ${csvLines.length} row(s) from the CSV into the list below — check them, then click "Submit — add all students".`;
+      if(status) status.textContent = `Loaded ${csvLines.length} row(s) from the CSV into the paste box — check them, then click "Submit — add all students".`;
       return;
     }
     await loadMammothLib();
@@ -13466,7 +14415,7 @@ async function loadStudentListFromWord(input){
         const existing = ta.value.trim();
         ta.value = existing ? existing + '\n' + lines.join('\n') : lines.join('\n');
       }
-      if(status) status.textContent = `Loaded ${lines.length} student row(s) from the document into the list below — check them, then click "Submit — add all students".`;
+      if(status) status.textContent = `Loaded ${lines.length} student row(s) from the document into the paste box — check them, then click "Submit — add all students".`;
     }
   }catch(err){
     console.error(err);
@@ -14360,6 +15309,13 @@ document.addEventListener('submit', async (e)=>{
         const oldPeriodScores=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
         termChangeDecision=await termChangeSafetyBanner(prevTerm,prevYear,newTerm,newYear,oldPeriodScores.length);
         if(termChangeDecision==='cancel') return;
+        // Changing the term or year always needs the private owner code. Option 3 (delete) has
+        // already asked for it inside the safety banner, so it is not asked a second time.
+        if(termChangeDecision!=='delete'){
+          const okTerm = await requireOwnerCode(`change the term/year from ${prevTerm||'—'} ${prevYear||''} to ${newTerm} ${newYear}`, 'Change');
+          if(!okTerm) return;
+        }
+        if(termChangeDecision==='carry' || termChangeDecision==='delete') undoMarkIrreversible(); // scores move/vanish too, which Undo can't bring back
         if(termChangeDecision==='carry'){
           await moveCurrentPeriodScoresTo(prevTerm,prevYear,newTerm,newYear);
         }
@@ -14400,6 +15356,7 @@ document.addEventListener('submit', async (e)=>{
       const data = migrateBackupData(raw);
       const sure = confirm(`This will REPLACE all current school data with the backup from ${data.exportedAt?new Date(data.exportedAt).toLocaleString():'this file'}.\n\nStudents in file: ${data.students.length}\nCurrent students: ${DB.students.length}\n\nThis cannot be undone. Continue?`);
       if(!sure) return;
+      undoMarkIrreversible();
       const _prevGrade = schoolGrade();
       DB.info = data.info; keepLockedGrade(_prevGrade); DB.accounts = data.accounts; DB.classes = data.classes;
       DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores;
@@ -15010,7 +15967,9 @@ document.addEventListener('submit', async (e)=>{
       // Subjects are never edited here — they stay whatever each subject teacher's own
       // roster says, including after a class change (the student simply won't appear on
       // any new-class subject teacher's roster until that teacher ticks them in).
-      await saveStudents(); alertOk('Student profile updated.'); render();
+      await saveStudents(); alertOk('Student profile updated.');
+      { const prevPg = NAV_HISTORY.stack[NAV_HISTORY.stack.length-1];
+        if(STU_RETURN && prevPg && prevPg.name==='students') navGoBack(); else render(); }
     }
     else if(type==='saveBands'){
       // Check the General Paper / subsidiary level table FIRST, so a bad row never leaves the save half-done.
@@ -15204,6 +16163,8 @@ document.addEventListener('submit', async (e)=>{
       const from=fd.get('fromClass'), to=fd.get('toClass');
       if(!from || !to){ alert('Please choose both a class and a next class.'); return; }
       if(from===to){ alert('Next class must be different from the class being promoted.'); return; }
+      { const fromCls=DB.classes.find(c=>c.id===from);
+        if(!(await requireOwnerCode(`promote the students of ${fromCls?fromCls.name:'this class'}`, 'Promote'))) return; }
       // Only students currently in "from" are touched. Every other class/student is left
       // exactly as-is — this action never changes DB.info.currentYear or anyone else's class.
       const moved = DB.students.filter(s=>s.classId===from && s.status!=='left');
@@ -15234,6 +16195,7 @@ document.addEventListener('submit', async (e)=>{
         .map(c=>({from:c.id, to:fd.get('to__'+c.id)}))
         .filter(m=>m.to);
       if(!moves.length){ alert('Choose a destination for at least one class before submitting.'); return; }
+      if(!(await requireOwnerCode(`promote ${moves.length} class${moves.length===1?'':'es'}`, 'Promote'))) return;
       let totalMoved = 0;
       moves.forEach(({from,to})=>{
         const moved = DB.students.filter(s=>s.classId===from && s.status!=='left');
