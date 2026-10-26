@@ -212,7 +212,7 @@ img{max-width:100%;height:auto;}
 .rw-band{position:absolute;left:0;right:0;top:calc(100% - 100px);height:50px;border-top:2px solid var(--gold,#e0a800);border-bottom:2px solid var(--gold,#e0a800);pointer-events:none;z-index:2;}
 .hist-target{margin:8px 0 2px;font-size:15px;}
 .hist-btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;}
-.nav-back-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;line-height:1.2;max-width:100%;text-align:left;}
+.nav-back-btn{display:inline-flex;align-items:center;gap:4px;background:#fff;color:var(--blue);border:1.5px solid var(--blue);padding:3px 10px;border-radius:999px;font-family:inherit;font-weight:700;font-size:12px;line-height:1.15;width:auto;min-height:0;max-width:100%;text-align:left;}
 .nav-back-btn:hover{background:var(--blue);color:#fff;}
 .nav-back-btn .nav-back-to{font-weight:600;opacity:.85;}
 .nav-back-btn.auth-back{position:absolute;top:14px;left:14px;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.25);}
@@ -1724,6 +1724,9 @@ table.sp-students td:nth-child(4){text-align:left;}
   /* Student Performance pages: the table grows to the page-number line, rows share the height, words a little larger */
   #printArea .lp-page.lp-fill table{flex:1 1 auto;}
   #printArea .lp-page.lp-fill table th, #printArea .lp-page.lp-fill table td{font-size:12px !important;vertical-align:middle;padding-top:2px !important;padding-bottom:2px !important;height:5.4mm;}
+  #printArea .lp-page tr.lp-filler{visibility:hidden;}
+  body.print-frame #printArea .lp-page.lp-padded.lp-padded table{border:0 !important;}
+  body.print-frame #printArea .lp-page.lp-page tr.lp-filler td{border:0 !important;}
   #printArea .lp-page.lp-fill.lp-short table{flex:0 0 auto;}   /* last page with fewer than 35: same row height as the full pages, not stretched */
   #printArea .lp-page.lp-fill.lp-short table td{height:6mm;}
   #printArea .lp-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}
@@ -16715,7 +16718,7 @@ function printListPaged(opts){
     const orient = card.getAttribute('data-orient') || defOrient;
     let per = rowsFor(orient);
     const fill = table.classList.contains('sp-students');
-    const fillAll = fill && dataRows.length>=35;
+    const fillAll = fill;   // Student Performance: always 35 per page, every page laid out as a full page (even with fewer learners)
     if(fillAll){
       per = 35;   // exactly 35 students per printed page
     }
@@ -16755,7 +16758,7 @@ function printListPaged(opts){
       sc.chunks.forEach(rows=>{
         pn++;
         const pg = document.createElement('div');
-        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land') + (sc.fill ? (rows.filter(r=>!isSummary(r)).length>=35 ? ' lp-fill' : ' lp-fill lp-short') : '');
+        pg.className = 'lp-page ' + (sc.orient==='portrait' ? 'lp-port' : 'lp-land') + (sc.fill ? (rows.filter(r=>!isSummary(r)).length>=35 ? ' lp-fill' : ' lp-fill lp-padded') : '');
         pg.innerHTML = `<div class="mm-header">${logo}<span class="mm-school">${esc(school)}</span>`
           + (sc.title?`<div class="mm-title">${esc(sc.title)}</div>`:'')
           + (sc.meta?`<div class="mm-meta">${esc(sc.meta)}</div>`:'') + `</div>`;
@@ -16772,6 +16775,19 @@ function printListPaged(opts){
         t.appendChild(th);
         const tb = document.createElement('tbody');
         rows.forEach(r=>tb.appendChild(r.cloneNode(true)));
+        if(sc.fill){
+          // A page with fewer than 35 learners is padded with invisible filler rows so its rows are exactly as tall as on a full page.
+          const real = rows.filter(r=>!isSummary(r));
+          if(real.length && real.length<35){
+            const anchor = [...tb.rows].find(isSummary) || null;
+            for(let k=real.length;k<35;k++){
+              const fr = real[0].cloneNode(true);
+              fr.className = 'lp-filler'; fr.removeAttribute('style');
+              [...fr.cells].forEach(c=>{ c.className=''; c.removeAttribute('style'); c.innerHTML='&nbsp;'; });
+              tb.insertBefore(fr, anchor);
+            }
+          }
+        }
         t.appendChild(tb);
         pg.appendChild(t);
         const n = document.createElement('div'); n.className = 'lp-pgnum'; n.textContent = `Page ${pn} of ${totalPages}`;
@@ -16878,7 +16894,20 @@ function printPortrait(opts){
         if(opts.fillPage){
           // Full pages: the table is stretched so its rows fill the page down to the page number.
           pg.classList.add('ms-fill');
-          const wrap = document.createElement('div'); wrap.className = 'ms-tbl' + (rows.length>=PER_PAGE ? ' ms-full' : '');
+          // Every page (even one with fewer than PER_PAGE learners) is laid out as a FULL page so all rows have the same
+          // height as in the PDF: a short page is padded with invisible filler rows (no borders, no text) up to PER_PAGE.
+          const realRows = rows.filter(r=>!isSummary(r));
+          const wrap = document.createElement('div'); wrap.className = 'ms-tbl ms-full';
+          if(realRows.length && realRows.length<PER_PAGE){
+            pg.classList.add('ms-short');
+            const anchor = [...tb.rows].find(isSummary) || null;   // fillers go after the learners, before any summary line
+            for(let k=realRows.length;k<PER_PAGE;k++){
+              const fr = realRows[0].cloneNode(true);
+              fr.className = 'ms-filler'; fr.removeAttribute('style');
+              [...fr.cells].forEach(c=>{ c.className=''; c.removeAttribute('style'); c.innerHTML='&nbsp;'; });
+              tb.insertBefore(fr, anchor);
+            }
+          }
           wrap.appendChild(t); pg.appendChild(wrap);
         } else pg.appendChild(t);
         if(pi===pages.length-1 && footerHtml){ const f=document.createElement('div'); f.style.marginTop='8px'; f.innerHTML=footerHtml; pg.appendChild(f); }
@@ -16899,6 +16928,9 @@ function printPortrait(opts){
     + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:262mm;box-sizing:border-box;}'
     + ' .ms-print-page.ms-pgfoot{display:flex;flex-direction:column;box-sizing:border-box;}'
     + ' .ms-print-page.ms-fill .ms-tbl.ms-full{flex:1 1 auto;min-height:0;} .ms-print-page.ms-fill .ms-tbl.ms-full table{height:100%;}'
+    + ' .ms-print-page.ms-print-page tr.ms-filler{visibility:hidden;}'
+    + ' body.print-frame #printArea .ms-print-page.ms-short.ms-short table{border:0 !important;}'
+    + ' body.print-frame #printArea .ms-print-page.ms-print-page tr.ms-filler td{border:0 !important;}'
     + ' .ms-pgnum{margin-top:auto;text-align:center;font-weight:800;font-size:11px;padding-top:4px;color:#0A2A4A;}'
     + ' .mm-page{padding:0 !important;} .mm-tablewrap{overflow:visible !important;border:none !important;}'
     + ' #printArea .mm-header{padding-bottom:6px;margin-bottom:8px;} #printArea .mm-header .mm-logo{width:48px;height:48px;} #printArea .mm-header .mm-school{font-size:18px;}'
@@ -17199,10 +17231,9 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       pageWrap.appendChild(fitStyle);
       const maxRatio = usableH/usableW;
       const fillThisPage = !!section.fillPage;  // Student Performance of a 35+ class: every page is filled down to the page-number line
-      // Score sheets / marksheets (blank or filled): stretched to the page bottom only when the class has at least one full page of
-      // students; a smaller class keeps normal row heights (its students cannot fill a page).
-      const sheetDataCount = bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length;
-      if(fillThisPage || (opts.fillPage && opts.rowsPerPage && sheetDataCount>=opts.rowsPerPage)){
+      // Score sheets / marksheets (blank or filled): EVERY page, including a page (or a whole class) with fewer than
+      // rowsPerPage learners, uses exactly the row height of a full page of rowsPerPage learners; the unused space is left blank below.
+      if(fillThisPage || (opts.fillPage && opts.rowsPerPage)){
         // Stretch (or tighten) the row height so a full page of learners fills the sheet from the
         // header down to the page-number strip, with no empty band at the bottom. A short last page
         // keeps exactly the same row height as the full ones.
@@ -17274,7 +17305,7 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
       school: opts.school || (DB.info && DB.info.schoolName) || '',
       orientation: card.getAttribute('data-orient') || opts.orientation || '',
       isSp: table.classList.contains('sp-students'),
-      fillPage: table.classList.contains('sp-students') && bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=35,   // Student Performance with 35+ students: pages are filled
+      fillPage: table.classList.contains('sp-students') && bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=1,   // Student Performance with 35+ students: pages are filled
       headRows, bodyRows
     };
   }).filter(Boolean);
@@ -17346,7 +17377,7 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
     title: `${cls?cls.name:''} — ${a.subject}`,
     subtitle: `Paper ${paper} — ${kindLbl} — marked out of ${max}`,
     headRows: [headRow], bodyRows
-  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait', rowsPerPage:35});
+  }], `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${a.subject.replace(/\s+/g,'_')}_P${paper}_${kindFile}_marksheet.pdf`, {orientation:'portrait', rowsPerPage:35, fillPage:true});
 }
 
 /* ---------- Bulk PDF ---------- */
