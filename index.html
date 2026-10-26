@@ -1198,7 +1198,9 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
 .ad-enrol .ad-scroll{overflow-x:auto;}
 .ad-enrol table{table-layout:auto !important;width:max-content !important;max-width:100%;border-collapse:collapse;border-radius:0 !important;}
 .ad-enrol table th,.ad-enrol table td{width:auto !important;overflow:visible !important;text-overflow:clip !important;white-space:nowrap;border-radius:0 !important;padding-left:calc(5*var(--uk)) !important;padding-right:calc(5*var(--uk)) !important;}
-.ad-enrol table th:first-child,.ad-enrol table td:first-child{text-align:left;}
+/* Enrollment table is centred in its card, and every cell (including Class / TOTAL) is centre-aligned. */
+.ad-enrol table{margin-left:auto !important;margin-right:auto !important;}
+.ad-enrol table th,.ad-enrol table td,.ad-enrol table th:first-child,.ad-enrol table td:first-child{text-align:center !important;}
 /* PC: Term ends / Next term begins on the admin dashboard are zoomed — larger, bolder labels and date boxes for clarity. */
 /* Dates box is only as big as its two date settings: card shrinks to fit, date boxes stop stretching. */
 .ad-side>.ad-dates{width:fit-content !important;max-width:100%;justify-self:start;box-sizing:border-box;}
@@ -1589,6 +1591,14 @@ label.rc-pick-row{display:flex;align-items:center;gap:10px;padding:9px 2px;margi
 label.rc-pick-row:last-child{border-bottom:none;}
 label.rc-pick-row input[type=checkbox]{width:20px !important;height:20px;flex:0 0 auto;margin:0;}
 label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;border-radius:8px;background:#eaf3ff;}
+/* Report Cards: class dropdown (opens in-flow, so it is never clipped by the card) */
+.rc-dd-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;margin:6px 0 0;padding:12px 14px;border:1px solid #cfd9e3;border-radius:8px;background:#fff;color:var(--navy,#0A2A4A);font-size:15px;font-weight:700;text-align:left;cursor:pointer;}
+.rc-dd-btn .rc-dd-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rc-dd-btn .rc-dd-arrow{flex:0 0 auto;transition:transform .15s;}
+.rc-dd-btn[aria-expanded="true"]{border-color:var(--blue,#1f5fa8);}
+.rc-dd-btn[aria-expanded="true"] .rc-dd-arrow{transform:rotate(180deg);}
+.rc-dd-panel{display:none;margin-top:6px;}
+.rc-dd-panel.open{display:block;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -9918,13 +9928,16 @@ function reportsListView(){
   ${teacherAccessCard}
   ${isAdmin ? rcShadeCard() : ''}
   <div class="card">
-    <label class="rc-sel-lbl">Select class(es) — tick one or more</label>
+    <label class="rc-sel-lbl">Select class(es)</label>
+    <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-expanded="false" onclick="rcDdToggle()"><span class="rc-dd-txt" id="rcDdTxt">${pickedNow?esc(pickedNow+' class'+(pickedNow===1?'':'es')+' ticked'):'-- select classes --'}</span><span class="rc-dd-arrow">▾</span></button>
+    <div class="rc-dd-panel" id="rcDdPanel">
     <label class="rc-pick-row rc-pick-all"><input type="checkbox" id="rcPickAll" ${visibleClasses.length && pickedNow===visibleClasses.length?'checked':''} onchange="rcPickAll(this.checked)"> <span>Select all classes</span></label>
     <div class="rc-pick-list">
       ${visibleClasses.map(c=>`<label class="rc-pick-row"><input type="checkbox" class="rc-pick-cb" value="${esc(c.id)}" ${RC_PICK.has(c.id)?'checked':''} onchange="rcPickToggle(this.value,this.checked)"> <span>${esc(c.name)}</span> <span class="small" style="margin:0;text-transform:none;font-weight:600;">(${stuCount(c.id)})</span></label>`).join('') || '<p class="small" style="margin:10px 0;">No classes yet.</p>'}
     </div>
+    </div>
     <div class="flex" style="margin-top:12px;align-items:center;gap:10px;flex-wrap:wrap;">
-      <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${pickedNow?'':'disabled'}>OK — load report cards</button>
+      <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${pickedNow?'':'disabled'}>Submit — load report cards</button>
       ${isAdmin ? `<button type="button" class="btn-gold" id="rcPickDl" onclick="rcPickDownload(this)" ${pickedNow?'':'disabled'}><b>Download all ticked classes (PDF)</b></button>` : ''}
       <span class="small" id="rcPickCount" style="margin:0;text-transform:none;font-weight:700;">${pickedNow} class${pickedNow===1?'':'es'} ticked</span>
     </div>
@@ -9973,6 +9986,18 @@ function rcPickRefresh(){
   const ok = document.getElementById('rcPickOk'); if(ok) ok.disabled = !n;
   const dl = document.getElementById('rcPickDl'); if(dl) dl.disabled = !n;
   const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n+' class'+(n===1?'':'es')+' ticked';
+  const tx = document.getElementById('rcDdTxt');
+  if(tx){
+    const names = cbs.filter(c=>c.checked).map(c=>{ const sp=c.closest('label')&&c.closest('label').querySelector('span'); return sp?sp.textContent.trim():''; }).filter(Boolean);
+    tx.textContent = !n ? '-- select classes --' : (n<=2 ? names.join(', ') : n+' classes ticked');
+  }
+}
+function rcDdToggle(force){
+  const pn = document.getElementById('rcDdPanel'), bt = document.getElementById('rcDdBtn');
+  if(!pn || !bt) return;
+  const open = (typeof force==='boolean') ? force : !pn.classList.contains('open');
+  pn.classList.toggle('open', open);
+  bt.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 function rcPickToggle(id, on){ if(on) RC_PICK.add(id); else RC_PICK.delete(id); rcPickRefresh(); }
 function rcPickAll(on){
