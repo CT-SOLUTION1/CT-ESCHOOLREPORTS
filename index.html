@@ -1599,27 +1599,27 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-dd-btn[aria-expanded="true"] .rc-dd-arrow{transform:rotate(180deg);}
 .rc-dd-panel{display:none;margin-top:6px;}
 .rc-dd-panel.open{display:block;}
-/* Report Cards: splash card for choosing classes */
-.rc-splash{display:flex;justify-content:center;padding:2vh 0 10px;}
-.card.rc-splash-card{width:100%;max-width:540px;box-sizing:border-box;margin:0 auto 18px;padding:30px 26px 26px;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 18px 46px rgba(10,42,74,.20),0 2px 8px rgba(10,42,74,.08);text-align:center;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
-.rc-splash-icon{width:62px;height:62px;margin:0 auto 12px;border-radius:50%;background:var(--blue-light,#E9F1FA);display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:inset 0 0 0 2px #d3e2f3;}
-.rc-splash-title{margin:0 0 6px;font-family:Georgia,'Playfair Display',serif;font-size:30px;font-weight:800;letter-spacing:.01em;color:var(--navy,#0A2A4A);}
-.rc-splash-sub{margin:0 auto 20px;max-width:380px;font-size:15px;line-height:1.5;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
-.rc-splash-card .rc-splash-lbl{display:block;text-align:left;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue,#1D4E89);margin:0 0 2px 2px;}
-.rc-splash-card .rc-dd-btn{padding:15px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:17px;font-weight:700;box-shadow:0 1px 3px rgba(10,42,74,.06);}
-.rc-splash-card .rc-dd-btn[aria-expanded="true"]{border-color:var(--blue,#1D4E89);box-shadow:0 0 0 3px rgba(29,78,137,.15);}
-.rc-splash-card .rc-dd-arrow{font-size:18px;color:var(--blue,#1D4E89);}
-.rc-splash-card .rc-pick-list{border-radius:12px;text-align:left;}
-.rc-splash-card label.rc-pick-row{font-size:16px;font-weight:600;}
-.rc-splash-card label.rc-pick-all{border-radius:12px;font-weight:800;text-align:left;}
-.rc-splash-actions{display:flex;flex-direction:column;gap:10px;margin-top:16px;}
-.rc-splash-actions .btn,.rc-splash-actions .btn-gold{width:100%;box-sizing:border-box;min-height:52px;font-size:17px;font-weight:800;letter-spacing:.01em;border-radius:12px;}
-.rc-splash-actions .btn[disabled],.rc-splash-actions .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
-.rc-splash-count{font-size:14px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:2px 0 0;}
-.rc-splash-or{display:flex;align-items:center;gap:12px;margin:22px 0 12px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8a99a8;}
-.rc-splash-or::before,.rc-splash-or::after{content:"";flex:1;height:1px;background:#dbe4ee;}
-.rc-splash-card #rcSearch{font-size:16px;min-height:50px;padding:10px 14px;border:1.5px solid #b9c9da;border-radius:12px;}
-@media (max-width:700px){.card.rc-splash-card{padding:24px 16px 22px;border-radius:18px;}.rc-splash-title{font-size:26px;}}
+/* Report Cards: "Filter by class" bar on the page; tapping it opens the class-picker splash card */
+.rc-filter-card .rc-dd-btn{padding:14px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:16px;font-weight:700;}
+.rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
+.rc-modal-card{width:100%;max-width:440px;max-height:min(86vh,660px);max-height:min(86dvh,660px);display:flex;flex-direction:column;background:#fff;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 22px 60px rgba(10,42,74,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+.rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 18px 10px 22px;}
+.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:24px;font-weight:800;color:var(--navy,#0A2A4A);}
+.rc-modal-head p{margin:4px 0 0;font-size:14px;line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
+.rc-modal-x{flex:0 0 auto;width:36px;height:36px;padding:0;border:none;border-radius:50%;background:#eef3f8;color:var(--navy,#0A2A4A);font-size:22px;line-height:1;}
+.rc-modal-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 22px;border-top:1px solid #e6edf4;border-bottom:1px solid #e6edf4;}
+.rc-modal label.rc-opt{display:flex;align-items:center;gap:10px;margin:0;padding:13px 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:16px;font-weight:600;color:var(--ink,#1c2b3a);}
+.rc-modal label.rc-opt:last-child{border-bottom:none;}
+.rc-modal label.rc-opt-all{font-weight:800;color:var(--navy,#0A2A4A);}
+.rc-modal .rc-opt-name{flex:1;min-width:0;}
+.rc-modal .rc-opt-n{flex:0 0 auto;font-size:13px;font-weight:600;color:#7a8a9a;}
+.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:26px !important;height:26px;min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
+.rc-modal .rc-tick:checked{background:var(--blue,#1D4E89);border-color:var(--blue,#1D4E89);}
+.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:7px;top:2px;width:6px;height:12px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
+.rc-modal-foot{padding:14px 22px 20px;display:flex;flex-direction:column;gap:10px;}
+.rc-modal-foot .rc-splash-count{text-align:center;font-size:14px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
+.rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:52px;font-size:17px;font-weight:800;border-radius:12px;}
+.rc-modal-foot .btn[disabled],.rc-modal-foot .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -9946,34 +9946,20 @@ function reportsListView(){
   const stuCount = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
   return `
   ${rcCollapsed ? rcTopBar : `<h2>Report Cards</h2>
-  <div class="rc-splash"><div class="card rc-splash-card">
-    <div class="rc-splash-icon">📄</div>
-    <h3 class="rc-splash-title">Select Class(es)</h3>
-    <p class="rc-splash-sub">Open the list, tick one or more classes, then submit to load their report cards.</p>
-    <label class="rc-splash-lbl">Classes</label>
-    <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-expanded="false" onclick="rcDdToggle()"><span class="rc-dd-txt" id="rcDdTxt">${pickedNow?esc(pickedNow+' class'+(pickedNow===1?'':'es')+' ticked'):'-- select classes --'}</span><span class="rc-dd-arrow">▾</span></button>
-    <div class="rc-dd-panel" id="rcDdPanel">
-    <label class="rc-pick-row rc-pick-all"><input type="checkbox" id="rcPickAll" ${visibleClasses.length && pickedNow===visibleClasses.length?'checked':''} onchange="rcPickAll(this.checked)"> <span>Select all classes</span></label>
-    <div class="rc-pick-list">
-      ${visibleClasses.map(c=>`<label class="rc-pick-row"><input type="checkbox" class="rc-pick-cb" value="${esc(c.id)}" ${RC_PICK.has(c.id)?'checked':''} onchange="rcPickToggle(this.value,this.checked)"> <span>${esc(c.name)}</span> <span class="small" style="margin:0;text-transform:none;font-weight:600;">(${stuCount(c.id)})</span></label>`).join('') || '<p class="small" style="margin:10px 0;">No classes yet.</p>'}
-    </div>
-    </div>
-    <div class="rc-splash-actions">
-      <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${pickedNow?'':'disabled'}>Submit — load report cards</button>
-      ${isAdmin ? `<button type="button" class="btn-gold" id="rcPickDl" onclick="rcPickDownload(this)" ${pickedNow?'':'disabled'}><b>Download all ticked classes (PDF)</b></button>` : ''}
-      <span class="rc-splash-count" id="rcPickCount">${pickedNow} class${pickedNow===1?'':'es'} ticked</span>
-    </div>
-    <div class="rc-splash-or">or search a student by name</div>
+  <div class="card rc-filter-card">
+    <label class="rc-sel-lbl">Filter by class</label>
+    <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-haspopup="dialog" aria-expanded="false" onclick="rcDdToggle(true)"><span class="rc-dd-txt" id="rcDdTxt">${rcDdSummary()}</span><span class="rc-dd-arrow">▾</span></button>
+    <label class="rc-sel-lbl" style="margin-top:16px;">Or search a student by name</label>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
     </div>
-    ${isAdmin ? '' : `<p class="small" style="margin-top:14px;">Printing and downloading report cards is available to Admin only.</p>`}
-  </div></div>
+    ${isAdmin ? '' : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
+  </div>
   ${teacherAccessCard}
   ${isAdmin ? rcShadeCard() : ''}`}
   <div class="card">
-    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Select one or more classes above and press Submit, or search a student by name, to see the report card list.</p>` : (()=>{
+    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tap “Filter by class” above, tick one or more classes and submit, or search a student by name, to see the report card list.</p>` : (()=>{
       const listStudents = rcListedStudents(rcIds);
       const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
@@ -10003,35 +9989,67 @@ function rcAppliedIds(){
   if(Array.isArray(p.classIds)) return p.classIds;
   return p.classId ? [p.classId] : [];
 }
+function rcVisibleClasses(){
+  const isT = CUR.role==='teacher';
+  const as = isT ? DB.assignments.filter(a=>a.teacherUsername===CUR.username) : DB.assignments;
+  const ids = [...new Set(as.map(a=>a.classId))];
+  return isT ? DB.classes.filter(c=>ids.includes(c.id)) : DB.classes;
+}
+function rcPickedClasses(){ return rcVisibleClasses().filter(c=>RC_PICK.has(c.id)); }
+function rcDdSummary(){
+  const ps = rcPickedClasses();
+  if(!ps.length) return '-- select classes --';
+  return ps.length<=2 ? ps.map(c=>c.name).join(', ') : ps.length+' classes ticked';
+}
 function rcPickRefresh(){
-  const cbs = [...document.querySelectorAll('.rc-pick-cb')];
-  const n = cbs.filter(c=>c.checked).length;
-  const all = document.getElementById('rcPickAll'); if(all) all.checked = cbs.length>0 && n===cbs.length;
+  const vis = rcVisibleClasses(), n = rcPickedClasses().length;
+  const all = document.getElementById('rcPickAll'); if(all) all.checked = vis.length>0 && n===vis.length;
   const ok = document.getElementById('rcPickOk'); if(ok) ok.disabled = !n;
   const dl = document.getElementById('rcPickDl'); if(dl) dl.disabled = !n;
   const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n+' class'+(n===1?'':'es')+' ticked';
-  const tx = document.getElementById('rcDdTxt');
-  if(tx){
-    const names = cbs.filter(c=>c.checked).map(c=>{ const sp=c.closest('label')&&c.closest('label').querySelector('span'); return sp?sp.textContent.trim():''; }).filter(Boolean);
-    tx.textContent = !n ? '-- select classes --' : (n<=2 ? names.join(', ') : n+' classes ticked');
-  }
+  const tx = document.getElementById('rcDdTxt'); if(tx) tx.textContent = rcDdSummary();
+}
+function rcModalHTML(){
+  const vis = rcVisibleClasses(), isAdmin = CUR.role==='admin', n = rcPickedClasses().length;
+  const cnt = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
+  return `<div class="rc-modal" id="rcModal" onclick="if(event.target===this)rcDdToggle(false)">
+    <div class="rc-modal-card" role="dialog" aria-modal="true" aria-label="Select classes">
+      <div class="rc-modal-head"><div><h3>Select Class(es)</h3><p>Tick the classes whose report cards you want to load.</p></div><button type="button" class="rc-modal-x" onclick="rcDdToggle(false)" aria-label="Close">×</button></div>
+      <div class="rc-modal-list">
+        ${vis.length ? `<label class="rc-opt rc-opt-all"><span class="rc-opt-name">Select all classes</span><input type="checkbox" class="rc-tick" id="rcPickAll" ${n===vis.length?'checked':''} onchange="rcPickAll(this.checked)"></label>
+        ${vis.map(c=>`<label class="rc-opt"><span class="rc-opt-name">${esc(c.name)}</span><span class="rc-opt-n">(${cnt(c.id)})</span><input type="checkbox" class="rc-tick rc-pick-cb" value="${esc(c.id)}" ${RC_PICK.has(c.id)?'checked':''} onchange="rcPickToggle(this.value,this.checked)"></label>`).join('')}` : '<p class="small" style="margin:16px 0;">No classes yet.</p>'}
+      </div>
+      <div class="rc-modal-foot">
+        <span class="rc-splash-count" id="rcPickCount">${n} class${n===1?'':'es'} ticked</span>
+        <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${n?'':'disabled'}>Submit — load report cards</button>
+        ${isAdmin ? `<button type="button" class="btn-gold" id="rcPickDl" onclick="rcPickDownload(this)" ${n?'':'disabled'}><b>Download all ticked classes (PDF)</b></button>` : ''}
+      </div>
+    </div>
+  </div>`;
 }
 function rcDdToggle(force){
-  const pn = document.getElementById('rcDdPanel'), bt = document.getElementById('rcDdBtn');
-  if(!pn || !bt) return;
-  const open = (typeof force==='boolean') ? force : !pn.classList.contains('open');
-  pn.classList.toggle('open', open);
-  bt.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const open = (typeof force==='boolean') ? force : !document.getElementById('rcModal');
+  const old = document.getElementById('rcModal'); if(old) old.remove();
+  if(open){
+    const d = document.createElement('div'); d.innerHTML = rcModalHTML();
+    document.body.appendChild(d.firstElementChild);
+    document.body.style.overflow = 'hidden';
+  } else { document.body.style.overflow = ''; }
+  const bt = document.getElementById('rcDdBtn'); if(bt) bt.setAttribute('aria-expanded', open?'true':'false');
+  if(open) rcPickRefresh();
 }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('rcModal')) rcDdToggle(false); });
 function rcPickToggle(id, on){ if(on) RC_PICK.add(id); else RC_PICK.delete(id); rcPickRefresh(); }
 function rcPickAll(on){
-  document.querySelectorAll('.rc-pick-cb').forEach(cb=>{ cb.checked = on; if(on) RC_PICK.add(cb.value); else RC_PICK.delete(cb.value); });
+  rcVisibleClasses().forEach(c=>{ if(on) RC_PICK.add(c.id); else RC_PICK.delete(c.id); });
+  document.querySelectorAll('.rc-pick-cb').forEach(cb=>{ cb.checked = on; });
   rcPickRefresh();
 }
-function rcPickedIds(){ return [...document.querySelectorAll('.rc-pick-cb')].filter(c=>c.checked).map(c=>c.value); }
+function rcPickedIds(){ return rcPickedClasses().map(c=>c.id); }
 function rcPickOk(){
   const ids = rcPickedIds();
   if(!ids.length){ alert('Tick at least one class first.'); return; }
+  rcDdToggle(false);
   VIEW.params = {...VIEW.params, classIds: ids, classId: null};
   render();
 }
