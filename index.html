@@ -284,6 +284,17 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 @media(max-width:480px){.grid3.promote-row{grid-template-columns:1fr;}}
 .school-name-big{font-size:28px;font-weight:800;font-family:Georgia,serif;color:var(--navy);}
 .photo-thumb{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--blue);}
+/* ADD NEW or VIEW STUDENTS: the FIND STUDENTS heading is large and clear; once a class is picked or a name is
+   typed, the student table takes over the whole screen and the add / upload / fees-code sections are hidden. */
+h3.stu-find-title{font-size:32px;font-weight:900;letter-spacing:.6px;text-transform:uppercase;line-height:1.15;margin:0 0 8px;color:var(--blue);}
+.stu-back{display:none;}
+#stuPage.stu-results-mode #stuDormant,
+#stuPage.stu-results-mode > h2.stu-page-title,
+#stuPage.stu-results-mode .stu-hint{display:none !important;}
+#stuPage.stu-results-mode .stu-back{display:inline-flex;align-items:center;margin-bottom:10px;font-weight:800;}
+#stuPage.stu-results-mode #stuTableCard{min-height:calc(100vh - 230px);min-height:calc(100dvh - 230px);}
+.main:has(#stuPage.stu-results-mode){max-width:none;}
+@media (max-width:700px){h3.stu-find-title{font-size:26px;}}
 .small{font-size:12px;color:var(--muted);}
 .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .badge-role{background:var(--gold);color:#3a2c00;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:800;text-transform:uppercase;}
@@ -8072,8 +8083,11 @@ async function unlinkParentChild(username, studentId){
 
 /* ---------- Admin: Students ---------- */
 function studentsView(){
+  const resultsMode = !!(VIEW.params.stuClassFilter || (VIEW.params.stuSearch||'').trim());
   return `
-  <h2>ADD NEW or VIEW STUDENTS</h2>
+  <div id="stuPage" class="${resultsMode?'stu-results-mode':''}">
+  <h2 class="stu-page-title">ADD NEW or VIEW STUDENTS</h2>
+  <div id="stuDormant">
   <div class="card">
     <h3>Add student</h3>
     <form data-form="addStudent">
@@ -8118,8 +8132,25 @@ function studentsView(){
     </form>
   </div>
   <div class="card">
-    <h3>Find students</h3>
-    <p class="small">Pick a class, search by name, or both — the full school list isn't shown at once.</p>
+    <h3>Fees pay codes (download &amp; upload)</h3>
+    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
+    <label>Class</label>
+    <select id="feesCodeClassSel">
+      <option value="">-- select class --</option>
+      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
+    </select>
+    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
+    <form data-form="uploadFeesCodes" style="margin-top:12px;">
+      <label>Upload filled list (CSV)</label>
+      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
+      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
+    </form>
+  </div>
+  </div>
+  <div class="card" id="stuFindCard">
+    <button type="button" class="btn-outline stu-back" onclick="closeStudentResults()">← Back to add / upload students</button>
+    <h3 class="stu-find-title">Find students</h3>
+    <p class="small stu-hint">Pick a class, search by name, or both — the full school list isn't shown at once.</p>
     <div class="grid2">
       <div><label>Class</label>
         <select onchange="filterStudentsByClass(this.value)">
@@ -8143,26 +8174,28 @@ function studentsView(){
         <input type="number" min="2000" max="2100" step="1" value="${esc(String(VIEW.params.stuYear||DB.info.currentYear))}" onchange="filterStudentsByYear(this.value)">
       </div>
     </div>
-    <p class="small" style="margin-top:6px;">Defaults to the current term/year and shows the live class list. Pick a past term/year to see the class list as it stood back then instead — this relies on class changes made using Promote Students, so it's most reliable going forward from when that history started being tracked.</p>
+    <p class="small stu-hint" style="margin-top:6px;">Defaults to the current term/year and shows the live class list. Pick a past term/year to see the class list as it stood back then instead — this relies on class changes made using Promote Students, so it's most reliable going forward from when that history started being tracked.</p>
   </div>
-  <div class="card">
-    <h3>Fees pay codes (download &amp; upload)</h3>
-    <p class="small">Pick a class, download its student list, fill in each student's <b>Fees Pay Code</b> in Excel or any spreadsheet app, save it as CSV and upload it here. Codes are matched to students by their permanent <b>Admission No</b>, so they always land on the right student. Rows with a blank code are left unchanged.</p>
-    <label>Class</label>
-    <select id="feesCodeClassSel">
-      <option value="">-- select class --</option>
-      ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
-    </select>
-    <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlFeesCodeList">Download class list (CSV)</button>
-    <form data-form="uploadFeesCodes" style="margin-top:12px;">
-      <label>Upload filled list (CSV)</label>
-      <input type="file" name="feesCodeFile" accept=".csv,text/csv" required>
-      <button class="btn" style="margin-top:10px;">Upload &amp; assign fees pay codes</button>
-    </form>
-  </div>
-  <div class="card">
+  <div class="card" id="stuTableCard">
     <div id="studentsTableWrap">${renderStudentsTableHtml()}</div>
+  </div>
   </div>`;
+}
+// Switches the page between the normal screen and the full-screen student table: the table takes over as
+// soon as a class is picked or a name is typed, and the other sections come back when both are cleared.
+function applyStudentsMode(){
+  const page = document.getElementById('stuPage');
+  if(!page) return;
+  const on = !!(VIEW.params.stuClassFilter || (VIEW.params.stuSearch||'').trim());
+  const was = page.classList.contains('stu-results-mode');
+  page.classList.toggle('stu-results-mode', on);
+  if(on && !was) window.scrollTo(0,0);
+}
+function closeStudentResults(){
+  VIEW.params.stuClassFilter = '';
+  VIEW.params.stuSearch = '';
+  render();
+  window.scrollTo(0,0);
 }
 function renderStudentsTableHtml(){
   const classId = VIEW.params.stuClassFilter||'';
@@ -8198,6 +8231,7 @@ function renderStudentsTableHtml(){
         <span id="stuSelCount">0 selected</span>
       </label>
       <div class="flex">
+        <button type="button" class="btn-outline" onclick="markSelectedStudentsLeft(this)"><b>Mark selected as left</b></button>
         <button type="button" class="btn-danger" onclick="deleteSelectedStudents(this)">Delete selected</button>
         <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllListedStudents(this)">Delete ALL listed (${list.length})</button>
       </div>
@@ -8258,6 +8292,40 @@ function deleteSelectedStudents(btn){
   const ids = Array.from(document.querySelectorAll('.stuSelCb:checked')).map(cb=>cb.value);
   performBulkStudentDelete(ids, `Delete ${ids.length} selected student${ids.length===1?'':'s'} for good? This cannot be undone.`, btn);
 }
+// Moves every ticked student to Old Students in one go — the same thing the per-student "Mark as left" button
+// does (left term/year stamped, and a permanent shortfall record kept for anyone leaving with fees owing).
+async function markSelectedStudentsLeft(btn){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  const ids = new Set(Array.from(document.querySelectorAll('.stuSelCb:checked')).map(cb=>cb.value));
+  if(!ids.size){ alert('No students selected. Tick the students you want to mark as left first.'); return; }
+  const list = DB.students.filter(s=>ids.has(s.id) && s.status!=='left');
+  if(!list.length){ alert('The selected students are already marked as left.'); return; }
+  if(navigator.onLine===false){ alert('You appear to be offline. Please reconnect and try again.'); return; }
+  const n = list.length;
+  if(!confirm(`Mark ${n} selected student${n===1?'':'s'} as left/completed? They'll move to Old Students and be kept there for two terms, after which their records are permanently deleted.`)) return;
+  showActionProgress('Moving to Old Students…', btn);
+  try{
+    const d = financeData();
+    list.forEach(s=>{
+      s.status = 'left';
+      s.leftTerm = DB.info.currentTerm;
+      s.leftYear = DB.info.currentYear;
+      const sum = studentFinanceSummary(s, d);
+      if(sum.balance > 0){
+        const cls = DB.classes.find(c=>c.id===s.classId);
+        d.shortfalls.push({ id: uid('short'), studentId: s.id, name: s.name, admNo: s.admNo,
+          className: cls ? cls.name : '', leftTerm: DB.info.currentTerm, leftYear: DB.info.currentYear,
+          balance: sum.balance, recordedAt: new Date().toISOString(), settlements: [] });
+      }
+    });
+    await Promise.all([saveStudents(), saveInfo()]);
+    showActionSuccess(`${n} student${n===1?'':'s'} moved to Old Students successfully`, btn, true);
+  }catch(e){
+    showActionFailure('Could not move them — please try again.', btn);
+    alert('Something went wrong: '+(e.message||e));
+  }
+  render();
+}
 function deleteAllListedStudents(btn){
   const ids = Array.from(document.querySelectorAll('.stuSelCb')).map(cb=>cb.value);
   performBulkStudentDelete(ids, `Delete ALL ${ids.length} student${ids.length===1?'':'s'} currently listed for good? This cannot be undone.`, btn);
@@ -8269,21 +8337,25 @@ function filterStudentsByClass(v){
   VIEW.params.stuClassFilter = v||'';
   const wrap = document.getElementById('studentsTableWrap');
   if(wrap) wrap.innerHTML = renderStudentsTableHtml();
+  applyStudentsMode();
 }
 function filterStudentsBySearch(v){
   VIEW.params.stuSearch = v;
   const wrap = document.getElementById('studentsTableWrap');
   if(wrap) wrap.innerHTML = renderStudentsTableHtml();
+  applyStudentsMode();
 }
 function filterStudentsByTerm(v){
   VIEW.params.stuTerm = v||null;
   const wrap = document.getElementById('studentsTableWrap');
   if(wrap) wrap.innerHTML = renderStudentsTableHtml();
+  applyStudentsMode();
 }
 function filterStudentsByYear(v){
   VIEW.params.stuYear = v?Number(v):null;
   const wrap = document.getElementById('studentsTableWrap');
   if(wrap) wrap.innerHTML = renderStudentsTableHtml();
+  applyStudentsMode();
 }
 // Live preview of the auto admission number a newly-selected class would assign
 // next — purely cosmetic, doesn't touch the class's real counter (see
