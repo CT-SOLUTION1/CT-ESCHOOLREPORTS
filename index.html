@@ -1599,6 +1599,27 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-dd-btn[aria-expanded="true"] .rc-dd-arrow{transform:rotate(180deg);}
 .rc-dd-panel{display:none;margin-top:6px;}
 .rc-dd-panel.open{display:block;}
+/* Report Cards: splash card for choosing classes */
+.rc-splash{display:flex;justify-content:center;padding:2vh 0 10px;}
+.card.rc-splash-card{width:100%;max-width:540px;box-sizing:border-box;margin:0 auto 18px;padding:30px 26px 26px;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 18px 46px rgba(10,42,74,.20),0 2px 8px rgba(10,42,74,.08);text-align:center;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+.rc-splash-icon{width:62px;height:62px;margin:0 auto 12px;border-radius:50%;background:var(--blue-light,#E9F1FA);display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:inset 0 0 0 2px #d3e2f3;}
+.rc-splash-title{margin:0 0 6px;font-family:Georgia,'Playfair Display',serif;font-size:30px;font-weight:800;letter-spacing:.01em;color:var(--navy,#0A2A4A);}
+.rc-splash-sub{margin:0 auto 20px;max-width:380px;font-size:15px;line-height:1.5;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
+.rc-splash-card .rc-splash-lbl{display:block;text-align:left;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue,#1D4E89);margin:0 0 2px 2px;}
+.rc-splash-card .rc-dd-btn{padding:15px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:17px;font-weight:700;box-shadow:0 1px 3px rgba(10,42,74,.06);}
+.rc-splash-card .rc-dd-btn[aria-expanded="true"]{border-color:var(--blue,#1D4E89);box-shadow:0 0 0 3px rgba(29,78,137,.15);}
+.rc-splash-card .rc-dd-arrow{font-size:18px;color:var(--blue,#1D4E89);}
+.rc-splash-card .rc-pick-list{border-radius:12px;text-align:left;}
+.rc-splash-card label.rc-pick-row{font-size:16px;font-weight:600;}
+.rc-splash-card label.rc-pick-all{border-radius:12px;font-weight:800;text-align:left;}
+.rc-splash-actions{display:flex;flex-direction:column;gap:10px;margin-top:16px;}
+.rc-splash-actions .btn,.rc-splash-actions .btn-gold{width:100%;box-sizing:border-box;min-height:52px;font-size:17px;font-weight:800;letter-spacing:.01em;border-radius:12px;}
+.rc-splash-actions .btn[disabled],.rc-splash-actions .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
+.rc-splash-count{font-size:14px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:2px 0 0;}
+.rc-splash-or{display:flex;align-items:center;gap:12px;margin:22px 0 12px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8a99a8;}
+.rc-splash-or::before,.rc-splash-or::after{content:"";flex:1;height:1px;background:#dbe4ee;}
+.rc-splash-card #rcSearch{font-size:16px;min-height:50px;padding:10px 14px;border:1.5px solid #b9c9da;border-radius:12px;}
+@media (max-width:700px){.card.rc-splash-card{padding:24px 16px 22px;border-radius:18px;}.rc-splash-title{font-size:26px;}}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -9925,10 +9946,11 @@ function reportsListView(){
   const stuCount = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
   return `
   ${rcCollapsed ? rcTopBar : `<h2>Report Cards</h2>
-  ${teacherAccessCard}
-  ${isAdmin ? rcShadeCard() : ''}
-  <div class="card">
-    <label class="rc-sel-lbl">Select class(es)</label>
+  <div class="rc-splash"><div class="card rc-splash-card">
+    <div class="rc-splash-icon">📄</div>
+    <h3 class="rc-splash-title">Select Class(es)</h3>
+    <p class="rc-splash-sub">Open the list, tick one or more classes, then submit to load their report cards.</p>
+    <label class="rc-splash-lbl">Classes</label>
     <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-expanded="false" onclick="rcDdToggle()"><span class="rc-dd-txt" id="rcDdTxt">${pickedNow?esc(pickedNow+' class'+(pickedNow===1?'':'es')+' ticked'):'-- select classes --'}</span><span class="rc-dd-arrow">▾</span></button>
     <div class="rc-dd-panel" id="rcDdPanel">
     <label class="rc-pick-row rc-pick-all"><input type="checkbox" id="rcPickAll" ${visibleClasses.length && pickedNow===visibleClasses.length?'checked':''} onchange="rcPickAll(this.checked)"> <span>Select all classes</span></label>
@@ -9936,20 +9958,22 @@ function reportsListView(){
       ${visibleClasses.map(c=>`<label class="rc-pick-row"><input type="checkbox" class="rc-pick-cb" value="${esc(c.id)}" ${RC_PICK.has(c.id)?'checked':''} onchange="rcPickToggle(this.value,this.checked)"> <span>${esc(c.name)}</span> <span class="small" style="margin:0;text-transform:none;font-weight:600;">(${stuCount(c.id)})</span></label>`).join('') || '<p class="small" style="margin:10px 0;">No classes yet.</p>'}
     </div>
     </div>
-    <div class="flex" style="margin-top:12px;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div class="rc-splash-actions">
       <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${pickedNow?'':'disabled'}>Submit — load report cards</button>
       ${isAdmin ? `<button type="button" class="btn-gold" id="rcPickDl" onclick="rcPickDownload(this)" ${pickedNow?'':'disabled'}><b>Download all ticked classes (PDF)</b></button>` : ''}
-      <span class="small" id="rcPickCount" style="margin:0;text-transform:none;font-weight:700;">${pickedNow} class${pickedNow===1?'':'es'} ticked</span>
+      <span class="rc-splash-count" id="rcPickCount">${pickedNow} class${pickedNow===1?'':'es'} ticked</span>
     </div>
-    <label class="rc-sel-lbl" style="margin-top:16px;">Or search a student by name</label>
+    <div class="rc-splash-or">or search a student by name</div>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
     </div>
-    ${isAdmin ? '' : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
-  </div>`}
+    ${isAdmin ? '' : `<p class="small" style="margin-top:14px;">Printing and downloading report cards is available to Admin only.</p>`}
+  </div></div>
+  ${teacherAccessCard}
+  ${isAdmin ? rcShadeCard() : ''}`}
   <div class="card">
-    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tick one or more classes above and press OK, or search a student by name, to see the report card list.</p>` : (()=>{
+    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Select one or more classes above and press Submit, or search a student by name, to see the report card list.</p>` : (()=>{
       const listStudents = rcListedStudents(rcIds);
       const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
