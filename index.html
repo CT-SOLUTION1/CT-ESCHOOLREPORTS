@@ -17243,9 +17243,9 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
         let rowH = 20;
         for(let it=0; it<8; it++){
           fitStyle.textContent = `.pg-fit tbody td{padding-top:0 !important;padding-bottom:0 !important;vertical-align:middle !important;height:${rowH}px !important;}`;
-          const diff = targetH - pageWrap.offsetHeight - (nRows-k)*rowH;
+          const diff = targetH - pageWrap.offsetHeight - (nRows-k)*rowH;   // height still to gain if ALL nRows rows (real + blank) were rowH tall
           if(Math.abs(diff) < 0.5) break;
-          rowH = Math.max(8, rowH + diff/k);
+          rowH = Math.max(8, rowH + diff/nRows);   // divide by nRows (not k): a short page must converge to the full-page row height, not overshoot
         }
       } else {
       for(const [padV, hV] of [[7,0],[5,0],[4,0],[3,0],[2,0],[1,0],[1,26],[1,24],[1,22],[1,20],[1,18],[1,16]]){
