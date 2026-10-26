@@ -5479,6 +5479,9 @@ function renderParentSignupSlot(){
 // Admin decides whether teachers can open report cards at all (default: allowed, as before).
 function teachersMayViewReports(){ return !(DB.info && DB.info.teachersCanViewReports===false); }
 function navByRole(role){
+  if(role==='parent' && CUR && !parentMayViewReports(CUR)){
+    return navByRoleRaw(role).filter(([k])=>k!=='preport');
+  }
   if(role==='teacher' && !teachersMayViewReports()){
     return navByRoleRaw(role).filter(([k])=>k!=='treports');
   }
@@ -5493,7 +5496,7 @@ function navByRoleRaw(role){
       ['assignsubjects','Assign Subjects','📌'],['olevel',extraSubjectsLabel,'📖'],
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
-      ['parentaccounts','Parents','👪'],['oldstudents','Old Students','🎒'],
+      ['parentaccounts','PARENTS AND NON TEACHING STAFF','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','Mark Sheets','📋'],['classanalysis','RESULT ANALYSIS','📈'],
       ['finance','Finance & Requirements','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
@@ -5631,6 +5634,7 @@ function renderView(view){
       case 'pfinance': return parentFinanceView();
       case 'reportcard': {
         const sid = VIEW.params.studentId;
+        if(CUR.role==='parent' && !parentMayViewReports(CUR)) return '<p>Report card access has been switched off for this account. Please contact the school admin.</p>';
         if(CUR.role==='parent' && !parentStudentIds(CUR).includes(sid)) return '<p>You can only view your own child\'s report card.</p>';
         if(CUR.role==='teacher' && !teachersMayViewReports()) return '<p>Report cards have been switched off for teachers by the Admin.</p>';
         const stu = DB.students.find(x=>x.id===sid);
@@ -5738,6 +5742,12 @@ function financeData(){
   d.classAgreed = d.classAgreed || [];
   d.studentAgreed = d.studentAgreed || [];
   d.installments = d.installments || [];
+  // Salaries & wages attached to teaching and non teaching staff (see salariesView). Each record:
+  // {id, username, name, personType:'teacher'|'nonteaching', payType:'salary'|'wage', amount, frequency,
+  //  fromTerm, fromYear, toTerm, toYear (null = still being paid), note}. salarySettings turns a pay
+  // frequency into a cost per term.
+  d.salaries = d.salaries || [];
+  d.salarySettings = d.salarySettings || {};
   return d;
 }
 // A "shortfall" is a snapshot of what a student still owed at the moment they were
@@ -5878,17 +5888,49 @@ function expensesTotalForYear(year, d){ return d.expenses.filter(x=>Number(x.yea
 // underlying records every time it's displayed, so it is always up to date the
 // moment a new payment, cash settlement, or expense is recorded — nothing needs a
 // manual resync.
+// ---- Salaries & wages: the staff pay bill that accrues in a period, from each person's pay record ----
+const SALARY_FREQS = [['daily','Daily'],['weekly','Weekly'],['fortnightly','Every 2 weeks'],['monthly','Monthly'],['termly','Per term'],['yearly','Yearly']];
+function salaryFreqLabel(f){ return (SALARY_FREQS.find(x=>x[0]===f)||['',f||'—'])[1]; }
+function salarySettingsOf(d){
+  const st = d.salarySettings || {};
+  return { weeksPerTerm: Number(st.weeksPerTerm)||13, daysPerWeek: Number(st.daysPerWeek)||5, monthsPerTerm: Number(st.monthsPerTerm)||3 };
+}
+// What one pay record costs the school over ONE term, given how often it is paid.
+function salaryPerTerm(rec, d){
+  const st = salarySettingsOf(d), amt = Number(rec.amount||0);
+  switch(rec.frequency){
+    case 'daily': return amt * st.daysPerWeek * st.weeksPerTerm;
+    case 'weekly': return amt * st.weeksPerTerm;
+    case 'fortnightly': return amt * st.weeksPerTerm / 2;
+    case 'monthly': return amt * st.monthsPerTerm;
+    case 'termly': return amt;
+    case 'yearly': return amt / 3;
+  }
+  return 0;
+}
+function salaryActiveIn(rec, term, year){
+  const i = termIndex(term, year);
+  if(i < termIndex(rec.fromTerm, rec.fromYear)) return false;
+  if(rec.toTerm && i > termIndex(rec.toTerm, rec.toYear)) return false;
+  return true;
+}
+function salaryCostForPeriod(term, year, d){ return (d.salaries||[]).filter(r=>salaryActiveIn(r,term,year)).reduce((a,r)=>a+salaryPerTerm(r,d),0); }
+function salaryCostForYear(year, d){ return ['Term 1','Term 2','Term 3'].reduce((a,t)=>a+salaryCostForPeriod(t,year,d),0); }
 function periodBalance(term, year, d){
   const feesIncome = feesPaidForPeriod(term,year,d);
   const cashIncome = reqCashTotalForPeriod(term,year,d);
-  const expenses = expensesTotalForPeriod(term,year,d);
-  return { feesIncome, cashIncome, totalIncome: feesIncome+cashIncome, expenses, balance: feesIncome+cashIncome-expenses };
+  const otherExpenses = expensesTotalForPeriod(term,year,d);
+  const salaries = salaryCostForPeriod(term,year,d);
+  const expenses = otherExpenses + salaries;
+  return { feesIncome, cashIncome, totalIncome: feesIncome+cashIncome, otherExpenses, salaries, expenses, balance: feesIncome+cashIncome-expenses };
 }
 function yearBalance(year, d){
   const feesIncome = feesPaidForYear(year,d);
   const cashIncome = reqCashTotalForYear(year,d);
-  const expenses = expensesTotalForYear(year,d);
-  return { feesIncome, cashIncome, totalIncome: feesIncome+cashIncome, expenses, balance: feesIncome+cashIncome-expenses };
+  const otherExpenses = expensesTotalForYear(year,d);
+  const salaries = salaryCostForYear(year,d);
+  const expenses = otherExpenses + salaries;
+  return { feesIncome, cashIncome, totalIncome: feesIncome+cashIncome, otherExpenses, salaries, expenses, balance: feesIncome+cashIncome-expenses };
 }
 // Expense records grouped by category name, for the expense analysis breakdown —
 // same idea as fee items, but summing every time a category was picked in the period.
@@ -6410,6 +6452,7 @@ function financeRequirementsView(){
   if(finTab==='security') return lockHeader + backTabs + financePasswordsView();
   if(finTab==='analysis') return lockHeader + backTabs + feesAnalysisView(d);
   if(finTab==='reqanalysis') return lockHeader + backTabs + requirementsAnalysisView(d);
+  if(finTab==='salaries') return lockHeader + backTabs + salariesView(d);
   if(finTab==='fees'){
     if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
     return lockHeader + backTabs + feesClassTableView(d, term, year);
@@ -6419,6 +6462,132 @@ function financeRequirementsView(){
     return lockHeader + backTabs + requirementsClassView(d, term, year);
   }
   return lockHeader + finTabChooserHTML();
+}
+// ---------- Finance: Salaries (teaching staff + non teaching staff) ----------
+function setSalaryView(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
+// Everyone who can be put on the pay roll: every teacher account, and every account saved as non teaching staff.
+function salaryStaffList(){
+  const teachers = DB.accounts.filter(a=>a.role==='teacher').map(a=>({username:a.username, name:a.name||a.username, personType:'teacher', closed:a.status==='closed'}));
+  const staff = DB.accounts.filter(a=>a.role==='parent' && a.status!=='pending' && accCategory(a)==='nonteaching').map(a=>({username:a.username, name:a.name||a.username, personType:'nonteaching', closed:a.status==='closed'}));
+  return {teachers: teachers.sort((x,y)=>x.name.localeCompare(y.name)), staff: staff.sort((x,y)=>x.name.localeCompare(y.name))};
+}
+function salaryDateLabel(v){
+  if(!v) return '';
+  const dt = new Date(v+'T00:00:00');
+  return isNaN(dt) ? esc(v) : dt.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});
+}
+// Where a staff member's contract stands today (contract dates are for the school's records and reminders;
+// the pay itself is counted by the "paid from / last paid" terms).
+function contractStatus(r){
+  if(!r.contractStart && !r.contractEnd) return {label:'Not set', color:'#64748b', alert:false};
+  const today = new Date(); today.setHours(0,0,0,0);
+  const start = r.contractStart ? new Date(r.contractStart+'T00:00:00') : null;
+  if(!r.contractEnd) return {label:'Open-ended', color:'var(--good)', alert:false};
+  const days = Math.round((new Date(r.contractEnd+'T00:00:00') - today)/86400000);
+  if(days<0) return {label:'Expired', color:'var(--danger)', alert:true};
+  if(days<=60) return {label:`Ends in ${days} day${days===1?'':'s'}`, color:'#b45309', alert:true};
+  if(start && start>today) return {label:'Starts later', color:'#64748b', alert:false};
+  return {label:'Active', color:'var(--good)', alert:false};
+}
+function contractLength(r){
+  if(!r.contractStart || !r.contractEnd) return '';
+  const days = Math.round((new Date(r.contractEnd+'T00:00:00') - new Date(r.contractStart+'T00:00:00'))/86400000) + 1;
+  if(!(days>0)) return '';
+  const months = days/30.44;
+  return months>=1 ? `≈ ${Math.round(months*10)/10} month${Math.round(months*10)/10===1?'':'s'}` : `${days} day${days===1?'':'s'}`;
+}
+function salariesView(d){
+  const p = VIEW.params || {};
+  const edit = p.editSalaryId ? d.salaries.find(r=>r.id===p.editSalaryId) : null;
+  const {teachers, staff} = salaryStaffList();
+  const cur = {term: DB.info.currentTerm, year: DB.info.currentYear};
+  const sTerm = p.salTerm || cur.term, sYear = Number(p.salYear) || cur.year;
+  const b = sTerm==='year' ? yearBalance(sYear, d) : periodBalance(sTerm, sYear, d);
+  const periodLabel = sTerm==='year' ? `Whole year ${sYear}` : `${sTerm}, ${sYear}`;
+  const st = salarySettingsOf(d);
+  const termOpts = (sel, blankLabel)=> (blankLabel?`<option value="" ${!sel?'selected':''}>${blankLabel}</option>`:'') + ['Term 1','Term 2','Term 3'].map(t=>`<option ${sel===t?'selected':''}>${t}</option>`).join('');
+  const nameOf = r=>{ const a = DB.accounts.find(x=>x.username===r.username); return (a && a.name) || r.name || r.username; };
+  const catLabel = t=> t==='nonteaching' ? 'Non teaching staff' : 'Teaching staff';
+  const paid = new Set(d.salaries.map(r=>r.username));
+  const unpaid = [...teachers, ...staff].filter(x=>!paid.has(x.username) && !x.closed);
+  const activeNow = d.salaries.filter(r=>salaryActiveIn(r, cur.term, cur.year));
+  const sorted = d.salaries.slice().sort((a,b2)=> nameOf(a).localeCompare(nameOf(b2)) || termIndex(b2.fromTerm,b2.fromYear)-termIndex(a.fromTerm,a.fromYear));
+  const personOptions = `<option value="">-- select staff member --</option>
+    <optgroup label="Teaching staff">${teachers.map(x=>`<option value="${esc(x.username)}" ${edit&&edit.username===x.username?'selected':''}>${esc(x.name)}${x.closed?' (closed)':''}</option>`).join('')}</optgroup>
+    <optgroup label="Non teaching staff">${staff.map(x=>`<option value="${esc(x.username)}" ${edit&&edit.username===x.username?'selected':''}>${esc(x.name)}${x.closed?' (closed)':''}</option>`).join('')}</optgroup>`;
+  const tone = v=> v<0 ? 'var(--danger)' : 'var(--good)';
+  return `<h3 style="margin-top:0;">💼 Salaries &amp; Wages</h3>
+  <div class="card">
+    <h3>School financial standing</h3>
+    <p class="small">Pick any term (or the whole year) to see what came in, what was spent, and what the staff pay bill is — all recalculated from the records every time.</p>
+    <div class="grid3">
+      <div><label>Period</label><select onchange="setSalaryView('salTerm', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${sTerm===t?'selected':''}>${t}</option>`).join('')}<option value="year" ${sTerm==='year'?'selected':''}>Whole year</option></select></div>
+      <div><label>Year</label><input type="number" value="${sYear}" onchange="setSalaryView('salYear', this.value)"></div>
+    </div>
+    <table class="data-table" style="margin-top:12px;">
+      <tr><th colspan="2">${esc(periodLabel)}</th></tr>
+      <tr><td>Fees received</td><td>${money(b.feesIncome)}</td></tr>
+      <tr><td>Cash paid in place of requirements</td><td>${money(b.cashIncome)}</td></tr>
+      <tr style="font-weight:800;"><td>Total income</td><td>${money(b.totalIncome)}</td></tr>
+      <tr><td>Expenses recorded</td><td>${money(b.otherExpenses)}</td></tr>
+      <tr><td>Salaries &amp; wages (from the pay records below)</td><td>${money(b.salaries)}</td></tr>
+      <tr style="font-weight:800;"><td>Total spending</td><td>${money(b.expenses)}</td></tr>
+      <tr style="background:var(--blue-light);font-weight:900;"><td>BALANCE</td><td style="color:${tone(b.balance)};">${money(b.balance)}</td></tr>
+    </table>
+    <p class="small" style="margin-bottom:0;">If you already record staff pay under Expenses, either keep it there or put it here — not both — so it is not counted twice.</p>
+  </div>
+
+  <div class="card">
+    <h3>${edit?'Edit pay record':'Attach a salary or wage'}</h3>
+    <form data-form="saveSalary" ${edit?`data-id="${edit.id}"`:''}>
+      <label>Staff member</label><select name="person" required ${edit?'disabled':''}>${personOptions}</select>
+      ${edit?`<input type="hidden" name="person" value="${esc(edit.username)}">`:''}
+      <div class="grid3">
+        <div><label>Paid as</label><select name="payType"><option value="salary" ${(!edit||edit.payType==='salary')?'selected':''}>Salary</option><option value="wage" ${edit&&edit.payType==='wage'?'selected':''}>Wage</option></select></div>
+        <div><label>Amount</label><input name="amount" type="number" min="0" step="0.01" required value="${edit?edit.amount:''}"></div>
+        <div><label>How often paid</label><select name="frequency">${SALARY_FREQS.map(f=>`<option value="${f[0]}" ${(edit?edit.frequency:'monthly')===f[0]?'selected':''}>${f[1]}</option>`).join('')}</select></div>
+      </div>
+      <div class="grid2">
+        <div><label>Paid from (term)</label><select name="fromTerm">${termOpts(edit?edit.fromTerm:cur.term)}</select></div>
+        <div><label>Paid from (year)</label><input name="fromYear" type="number" required value="${edit?edit.fromYear:cur.year}"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Last paid term (optional)</label><select name="toTerm">${termOpts(edit?edit.toTerm:'', 'Still being paid')}</select></div>
+        <div><label>Last paid year</label><input name="toYear" type="number" value="${edit&&edit.toYear?edit.toYear:''}" placeholder="only if a last term is chosen"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Contract starts (optional)</label><input name="contractStart" type="date" value="${edit&&edit.contractStart?edit.contractStart:''}"></div>
+        <div><label>Contract ends (optional)</label><input name="contractEnd" type="date" value="${edit&&edit.contractEnd?edit.contractEnd:''}"></div>
+      </div>
+      <p class="small" style="margin:4px 0 0;">The contract period is kept against this pay record and flagged in the register when it has expired or is about to. Leave the end date empty for an open-ended contract.</p>
+      <label>Note (optional)</label><input name="note" value="${edit?esc(edit.note||''):''}" placeholder="e.g. includes housing allowance">
+      <p class="small">Wage or salary, daily to yearly — the amount is turned into a cost per term (using the settings below) and counted in every term it applies to. To record a raise, set a last paid term on the old record and add a new one from the next term, so earlier terms keep their old figures.</p>
+      <div class="flex" style="margin-top:12px;"><button class="btn">${edit?'Save changes':'Attach pay'}</button>${edit?`<a href="#" class="btn-outline" data-action="salaryCancel" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel edit</a>`:''}</div>
+    </form>
+  </div>
+
+  <div class="card" style="overflow-x:auto;">
+    <h3>Pay records (${d.salaries.length})</h3>
+    ${(()=>{ const due = sorted.map(r=>({r, cs:contractStatus(r)})).filter(x=>x.cs.alert); return due.length ? `<div class="note" style="margin-bottom:10px;"><b>Contracts needing attention:</b> ${due.map(x=>`${esc(nameOf(x.r))} (${x.cs.label.toLowerCase()})`).join(', ')}</div>` : ''; })()}
+    <table class="data-table"><tr><th>Name</th><th>Category</th><th>Paid as</th><th>Amount</th><th>How often</th><th>Cost per term</th><th>From</th><th>Until</th><th>Contract period</th><th>Action</th></tr>
+    ${sorted.map(r=>`<tr${salaryActiveIn(r,cur.term,cur.year)?'':' style="opacity:.6;"'}><td>${esc(nameOf(r))}${r.note?`<div class="small">${esc(r.note)}</div>`:''}</td><td>${catLabel(r.personType)}</td><td>${r.payType==='wage'?'Wage':'Salary'}</td><td>${money(r.amount)}</td><td>${esc(salaryFreqLabel(r.frequency))}</td><td>${money(salaryPerTerm(r,d))}</td><td>${esc(r.fromTerm)} ${r.fromYear}</td><td>${r.toTerm?`${esc(r.toTerm)} ${r.toYear}`:'Still paid'}</td><td>${(()=>{ const cs = contractStatus(r); if(cs.label==='Not set') return '<span class="small">Not set</span>'; const len = contractLength(r); return `${salaryDateLabel(r.contractStart)||'—'} → ${r.contractEnd?salaryDateLabel(r.contractEnd):'open'}${len?`<div class="small">${len}</div>`:''}<div class="small" style="color:${cs.color};font-weight:700;">${cs.label}</div>`; })()}</td><td class="flex"><button class="btn-outline" data-action="editSalary:${r.id}">Edit</button><button class="btn-danger" data-action="delSalary:${r.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="10">No pay records yet.</td></tr>'}
+    ${d.salaries.length?`<tr style="background:var(--blue-light);font-weight:900;"><td colspan="5">Being paid now (${esc(cur.term)}, ${cur.year}) — ${activeNow.length} record${activeNow.length===1?'':'s'}</td><td>${money(activeNow.reduce((a,r)=>a+salaryPerTerm(r,d),0))}</td><td colspan="4">per term</td></tr>`:''}
+    </table>
+    ${unpaid.length?`<p class="small" style="margin-bottom:0;"><b>No pay attached yet:</b> ${unpaid.map(x=>esc(x.name)).join(', ')}</p>`:''}
+  </div>
+
+  <div class="card">
+    <h3>How pay turns into a cost per term</h3>
+    <form data-form="saveSalarySettings">
+      <div class="grid3">
+        <div><label>Weeks in a term</label><input name="weeksPerTerm" type="number" min="1" step="0.5" required value="${st.weeksPerTerm}"></div>
+        <div><label>Paid days in a week</label><input name="daysPerWeek" type="number" min="1" max="7" step="1" required value="${st.daysPerWeek}"></div>
+        <div><label>Months in a term</label><input name="monthsPerTerm" type="number" min="1" step="0.5" required value="${st.monthsPerTerm}"></div>
+      </div>
+      <p class="small">Daily = amount × paid days × weeks · Weekly = amount × weeks · Every 2 weeks = amount × weeks ÷ 2 · Monthly = amount × months · Per term = amount · Yearly = amount ÷ 3 terms.</p>
+      <button class="btn-outline">Save settings</button>
+    </form>
+  </div>`;
 }
 // Change the Finance password and the Owner Code at any time (the section is already unlocked,
 // so no old value is needed). Used by the "Passwords" page and the Finance Control card.
@@ -6446,6 +6615,7 @@ function finTabChooserHTML(){
       <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:requirements">📋 Requirements</button>
       <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:analysis">📊 School Fees Analysis</button>
       <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:reqanalysis">📋 School Requirements Analysis</button>
+      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:salaries">💼 Salaries</button>
     </div>
     <p class="small" style="margin-top:16px;"><a href="#" data-action="finTab:advanced">Advanced finance tools (fee item catalog, expenses, income analysis, old students, control)</a></p>
   </div>`;
@@ -6954,7 +7124,7 @@ function financeAdvancedView(){
   <div class="grid3">
     ${(()=>{ const b=periodBalance(DB.info.currentTerm, DB.info.currentYear, d); return `
     <div class="card"><div class="small">FEES + CASH (${esc(DB.info.currentTerm)})</div><h1>${money(b.totalIncome)}</h1><div class="small">Fees ${money(b.feesIncome)} · Cash ${money(b.cashIncome)}</div></div>
-    <div class="card"><div class="small">EXPENSES (${esc(DB.info.currentTerm)})</div><h1>${money(b.expenses)}</h1></div>
+    <div class="card"><div class="small">EXPENSES + SALARIES (${esc(DB.info.currentTerm)})</div><h1>${money(b.expenses)}</h1><div class="small">Expenses ${money(b.otherExpenses)} · Salaries &amp; wages ${money(b.salaries)}</div></div>
     <div class="card"><div class="small">TERM BALANCE</div><h1 style="color:${b.balance<0?'var(--danger)':'var(--good)'};">${money(b.balance)}</h1></div>`; })()}
   </div>
 
@@ -7081,10 +7251,10 @@ function financeAdvancedView(){
   ${oldStudentsFinanceSectionHTML(d)}
 
   <div class="card"><h3>7. Term &amp; Year Account Balance</h3>
-    <p class="small">Everything received (fee payments, plus cash paid in place of a requirement — kept as its own separate line) minus everything spent (Expenses, section 3), for each term of the current year and for the year as a whole. Recalculates automatically as records are added.</p>
-    <table class="data-table"><tr><th>Period</th><th>Fees Received</th><th>Cash (Requirements)</th><th>Total Income</th><th>Expenses</th><th>Balance</th></tr>
-    ${['Term 1','Term 2','Term 3'].map(t=>{ const b=periodBalance(t, DB.info.currentYear, d); const isCur = t===DB.info.currentTerm; return `<tr${isCur?' style="font-weight:700;"':''}><td>${t}${isCur?' (current)':''}</td><td>${money(b.feesIncome)}</td><td>${money(b.cashIncome)}</td><td>${money(b.totalIncome)}</td><td>${money(b.expenses)}</td><td style="color:${b.balance<0?'var(--danger)':'var(--good)'};">${money(b.balance)}</td></tr>`; }).join('')}
-    ${(()=>{ const yb=yearBalance(DB.info.currentYear, d); return `<tr style="background:var(--blue-light);font-weight:900;"><td>${DB.info.currentYear} (Year total)</td><td>${money(yb.feesIncome)}</td><td>${money(yb.cashIncome)}</td><td>${money(yb.totalIncome)}</td><td>${money(yb.expenses)}</td><td style="color:${yb.balance<0?'var(--danger)':'var(--good)'};">${money(yb.balance)}</td></tr>`; })()}
+    <p class="small">Everything received (fee payments, plus cash paid in place of a requirement — kept as its own separate line) minus everything spent (Expenses, section 3) and the staff salaries &amp; wages bill (Finance → Salaries), for each term of the current year and for the year as a whole. Recalculates automatically as records are added.</p>
+    <table class="data-table"><tr><th>Period</th><th>Fees Received</th><th>Cash (Requirements)</th><th>Total Income</th><th>Expenses</th><th>Salaries &amp; Wages</th><th>Balance</th></tr>
+    ${['Term 1','Term 2','Term 3'].map(t=>{ const b=periodBalance(t, DB.info.currentYear, d); const isCur = t===DB.info.currentTerm; return `<tr${isCur?' style="font-weight:700;"':''}><td>${t}${isCur?' (current)':''}</td><td>${money(b.feesIncome)}</td><td>${money(b.cashIncome)}</td><td>${money(b.totalIncome)}</td><td>${money(b.otherExpenses)}</td><td>${money(b.salaries)}</td><td style="color:${b.balance<0?'var(--danger)':'var(--good)'};">${money(b.balance)}</td></tr>`; }).join('')}
+    ${(()=>{ const yb=yearBalance(DB.info.currentYear, d); return `<tr style="background:var(--blue-light);font-weight:900;"><td>${DB.info.currentYear} (Year total)</td><td>${money(yb.feesIncome)}</td><td>${money(yb.cashIncome)}</td><td>${money(yb.totalIncome)}</td><td>${money(yb.otherExpenses)}</td><td>${money(yb.salaries)}</td><td style="color:${yb.balance<0?'var(--danger)':'var(--good)'};">${money(yb.balance)}</td></tr>`; })()}
     </table>
     <p class="small">Fees Received and Cash (Requirements) are analysed on an equal footing here — both are income — but are always shown as separate columns so the two are never confused with each other.</p>
   </div>
@@ -7716,25 +7886,67 @@ function rcShadeCard(){
 }
 function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
 
+// One of the two lists on the PARENTS AND NON TEACHING STAFF page. Every row has: who they are, which list
+// they are saved under (changeable), their linked children, and a button that allows / blocks report card access.
+function accountSectionHTML(title, list, grp, emptyMsg){
+  const bulk = list.length ? `
+    <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
+      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
+        <input type="checkbox" id="${grp}SelectAllCb" style="width:auto;" onchange="toggleAllParentCheckboxes(this,'${grp}')">
+        <span id="${grp}SelCount">0 selected</span>
+      </label>
+      <div class="flex">
+        <button type="button" class="btn-danger" onclick="deleteSelectedParents(this,'${grp}')">Delete selected</button>
+        <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllParents(this,'${grp}')">Delete ALL (${list.length})</button>
+      </div>
+    </div>` : '';
+  const rows = list.map(a=>{
+    const kids = parentChildren(a);
+    const u = esc(a.username);
+    const allowed = a.reportAccess!==false;
+    return `<tr><td><input type="checkbox" class="parentSelCb" data-grp="${grp}" value="${u}" style="width:auto;" onchange="updateParentSelCount('${grp}')"></td>
+      <td>${esc(a.name)}</td><td>${u}</td>
+      <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
+      <td><select onchange="setAccountCategory('${u}', this.value)" style="min-width:150px;">
+        <option value="parent" ${accCategory(a)==='parent'?'selected':''}>Parent</option>
+        <option value="nonteaching" ${accCategory(a)==='nonteaching'?'selected':''}>Non teaching staff</option>
+      </select></td>
+      <td>${kids.length? kids.map(k=>`${esc(k.name)} <button type="button" class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkParentChild('${u}','${k.id}')">✕</button>`).join('<br>') : '—'}</td>
+      <td><button type="button" class="${allowed?'btn':'btn-danger'}" style="white-space:nowrap;" title="Tap to ${allowed?'stop':'allow'} report card access" onclick="setAccountReportAccess('${u}', ${allowed?'false':'true'})">${allowed?'✔ Access':'✖ No access'}</button></td>
+      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${u}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${u}">Close</button>`} <button class="btn-danger" data-action="delAcc:${u}" style="background:#5a1414;">Delete</button></td></tr>`;
+  }).join('') || `<tr><td colspan="8">${emptyMsg}</td></tr>`;
+  return `<div class="card"><h3>${title} (${list.length})</h3>
+    ${bulk}
+    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Saved as</th><th>Linked Children</th><th>Report cards</th><th>Action</th></tr>
+    ${rows}
+    </table>
+  </div>`;
+}
 function parentAccountsView(){
   const pending = DB.accounts.filter(a=>a.role==='parent' && a.status==='pending');
   const others = DB.accounts.filter(a=>a.role==='parent' && a.status!=='pending');
+  const parents = others.filter(a=>accCategory(a)==='parent');
+  const staff = others.filter(a=>accCategory(a)==='nonteaching');
   return `
-  <h2>Parents</h2>
-  <div class="note">Self sign-ups land here as <b>pending</b> until you approve them with your private owner code. You can also close any account at any time.</div>
+  <h2>PARENTS AND NON TEACHING STAFF</h2>
+  <div class="note">Everyone here is saved either as a <b>Parent</b> or as <b>Non teaching staff</b> (you can change this at any time from the “Saved as” box), and each person has a <b>Report cards</b> button that allows or blocks their access to report cards. Self sign-ups land as <b>pending</b> until you approve them with your private owner code. You can also close any account at any time.</div>
   <div class="card" style="margin-top:14px;">
-    <h3>Create parent account directly (auto-active)</h3>
+    <h3>Create account directly (auto-active)</h3>
     <form data-form="createAccount">
       <input type="hidden" name="role" value="parent">
       <div class="grid2">
         <div><label>Full name</label><input name="name" required></div>
         <div><label>Username</label><input name="username" required></div>
       </div>
+      <div class="grid2">
+        <div><label>Save as</label><select name="category"><option value="parent">Parent</option><option value="nonteaching">Non teaching staff</option></select></div>
+        <div><label>Report card access</label><select name="reportAccess"><option value="yes">Access</option><option value="no">No access</option></select></div>
+      </div>
       <label>Password</label><input name="password" type="password" required minlength="4">
       <div id="parentLinkWrap"><label>Link to student(s)</label>
         <select name="studentIds" multiple size="4">
         ${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select>
-        <p class="small" style="margin:4px 0 0;">Hold Ctrl/Cmd to select more than one child — useful for siblings sharing one parent account.</p>
+        <p class="small" style="margin:4px 0 0;">Hold Ctrl/Cmd to select more than one child — useful for siblings sharing one account. For a non teaching staff member, link a child only if they are also that child's parent or guardian.</p>
       </div>
       <button class="btn" style="margin-top:14px;">Submit — create account</button>
     </form>
@@ -7746,33 +7958,16 @@ function parentAccountsView(){
       <td class="flex"><button class="btn" data-action="approveAcc:${esc(a.username)}">Approve</button><button class="btn-danger" data-action="rejectAcc:${esc(a.username)}">Reject</button></td></tr>`).join('') || '<tr><td colspan="4">No pending requests.</td></tr>'}
     </table>
   </div>
-  <div class="card"><h3>Parent Accounts</h3>
-    ${others.length ? `
-    <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
-      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
-        <input type="checkbox" id="parentSelectAllCb" style="width:auto;" onchange="toggleAllParentCheckboxes(this)">
-        <span id="parentSelCount">0 selected</span>
-      </label>
-      <div class="flex">
-        <button type="button" class="btn-danger" onclick="deleteSelectedParents(this)">Delete selected parents</button>
-        <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllParents(this)">Delete ALL parents (${others.length})</button>
-      </div>
-    </div>` : ''}
-    <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Linked Children</th><th>Action</th></tr>
-    ${others.map(a=>{ const kids=parentChildren(a); return `<tr><td><input type="checkbox" class="parentSelCb" value="${esc(a.username)}" style="width:auto;" onchange="updateParentSelCount()"></td><td>${esc(a.name)}</td><td>${esc(a.username)}</td>
-      <td>${a.status==='closed'?'<span style="color:var(--danger);font-weight:700;">closed</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
-      <td>${kids.length? kids.map(k=>`${esc(k.name)} <button type="button" class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkParentChild('${esc(a.username)}','${k.id}')">✕</button>`).join('<br>') : '—'}</td>
-      <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${esc(a.username)}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${esc(a.username)}">Close</button>`} <button class="btn-danger" data-action="delAcc:${esc(a.username)}" style="background:#5a1414;">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="6">No parent accounts yet.</td></tr>'}
-    </table>
-    ${others.length ? `<form data-form="linkParentChild" style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px;">
-      <label>Link an additional child to an existing parent account</label>
+  ${accountSectionHTML('Parents', parents, 'par', 'No parent accounts yet.')}
+  ${accountSectionHTML('Non teaching staff', staff, 'nts', 'No non teaching staff accounts yet.')}
+  ${others.length ? `<div class="card"><form data-form="linkParentChild">
+      <label>Link an additional child to an existing account</label>
       <div class="grid2">
-        <div><select name="username" required><option value="">-- select parent --</option>${others.map(a=>`<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})</option>`).join('')}</select></div>
+        <div><select name="username" required><option value="">-- select person --</option>${others.map(a=>`<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})${accCategory(a)==='nonteaching'?' — non teaching staff':''}</option>`).join('')}</select></div>
         <div><select name="studentId" required><option value="">-- select student --</option>${sortByName(DB.students.filter(s=>s.status!=='left')).map(s=>`<option value="${s.id}">${esc(s.name)} — ${esc(s.admNo)}</option>`).join('')}</select></div>
       </div>
       <button class="btn-outline" style="margin-top:10px;">Link child</button>
-    </form>` : ''}
-  </div>`;
+    </form></div>` : ''}`;
 }
 // Bulk delete for Teacher accounts only (parents are untouched here). Mirrors the
 // single 'delAcc' action's own safeguards exactly:
@@ -7822,43 +8017,43 @@ function deleteAllTeachers(btn){
 // safeguards exactly: the admin's private owner code is required once for the
 // whole batch, then one explicit confirm() naming the count, before anything
 // is removed. Unlinks the parent's linked student first (mirrors single delAcc).
-function toggleAllParentCheckboxes(masterCb){
-  document.querySelectorAll('.parentSelCb').forEach(cb=>{ cb.checked = masterCb.checked; });
-  updateParentSelCount();
+function toggleAllParentCheckboxes(masterCb, grp){
+  document.querySelectorAll('.parentSelCb[data-grp="'+grp+'"]').forEach(cb=>{ cb.checked = masterCb.checked; });
+  updateParentSelCount(grp);
 }
-function updateParentSelCount(){
-  const boxes = document.querySelectorAll('.parentSelCb');
-  const checked = document.querySelectorAll('.parentSelCb:checked');
-  const el = document.getElementById('parentSelCount');
+function updateParentSelCount(grp){
+  const boxes = document.querySelectorAll('.parentSelCb[data-grp="'+grp+'"]');
+  const checked = document.querySelectorAll('.parentSelCb[data-grp="'+grp+'"]:checked');
+  const el = document.getElementById(grp+'SelCount');
   if(el) el.textContent = `${checked.length} selected`;
-  const master = document.getElementById('parentSelectAllCb');
+  const master = document.getElementById(grp+'SelectAllCb');
   if(master) master.checked = boxes.length>0 && checked.length===boxes.length;
 }
 async function performBulkParentDelete(usernames, btn){
   if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
-  if(!usernames.length){ alert('No parents selected.'); return; }
-  const code = prompt(`Enter your private owner code to permanently delete ${usernames.length} parent account${usernames.length===1?'':'s'}:`);
+  if(!usernames.length){ alert('No accounts selected.'); return; }
+  const code = prompt(`Enter your private owner code to permanently delete ${usernames.length} account${usernames.length===1?'':'s'}:`);
   if(code===null) return;
   if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
-  if(!confirm(`Delete ${usernames.length} parent account${usernames.length===1?'':'s'} for good? This cannot be undone.`)) return;
+  if(!confirm(`Delete ${usernames.length} account${usernames.length===1?'':'s'} for good? This cannot be undone.`)) return;
   showActionProgress('Deleting…', btn);
   try{
     const unameSet = new Set(usernames);
     DB.accounts = DB.accounts.filter(a=>!unameSet.has(a.username));
     await saveAccounts();
-    showActionSuccess(`Deleted ${usernames.length} parent account${usernames.length===1?'':'s'}`, btn, true);
+    showActionSuccess(`Deleted ${usernames.length} account${usernames.length===1?'':'s'}`, btn, true);
   }catch(e){
     showActionFailure('Could not delete — please try again.', btn);
     alert('Something went wrong while deleting: '+(e.message||e));
   }
   render();
 }
-function deleteSelectedParents(btn){
-  const usernames = Array.from(document.querySelectorAll('.parentSelCb:checked')).map(cb=>cb.value);
+function deleteSelectedParents(btn, grp){
+  const usernames = Array.from(document.querySelectorAll('.parentSelCb[data-grp="'+grp+'"]:checked')).map(cb=>cb.value);
   performBulkParentDelete(usernames, btn);
 }
-function deleteAllParents(btn){
-  const usernames = Array.from(document.querySelectorAll('.parentSelCb')).map(cb=>cb.value);
+function deleteAllParents(btn, grp){
+  const usernames = Array.from(document.querySelectorAll('.parentSelCb[data-grp="'+grp+'"]')).map(cb=>cb.value);
   performBulkParentDelete(usernames, btn);
 }
 // Removes one child from a parent account's linked children (used by the ✕ next
@@ -10597,6 +10792,31 @@ function parentStudentIds(acc){
 function parentChildren(acc){
   return sortByName(parentStudentIds(acc).map(id=>DB.students.find(s=>s.id===id)).filter(Boolean));
 }
+// People saved under PARENTS AND NON TEACHING STAFF all use the same account type (role 'parent'); `category`
+// records which of the two they are ('nonteaching', or anything else = parent), and `reportAccess === false`
+// switches off their access to report cards (missing = allowed, so existing accounts keep working).
+function accCategory(a){ return a && a.category==='nonteaching' ? 'nonteaching' : 'parent'; }
+function parentMayViewReports(acc){
+  if(!acc) return true;
+  const live = DB.accounts.find(x=>x.username===acc.username) || acc;
+  return live.reportAccess!==false;
+}
+async function setAccountReportAccess(username, allow){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  const acc = DB.accounts.find(a=>a.username===username && a.role==='parent');
+  if(!acc) return;
+  acc.reportAccess = !!allow;
+  await saveAccounts();
+  render();
+}
+async function setAccountCategory(username, cat){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  const acc = DB.accounts.find(a=>a.username===username && a.role==='parent');
+  if(!acc) return;
+  acc.category = cat==='nonteaching' ? 'nonteaching' : 'parent';
+  await saveAccounts();
+  render();
+}
 // Which child a parent is currently looking at, across My Children / Report Card /
 // Fees & Requirements — remembered in VIEW.params so it's consistent as they move
 // between those pages, and always falls back to the first child on file.
@@ -10641,6 +10861,7 @@ function parentDashboard(){
   <button class="btn-outline" data-action="viewReport:${st.id}">Open latest report card</button>`;
 }
 function parentReportView(){
+  if(!parentMayViewReports(CUR)) return '<h2>Report Card</h2><div class="note">Report card access has been switched off for this account. Please contact the school admin.</div>';
   const children = parentChildren(CUR);
   if(!children.length) return '<p>No child linked yet.</p>';
   const activeId = activeParentChildId(children);
@@ -12235,6 +12456,7 @@ document.addEventListener('click', async (e)=>{
     case 'editClass': VIEW = {name:'classedit', params:{classId:arg}}; render(); break;
     case 'viewReport': {
       if(CUR.role==='teacher' && !teachersMayViewReports()){ alert('The Admin has switched off report card viewing for teachers.'); break; }
+      if(CUR.role==='parent' && !parentMayViewReports(CUR)){ alert('Report card access has been switched off for this account. Please contact the school admin.'); break; }
       if(CUR.role==='parent' && !parentStudentIds(CUR).includes(arg)){ alert("You can only view your own child's report card."); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       VIEW = {name:'reportcard', params:{studentId:arg}};
@@ -12629,6 +12851,16 @@ Continue?`);
       if(!confirm('Delete this expense category? Past expense records already saved under it are kept and unaffected.')) break;
       const d = financeData();
       d.expenseTypes = d.expenseTypes.filter(x=>x.id!==arg);
+      await saveInfo();
+      render();
+      break;
+    }
+    case 'editSalary': VIEW.params = {...VIEW.params, editSalaryId: arg}; render(); break;
+    case 'salaryCancel': VIEW.params = {...VIEW.params, editSalaryId: null}; render(); break;
+    case 'delSalary': {
+      if(!confirm('Delete this pay record? It will no longer count in the school financial standing.')) break;
+      const d = financeData();
+      d.salaries = d.salaries.filter(x=>x.id!==arg);
       await saveInfo();
       render();
       break;
@@ -13580,6 +13812,39 @@ document.addEventListener('submit', async (e)=>{
       VIEW.params = {...VIEW.params, editExpenseId:null};
       render(); return;
     }
+    else if(type==='saveSalary'){
+      const d = financeData();
+      const existing = form.dataset.id ? d.salaries.find(r=>r.id===form.dataset.id) : null;
+      if(form.dataset.id && !existing){ alert('Pay record not found.'); return; }
+      const uname = fd.get('person');
+      const acc = DB.accounts.find(a=>a.username===uname);
+      if(!acc){ alert('Please choose a staff member.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>0)){ alert('Please enter an amount greater than zero.'); return; }
+      const frequency = fd.get('frequency');
+      if(!SALARY_FREQS.some(f=>f[0]===frequency)){ alert('Please choose how often this is paid.'); return; }
+      const fromYear = Number(fd.get('fromYear')||0);
+      if(!fromYear){ alert('Please enter the year the pay starts.'); return; }
+      const toTerm = fd.get('toTerm') || null;
+      const toYear = toTerm ? Number(fd.get('toYear')||0) : null;
+      if(toTerm && !toYear){ alert('Please enter the year of the last paid term.'); return; }
+      if(toTerm && termIndex(toTerm,toYear) < termIndex(fd.get('fromTerm'),fromYear)){ alert('The last paid term cannot be earlier than the term the pay starts.'); return; }
+      const contractStart = fd.get('contractStart') || null, contractEnd = fd.get('contractEnd') || null;
+      if(contractStart && contractEnd && contractEnd < contractStart){ alert('The contract end date cannot be before its start date.'); return; }
+      const rec = {username:uname, name:acc.name||uname, personType: acc.role==='teacher' ? 'teacher' : 'nonteaching',
+        payType: fd.get('payType')==='wage' ? 'wage' : 'salary', amount, frequency,
+        fromTerm: fd.get('fromTerm'), fromYear, toTerm, toYear, contractStart, contractEnd, note:(fd.get('note')||'').trim()};
+      if(existing) Object.assign(existing, rec); else d.salaries.push({id:uid('salary'), recordedBy:CUR.username, ...rec});
+      await saveInfo();
+      VIEW.params = {...VIEW.params, editSalaryId:null};
+      render(); return;
+    }
+    else if(type==='saveSalarySettings'){
+      const d = financeData();
+      d.salarySettings = {weeksPerTerm:Number(fd.get('weeksPerTerm'))||13, daysPerWeek:Number(fd.get('daysPerWeek'))||5, monthsPerTerm:Number(fd.get('monthsPerTerm'))||3};
+      await saveInfo();
+      render(); return;
+    }
     else if(type==='recordReqCash'){
       const [reqId, studentId] = (form.dataset.id||'').split('|');
       const d = financeData();
@@ -14244,6 +14509,7 @@ document.addEventListener('submit', async (e)=>{
         if(conflict.exactMatch){ alert('That exact username and password combination is already used by another account (at this or another school). Please change the username or the password.'); return; } }
       DB.accounts.push({username:uname, password:fd.get('password'), role, name:fd.get('name'),
         status:'active', studentIds: role==='parent'? fd.getAll('studentIds').filter(Boolean) : null,
+        ...(role==='parent' ? {category: fd.get('category')==='nonteaching' ? 'nonteaching' : 'parent', reportAccess: fd.get('reportAccess')!=='no'} : {}),
         recovery: role==='teacher' ? ((fd.get('recovery')||'').trim()||null) : null});
       await saveAccounts();
       if(role==='teacher') speak(`Staff member ${fd.get('name')} has been registered successfully.`);
