@@ -1554,6 +1554,11 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .se-wrap.sr-list{padding-left:0 !important;padding-right:0 !important;}
 .sr-list .sr-row{height:auto !important;min-height:0 !important;line-height:1.2 !important;font-size:calc(12*var(--uk)) !important;font-weight:700 !important;padding:calc(2*var(--uk)) calc(6*var(--uk)) calc(2*var(--uk)) 0 !important;gap:calc(8*var(--uk)) !important;border-bottom:0.5px solid #4a6f94 !important;}
 .sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(14*var(--uk)) !important;height:calc(14*var(--uk)) !important;}
+/* SELECT ALL STUDENTS: zoomed — larger, bolder label and a bigger tick box so it is easy to tap. */
+label.sr-all{display:flex;align-items:center;gap:calc(14*var(--uk));padding:calc(8*var(--uk)) calc(4*var(--uk)) calc(12*var(--uk));margin:0;font-size:calc(20*var(--uk)) !important;font-weight:800 !important;letter-spacing:.01em;line-height:1.2;text-transform:none;color:#0A2A4A;cursor:pointer;}
+label.sr-all input[type=checkbox]{flex:none;width:calc(30*var(--uk)) !important;height:calc(30*var(--uk)) !important;margin:0 !important;accent-color:#1f5fa8;cursor:pointer;}
+/* Table-header select-all tick boxes (fees, requirements, report cards, mark sheets): zoomed too. */
+th>input[type=checkbox][onchange*="SelectAll"],th>input#msSelectAllCb{width:calc(26*var(--uk)) !important;height:calc(26*var(--uk)) !important;cursor:pointer;accent-color:#1f5fa8;}
 /* Report-card list: names in the same font as the enter-scores list; slimmer Action column, 1px smaller buttons. */
 /* Report-card list + Student Performance list: the whole table stacks to the screen width (no sideways scrolling, nothing cut off).
    Names stay on ONE line; the other columns give up their idle space (tight padding, small wrapping text, stacked buttons). */
@@ -1578,6 +1583,12 @@ table.rc-list td:last-child .btn-outline{display:inline-block;width:auto;box-siz
 table.sp-students td:not(:nth-child(3)){text-align:center;}
 table.sp-students td:nth-child(4){text-align:left;}
 .rc-topbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 6px;}
+/* Report Cards: tick-several-classes picker */
+.rc-pick-list{border:1px solid #cfd9e3;border-radius:8px;padding:2px 10px;margin:6px 0 0;max-height:46vh;overflow:auto;background:#fff;}
+label.rc-pick-row{display:flex;align-items:center;gap:10px;padding:9px 2px;margin:0;font-size:15px;font-weight:700;color:var(--navy,#0A2A4A);text-transform:none;letter-spacing:0;border-bottom:1px solid #eef2f6;cursor:pointer;}
+label.rc-pick-row:last-child{border-bottom:none;}
+label.rc-pick-row input[type=checkbox]{width:20px !important;height:20px;flex:0 0 auto;margin:0;}
+label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;border-radius:8px;background:#eaf3ff;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -8612,8 +8623,8 @@ function staffAccountsView(){
       return `
       ${rows.length ? `
       <div class="flex" style="margin:10px 0;justify-content:space-between;">
-        <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
-          <input type="checkbox" id="teacherSelectAllCb" style="width:auto;" onchange="toggleAllTeacherCheckboxes(this)">
+        <label class="sr-all">
+          <input type="checkbox" id="teacherSelectAllCb" onchange="toggleAllTeacherCheckboxes(this)">
           <span id="teacherSelCount">0 selected</span>
         </label>
         <div class="flex">
@@ -8750,8 +8761,8 @@ function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render()
 function accountSectionHTML(title, list, grp, emptyMsg){
   const bulk = list.length ? `
     <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
-      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
-        <input type="checkbox" id="${grp}SelectAllCb" style="width:auto;" onchange="toggleAllParentCheckboxes(this,'${grp}')">
+      <label class="sr-all">
+        <input type="checkbox" id="${grp}SelectAllCb" onchange="toggleAllParentCheckboxes(this,'${grp}')">
         <span id="${grp}SelCount">0 selected</span>
       </label>
       <div class="flex">
@@ -9137,8 +9148,8 @@ function renderStudentsTableHtml(){
   const banner = isPast ? `<div class="note" style="margin-bottom:10px;">Showing the class list as it stood in <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the current class list. The actions below (edit, mark as left, remove) still act on the student's current record.</div>` : '';
   const bulkBar = list.length ? `
     <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
-      <label class="flex" style="gap:6px;align-items:center;font-weight:600;text-transform:none;">
-        <input type="checkbox" id="stuSelectAllCb" style="width:auto;" onchange="toggleAllStudentCheckboxes(this)">
+      <label class="sr-all">
+        <input type="checkbox" id="stuSelectAllCb" onchange="toggleAllStudentCheckboxes(this)">
         <span id="stuSelCount">0 selected</span>
       </label>
       <div class="flex">
@@ -9895,41 +9906,49 @@ function reportsListView(){
     <p class="small">Teachers can currently <b>${tAllowed?'view':'not view'}</b> report cards${tAllowed?'':' — the "View Report Cards" option is hidden from every teacher'}. Printing and downloading is always Admin only.</p>
     <button type="button" class="${tAllowed?'btn-danger':'btn'}" data-action="toggleTeacherReports">${tAllowed?'Switch OFF teacher access':'Switch ON teacher access'}</button>
   </div>` : '';
-  const rcCollapsed = !!VIEW.params.classId;
-  const rcTopBar = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="RC_QUERY='';filterClass('')">◀ Back</button><b>${esc((visibleClasses.find(c=>c.id===VIEW.params.classId)||{}).name||'')}</b>${isAdmin?`<button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>`:''}</div>`;
+  const rcIds = rcAppliedIds().filter(id=>visibleClasses.some(c=>c.id===id));
+  const rcCollapsed = rcIds.length>0;
+  const rcNames = rcIds.map(id=>(visibleClasses.find(c=>c.id===id)||{}).name||'').filter(Boolean).join(', ');
+  const rcIdsArg = rcIds.map(encodeURIComponent).join(',');
+  const rcTopBar = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="rcBack()">◀ Back</button><b>${esc(rcNames)}</b>${isAdmin?`<button class="btn-gold" data-action="bulkPdf:${rcIdsArg}"><b>Download all as PDF</b></button>`:''}</div>`;
+  const pickedNow = visibleClasses.filter(c=>RC_PICK.has(c.id)).length;
+  const stuCount = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
   return `
   ${rcCollapsed ? rcTopBar : `<h2>Report Cards</h2>
   ${teacherAccessCard}
   ${isAdmin ? rcShadeCard() : ''}
   <div class="card">
-    <label class="rc-sel-lbl">Filter by class</label>
-    <select onchange="filterClass(this.value)">
-      <option value="">-- all classes --</option>
-      ${visibleClasses.map(c=>`<option value="${c.id}" ${VIEW.params.classId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-    </select>
-    <label class="rc-sel-lbl" style="margin-top:12px;">Search a student by name</label>
+    <label class="rc-sel-lbl">Select class(es) — tick one or more</label>
+    <label class="rc-pick-row rc-pick-all"><input type="checkbox" id="rcPickAll" ${visibleClasses.length && pickedNow===visibleClasses.length?'checked':''} onchange="rcPickAll(this.checked)"> <span>Select all classes</span></label>
+    <div class="rc-pick-list">
+      ${visibleClasses.map(c=>`<label class="rc-pick-row"><input type="checkbox" class="rc-pick-cb" value="${esc(c.id)}" ${RC_PICK.has(c.id)?'checked':''} onchange="rcPickToggle(this.value,this.checked)"> <span>${esc(c.name)}</span> <span class="small" style="margin:0;text-transform:none;font-weight:600;">(${stuCount(c.id)})</span></label>`).join('') || '<p class="small" style="margin:10px 0;">No classes yet.</p>'}
+    </div>
+    <div class="flex" style="margin-top:12px;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${pickedNow?'':'disabled'}>OK — load report cards</button>
+      ${isAdmin ? `<button type="button" class="btn-gold" id="rcPickDl" onclick="rcPickDownload(this)" ${pickedNow?'':'disabled'}><b>Download all ticked classes (PDF)</b></button>` : ''}
+      <span class="small" id="rcPickCount" style="margin:0;text-transform:none;font-weight:700;">${pickedNow} class${pickedNow===1?'':'es'} ticked</span>
+    </div>
+    <label class="rc-sel-lbl" style="margin-top:16px;">Or search a student by name</label>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
     </div>
-    ${isAdmin ? `<div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="bulkPdf:${VIEW.params.classId||''}"><b>Download class as PDF (bulk)</b></button>
-    </div>` : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
+    ${isAdmin ? '' : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>`}
   <div class="card">
-    ${(!VIEW.params.classId && !RC_QUERY.trim()) ? `<p class="small">Select a class above, or search a student by name, to see the report card list.</p>` : (()=>{
-      const listStudents = rcListedStudents(VIEW.params.classId);
+    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tick one or more classes above and press OK, or search a student by name, to see the report card list.</p>` : (()=>{
+      const listStudents = rcListedStudents(rcIds);
       const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
       return `
-    ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the bulk button above still exports the whole class.</p>
+    ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the "Download all" button above still exports every ticked class in full.</p>
     <div class="flex" style="margin-bottom:10px;align-items:center;flex-wrap:wrap;gap:10px;">
       <span class="small" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span>
       <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button>
       <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
       ${selectedCount ? `<button class="btn-outline" onclick="clearReportSelection()">Clear selection</button>` : ''}
     </div>` : ''}
-    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll('${VIEW.params.classId||''}', this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
+    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
     ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
       return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
@@ -9939,7 +9958,48 @@ function reportsListView(){
     })()}
   </div>`;
 }
-function filterClass(v){ VIEW.params.classId=v||null; render(); }
+// ---- Class picker (tick several classes, then OK) ----
+// RC_PICK holds the ticks BEFORE OK is pressed; VIEW.params.classIds holds the classes actually loaded.
+const RC_PICK = new Set();
+function rcAppliedIds(){
+  const p = (typeof VIEW!=='undefined' && VIEW && VIEW.params) || {};
+  if(Array.isArray(p.classIds)) return p.classIds;
+  return p.classId ? [p.classId] : [];
+}
+function rcPickRefresh(){
+  const cbs = [...document.querySelectorAll('.rc-pick-cb')];
+  const n = cbs.filter(c=>c.checked).length;
+  const all = document.getElementById('rcPickAll'); if(all) all.checked = cbs.length>0 && n===cbs.length;
+  const ok = document.getElementById('rcPickOk'); if(ok) ok.disabled = !n;
+  const dl = document.getElementById('rcPickDl'); if(dl) dl.disabled = !n;
+  const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n+' class'+(n===1?'':'es')+' ticked';
+}
+function rcPickToggle(id, on){ if(on) RC_PICK.add(id); else RC_PICK.delete(id); rcPickRefresh(); }
+function rcPickAll(on){
+  document.querySelectorAll('.rc-pick-cb').forEach(cb=>{ cb.checked = on; if(on) RC_PICK.add(cb.value); else RC_PICK.delete(cb.value); });
+  rcPickRefresh();
+}
+function rcPickedIds(){ return [...document.querySelectorAll('.rc-pick-cb')].filter(c=>c.checked).map(c=>c.value); }
+function rcPickOk(){
+  const ids = rcPickedIds();
+  if(!ids.length){ alert('Tick at least one class first.'); return; }
+  VIEW.params = {...VIEW.params, classIds: ids, classId: null};
+  render();
+}
+async function rcPickDownload(btn){
+  if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); return; }
+  if(btn.disabled) return;
+  const ids = rcPickedIds();
+  if(!ids.length){ alert('Tick at least one class first.'); return; }
+  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
+  try{
+    await bulkPdf(ids, (done,total,part,parts)=>{
+      btn.innerHTML = parts && parts>1 ? `<b>Preparing part ${part}/${parts} (${done}/${total})…</b>` : `<b>Preparing ${done}/${total}…</b>`;
+    });
+  } finally { btn.disabled = false; btn.innerHTML = orig; }
+}
+function rcBack(){ RC_QUERY=''; VIEW.params = {...VIEW.params, classIds:null, classId:null}; render(); }
+function filterClass(v){ VIEW.params = {...VIEW.params, classIds: v?[v]:null, classId:null}; render(); }
 // Search-by-name box on the Report Cards page. The text is kept here so it survives re-renders
 // (ticking a student, changing class…); typing re-renders the list after a short pause and puts
 // the cursor back in the box. With a name typed, students from every class you can see are searched,
@@ -9963,13 +10023,21 @@ function rcMatchesQuery(s){
   return !q || String(s.name||'').toLowerCase().includes(q);
 }
 // The students the list is currently showing (class filter and/or search), used by "select all" too.
-function rcListedStudents(classId){
+function rcListedStudents(classIds){
+  const ids = Array.isArray(classIds) ? classIds : (classIds ? [classIds] : []);
   const isTeacher = CUR.role==='teacher';
   const myClassIds = isTeacher ? [...new Set(DB.assignments.filter(a=>a.teacherUsername===CUR.username).map(a=>a.classId))] : null;
-  return sortByName(DB.students.filter(s=>s.status!=='left'
-    && (!classId || s.classId===classId)
+  let list = sortByName(DB.students.filter(s=>s.status!=='left'
+    && (!ids.length || ids.includes(s.classId))
     && (!isTeacher || myClassIds.includes(s.classId))
     && rcMatchesQuery(s)));
+  if(ids.length>1) list = rcByClassOrder(list);
+  return list;
+}
+// Several classes at once: keep the school's class order, A-Z by name inside each class.
+function rcByClassOrder(list){
+  const ord = cid => { const i = DB.classes.findIndex(c=>c.id===cid); return i<0 ? 9999 : i; };
+  return list.map((s,i)=>[s,i]).sort((a,b)=>ord(a[0].classId)-ord(b[0].classId) || a[1]-b[1]).map(x=>x[0]);
 }
 
 /* ---------- Tick-to-select report cards (print/download a subset, not the whole class) ----------
@@ -9982,7 +10050,7 @@ function toggleReportSelect(studentId){
   render();
 }
 function toggleReportSelectAll(classId, checked){
-  rcListedStudents(classId).forEach(s=>{
+  rcListedStudents(rcAppliedIds()).forEach(s=>{
     if(checked) SELECTED_REPORTS.add(s.id); else SELECTED_REPORTS.delete(s.id);
   });
   render();
@@ -11480,8 +11548,8 @@ function scoresEntryView(mine){
         <h3>${esc(a.subject)} — ${esc(cls.name)} — ${missingOnly?'Add missing students':'Select your students'}</h3>
         <form data-form="saveRoster" data-assign="${a.id}" data-missing-only="${missingOnly?'1':''}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           ${compulsory && listed.length ? `
-          <label style="display:flex;gap:8px;align-items:center;padding:5px 2px 10px;font-weight:600;text-transform:none;">
-            <input type="checkbox" data-select-all-students="1" style="width:auto;" ${allChosen?'checked':''}>
+          <label class="sr-all">
+            <input type="checkbox" data-select-all-students="1" ${allChosen?'checked':''}>
             Select all students
           </label>` : ''}
           <div class="se-wrap sr-list" style="--se-rows:${Math.min(Math.max(eligible.length,8),25)};border:1px solid #cfd9e3;border-radius:6px;padding:0 10px;">
@@ -11515,10 +11583,11 @@ function scoresEntryView(mine){
       // or transferred out. A student who was instead PROMOTED to a different class
       // that still exists isn't covered by this class-based lookup (their classId has
       // moved on) — for that case use "Add a student who isn't listed above" below.
-      let students = DB.students.filter(s=>a.studentIds.includes(s.id) && (
+      // Always A-Z by name (same order as the score/mark sheets), never admission-number order.
+      let students = sortByName(DB.students.filter(s=>a.studentIds.includes(s.id) && (
         (s.classId===a.classId && s.status!=='left') ||
         (isPastPeriod && s.status==='left' && s.classId===a.classId)
-      ));
+      )));
       // Students just added to the list (and with no score yet for this subject this term) wait at the
       // bottom, in the order they were added. Once any score is saved for them they drop back into
       // the normal list order automatically.
@@ -11629,7 +11698,7 @@ function scoresEntryView(mine){
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline se-act" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">CLEAR X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button></div></td></tr>`;
+            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button></div></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           <div class="note" style="margin-top:10px;">
@@ -13276,6 +13345,62 @@ async function inlineSaveReportScore(el){
   }
 }
 
+/* ---------- Score entry: keep typed marks + put the cursor back ----------
+   DELETE SCORE / CLEAR X / REMOVE STUDENT all re-draw the score table from the database, which used to
+   wipe every mark the teacher had typed but not yet submitted and drop the cursor. seCapture() takes a
+   snapshot just before the action; seRestore() puts every typed-but-unsaved mark back after the re-draw,
+   restores the scroll position, and focuses the score box again (the same student's box if the row is
+   still there, otherwise the next student's). */
+function seCapture(studentId){
+  try{
+    const form = document.querySelector('form[data-form="saveScores"]');
+    if(!form) return null;
+    const own = 'm_'+studentId;
+    const edits = {}, order = [];
+    let ownDefault = null;
+    form.querySelectorAll('input[name^="m_"]').forEach(i=>{
+      order.push(i.name);
+      if(i.name===own) ownDefault = i.defaultValue;
+      if(i.value!==i.defaultValue) edits[i.name] = i.value;   // typed, not yet saved
+    });
+    const idx = order.indexOf(own);
+    return {
+      own, ownDefault, edits,
+      nextName: idx>=0 ? (order[idx+1] || order[idx-1] || null) : null,
+      x: window.pageXOffset||0, y: window.pageYOffset||0,
+      wraps: [...document.querySelectorAll('.se-wrap')].map(w=>[w.scrollLeft, w.scrollTop])
+    };
+  }catch(e){ return null; }
+}
+function seRestore(ctx){
+  if(!ctx) return;
+  try{
+    const form = document.querySelector('form[data-form="saveScores"]');
+    if(!form) return;
+    const inputs = [...form.querySelectorAll('input[name^="m_"]')];
+    const byName = {}; inputs.forEach(i=>{ byName[i.name] = i; });
+    // The row the action was done on: if its saved value changed (a deleted score is now blank)
+    // anything typed there is dropped; otherwise (cancelled / CLEAR X) its typed mark stays too.
+    const ownChanged = byName[ctx.own] && byName[ctx.own].defaultValue !== ctx.ownDefault;
+    let restored = false;
+    Object.keys(ctx.edits).forEach(n=>{
+      if(n===ctx.own && ownChanged) return;
+      const i = byName[n]; if(!i) return;
+      i.value = ctx.edits[n]; restored = true;
+    });
+    window.scrollTo(ctx.x, ctx.y);
+    document.querySelectorAll('.se-wrap').forEach((w,k)=>{ if(ctx.wraps[k]){ w.scrollLeft = ctx.wraps[k][0]; w.scrollTop = ctx.wraps[k][1]; } });
+    let t = byName[ctx.own] || (ctx.nextName && byName[ctx.nextName]) || null;
+    if(!t || t.disabled) t = inputs.find(i=>!i.disabled) || null;
+    if(t){
+      t.focus({preventScroll:true});
+      try{ t.select(); }catch(e){}
+      try{ t.scrollIntoView({block:'nearest', inline:'nearest'}); }catch(e){}
+    }
+    if(restored) FORM_DIRTY = true;   // render() cleared it; typed marks are unsaved again, so hold back background refreshes
+  }catch(e){ console.warn('seRestore failed', e); }
+}
+
 /* ============================================================
    11. ACTIONS
    ============================================================ */
@@ -13684,6 +13809,8 @@ Continue?`);
     case 'deleteScore': {
       const row = DB.scores.find(x=>x.id===arg);
       if(!row) break;
+      const _seCtx = seCapture(row.studentId);
+      try{
       if(CUR.role==='teacher' && row.teacher && row.teacher!==CUR.username){ alert('You can only delete scores you entered yourself.'); break; }
       if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, row.kind)){ alert(`The score submission deadline (${fmtDateTime(scoreDeadlineFor(row.kind).deadline)}) has passed, so this can't be changed. Ask your admin to reopen score entry for you.`); break; }
       const dsStu = DB.students.find(st=>st.id===row.studentId);
@@ -13700,7 +13827,9 @@ Continue?`);
       await deleteScores([row]);
       const scoreStudent = DB.students.find(st=>st.id===row.studentId);
       speak(`Score for ${scoreStudent ? scoreStudent.name : 'the student'} was deleted successfully.`);
-      showDeliveredToast('Score deleted'); render(); break;
+      showDeliveredToast('Score deleted'); render();
+      } finally { seRestore(_seCtx); }
+      break;
     }
     case 'dlStaffTemplate': downloadStaffTemplate(); break;
     case 'toggleTeacherReports': {
@@ -13744,7 +13873,8 @@ Continue?`);
       // a static "Preparing…" label looked indistinguishable from a frozen tab;
       // a moving count makes it visibly obvious that it's still working.
       try{
-        await bulkPdf(arg||null, (done,total,part,parts)=>{
+        const _bulkIds = arg ? arg.split(',').map(x=>{ try{ return decodeURIComponent(x); }catch(e){ return x; } }).filter(Boolean) : [];
+        await bulkPdf(_bulkIds.length ? _bulkIds : null, (done,total,part,parts)=>{
           el.innerHTML = parts && parts>1
             ? `<b>Preparing part ${part}/${parts} (${done}/${total})…</b>`
             : `<b>Preparing ${done}/${total}…</b>`;
@@ -13966,6 +14096,8 @@ Continue?`);
       const a = DB.assignments.find(x=>x.id===assignId);
       if(!a) break;
       if(CUR.role==='teacher' && a.teacherUsername!==CUR.username){ alert('This is not your subject list.'); break; }
+      const _seCtx = seCapture(studentId);
+      try{
       const st = DB.students.find(x=>x.id===studentId);
       const clsR = DB.classes.find(c=>c.id===a.classId);
       const sure = await askPasswordConfirm({
@@ -13978,6 +14110,7 @@ Continue?`);
       }
       a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>id!==studentId) : a.studentIds;
       await saveAssignments(); render();
+      } finally { seRestore(_seCtx); }
       break;
     }
     case 'removeAllFromRoster': {
@@ -14007,6 +14140,8 @@ Continue?`);
       // recorded another way) and just wants the red flag gone.
       const [assignId, paper, kind, labelEnc, studentId] = (arg||'').split(':');
       const label = labelEnc ? decodeURIComponent(labelEnc) : '';
+      const _seCtx = seCapture(studentId);
+      try{
       const cmStu = DB.students.find(st=>st.id===studentId);
       const cmAsn = DB.assignments.find(x=>x.id===assignId);
       const cmOk = await askPasswordConfirm({
@@ -14021,6 +14156,7 @@ Continue?`);
       const key = missingMarkersKey(assignId, paper, kind, label);
       if(MISSING_MARKERS[key]) MISSING_MARKERS[key].delete(studentId);
       render();
+      } finally { seRestore(_seCtx); }
       break;
     }
     case 'dlMarksheet': {
@@ -17436,7 +17572,9 @@ async function pdfForStudents(students, filename, opts={}){
 const BULK_BATCH_SIZE = 25;
 async function bulkPdf(classId, onProgress){
   await refreshScores(); // make sure every teacher's latest marks are in this export
-  const students = DB.students.filter(s=>s.status!=='left' && (!classId || s.classId===classId));
+  const ids = Array.isArray(classId) ? classId : (classId ? [classId] : []);
+  let students = DB.students.filter(s=>s.status!=='left' && (!ids.length || ids.includes(s.classId)));
+  if(ids.length>1) students = rcByClassOrder(sortByName(students));
   const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_reports`;
   if(students.length <= BULK_BATCH_SIZE){
     await pdfForStudents(students, `${baseName}.pdf`, {onProgress});
