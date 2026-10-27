@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-26-10'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-27-17'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -50,19 +50,94 @@
       }
     }catch(e){}
   };
-  // Snap the page back to "fits the whole screen" (undo any zoom-in, e.g. the browser's own zoom
-  // when an input box is tapped, or a leftover manual zoom). Pinning max-scale to the fit scale
-  // for an instant forces the browser to apply it; zooming by hand is allowed again right after.
+  // Snap the page back to "fits the whole screen" (undo any zoom-in: the browser's own zoom when an
+  // input is tapped, a page that opened big, or a leftover manual zoom). Pinning max-scale to the fit
+  // scale for a moment forces the browser to apply it; manual pinch-zoom is allowed again right after.
+  function fitMeta(){ return document.getElementById('viewportMeta'); }
+  function fitValue(){
+    var dw = screen.width || screen.availWidth || 0;
+    if(!dw || dw>=1280) return null;
+    return Math.max(0.1, Math.min(1, dw/1280)).toFixed(4);
+  }
+  function fitFree(){
+    try{
+      clearTimeout(window.__cteFitTimer);
+      var fit = fitValue(), meta = fitMeta(); if(!fit || !meta) return;
+      meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale=5, user-scalable=yes');
+    }catch(e){}
+  }
   window.__cteResetFit = function(){
     try{
-      var dw = screen.width || screen.availWidth || 0;
-      if(!dw || dw>=1280) return;
-      var fit = Math.max(0.1, Math.min(1, dw/1280)).toFixed(4);
-      var meta = document.getElementById('viewportMeta'); if(!meta) return;
+      if(window.__ctePinching) return;               // never fight the user's own pinch
+      var fit = fitValue(), meta = fitMeta(); if(!fit || !meta) return;
       meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale='+fit+', user-scalable=yes');
-      setTimeout(function(){ meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale=5, user-scalable=yes'); }, 250);
+      try{ document.documentElement.scrollLeft = 0; document.body.scrollLeft = 0; }catch(e){}
+      clearTimeout(window.__cteFitTimer);
+      window.__cteFitTimer = setTimeout(fitFree, 400);
     }catch(e){}
   };
+  // Called after every tap / open / save / submit: lands the page fitted to the screen, then the
+  // person zooms by hand if they want to. Re-checks after the new screen has been drawn.
+  window.__cteLastAct = 0;
+  window.__cteAfterAction = function(){
+    try{
+      var now = Date.now();
+      if(now - window.__cteLastAct < 120) return;    // one tap can fire several events
+      window.__cteLastAct = now;
+      setTimeout(window.__cteResetFit, 60);
+      setTimeout(window.__cteResetFit, 500);
+    }catch(e){}
+  };
+  // Two fingers down = the user is zooming on purpose: release the pin at once and stay out of the way.
+  document.addEventListener('touchstart', function(e){
+    if(e.touches && e.touches.length > 1){ window.__ctePinching = true; window.__cteUserPinchAt = Date.now(); fitFree(); }
+  }, {passive:true, capture:true});
+  function endPinch(e){ if(!e.touches || e.touches.length < 2) setTimeout(function(){ window.__ctePinching = false; }, 80); }
+  document.addEventListener('touchend', endPinch, {passive:true, capture:true});
+  document.addEventListener('touchcancel', endPinch, {passive:true, capture:true});
+  // Taps on buttons, links, tabs, rows, labels and ticks (typing boxes are left alone so a manual zoom survives typing)
+  document.addEventListener('click', function(e){
+    try{
+      var t = e.target; if(!t || !t.closest) return;
+      if(t.closest('input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),textarea,select')) return;
+      if(t.closest('button,[data-action],a,label,summary,[role=button],[onclick]')) window.__cteAfterAction();
+    }catch(_){}
+  }, true);
+  document.addEventListener('change', function(e){
+    try{
+      var t = e.target; if(!t || !t.tagName) return;
+      if(t.tagName==='SELECT' || (t.tagName==='INPUT' && /checkbox|radio|file|date/.test(t.type||''))) window.__cteAfterAction();
+    }catch(_){}
+  }, true);
+  document.addEventListener('submit', function(){
+    try{ window.__cteAfterAction(); setTimeout(window.__cteResetFit, 1200); }catch(_){}
+  }, true);
+  // If the browser auto-zoomed into a typing box, put the page back once typing is done
+  // (but never when the user pinched by hand meanwhile).
+  var focusScale = null, pinchAtFocus = 0;
+  document.addEventListener('focusin', function(e){
+    try{
+      var t = e.target; if(!t || !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName||'')) return;
+      clearTimeout(window.__cteBlurT);
+      var vv = window.visualViewport;
+      focusScale = vv ? vv.scale : null; pinchAtFocus = window.__cteUserPinchAt || 0;
+    }catch(_){}
+  }, true);
+  document.addEventListener('focusout', function(){
+    try{
+      clearTimeout(window.__cteBlurT);
+      window.__cteBlurT = setTimeout(function(){
+        var ae = document.activeElement;
+        if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'')) return;
+        var vv = window.visualViewport;
+        if(focusScale != null && vv && vv.scale > focusScale*1.05 && (window.__cteUserPinchAt||0) === pinchAtFocus) window.__cteResetFit();
+        focusScale = null;
+      }, 350);
+    }catch(_){}
+  }, true);
+  // Coming back to the app (switching apps, back button / cached page) also lands fitted.
+  window.addEventListener('pageshow', function(){ window.__cteAfterAction(); });
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) window.__cteAfterAction(); });
   // --ui-k = how many layout pixels one real screen pixel covers. On a phone the 1280px desktop
   // layout is shrunk to fit (e.g. ~0.3x), which made the login card and its text tiny. The
   // login screen multiplies its sizes by --ui-k so it looks the same physical size on every
@@ -400,6 +475,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 #actionProgressToast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.98);max-width:min(92vw,420px);background:var(--blue);color:#fff;
   padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;box-shadow:0 8px 24px rgba(10,42,74,.28);
   display:flex;align-items:center;justify-content:center;gap:9px;opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:10000;text-align:center;}
+#actionProgressToast.big{max-width:none;white-space:nowrap;padding:calc(12px*var(--ui-k,1)) calc(22px*var(--ui-k,1));font-size:calc(15px*var(--ui-k,1));border-radius:calc(12px*var(--ui-k,1));gap:calc(10px*var(--ui-k,1));}
+#actionProgressToast.big .tick{width:calc(24px*var(--ui-k,1));height:calc(24px*var(--ui-k,1));font-size:calc(15px*var(--ui-k,1));}
 #actionProgressToast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
 #actionProgressToast .tick{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.18);font-size:13px;line-height:1;flex:none;}
 
@@ -1586,12 +1663,19 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 .sr-list .sr-row{height:auto !important;min-height:0 !important;line-height:1.2 !important;font-size:calc(12*var(--uk)) !important;font-weight:700 !important;padding:calc(2*var(--uk)) calc(6*var(--uk)) calc(2*var(--uk)) 0 !important;gap:calc(8*var(--uk)) !important;border-bottom:0.5px solid #4a6f94 !important;}
 .sr-list .sr-row input[type=checkbox]{margin:0 0 0 calc(2*var(--uk)) !important;width:calc(14*var(--uk)) !important;height:calc(14*var(--uk)) !important;}
 /* SELECT ALL STUDENTS: zoomed — larger, bolder label and a bigger tick box so it is easy to tap. */
-label.sr-all{display:flex;align-items:center;gap:calc(14*var(--uk));padding:calc(8*var(--uk)) calc(4*var(--uk)) calc(12*var(--uk));margin:0;font-size:calc(20*var(--uk)) !important;font-weight:800 !important;letter-spacing:.01em;line-height:1.2;text-transform:none;color:#0A2A4A;cursor:pointer;}
-label.sr-all input[type=checkbox]{flex:none;width:calc(30*var(--uk)) !important;height:calc(30*var(--uk)) !important;margin:0 !important;accent-color:#1f5fa8;cursor:pointer;}
+label.sr-all{display:flex;align-items:center;gap:calc(14*var(--uk));padding:calc(8*var(--uk)) calc(4*var(--uk)) calc(12*var(--uk));margin:0;font-size:calc(19*var(--uk)) !important;font-weight:800 !important;letter-spacing:.01em;line-height:1.2;text-transform:none;color:#0A2A4A;cursor:pointer;}
+label.sr-all input[type=checkbox]{flex:none;width:calc(27*var(--uk)) !important;height:calc(27*var(--uk)) !important;margin:0 !important;accent-color:#1f5fa8;cursor:pointer;}
 /* Score-entry gate ("scores already entered"), read-only list and student picker: one stacked column that fits the screen
    width at its natural size (real screen pixels via --uk) — nothing tiny/oversized, no sideways panning; pinch-zoom still works. */
 .card.se-fit{box-sizing:border-box;max-width:100%;overflow:visible;}
 .se-fit h3{font-size:calc(17*var(--uk));line-height:1.3;overflow-wrap:anywhere;}
+/* Statements above the student list: smaller, each kept on ONE line (a tiny script shrinks the
+   font only as far as needed to fit, never below a readable size). */
+.fit-line{white-space:nowrap !important;overflow:hidden;max-width:100%;box-sizing:border-box;line-height:1.3;font-size:calc(13*var(--uk));}
+.se-fit h3.fit-line{font-size:calc(15*var(--uk));overflow-wrap:normal;}
+.sel-sum{margin-top:14px;display:block;padding-top:calc(10*var(--uk));padding-bottom:calc(10*var(--uk));}
+.sel-sum .fit-line.sel-sum-text b{font-weight:800;}
+.sel-sum .btn-outline.fit-line{display:block;margin-top:calc(8*var(--uk));font-size:calc(12*var(--uk));min-height:0;padding:calc(6*var(--uk)) calc(10*var(--uk));text-overflow:clip;}
 .se-fit p,.se-fit .small{font-size:calc(14*var(--uk));line-height:1.45;}
 .se-fit-btns{display:flex;flex-direction:column;gap:calc(12*var(--uk));margin-top:calc(14*var(--uk));}
 .se-fit-btns button,.se-fit .btn-outline,.se-fit .btn{font-size:calc(18*var(--uk));font-weight:800;min-height:calc(52*var(--uk));padding:calc(10*var(--uk)) calc(16*var(--uk));white-space:normal;box-sizing:border-box;}
@@ -4900,29 +4984,44 @@ function alertOk(message){ alert(message); }
 /* ---------- Universal save / action progress indicator ---------- */
 let _actionProgressTimer = null;
 let _lastActionButton = null;
+let _lastBannerBig = false;
+// The score sheet's submit button shows its own progress: it changes its words while it works.
+let _scoreBtnTimer = null;
+function scoreBtnState(state){
+  const b=document.querySelector('form[data-form="saveScores"] button.btn-big'); if(!b) return;
+  clearTimeout(_scoreBtnTimer);
+  if(b.dataset.orig===undefined){ b.dataset.orig=b.textContent; b.dataset.wasDis=b.disabled?'1':''; }
+  if(state==='idle'){
+    b.textContent=b.dataset.orig; b.disabled=!!b.dataset.wasDis; b.style.removeProperty('background'); return;
+  }
+  const m={saving:['⏳ Saving scores…','#e67e00',true],saved:['✓ Scores saved','#0f6b3a',false],already:['✓ Scores already saved','#0f6b3a',false],error:['✕ Not saved — tap to try again','#b3261e',false]}[state];
+  b.textContent=m[0]; b.disabled=m[2]; b.style.setProperty('background',m[1],'important');
+  if(state!=='saving') _scoreBtnTimer=setTimeout(()=>scoreBtnState('idle'), state==='error'?5000:2500);
+}
+function _bannerEl(big){ let el=document.getElementById('actionProgressToast'); if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); } _lastBannerBig=!!big; el.classList.toggle('big', !!big); return el; }
 function placeActionBannerNear(button){
+  try{ if(button && !button.isConnected){ const b=document.querySelector('form[data-form="saveScores"] button.btn-big'); if(b && _lastBannerBig) button=b; } }catch(e){}
   const el=document.getElementById('actionProgressToast');
   if(!el || !button || !button.getBoundingClientRect) return;
   const r=button.getBoundingClientRect();
-  const w=Math.min(window.innerWidth*.92,420), h=52;
-  let left=r.left+r.width/2, top=r.top-18;
-  if(top<h/2+12) top=r.bottom+18;
+  const w=el.offsetWidth||Math.min(window.innerWidth*.92,420), h=el.offsetHeight||52;
+  let left=r.left+r.width/2, top=r.top-h/2-12;
+  if(top<h/2+12) top=r.bottom+h/2+12;
   left=Math.max(w/2+12,Math.min(window.innerWidth-w/2-12,left));
   top=Math.max(h/2+12,Math.min(window.innerHeight-h/2-12,top));
   el.style.left=left+'px'; el.style.top=top+'px';
 }
-function showActionProgress(message, button){
-  let el=document.getElementById('actionProgressToast');
-  if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+function showActionProgress(message, button, big){
+  const el=_bannerEl(big);
   if(button) _lastActionButton=button;
   el.innerHTML=`<span class="tick">⏳</span><span>${esc(message||'Saving…')}</span>`;
   placeActionBannerNear(_lastActionButton);
   el.classList.add('show');
   if(_actionProgressTimer) clearTimeout(_actionProgressTimer);
 }
-function showActionSuccess(message, button, speakOnComplete=false){
-  let el=document.getElementById('actionProgressToast');
-  if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+function showActionSuccess(message, button, speakOnComplete=false, big){
+  try{ window.__cteAfterAction && window.__cteAfterAction(); }catch(e){}
+  const el=_bannerEl(big);
   if(button) _lastActionButton=button;
   el.innerHTML=`<span class="tick">✓</span><span>${esc(message||'Saved successfully')}</span>`;
   placeActionBannerNear(_lastActionButton);
@@ -4931,9 +5030,9 @@ function showActionSuccess(message, button, speakOnComplete=false){
   _actionProgressTimer=setTimeout(()=>el.classList.remove('show'),2200);
   if(speakOnComplete) speak(message);
 }
-function showActionFailure(message, button){
-  let el=document.getElementById('actionProgressToast');
-  if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); }
+function showActionFailure(message, button, big){
+  try{ window.__cteAfterAction && window.__cteAfterAction(); }catch(e){}
+  const el=_bannerEl(big);
   if(button) _lastActionButton=button;
   el.innerHTML=`<span class="tick">✕</span><span>${esc(message||'Action failed')}</span>`;
   placeActionBannerNear(_lastActionButton);
@@ -5889,7 +5988,10 @@ function render(){
     setTimeout(window.__cteEnforceFit,0); setTimeout(window.__cteEnforceFit,400);
     // A different screen was opened (tap, open, back, next page...): land on it fitted to the screen, not zoomed.
     const _vk = JSON.stringify([VIEW && VIEW.name, VIEW && VIEW.params]);
-    if(window.__cteLastViewKey!==undefined && window.__cteLastViewKey!==_vk){ setTimeout(window.__cteResetFit,50); }
+    if(window.__cteLastViewKey!==undefined && window.__cteLastViewKey!==_vk){ setTimeout(window.__cteResetFit,50); setTimeout(window.__cteResetFit,450); }
+    // Same screen redrawn because the person tapped / saved / submitted (e.g. 'Select your students' -> score sheet):
+    // also land fitted. Background refreshes (no recent tap) are left alone so a manual zoom is not undone.
+    else if(Date.now()-(window.__cteLastAct||0) < 2500){ setTimeout(window.__cteResetFit,50); setTimeout(window.__cteResetFit,450); }
     window.__cteLastViewKey = _vk;
   }catch(e){}
   // Any full re-render replaces the on-screen forms wholesale — either because the
@@ -9059,7 +9161,8 @@ function studentsView(){
     </form>
   </div>
   <div class="card">
-    <h3>Bulk upload a class list (Make a table with either two columns i.e NAME and SEX or three columns Including FEES PAY CODE)</h3>
+    <h3>BULK UPLOAD A CLASS LIST</h3>
+    <p class="small" style="font-weight:400;margin:2px 0 12px;">Make a table with either two columns i.e NAME and SEX or three columns including FEES PAY CODE.</p>
     <form data-form="bulkAddStudents" autocomplete="off">
       <div class="bulk-row">
         <div><label>Class</label>
@@ -11669,7 +11772,7 @@ function scoresEntryView(mine){
       const allChosen = listed.length>0 && listed.every(s=>chosen.has(s.id));
       studentRows = `
       <div class="card se-fit">
-        <h3>${esc(a.subject)} — ${esc(cls.name)} — ${missingOnly?'Add missing students':'Select your students'}</h3>
+        <h3 class="fit-line">${esc(a.subject)} — ${esc(cls.name)} — ${missingOnly?'Add missing students':'Select your students'}</h3>
         <form data-form="saveRoster" data-assign="${a.id}" data-missing-only="${missingOnly?'1':''}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           ${compulsory && listed.length ? `
           <label class="sr-all">
@@ -11830,7 +11933,7 @@ function scoresEntryView(mine){
             <span class="small"> — students you add appear here, just below the list, until their scores are saved.</span>
           </div>
 
-          <button class="btn btn-big" style="margin-top:18px;min-height:calc(64*var(--uk));font-size:calc(21*var(--uk));" ${scoresLocked?'disabled title="Deadline has passed — ask your admin to reopen entry for you"':''}>Submit — save & send scores</button>
+          <button class="btn btn-big" style="margin-top:18px;min-height:calc(64*var(--uk));font-size:calc(21*var(--uk));" ${scoresLocked?'disabled title="Deadline has passed — ask your admin to reopen entry for you"':''}>SUBMIT AND SAVE SCORES</button>
           ${syncStatusBanner(scoreSyncKey(a.id, sel.paper, sel.kind, sel.label||''))}
         </form>
       </div>
@@ -11879,9 +11982,9 @@ function scoresEntryView(mine){
   const pickedAssign = pickerSubmitted ? mine.find(x=>x.id===sel.assignId) : null;
   const pickedCls = pickedAssign ? DB.classes.find(c=>c.id===pickedAssign.classId) : null;
   const pickerSummaryBar = pickerSubmitted ? `
-  <div class="card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-    <div><b>${pickedAssign?esc(pickedAssign.subject):''}</b>${pickedCls?' — '+esc(pickedCls.name):''}${pickedCls&&pickedCls.level!=='P'?' — Paper '+esc(String(sel.paper)):''} — ${sel.kind==='AOI'?esc(sel.label||examConfig(pickedAssign?pickedAssign.classId:null).cwLabel):esc(examConfig(pickedAssign?pickedAssign.classId:null).eotLabel)} <span class="small" style="color:var(--muted);">(out of ${sel.maxScore})</span></div>
-    <button type="button" class="btn-outline" data-action="nav:${VIEW.name}">Change subject / paper / test</button>
+  <div class="card sel-sum">
+    <div class="fit-line sel-sum-text"><b>${pickedAssign?esc(pickedAssign.subject):''}</b>${pickedCls?' — '+esc(pickedCls.name):''}${pickedCls&&pickedCls.level!=='P'?' — Paper '+esc(String(sel.paper)):''} — ${sel.kind==='AOI'?esc(sel.label||examConfig(pickedAssign?pickedAssign.classId:null).cwLabel):esc(examConfig(pickedAssign?pickedAssign.classId:null).eotLabel)} <span style="color:var(--muted);">(out of ${sel.maxScore})</span></div>
+    <button type="button" class="btn-outline fit-line" data-action="nav:${VIEW.name}">Change subject / paper / test</button>
   </div>` : '';
   const pickerCard = pickerSubmitted ? '' : (()=>{
     // Guess the initial Paper-field visibility from the first assignment in the list —
@@ -14943,7 +15046,7 @@ document.addEventListener('submit', async (e)=>{
   const type = form.dataset.form;
   const fd = new FormData(form);
   const actionButton = e.submitter || document.activeElement;
-  showActionProgress('Saving your changes…', actionButton);
+  if(type==='saveScores') scoreBtnState('saving'); else showActionProgress('Saving your changes…', actionButton);
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
@@ -16734,7 +16837,7 @@ document.addEventListener('submit', async (e)=>{
         const newBlank = [...missSetNow].some(id=>!(prevMissNow && prevMissNow.has(id)));
         if(colHasSaved && !changed && !newBlank && !conflictExcluded.length){
           if(prevMissNow) MISSING_MARKERS[missKeyNow] = prevMissNow; else delete MISSING_MARKERS[missKeyNow];
-          showActionSuccess('Scores already saved', actionButton);
+          scoreBtnState('already');
           return;
         }
       }
@@ -16749,25 +16852,30 @@ document.addEventListener('submit', async (e)=>{
       const syncKey = scoreSyncKey(assignId, paper, kind, label||'');
       SCORE_SYNC_STATUS[syncKey] = {state:'saving'};
       const saveScoresPromise = upsertScores(submitRows);
+      window.__cteScoreSaving = (window.__cteScoreSaving||0)+1;
+      saveScoresPromise.then(()=>{window.__cteScoreSaving--;},()=>{window.__cteScoreSaving--;});
       render();
+      scoreBtnState('saving');
       // Patch the status line directly rather than triggering a second full
       // render() once the background save confirms/fails — a full render()
       // here could yank focus away from a box the teacher has since moved on
       // to editing.
       saveScoresPromise.then(()=>{
         SCORE_SYNC_STATUS[syncKey] = {state:'saved', at:Date.now()};
+        scoreBtnState('saved');
         speak('Scores have been saved successfully.');
         const el = document.getElementById(`syncStatus_${syncKey}`);
         if(el) el.outerHTML = syncStatusBanner(syncKey);
       }).catch(err=>{
         console.error(err);
         SCORE_SYNC_STATUS[syncKey] = {state:'error'};
+        scoreBtnState('error');
         const el = document.getElementById(`syncStatus_${syncKey}`);
         if(el) el.outerHTML = syncStatusBanner(syncKey);
         alert('Some scores could not be saved — check your internet connection and try submitting again.');
       });
     }
-    showActionSuccess('Saved successfully', actionButton);
+    if(type!=='saveScores') showActionSuccess('Saved successfully', actionButton);
   }catch(err){
     console.error(err);
     showActionFailure('Could not complete the action. Please try again.', actionButton);
@@ -16777,7 +16885,8 @@ document.addEventListener('submit', async (e)=>{
     // plain `return` rather than throwing, so it never reaches showActionSuccess.
     // Always resolve the banner here regardless — dismiss it quietly if nothing
     // was actually saved, but don't touch an already-shown success/failure message.
-    if(actionBannerStillProcessing()) hideActionBanner();
+    if(type==='saveScores' && !window.__cteScoreSaving){ const b=document.querySelector('form[data-form="saveScores"] button.btn-big'); if(b && /Saving scores/.test(b.textContent)) scoreBtnState('idle'); }
+    if(type!=='saveScores' && actionBannerStillProcessing()) hideActionBanner();
   }
 });
 
@@ -18485,6 +18594,23 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   ['printFramed','printLandscape','printPortrait','printListPaged','printClassAnalysis','printFinanceTable','printDemandNoteFor',
    'printSelectedDemandNotes','printSelectedReports','downloadFeesCodeList','downloadBulkStudentTemplate','downloadStaffTemplate',
    'downloadMarksheetCSV'].forEach(function(n){ wrap(n,true); });
+})();
+</script>
+<script>
+/* Keep every .fit-line statement on one line: start at its CSS size and shrink only as much as needed
+   (never below ~65% so the words stay clear). Re-runs when the screen changes or is resized. */
+(function(){
+  function fit(){
+    document.querySelectorAll('.fit-line').forEach(function(el){
+      el.style.fontSize='';
+      var fs=parseFloat(getComputedStyle(el).fontSize)||13, min=Math.max(8.5, fs*0.65);
+      while(el.scrollWidth>el.clientWidth+1 && fs>min){ fs-=0.5; el.style.fontSize=fs+'px'; }
+    });
+  }
+  var t=null; function later(){ if(t) cancelAnimationFrame(t); t=requestAnimationFrame(fit); }
+  window.addEventListener('resize',later); window.addEventListener('orientationchange',later);
+  new MutationObserver(later).observe(document.documentElement,{childList:true,subtree:true});
+  later();
 })();
 </script>
 </body>
