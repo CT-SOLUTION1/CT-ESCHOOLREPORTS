@@ -1620,6 +1620,10 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-modal-foot .rc-splash-count{text-align:center;font-size:16px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
 .rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:52px;font-size:17px;font-weight:800;border-radius:12px;}
 .rc-modal-foot .btn[disabled],.rc-modal-foot .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
+/* Enter Scores: the "marked out of" (maximum score) box is bold and thick so it can't be missed */
+#maxScoreInput{border:3px solid var(--navy,#0A2A4A) !important;border-radius:10px !important;font-size:20px !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;background:#fff !important;padding:12px 14px !important;min-height:52px;box-sizing:border-box;}
+#maxScoreInput::placeholder{font-size:15px;font-weight:700;color:#6b7c8d;}
+#maxScoreInput:focus{outline:none;border-color:var(--gold,#C9A227) !important;box-shadow:0 0 0 3px rgba(201,162,39,.35);}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
