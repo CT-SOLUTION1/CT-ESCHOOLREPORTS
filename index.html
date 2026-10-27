@@ -1601,6 +1601,9 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-dd-panel.open{display:block;}
 /* Report Cards: "Filter by class" bar on the page; tapping it opens the class-picker splash card */
 .rc-filter-card .rc-dd-btn{padding:14.6px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:16px;font-weight:700;}
+.rc-filter-card .rc-dd-btn{padding:15.6px 16px;}
+.rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:26px;line-height:1;color:var(--navy,#0A2A4A);font-weight:900;}
+.rc-filter-card .rc-gap{margin-top:calc(40*var(--uk));}
 .rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:calc(44px + env(safe-area-inset-top,0px)) 18px calc(56px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
 .rc-modal-card{width:100%;max-width:560px;max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 22px 60px rgba(10,42,74,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
 .rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 18px 10px 22px;}
@@ -1728,6 +1731,7 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   table.ra-table td[colspan]{width:1px;white-space:normal !important;}
   /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
   label.rc-sel-lbl{font-size:calc(11*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
+  .rc-filter-card .rc-gap{margin-top:calc(31*var(--uk)) !important;}
   select[onchange^="filterClass"], #rcSearch{font-size:calc(13*var(--uk)) !important;min-height:calc(31*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
 @media print{table.sp-students tr{height:auto !important;}}
@@ -9952,8 +9956,8 @@ function reportsListView(){
   ${rcCollapsed ? rcTopBar : `<h2>Report Cards</h2>
   <div class="card rc-filter-card">
     <label class="rc-sel-lbl">FILTER REPORT CARDS BY CLASS(ES)</label>
-    <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-haspopup="dialog" aria-expanded="false" onclick="rcDdToggle(true)"><span class="rc-dd-txt" id="rcDdTxt">${rcDdSummary()}</span><span class="rc-dd-arrow">▾</span></button>
-    <label class="rc-sel-lbl" style="margin-top:32px;">Or search a student by name</label>
+    <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-haspopup="dialog" aria-expanded="false" onclick="rcDdToggle(true)"><span class="rc-dd-txt" id="rcDdTxt">${rcDdSummary()}</span><span class="rc-dd-arrow">▼</span></button>
+    <label class="rc-sel-lbl rc-gap">Or search a student by name</label>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
