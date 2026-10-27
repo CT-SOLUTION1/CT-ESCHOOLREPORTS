@@ -163,7 +163,7 @@ img{max-width:100%;height:auto;}
 .sidebar a.nav-home{display:none;}
 .layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
 .layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
-.layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
+.layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
 .layout.nav-collapsed .sidebar a.nav-home:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .layout.nav-collapsed:not(.nav-open) .sidebar a:not(.nav-home){display:none;}
 .layout.nav-collapsed.nav-open .sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(3*var(--uk));padding:0 0 calc(6*var(--uk));}
@@ -1600,24 +1600,24 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-dd-panel{display:none;margin-top:6px;}
 .rc-dd-panel.open{display:block;}
 /* Report Cards: "Filter by class" bar on the page; tapping it opens the class-picker splash card */
-.rc-filter-card .rc-dd-btn{padding:14px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:16px;font-weight:700;}
-.rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
-.rc-modal-card{width:100%;max-width:440px;max-height:min(86vh,660px);max-height:min(86dvh,660px);display:flex;flex-direction:column;background:#fff;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 22px 60px rgba(10,42,74,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+.rc-filter-card .rc-dd-btn{padding:14.6px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:16px;font-weight:700;}
+.rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:calc(44px + env(safe-area-inset-top,0px)) 18px calc(56px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
+.rc-modal-card{width:100%;max-width:560px;max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 22px 60px rgba(10,42,74,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
 .rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 18px 10px 22px;}
-.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:24px;font-weight:800;color:var(--navy,#0A2A4A);}
-.rc-modal-head p{margin:4px 0 0;font-size:14px;line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
+.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:27px;font-weight:800;color:var(--navy,#0A2A4A);}
+.rc-modal-head p{margin:4px 0 0;font-size:15.5px;line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
 .rc-modal-x{flex:0 0 auto;width:36px;height:36px;padding:0;border:none;border-radius:50%;background:#eef3f8;color:var(--navy,#0A2A4A);font-size:22px;line-height:1;}
 .rc-modal-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 22px;border-top:1px solid #e6edf4;border-bottom:1px solid #e6edf4;}
-.rc-modal label.rc-opt{display:flex;align-items:center;gap:10px;margin:0;padding:13px 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:16px;font-weight:600;color:var(--ink,#1c2b3a);}
+.rc-modal label.rc-opt{display:flex;align-items:center;gap:10px;margin:0;padding:16px 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:20px;font-weight:600;color:var(--ink,#1c2b3a);}
 .rc-modal label.rc-opt:last-child{border-bottom:none;}
 .rc-modal label.rc-opt-all{font-weight:800;color:var(--navy,#0A2A4A);}
 .rc-modal .rc-opt-name{flex:1;min-width:0;}
-.rc-modal .rc-opt-n{flex:0 0 auto;font-size:13px;font-weight:600;color:#7a8a9a;}
-.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:26px !important;height:26px;min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
+.rc-modal .rc-opt-n{flex:0 0 auto;font-size:16px;font-weight:600;color:#7a8a9a;}
+.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:30px !important;height:30px;min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
 .rc-modal .rc-tick:checked{background:var(--blue,#1D4E89);border-color:var(--blue,#1D4E89);}
-.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:7px;top:2px;width:6px;height:12px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
+.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:9px;top:3px;width:7px;height:14px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
 .rc-modal-foot{padding:14px 22px 20px;display:flex;flex-direction:column;gap:10px;}
-.rc-modal-foot .rc-splash-count{text-align:center;font-size:14px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
+.rc-modal-foot .rc-splash-count{text-align:center;font-size:16px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
 .rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:52px;font-size:17px;font-weight:800;border-radius:12px;}
 .rc-modal-foot .btn[disabled],.rc-modal-foot .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
@@ -9947,9 +9947,9 @@ function reportsListView(){
   return `
   ${rcCollapsed ? rcTopBar : `<h2>Report Cards</h2>
   <div class="card rc-filter-card">
-    <label class="rc-sel-lbl">Filter by class</label>
+    <label class="rc-sel-lbl">FILTER REPORT CARDS BY CLASS(ES)</label>
     <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-haspopup="dialog" aria-expanded="false" onclick="rcDdToggle(true)"><span class="rc-dd-txt" id="rcDdTxt">${rcDdSummary()}</span><span class="rc-dd-arrow">▾</span></button>
-    <label class="rc-sel-lbl" style="margin-top:16px;">Or search a student by name</label>
+    <label class="rc-sel-lbl" style="margin-top:17.5px;">Or search a student by name</label>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
@@ -9959,7 +9959,7 @@ function reportsListView(){
   ${teacherAccessCard}
   ${isAdmin ? rcShadeCard() : ''}`}
   <div class="card">
-    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tap “Filter by class” above, tick one or more classes and submit, or search a student by name, to see the report card list.</p>` : (()=>{
+    ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tap “Filter report cards by class(es)” above, tick one or more classes and submit, or search a student by name, to see the report card list.</p>` : (()=>{
       const listStudents = rcListedStudents(rcIds);
       const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
@@ -10022,7 +10022,6 @@ function rcModalHTML(){
       <div class="rc-modal-foot">
         <span class="rc-splash-count" id="rcPickCount">${n} class${n===1?'':'es'} ticked</span>
         <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${n?'':'disabled'}>Submit — load report cards</button>
-        ${isAdmin ? `<button type="button" class="btn-gold" id="rcPickDl" onclick="rcPickDownload(this)" ${n?'':'disabled'}><b>Download all ticked classes (PDF)</b></button>` : ''}
       </div>
     </div>
   </div>`;
@@ -17924,8 +17923,105 @@ document.addEventListener('focus', ()=>{ if(updatePending && blurSettleTimer){ c
 // on-screen entry, not just our own auto-update reload. This is the same FORM_DIRTY
 // flag, so it stays in sync with the update logic above for free.
 window.addEventListener('beforeunload', (e)=>{
-  if(FORM_DIRTY){ e.preventDefault(); e.returnValue = ''; }
+  if(FORM_DIRTY){
+    seWriteDraft();
+    try{ const f = seForm(); if(f && CUR) f.requestSubmit(); }catch(_){}   // best-effort auto-save
+    e.preventDefault(); e.returnValue = '';
+  }
 });
+
+/* ---- Score entry: never lose typed marks when the teacher leaves the page ----
+   * Leaving through the app (menu, tiles, Back, phone Back, Log out): the typed marks are saved
+     first (same path as the Submit button), then the teacher confirms: leave, or stay on the page.
+   * Refresh / close tab: marks are saved straight away (best effort) and the browser asks to confirm.
+   * A draft copy is kept on this device while typing, and put back after a refresh if the save
+     did not finish. */
+const SE_DRAFT_PREFIX = 'cte_se_draft:';
+function seForm(){ return document.querySelector('form[data-form="saveScores"]'); }
+function seDraftKey(f){ return SE_DRAFT_PREFIX + [SCHOOL_ID||'', (CUR&&CUR.username)||'', f.dataset.assign, f.dataset.paper, f.dataset.kind, f.dataset.label||'', f.dataset.term||'', f.dataset.year||''].join('|'); }
+function seNeedsGuard(){ return !!(FORM_DIRTY && CUR && seForm()); }
+function seNote(msg){
+  try{
+    const old = document.getElementById('seNote'); if(old) old.remove();
+    const d = document.createElement('div'); d.id = 'seNote';
+    d.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:90vw;z-index:99999;background:#0A2A4A;color:#fff;padding:12px 18px;border-radius:12px;font:600 14px/1.35 system-ui,sans-serif;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.3);';
+    d.textContent = msg; document.body.appendChild(d);
+    setTimeout(()=>{ if(d.parentNode) d.remove(); }, 6000);
+  }catch(e){}
+}
+let _seDraftT = null;
+function seWriteDraft(){
+  try{
+    const f = seForm(); if(!f || !FORM_DIRTY) return;
+    const v = {}; f.querySelectorAll('input[name^="m_"]').forEach(i=>{ if(!i.disabled) v[i.name] = i.value; });
+    localStorage.setItem(seDraftKey(f), JSON.stringify({t:Date.now(), v}));
+  }catch(e){}
+}
+document.addEventListener('input', (e)=>{
+  if(e.target && e.target.closest && e.target.closest('form[data-form="saveScores"]')){ clearTimeout(_seDraftT); _seDraftT = setTimeout(seWriteDraft, 300); }
+}, true);
+function seApplyDraft(){
+  try{
+    const f = seForm(); if(!f || !CUR) return;
+    const k = seDraftKey(f), raw = localStorage.getItem(k); if(!raw) return;
+    const d = JSON.parse(raw);
+    if(!d || !d.v || Date.now()-d.t > 864e5){ localStorage.removeItem(k); return; }
+    let n = 0;
+    f.querySelectorAll('input[name^="m_"]').forEach(i=>{
+      if(i.disabled || !(i.name in d.v) || d.v[i.name]==='') return;
+      if(i.value !== d.v[i.name]){ i.value = d.v[i.name]; n++; }
+    });
+    if(n){ FORM_DIRTY = true; seNote('Your unsaved marks were restored. Tap Submit to save them.'); }
+    else localStorage.removeItem(k);   // everything typed is already saved
+  }catch(e){}
+}
+// Re-apply a saved draft every time the score form is drawn.
+(function(){
+  const _render = render;
+  render = function(){ const r = _render.apply(this, arguments); seApplyDraft(); return r; };
+})();
+// Save what is typed, exactly as the Submit button would. true = saved.
+async function seSaveNow(){
+  const f = seForm(); if(!f) return true;
+  try{ f.requestSubmit(); }catch(e){ return false; }
+  for(let i=0;i<40 && FORM_DIRTY;i++) await new Promise(r=>setTimeout(r,50));
+  return !FORM_DIRTY;
+}
+// Auto-save, then ask: true = go ahead and leave, false = stay on the page.
+let _seGuardBusy = false;
+async function seConfirmLeave(){
+  if(!seNeedsGuard()) return true;
+  if(_seGuardBusy) return false;
+  _seGuardBusy = true;
+  try{
+    const saved = await seSaveNow();
+    if(saved){
+      try{ const f = seForm(); if(f) localStorage.removeItem(seDraftKey(f)); }catch(e){}
+      return confirm('Your entered scores have been saved.\n\nOK = leave this page\nCancel = go back to the page');
+    }
+    const leave = confirm('Your entered scores could NOT be saved (see the message on screen).\n\nOK = leave and lose them\nCancel = go back and fix them');
+    if(leave) FORM_DIRTY = false;
+    return leave;
+  } finally { _seGuardBusy = false; }
+}
+// Menu / tiles / Back / Log out taps
+document.addEventListener('click', (e)=>{
+  if(!seNeedsGuard()) return;
+  const el = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
+  if(!el) return;
+  const name = (el.getAttribute('data-action')||'').split(':')[0];
+  if(name!=='nav' && name!=='navBack' && name!=='logout') return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  seConfirmLeave().then(ok=>{ if(ok){ FORM_DIRTY = false; el.click(); } });
+}, true);
+// Phone / browser Back button
+(function(){
+  const _back = navGoBack;
+  navGoBack = function(){
+    if(!seNeedsGuard()) return _back.apply(this, arguments);
+    seConfirmLeave().then(ok=>{ if(ok){ FORM_DIRTY = false; _back(); } });
+  };
+})();
 
 
 // ---- Apply a waiting update the moment the user opens another page ----
