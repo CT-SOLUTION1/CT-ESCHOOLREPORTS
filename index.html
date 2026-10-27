@@ -9949,7 +9949,7 @@ function reportsListView(){
   <div class="card rc-filter-card">
     <label class="rc-sel-lbl">FILTER REPORT CARDS BY CLASS(ES)</label>
     <button type="button" class="rc-dd-btn" id="rcDdBtn" aria-haspopup="dialog" aria-expanded="false" onclick="rcDdToggle(true)"><span class="rc-dd-txt" id="rcDdTxt">${rcDdSummary()}</span><span class="rc-dd-arrow">▾</span></button>
-    <label class="rc-sel-lbl" style="margin-top:17.5px;">Or search a student by name</label>
+    <label class="rc-sel-lbl" style="margin-top:32px;">Or search a student by name</label>
     <div class="flex" style="gap:8px;align-items:center;flex-wrap:nowrap;">
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
@@ -10030,6 +10030,7 @@ function rcDdToggle(force){
   const open = (typeof force==='boolean') ? force : !document.getElementById('rcModal');
   const old = document.getElementById('rcModal'); if(old) old.remove();
   if(open){
+    RC_PICK.clear();   // every opening starts with nothing ticked
     const d = document.createElement('div'); d.innerHTML = rcModalHTML();
     document.body.appendChild(d.firstElementChild);
     document.body.style.overflow = 'hidden';
@@ -10049,6 +10050,7 @@ function rcPickOk(){
   const ids = rcPickedIds();
   if(!ids.length){ alert('Tick at least one class first.'); return; }
   rcDdToggle(false);
+  RC_PICK.clear();   // fresh splash card next time
   VIEW.params = {...VIEW.params, classIds: ids, classId: null};
   render();
 }
@@ -10064,7 +10066,7 @@ async function rcPickDownload(btn){
     });
   } finally { btn.disabled = false; btn.innerHTML = orig; }
 }
-function rcBack(){ RC_QUERY=''; VIEW.params = {...VIEW.params, classIds:null, classId:null}; render(); }
+function rcBack(){ RC_QUERY=''; RC_PICK.clear(); VIEW.params = {...VIEW.params, classIds:null, classId:null}; render(); }
 function filterClass(v){ VIEW.params = {...VIEW.params, classIds: v?[v]:null, classId:null}; render(); }
 // Search-by-name box on the Report Cards page. The text is kept here so it survives re-renders
 // (ticking a student, changing class…); typing re-renders the list after a short pause and puts
