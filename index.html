@@ -1601,8 +1601,8 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-dd-panel.open{display:block;}
 /* Report Cards: "Filter by class" bar on the page; tapping it opens the class-picker splash card */
 .rc-filter-card .rc-dd-btn{padding:14.6px 16px;border:1.5px solid #b9c9da;border-radius:12px;font-size:16px;font-weight:700;}
-.rc-filter-card .rc-dd-btn{padding:15.6px 16px;}
-.rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:26px;line-height:1;color:var(--navy,#0A2A4A);font-weight:900;}
+.rc-filter-card .rc-dd-btn{min-height:calc(40*var(--uk));padding:calc(9*var(--uk)) calc(10*var(--uk));font-size:calc(14*var(--uk));box-sizing:border-box;}
+.rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:calc(24*var(--uk));line-height:1;color:var(--navy,#0A2A4A);font-weight:900;}
 .rc-filter-card .rc-gap{margin-top:calc(40*var(--uk));}
 .rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:calc(44px + env(safe-area-inset-top,0px)) 18px calc(56px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
 .rc-modal-card{width:100%;max-width:560px;max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 22px 60px rgba(10,42,74,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
@@ -1732,6 +1732,8 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   /* Report cards: bold, larger titles for the class filter and name search; slightly shorter boxes */
   label.rc-sel-lbl{font-size:calc(11*var(--uk)) !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;letter-spacing:.02em;}
   .rc-filter-card .rc-gap{margin-top:calc(31*var(--uk)) !important;}
+  .rc-filter-card .rc-dd-btn{min-height:calc(31*var(--uk));padding-top:calc(5*var(--uk));padding-bottom:calc(5*var(--uk));font-size:calc(13*var(--uk));}
+  .rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:calc(19*var(--uk));}
   select[onchange^="filterClass"], #rcSearch{font-size:calc(13*var(--uk)) !important;min-height:calc(31*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
 @media print{table.sp-students tr{height:auto !important;}}
