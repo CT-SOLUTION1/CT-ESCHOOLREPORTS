@@ -1559,6 +1559,16 @@ table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-dang
 /* SELECT ALL STUDENTS: zoomed — larger, bolder label and a bigger tick box so it is easy to tap. */
 label.sr-all{display:flex;align-items:center;gap:calc(14*var(--uk));padding:calc(8*var(--uk)) calc(4*var(--uk)) calc(12*var(--uk));margin:0;font-size:calc(20*var(--uk)) !important;font-weight:800 !important;letter-spacing:.01em;line-height:1.2;text-transform:none;color:#0A2A4A;cursor:pointer;}
 label.sr-all input[type=checkbox]{flex:none;width:calc(30*var(--uk)) !important;height:calc(30*var(--uk)) !important;margin:0 !important;accent-color:#1f5fa8;cursor:pointer;}
+/* Score-entry gate ("scores already entered"), read-only list and student picker: one stacked column that fits the screen
+   width at its natural size (real screen pixels via --uk) — nothing tiny/oversized, no sideways panning; pinch-zoom still works. */
+.card.se-fit{box-sizing:border-box;max-width:100%;overflow:visible;}
+.se-fit h3{font-size:calc(17*var(--uk));line-height:1.3;overflow-wrap:anywhere;}
+.se-fit p,.se-fit .small{font-size:calc(14*var(--uk));line-height:1.45;}
+.se-fit-btns{display:flex;flex-direction:column;gap:calc(12*var(--uk));margin-top:calc(14*var(--uk));}
+.se-fit-btns button,.se-fit .btn-outline,.se-fit .btn{font-size:calc(18*var(--uk));font-weight:800;min-height:calc(52*var(--uk));padding:calc(10*var(--uk)) calc(16*var(--uk));white-space:normal;box-sizing:border-box;}
+.se-fit-btns button{width:100%;}
+.se-fit .data-table{width:100%;table-layout:auto;}
+.se-fit .data-table th,.se-fit .data-table td{font-size:calc(14*var(--uk));white-space:normal;}
 /* Table-header select-all tick boxes (fees, requirements, report cards, mark sheets): zoomed too. */
 th>input[type=checkbox][onchange*="SelectAll"],th>input#msSelectAllCb{width:calc(26*var(--uk)) !important;height:calc(26*var(--uk)) !important;cursor:pointer;accent-color:#1f5fa8;}
 /* Report-card list: names in the same font as the enter-scores list; slimmer Action column, 1px smaller buttons. */
@@ -11622,7 +11632,7 @@ function scoresEntryView(mine){
       const listed = missingOnly ? eligible.filter(s=>!knownIds.has(s.id)) : eligible;
       const allChosen = listed.length>0 && listed.every(s=>chosen.has(s.id));
       studentRows = `
-      <div class="card">
+      <div class="card se-fit">
         <h3>${esc(a.subject)} — ${esc(cls.name)} — ${missingOnly?'Add missing students':'Select your students'}</h3>
         <form data-form="saveRoster" data-assign="${a.id}" data-missing-only="${missingOnly?'1':''}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           ${compulsory && listed.length ? `
@@ -11727,12 +11737,12 @@ function scoresEntryView(mine){
         // choose to continue editing, or close — closing shows the read-only list of
         // what's already on record instead of an editable sheet.
         studentRows = `
-      <div class="card">
+      <div class="card se-fit">
         <h3 style="margin-top:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
         <p class="small">Scores have already been entered for this ${testWord} — ${existingCount} of ${students.length} student${students.length===1?'':'s'} on your list already ${existingCount===1?'has':'have'} a mark saved (out of ${sel.maxScore||100}). To avoid accidentally duplicating or overwriting what's on file, choose one of the options below.</p>
-        <div class="flex" style="gap:14px;flex-wrap:wrap;">
-          <button class="btn" style="font-size:calc(21*var(--uk));font-weight:800;min-height:calc(56*var(--uk));padding:10px 26px;" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Continue to edit</button>
-          <button class="btn-outline" style="font-size:calc(21*var(--uk));font-weight:800;min-height:calc(56*var(--uk));padding:10px 26px;" data-action="closeScoreEntry:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Close — just show me what's on record</button>
+        <div class="se-fit-btns">
+          <button class="btn" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Continue to edit</button>
+          <button class="btn-outline" data-action="closeScoreEntry:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Close — just show me what's on record</button>
         </div>
       </div>`;
       } else if(sel.viewOnly){
@@ -11740,7 +11750,7 @@ function scoresEntryView(mine){
         // boxes, nothing to submit. "Edit these scores" is the only way back into the
         // editable sheet from here.
         studentRows = `
-      <div class="card">
+      <div class="card se-fit">
         <div class="flex" style="justify-content:space-between;align-items:center;">
           <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
           <button type="button" class="btn-outline" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit these scores</button>
