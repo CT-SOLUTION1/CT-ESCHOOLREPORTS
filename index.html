@@ -11730,9 +11730,9 @@ function scoresEntryView(mine){
       <div class="card">
         <h3 style="margin-top:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
         <p class="small">Scores have already been entered for this ${testWord} — ${existingCount} of ${students.length} student${students.length===1?'':'s'} on your list already ${existingCount===1?'has':'have'} a mark saved (out of ${sel.maxScore||100}). To avoid accidentally duplicating or overwriting what's on file, choose one of the options below.</p>
-        <div class="flex" style="gap:10px;">
-          <button class="btn" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Continue to edit</button>
-          <button class="btn-outline" data-action="closeScoreEntry:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Close — just show me what's on record</button>
+        <div class="flex" style="gap:14px;flex-wrap:wrap;">
+          <button class="btn" style="font-size:calc(21*var(--uk));font-weight:800;min-height:calc(56*var(--uk));padding:10px 26px;" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Continue to edit</button>
+          <button class="btn-outline" style="font-size:calc(21*var(--uk));font-weight:800;min-height:calc(56*var(--uk));padding:10px 26px;" data-action="closeScoreEntry:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Close — just show me what's on record</button>
         </div>
       </div>`;
       } else if(sel.viewOnly){
@@ -11743,7 +11743,7 @@ function scoresEntryView(mine){
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center;">
           <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
-          <button type="button" class="btn-outline" style="font-size:calc(18*var(--uk));font-weight:900;padding:calc(10*var(--uk)) calc(20*var(--uk));letter-spacing:.03em;" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">EDIT SCORES</button>
+          <button type="button" class="btn-outline" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit these scores</button>
         </div>
 
         <table class="data-table"><tr><th>Student</th><th>${currentColLabel}</th></tr>
@@ -13974,7 +13974,7 @@ Continue?`);
       // teacher explicitly clicked "edit this test's scores", skip the re-entry gate below.
       const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
       VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false, confirmEdit:true, viewOnly:false}};
-      render(); window.scrollTo(0,0);
+      render();
       break;
     }
     case 'confirmEditScores': {
@@ -13982,7 +13982,7 @@ Continue?`);
       // the normal editable mark sheet for this exact test.
       const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
       VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false, confirmEdit:true, viewOnly:false}};
-      render(); window.scrollTo(0,0);
+      render();
       break;
     }
     case 'closeScoreEntry': {
@@ -13990,7 +13990,7 @@ Continue?`);
       // what's already on record instead of an editable sheet.
       const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
       VIEW = {name:VIEW.name, params:{assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false, confirmEdit:false, viewOnly:true}};
-      render(); window.scrollTo(0,0);
+      render();
       break;
     }
     case 'removeSchoolStamp': {
@@ -16503,9 +16503,10 @@ document.addEventListener('submit', async (e)=>{
         }
         await saveAssignments();
       }
+      // confirmEdit:true skips the "Scores have already been entered" gate, so after adding
+      // students the teacher lands directly on the entry form, even if they were editing saved scores.
       VIEW = {name:VIEW.name, params:{assignId, paper:form.dataset.paper, kind:form.dataset.kind, label:form.dataset.label||'', maxScore:Number(form.dataset.max)||100, editRoster:false, confirmEdit:true, viewOnly:false}};
       render();
-      window.scrollTo(0,0);
     }
     else if(type==='quickAddStudent'){
       const assignId = form.dataset.assign;
@@ -16533,7 +16534,7 @@ document.addEventListener('submit', async (e)=>{
       a.studentIds = Array.isArray(a.studentIds) ? [...new Set([...a.studentIds, newStudent.id])] : [newStudent.id];
       await Promise.all([saveStudents(), saveAssignments(), saveClasses()]);
       alertOk(`${name} (${admNo}) was added to ${cls.name} and included in your marking list for ${a.subject}. Other subject teachers will need to tick them into their own lists too.`);
-      VIEW = {name:VIEW.name, params:{assignId, paper:form.dataset.paper, kind:form.dataset.kind, label:form.dataset.label||'', maxScore:Number(form.dataset.max)||100, editRoster:true}};
+      VIEW = {name:VIEW.name, params:{assignId, paper:form.dataset.paper, kind:form.dataset.kind, label:form.dataset.label||'', maxScore:Number(form.dataset.max)||100, editRoster:true, confirmEdit:true, viewOnly:false}};
       render();
     }
     else if(type==='uploadMarksheet'){
@@ -16622,21 +16623,6 @@ document.addEventListener('submit', async (e)=>{
         alert(`Can't save: the mark for ${badEntries.join(', ')} is out of range. Marks must be between 0 and ${max}. Please fix ${badEntries.length>1?'these':'this'} before submitting — other students' marks were not affected.`);
         return;
       }
-      // Nothing changed since the last save? Say so instead of re-saving identical marks.
-      {
-        let anyFilled=false, anyChanged=false;
-        for(const [key,val] of fd.entries()){
-          if(!key.startsWith('m_') || val==='') continue;
-          anyFilled=true;
-          const sid = key.slice(2);
-          const ex = DB.scores.find(sc=>sc.studentId===sid && sc.subject===subject && sc.paper==paper && sc.kind===kind && (kind==='EOT' || sc.label===label) && sc.term===targetTerm && sc.year===targetYear);
-          if(!ex || Number(ex.marks)!==Number(val) || Number(ex.max)!==max){ anyChanged=true; break; }
-        }
-        if(anyFilled && !anyChanged){
-          alert('Scores already saved.');
-          return;
-        }
-      }
       // Figure out who was left blank on THIS submit and still has no saved score for
       // this column — that's who gets flagged with an X on the mark sheet right after
       // this submit goes through.
@@ -16654,6 +16640,7 @@ document.addEventListener('submit', async (e)=>{
         }
         if(!existingRow) missSetNow.add(studentId);
       }
+      const prevMissNow = MISSING_MARKERS[missKeyNow];
       MISSING_MARKERS[missKeyNow] = missSetNow;
       // If this column is a subsidiary (Maths or Computer), any student who's been
       // ticked into BOTH subsidiary rosters by mistake (see hasSubsidiaryConflict) has
@@ -16689,6 +16676,21 @@ document.addEventListener('submit', async (e)=>{
         const names = conflictExcluded.join(', ');
         const plural = conflictExcluded.length>1;
         alert(`⚠ ${names} ${plural?'are':'is'} ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters, so ${plural?'their':'their'} mark${plural?'s':''} for ${subject} ${plural?'were':'was'} NOT saved this submit. Remove ${plural?'them':'them'} from whichever roster is wrong, then resubmit ${plural?'their':'their'} mark${plural?'s':''}. Everyone else's marks below were saved normally.`);
+      }
+      // Nothing to do? If this column already has saved scores and this submit changes none of
+      // them (same marks, no new scores, no newly blank students), say so instead of re-saving.
+      {
+        const colHasSaved = DB.scores.some(sc=>sc.subject===subject && sc.paper==paper && sc.kind===kind && sc.term===targetTerm && sc.year===targetYear && (kind==='EOT' || sc.label===label) && (!a || !Array.isArray(a.studentIds) || a.studentIds.includes(sc.studentId)));
+        const changed = submitRows.some(r=>{
+          const old = DB.scores.find(sc=>sc.id===r.id);
+          return !old || Number(old.marks)!==Number(r.marks) || Number(old.max)!==Number(r.max);
+        });
+        const newBlank = [...missSetNow].some(id=>!(prevMissNow && prevMissNow.has(id)));
+        if(colHasSaved && !changed && !newBlank && !conflictExcluded.length){
+          if(prevMissNow) MISSING_MARKERS[missKeyNow] = prevMissNow; else delete MISSING_MARKERS[missKeyNow];
+          showActionSuccess('Scores already saved', actionButton);
+          return;
+        }
       }
       // upsertScores updates DB.scores synchronously before its network write
       // even starts, so the mark sheet can be re-rendered — showing this
