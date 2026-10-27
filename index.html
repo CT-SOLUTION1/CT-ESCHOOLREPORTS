@@ -29,11 +29,40 @@
         // Phone/small tablet: force the 1280px desktop layout and scale it down to
         // exactly fit the screen, computed here rather than left to browser auto-fit.
         var scale = Math.max(0.1, Math.min(1, dw/1280));
-        meta.setAttribute('content','width=1280, initial-scale='+scale.toFixed(4)+', minimum-scale=0.1, maximum-scale=5, user-scalable=yes');
+        // minimum-scale = the fit scale: the browser can never shrink the page further on its own
+        // (wide content used to trigger that). The user can still pinch in/out manually from fit upward.
+        meta.setAttribute('content','width=1280, initial-scale='+scale.toFixed(4)+', minimum-scale='+scale.toFixed(4)+', maximum-scale=5, user-scalable=yes');
       }
     }catch(e){}
   }
   applyDesktopViewport();
+  // Called after every screen change (tap, open, save, submit): if the page has drifted
+  // zoomed-out below the fit scale, re-assert the viewport so it lands fully on screen.
+  window.__cteEnforceFit = function(){
+    try{
+      var dw = screen.width || screen.availWidth || 0;
+      if(!dw || dw>=1280) return;
+      var fit = Math.max(0.1, Math.min(1, dw/1280));
+      var vs = (window.visualViewport && window.visualViewport.scale) || 1;
+      if(vs < fit*0.97){
+        var meta = document.getElementById('viewportMeta'); if(!meta) return;
+        meta.setAttribute('content','width=1280, initial-scale='+fit.toFixed(4)+', minimum-scale='+fit.toFixed(4)+', maximum-scale=5, user-scalable=yes');
+      }
+    }catch(e){}
+  };
+  // Snap the page back to "fits the whole screen" (undo any zoom-in, e.g. the browser's own zoom
+  // when an input box is tapped, or a leftover manual zoom). Pinning max-scale to the fit scale
+  // for an instant forces the browser to apply it; zooming by hand is allowed again right after.
+  window.__cteResetFit = function(){
+    try{
+      var dw = screen.width || screen.availWidth || 0;
+      if(!dw || dw>=1280) return;
+      var fit = Math.max(0.1, Math.min(1, dw/1280)).toFixed(4);
+      var meta = document.getElementById('viewportMeta'); if(!meta) return;
+      meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale='+fit+', user-scalable=yes');
+      setTimeout(function(){ meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale=5, user-scalable=yes'); }, 250);
+    }catch(e){}
+  };
   // --ui-k = how many layout pixels one real screen pixel covers. On a phone the 1280px desktop
   // layout is shrunk to fit (e.g. ~0.3x), which made the login card and its text tiny. The
   // login screen multiplies its sizes by --ui-k so it looks the same physical size on every
@@ -5856,6 +5885,13 @@ function scrollPageToTop(){
 try{ if('scrollRestoration' in history) history.scrollRestoration = 'manual'; }catch(e){}
 
 function render(){
+  try{
+    setTimeout(window.__cteEnforceFit,0); setTimeout(window.__cteEnforceFit,400);
+    // A different screen was opened (tap, open, back, next page...): land on it fitted to the screen, not zoomed.
+    const _vk = JSON.stringify([VIEW && VIEW.name, VIEW && VIEW.params]);
+    if(window.__cteLastViewKey!==undefined && window.__cteLastViewKey!==_vk){ setTimeout(window.__cteResetFit,50); }
+    window.__cteLastViewKey = _vk;
+  }catch(e){}
   // Any full re-render replaces the on-screen forms wholesale — either because the
   // user navigated away (in which case whatever they'd typed is gone regardless of
   // what we do here) or because a save just succeeded and freshly-saved values were
@@ -16745,6 +16781,9 @@ document.addEventListener('submit', async (e)=>{
   }
 });
 
+// After saving / submitting anything, land back on a fitted (not zoomed) screen.
+document.addEventListener('submit', ()=>{ try{ setTimeout(window.__cteResetFit, 700); }catch(e){} }, true);
+
 /* ---------- Lazy-loaded libraries ----------
    jsPDF, html2canvas (PDF export) and mammoth (.docx class-list import) are
    fairly heavy (~700KB combined) and only needed by a handful of admin
@@ -17167,7 +17206,7 @@ function printPortrait(opts){
   st.textContent = '@page{ size: A4 ' + (opts.landscape?'landscape':'portrait') + '; margin:8mm; }'
     + '@media print{'
     + ' .ms-print-page{break-after:page;page-break-after:always;} .ms-print-page:last-child{break-after:auto;page-break-after:auto;}'
-    + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:262mm;box-sizing:border-box;}'
+    + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:262mm;height:min(262mm, calc(100vh - 18mm));max-height:262mm;overflow:hidden;box-sizing:border-box;}'
     + ' .ms-print-page.ms-pgfoot{display:flex;flex-direction:column;box-sizing:border-box;}'
     + ' .ms-print-page.ms-fill .ms-tbl.ms-full{flex:1 1 auto;min-height:0;} .ms-print-page.ms-fill .ms-tbl.ms-full table{height:100%;}'
     + ' .ms-print-page.ms-print-page tr.ms-filler{visibility:hidden;}'
@@ -17180,6 +17219,7 @@ function printPortrait(opts){
     + ' #printArea table.mm-table th, #printArea table.mm-table td{padding:2px 3px !important;font-size:7.5px !important;white-space:normal !important;word-break:break-word;}'
     + ' #printArea table.mm-table th{font-size:7px !important;}'
     + ' #printArea table:not(.mm-table) th, #printArea table:not(.mm-table) td{padding:3px 5px !important;font-size:10px !important;height:6.4mm;}'
+    + ' #printArea .ms-print-page.ms-fill table:not(.mm-table) th, #printArea .ms-print-page.ms-fill table:not(.mm-table) td{padding:1px 4px !important;height:5mm !important;line-height:1.15;}'
     + ' }';
   document.head.appendChild(st);
   const restore = ()=>{
