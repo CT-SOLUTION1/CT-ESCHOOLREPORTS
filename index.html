@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-28-1'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-28-5'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1325,6 +1325,13 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
 .tile-grid-3 .tile{padding:calc(14*var(--uk)) calc(8*var(--uk));min-height:calc(86*var(--uk));gap:calc(6*var(--uk));border-radius:calc(12*var(--uk));}
 .tile-grid-3 .tile-icon{font-size:calc(30*var(--uk));}
 .tile-grid-3 .tile-label{font-size:calc(12*var(--uk));letter-spacing:.01em;}
+
+/* Account Section chooser: square icon tiles, three per line, like the teacher dashboard */
+.tile-grid.fin-tiles{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:10px;max-width:640px;margin:14px auto 10px;}
+.fin-tiles .tile{aspect-ratio:1 / 1;min-height:0;height:auto;padding:3%;gap:3%;border-radius:12px;container-type:inline-size;overflow:hidden;box-sizing:border-box;}
+.fin-tiles .tile-icon{font-size:30cqw;line-height:1;}
+@media print{#stuListExportHolder{left:0 !important;width:100% !important;}}
+.fin-tiles .tile-label{font-size:10cqw;letter-spacing:0;line-height:1.1;-webkit-text-stroke:0;font-weight:900;text-align:center;}
 /* Enter Scores: choosing class/subject, paper, assessment, term, maximum mark */
 /* ENTER SCORES — opening page fills the visible screen, one section per band with even spacing.
    .scores-screen is at least as tall as the space left under the top bar (--shell-top is set once per
@@ -3580,7 +3587,7 @@ async function loadSchoolData(id){
   DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
   undoResetShadow();
   try{ histEnsure(); }catch(e){}
-  try{ BIN.idx = null; setTimeout(()=>{ if(CUR && CUR.role==='admin') binPurgeExpired().catch(()=>{}); }, 5000); }catch(e){}
+  try{ BIN.idx = null; setTimeout(()=>{ if(CUR && CUR.role==='admin'){ financeRetentionSweep().catch(()=>{}); binPurgeExpired().catch(()=>{}); } }, 5000); }catch(e){}
 }
 /* ---- Global credential uniqueness (no two accounts anywhere may share a
    username, and no two accounts anywhere may share a password) ---- */
@@ -3850,7 +3857,7 @@ async function removeSchoolFromUsernameIndex(schoolId){
   if(changed) await setShared(USERNAME_INDEX_KEY, idx);
 }
 async function saveSystemOwner(){ await setShared('system_owner', SYSTEM_OWNER); }
-async function saveInfo(){ await undoTracked('info', ()=>setShared(`sch_${SCHOOL_ID}_info`, DB.info)); }
+async function saveInfo(){ try{ stampFinanceCapture(); }catch(e){ console.error(e); } await undoTracked('info', ()=>setShared(`sch_${SCHOOL_ID}_info`, DB.info)); }
 async function saveAccounts(){ await undoTracked('accounts', ()=>setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts)); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
 async function saveClasses(){ await undoTracked('classes', ()=>setShared(`sch_${SCHOOL_ID}_classes`, DB.classes)); }
 async function saveStudents(){ await undoTracked('students', ()=>setShared(`sch_${SCHOOL_ID}_students`, DB.students)); }
@@ -4293,9 +4300,9 @@ function openReturnDialog(){
    RECYCLE BIN
    Nothing that is deleted or removed is erased straight away. Before the real delete happens, a full copy
    (the record plus whatever was removed along with it) is stored in the school's Recycle Bin and kept for
-   15 days. It is listed under Other Settings -> Recycle Bin (and in the "Redo / Return" box): tapping
-   "Redo" on an item fetches the stored data and puts everything back. Items older than 15 days are erased
-   for good (cleaned up when an Admin signs in / opens the bin). If the copy cannot be stored, the delete is
+   15 days (Account Section records: 5 years). It is listed under Other Settings -> Recycle Bin (and in the "Redo / Return" box): tapping
+   "Redo" on an item fetches the stored data and puts everything back. Items older than their keep time (15 days;
+   5 years for Account Section records) are erased for good (cleaned up when an Admin signs in / opens the bin). If the copy cannot be stored, the delete is
    cancelled so nothing is ever lost.
    Covered: students (incl. old students & the automatic old-student clean-up, with scores), classes,
    subject assignments, accounts / teachers / rejected sign-ups, scores, marking-list removals, extra subjects,
@@ -4304,7 +4311,19 @@ function openReturnDialog(){
 var BIN = {sid:null, idx:null, busy:false};
 const BIN_KEEP_DAYS = 15;
 const BIN_MS = BIN_KEEP_DAYS*86400000;
-const BIN_ICON = {student:'🎓', scores:'📝', class:'🏫', assignment:'📚', account:'👤', roster:'📋', finance:'💰', subject:'📖', cwtest:'🧪'};
+// Account Section (finance) data is different: every deleted record, every earlier version of a record that was
+// corrected, and every record cleared out by the term clean-up is kept for 5 YEARS before it is erased for good.
+const BIN_FIN_KEEP_DAYS = 1826;                       // 5 years (includes one leap day)
+const BIN_FIN_MS = BIN_FIN_KEEP_DAYS*86400000;
+const BIN_FIN_KINDS = new Set(['finance','fincorrect','finarchive']);
+function binKeepMs(m){ return (m && BIN_FIN_KINDS.has(m.kind)) ? BIN_FIN_MS : BIN_MS; }
+function binLeftText(ms){
+  const days = Math.max(1, Math.ceil(ms/86400000));
+  if(days>=730) return `${Math.floor(days/365)} years left`;
+  if(days>=60) return `${Math.round(days/30)} months left`;
+  return `${days} day${days===1?'':'s'} left`;
+}
+const BIN_ICON = {student:'🎓', scores:'📝', class:'🏫', assignment:'📚', account:'👤', roster:'📋', finance:'💰', fincorrect:'✏️', finarchive:'🗄️', subject:'📖', cwtest:'🧪'};
 function binIdxKey(sid){ return `sch_${sid||SCHOOL_ID}_bin_index`; }
 function binItemKey(id, sid){ return `sch_${sid||SCHOOL_ID}_bin_${id}`; }
 // Low-level storage that reports failure to the caller (unlike setShared/getShared, which pop up a full-screen error).
@@ -4384,7 +4403,9 @@ function binAsnLabel(a){
   return `${a.subject||'Subject'}${c?' — '+c.name:''}${a.teacherUsername?' ('+a.teacherUsername+')':''}`;
 }
 function binFinLabel(coll, it){
-  const nm = it.name || it.title || it.item || it.type || it.category || it.description || it.note || '';
+  let nm = it.name || it.title || it.item || it.type || it.category || it.description || it.note || '';
+  if(!nm && it.requirementId){ try{ nm = (((financeData().requirements)||[]).find(r=>r.id===it.requirementId)||{}).name || ''; }catch(e){} }
+  if(!nm && it.classId){ nm = ((DB.classes||[]).find(c=>c.id===it.classId)||{}).name || ''; }
   const st = it.studentId ? ((DB.students||[]).find(s=>s.id===it.studentId)||{}).name : '';
   const amt = (it.amount!==undefined && it.amount!==null && it.amount!=='') ? ` — ${it.amount}` : '';
   return ((st ? st+': ' : '') + (nm || 'Record') + amt).trim();
@@ -4393,15 +4414,30 @@ async function binFinGuard(coll, typeName, item, extra){
   if(!item) return true;
   return binGuard('finance', binFinLabel(coll,item), typeName, Object.assign({coll, item}, extra||{}));
 }
+// Keeps the EARLIER version of an Account Section record for 5 years before it is corrected (edited) or removed.
+// Returns false (and tells the person nothing was changed) when the copy could not be stored.
+async function binFinCorrect(coll, typeName, item, extra, how){
+  if(!item) return true;
+  const ok = await binStash('fincorrect', binFinLabel(coll,item), `${typeName} — ${how||'before correction'}`, Object.assign({coll, item:JSON.parse(JSON.stringify(item))}, extra||{}));
+  if(!ok) alert('Could not keep a copy of the earlier version (check your connection and try again). Nothing was changed.');
+  return ok;
+}
+// Same, but only when the new values really differ from what is stored (so re-saving an unchanged form adds nothing).
+async function binFinCorrectIf(coll, typeName, existing, rec, extra){
+  if(!existing) return true;
+  const changed = Object.keys(rec).some(k=>JSON.stringify(existing[k])!==JSON.stringify(rec[k]));
+  if(!changed) return true;
+  return binFinCorrect(coll, typeName, existing, extra);
+}
 function binVisible(idx){
   const now = Date.now();
-  return (idx||[]).filter(m=> (now - m.t) <= BIN_MS && CUR && (CUR.role==='admin' || (m.by===CUR.username && m.role===CUR.role)));
+  return (idx||[]).filter(m=> (now - m.t) <= binKeepMs(m) && CUR && (CUR.role==='admin' || (m.by===CUR.username && m.role===CUR.role)));
 }
-// Erases items kept longer than 15 days (Admin only). Never touches anything younger.
+// Erases items kept longer than their keep time — 15 days, or 5 years for Account Section records (Admin only). Never touches anything younger.
 async function binPurgeExpired(){
   const idx = await binLoad(true);
   const now = Date.now();
-  const gone = idx.filter(m=> (now - m.t) > BIN_MS);
+  const gone = idx.filter(m=> (now - m.t) > binKeepMs(m));
   if(!gone.length) return idx;
   const done = new Set();
   for(const m of gone){ try{ await binRawDel(binItemKey(m.id)); done.add(m.id); }catch(e){ console.error(e); } }
@@ -4429,16 +4465,16 @@ async function binFillHost(host, limit){
   const all = binVisible(idx).sort((a,b)=>b.t-a.t);
   const items = limit ? all.slice(0,limit) : all;
   const now = Date.now();
-  const head = limit ? '<div class="bin-head">🗑 Recycle Bin — deleted in the last 15 days</div>' : '';
+  const head = limit ? '<div class="bin-head">🗑 Recycle Bin — kept 15 days (Account Section records: 5 years)</div>' : '';
   if(!items.length){
-    host.innerHTML = limit ? '' : '<div class="small">The Recycle Bin is empty. Anything you delete will wait here for 15 days.</div>';
+    host.innerHTML = limit ? '' : '<div class="small">The Recycle Bin is empty. Anything you delete will wait here for 15 days (Account Section records and corrections: 5 years).</div>';
     return;
   }
   host.innerHTML = head + items.map(m=>{
-    const left = Math.max(1, Math.ceil((m.t + BIN_MS - now)/86400000));
+    const leftMs = m.t + binKeepMs(m) - now;
     return `<div class="bin-row"><div class="bin-main"><div>${BIN_ICON[m.kind]||'🗑'} <b>${esc(m.label)}</b></div>
-      <div class="bin-meta">${esc(m.sub||'')}${m.sub?' · ':''}deleted ${esc(histShort(new Date(m.t)))}${m.byName?' by '+esc(m.byName):''}</div></div>
-      <div class="bin-left">${left} day${left===1?'':'s'} left</div>
+      <div class="bin-meta">${esc(m.sub||'')}${m.sub?' · ':''}${m.kind==='fincorrect'?'corrected':'deleted'} ${esc(histShort(new Date(m.t)))}${m.byName?' by '+esc(m.byName):''}</div></div>
+      <div class="bin-left">${binLeftText(leftMs)}</div>
       <button type="button" class="btn-outline bin-btn" data-bin="${esc(m.id)}">↷ Redo</button></div>`;
   }).join('') + ((limit && all.length>items.length) ? `<div class="small">+ ${all.length-items.length} more — open <b>Other Settings → Recycle Bin</b> to see them all.</div>` : '');
   host.querySelectorAll('[data-bin]').forEach(b=>{ b.onclick = ()=>binRestore(b.dataset.bin, host, limit); });
@@ -4560,9 +4596,42 @@ async function binApply(kind, data){
         if(!d[data.coll].some(x=>x.id===it.id)) d[data.coll].push(it);
       }
       (data.reqStatus||[]).forEach(r=>{ const j = JSON.stringify(r); if(!d.reqStatus.some(x=>JSON.stringify(x)===j)) d.reqStatus.push(r); });
-      if(data.coll==='fees' || data.coll==='payments'){ syncAllStudentsFinance(); await Promise.all([saveInfo(), saveStudents()]); }
+      if(['fees','payments','classAgreed','studentAgreed','installments'].includes(data.coll)){ syncAllStudentsFinance(); await Promise.all([saveInfo(), saveStudents()]); }
       else await saveInfo();
       return {ok:true};
+    }
+    case 'fincorrect': {
+      const d = financeData(); const it = data.item; if(!it) return empty;
+      const copy = JSON.parse(JSON.stringify(it));
+      if(data.coll==='reqStatus'){
+        d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===copy.requirementId && x.studentId===copy.studentId));
+        d.reqStatus.push(copy);
+      } else if(data.sfId){
+        const sf = d.shortfalls.find(x=>x.id===data.sfId);
+        if(!sf) return {ok:false, msg:'The shortfall record this belonged to no longer exists.'};
+        sf.settlements = sf.settlements || [];
+        const cur = sf.settlements.find(x=>x.id===copy.id);
+        if(cur){ Object.keys(cur).forEach(k=>delete cur[k]); Object.assign(cur, copy); } else sf.settlements.push(copy);
+      } else {
+        d[data.coll] = d[data.coll] || [];
+        const cur = d[data.coll].find(x=>x.id===copy.id);
+        if(cur){ Object.keys(cur).forEach(k=>delete cur[k]); Object.assign(cur, copy); } else d[data.coll].push(copy);
+      }
+      if(['fees','payments','classAgreed','studentAgreed','installments'].includes(data.coll)){ syncAllStudentsFinance(); await Promise.all([saveInfo(), saveStudents()]); }
+      else await saveInfo();
+      return {ok:true};
+    }
+    case 'finarchive': {
+      const d = financeData();
+      ['payments','expenses','reqStatus'].forEach(k=>{
+        d[k] = d[k] || [];
+        (data[k]||[]).forEach(it=>{
+          const there = k==='reqStatus' ? d[k].some(x=>JSON.stringify(x)===JSON.stringify(it)) : d[k].some(x=>x.id===it.id);
+          if(!there) d[k].push(it);
+        });
+      });
+      syncAllStudentsFinance(); await Promise.all([saveInfo(), saveStudents()]);
+      return {ok:true, note:'These older records are back in the Account Section. They move to the Recycle Bin again the next time the term changes.'};
     }
     case 'subject': {
       if(!data.key || !data.name) return empty;
@@ -5118,7 +5187,7 @@ async function requireDeleteAuth(what, note){
 async function requireOwnerCode(what, confirmLabel){
   hideActionBanner();
   if(!CUR || CUR.role!=='admin'){ alert('Only the school Owner/Admin can do that.'); return false; }
-  if(!DB.info.ownerCode){ alert('No owner code has been set for this school yet, so this cannot be done. Please set an owner code first (Finance & Requirements → Owner Code), or contact the Founder.'); return false; }
+  if(!DB.info.ownerCode){ alert('No owner code has been set for this school yet, so this cannot be done. Please set an owner code first (Account Section → Owner Code), or contact the Founder.'); return false; }
   const code = await askSecret('Owner code required', `Enter your private owner code to ${what}.`, confirmLabel||'Confirm');
   if(code===null) return false;
   if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was changed.'); return false; }
@@ -6253,7 +6322,7 @@ function renderFounderView(view){
       </div>
     </div>
     <div class="card" style="margin-top:14px;border-left:4px solid var(--gold);">
-      <h3>Finance & Requirements Password</h3>
+      <h3>Account Section Password</h3>
       <div style="background:#fff7e0;border:1px solid var(--gold);border-radius:8px;padding:12px;margin-top:10px;">
         <div class="small">CURRENT FINANCE PASSWORD</div>
         <div style="font-family:monospace;font-size:20px;font-weight:800;margin-top:4px;letter-spacing:1px;">${esc((FOUNDER_LOGINS.info&&FOUNDER_LOGINS.info.financePassword)||'Not set')}</div>
@@ -6331,7 +6400,7 @@ function renderPlatformAuth(){
   if(AUTH_VIEW==='founderLogin') return renderFounderLoginForm();
   if(AUTH_VIEW==='founderRecovery') return renderFounderRecoveryForm();
   if(AUTH_VIEW==='schoolRecovery') return renderSchoolRecoveryForm();
-  const roleLabel = loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':loginRole==='finance'?'Finance & Requirements':'Parent';
+  const roleLabel = loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':loginRole==='finance'?'Account Section':'Parent';
   const roleIcon = loginRole==='admin'?'🗝️':loginRole==='teacher'?'🎓':loginRole==='finance'?'💰':'👪';
   return `
   <div class="auth-wrap"><div class="auth-box platform-login-box">
@@ -6391,8 +6460,8 @@ function renderPlatformAuth(){
         <div class="note" style="margin-top:20px;text-align:center;">Select Owner/Admin, Teacher, or Parent above to continue to sign in.</div>
       </div>
       <div class="login-section" style="text-align:center;">
-        <div class="login-section-label">Finance &amp; Requirements</div>
-        <button type="button" class="btn" data-action="setRole:finance" style="width:100%;">💰 Finance &amp; Requirements Login</button>
+        <div class="login-section-label">Account Section</div>
+        <button type="button" class="btn" data-action="setRole:finance" style="width:100%;">💰 Account Section Login</button>
       </div>
       <div class="login-section" style="text-align:center;font-size:13px;">
         <div class="login-section-label" style="margin-bottom:12px;">New Here?</div>
@@ -6535,7 +6604,7 @@ function renderParentSignupSlot(){
 // Admin decides whether teachers can open report cards at all (default: allowed, as before).
 function teachersMayViewReports(){ return !(DB.info && DB.info.teachersCanViewReports===false); }
 function navByRole(role){
-  if(FINANCE_ONLY && role==='admin') return [['finance','Finance & Requirements','💰'],['admingate','Admin Dashboard','🏠']]; // Finance-slot sign-in: nothing else is offered
+  if(FINANCE_ONLY && role==='admin') return [['finance','ACCOUNT SECTION','💰'],['admingate','Admin Dashboard','🏠']]; // Finance-slot sign-in: nothing else is offered
   if(role==='parent' && CUR && !parentMayViewReports(CUR)){
     return navByRoleRaw(role).filter(([k])=>k!=='preport');
   }
@@ -6555,7 +6624,7 @@ function navByRoleRaw(role){
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','PARENTS AND NON TEACHING STAFF','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','Mark Sheets','📋'],['classanalysis','RESULT ANALYSIS','📈'],
-      ['finance','Finance & Requirements','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
+      ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
   }
@@ -6579,7 +6648,7 @@ function navByRoleRaw(role){
 function featureTilesHTML(role, excludeKey){
   const items = navByRole(role).filter(([k])=>k!==excludeKey);
   if(!items.length) return '';
-  if(role==='admin'){ // Result Analysis and Finance & Requirements trade places on the dashboard
+  if(role==='admin'){ // Result Analysis and Account Section trade places on the dashboard
     const a = items.findIndex(x=>x[0]==='classanalysis'), b = items.findIndex(x=>x[0]==='finance');
     if(a>-1 && b>-1){ const t = items[a]; items[a] = items[b]; items[b] = t; }
   }
@@ -6648,7 +6717,7 @@ const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','res
 function renderView(view){
   try{
     if(FINANCE_ONLY && view!=='finance' && view!=='financestudent' && view!=='admingate'){
-      return '<p>You don\'t have permission to view this page. This sign-in can only use Finance &amp; Requirements.</p>';
+      return '<p>You don\'t have permission to view this page. This sign-in can only use Account Section.</p>';
     }
     if(ADMIN_ONLY_VIEWS.has(view) && (!CUR || CUR.role!=='admin')){
       return '<p>You don\'t have permission to view this page. Only an Admin can manage this.</p>';
@@ -6721,7 +6790,8 @@ function backupReminderBanner(){
   return '';
 }
 let FINANCE_UNLOCKED = false;
-let FINANCE_ONLY = false; // signed in through the Finance & Requirements slot: this session may ONLY use Finance & Requirements
+let FINANCE_ONLY = false; // signed in through the Account Section slot: this session may ONLY use Account Section
+let FINANCE_RESET_SKIPPED = false; // 'Later' pressed on the forced Finance password reset prompt (this unlock only)
 let FINANCE_FORGOT = false; // showing the owner-code recovery form on the Finance lock screen
 function money(n){ return Number(n||0).toLocaleString(); }
 // Payer details are deliberately limited to just these three fields — name,
@@ -6742,7 +6812,7 @@ function payerLine(rec){
 const PAYER_RELATIONSHIPS = ['Parent','Guardian','Relative','Self','Sponsor','Other'];
 function payerRelationshipOptions(sel){ return PAYER_RELATIONSHIPS.map(r=>`<option ${sel===r?'selected':''}>${r}</option>`).join(''); }
 /* ======================================================================
-   FINANCE & REQUIREMENTS — data helpers
+   ACCOUNT SECTION — data helpers
    ----------------------------------------------------------------------
    Everything here reads/writes DB.info.financeData (fees, payments,
    requirements, reqStatus) — stored inline in the shared "info" document
@@ -7410,7 +7480,7 @@ async function runDownloadFinanceTablePdf(btn, exportElId, filename){
   try{ await downloadFinanceTablePdf(exportElId, filename); }
   finally{ btn.disabled = false; btn.innerHTML = orig; }
 }
-// Whether a school has actually started using Finance & Requirements at all —
+// Whether a school has actually started using Account Section at all —
 // i.e. has it recorded even one fee item or one payment, anywhere. Schools that
 // never touch this section (many won't) should never have a report card silently
 // start showing a "Fees balance" the admin didn't put there — this is the
@@ -7440,7 +7510,7 @@ function syncStudentFinance(studentId, d){
   const s = DB.students.find(x=>x.id===studentId);
   if(!s) return;
   d = d || financeData();
-  if(!financeSectionInUse(d)) return; // this school hasn't started using Finance & Requirements — never touch manually-typed figures
+  if(!financeSectionInUse(d)) return; // this school hasn't started using Account Section — never touch manually-typed figures
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const hasItemizedData = d.fees.some(f=>financeItemAppliesToStudent(f,s)) || d.payments.some(p=>p.studentId===s.id);
   if(hasItemizedData){
@@ -7456,12 +7526,70 @@ function syncStudentFinance(studentId, d){
   if(nextAmt>0) s.nextTermFees = nextAmt;
 }
 function syncAllStudentsFinance(){ const d=financeData(); if(!financeSectionInUse(d)) return; DB.students.forEach(s=>syncStudentFinance(s.id,d)); }
-function pruneOldFinanceRecords(){
+/* ---- 5-YEAR RETENTION OF ACCOUNT SECTION RECORDS ----
+   Every Account Section record carries `capturedAt` (ISO time it was first captured). Editing a record never
+   changes it. Records that already existed before this rule have no such stamp: they take their own
+   createdAt / recordedAt / submittedAt when they have one, otherwise the moment this version first saw them.
+   Once a record is 5 years past capturedAt (same 1826-day length as the Recycle Bin keep time) it is erased
+   for good from the live Account Section. Earlier versions of corrected / deleted records in the Recycle Bin keep
+   their own 5-year clock (see binPurgeExpired). The sweep writes straight to storage (not through the undo /
+   change-history wrappers) so an erased record can never be brought back by Undo or time-travel. */
+const FIN_RECORD_LISTS = ['fees','payments','requirements','reqStatus','shortfalls','expenseTypes','expenses','classAgreed','studentAgreed','installments','salaries'];
+function stampFinanceCapture(){
+  const d = DB.info && DB.info.financeData; if(!d) return false;
+  const nowIso = new Date().toISOString(); let changed = false;
+  const stamp = it=>{
+    if(!it || typeof it!=='object' || it.capturedAt) return;
+    const known = [it.createdAt, it.recordedAt, it.submittedAt].find(v=>v && !isNaN(Date.parse(v)));
+    it.capturedAt = known ? new Date(known).toISOString() : nowIso; changed = true;
+  };
+  FIN_RECORD_LISTS.forEach(k=>{ (Array.isArray(d[k])?d[k]:[]).forEach(it=>{ stamp(it); if(k==='shortfalls') (Array.isArray(it.settlements)?it.settlements:[]).forEach(stamp); }); });
+  return changed;
+}
+async function financeRetentionSweep(){
+  try{
+    if(!SCHOOL_ID || !DB.info || !DB.info.financeData) return;
+    const stamped = stampFinanceCapture();
+    const d = DB.info.financeData, cutoff = Date.now() - BIN_FIN_MS;
+    const expired = it=>{ const t = Date.parse(it && it.capturedAt); return !isNaN(t) && t < cutoff; };
+    let removed = 0;
+    FIN_RECORD_LISTS.forEach(k=>{
+      if(!Array.isArray(d[k])) return;
+      const keep = d[k].filter(it=>!expired(it)); removed += d[k].length - keep.length; d[k] = keep;
+    });
+    (d.shortfalls||[]).forEach(sf=>{
+      if(!Array.isArray(sf.settlements)) return;
+      const keep = sf.settlements.filter(it=>!expired(it)); removed += sf.settlements.length - keep.length; sf.settlements = keep;
+    });
+    if(!stamped && !removed) return;
+    if(removed){ try{ syncAllStudentsFinance(); }catch(e){ console.error(e); } }
+    await binRawSet(`sch_${SCHOOL_ID}_info`, DB.info);
+    if(removed) await binRawSet(`sch_${SCHOOL_ID}_students`, DB.students);
+    undoResetShadow();
+  }catch(e){ console.error('Account Section 5-year clean-up skipped', e); }
+}
+async function pruneOldFinanceRecords(){
+  // Records past the term window leave the live Account Section (keeps the shared info doc small) but are NOT
+  // erased: they are copied into the Recycle Bin first and kept there for 5 years. If the copy cannot be stored,
+  // nothing is removed and the clean-up simply tries again at the next term change.
   const d = financeData();
-  d.payments = d.payments.filter(p=> termsBehindCurrent(p.term||DB.info.currentTerm, p.year||DB.info.currentYear) <= MAX_TERMS_BEHIND);
-  d.expenses = d.expenses.filter(x=> termsBehindCurrent(x.term||DB.info.currentTerm, x.year||DB.info.currentYear) <= MAX_TERMS_BEHIND);
-  const oldReqIds = new Set(d.requirements.filter(r=>termsBehindCurrent(r.term||DB.info.currentTerm, r.year||DB.info.currentYear) > MAX_TERMS_BEHIND).map(r=>r.id));
-  if(oldReqIds.size) d.reqStatus = d.reqStatus.filter(x=>!oldReqIds.has(x.requirementId));
+  const isOld = x=> termsBehindCurrent(x.term||DB.info.currentTerm, x.year||DB.info.currentYear) > MAX_TERMS_BEHIND;
+  const oldPay = d.payments.filter(isOld), oldExp = d.expenses.filter(isOld);
+  const oldReqIds = new Set(d.requirements.filter(isOld).map(r=>r.id));
+  const oldSt = d.reqStatus.filter(x=>oldReqIds.has(x.requirementId));
+  const chunks = []; let cur = {payments:[], expenses:[], reqStatus:[]}, size = 0, n = 0;
+  const add = (k, it)=>{ const l = JSON.stringify(it).length; if(n && size+l>600000){ chunks.push(cur); cur = {payments:[], expenses:[], reqStatus:[]}; size = 0; n = 0; } cur[k].push(it); size += l; n++; };
+  oldPay.forEach(it=>add('payments',it)); oldExp.forEach(it=>add('expenses',it)); oldSt.forEach(it=>add('reqStatus',it));
+  if(n) chunks.push(cur);
+  if(!chunks.length) return;
+  for(const c of chunks){
+    const label = `${c.payments.length} payment${c.payments.length===1?'':'s'}, ${c.expenses.length} expense${c.expenses.length===1?'':'s'}, ${c.reqStatus.length} requirement record${c.reqStatus.length===1?'':'s'}`;
+    if(!(await binStash('finarchive', label, 'Older Account Section records — term clean-up', c, {auto:true}))) return;
+  }
+  const gone = new Set([...oldPay, ...oldExp, ...oldSt]);
+  d.payments = d.payments.filter(x=>!gone.has(x));
+  d.expenses = d.expenses.filter(x=>!gone.has(x));
+  d.reqStatus = d.reqStatus.filter(x=>!gone.has(x));
 }
 // Plain onchange handler (not the data-action click system, which is built for
 // buttons/links and would fight a checkbox's own native toggle) for ticking off
@@ -7488,33 +7616,65 @@ function filterFinanceRows(q){
     tr.style.display = (!q || tr.dataset.searchtext.includes(q)) ? '' : 'none';
   });
 }
-// The main entry point for the Finance & Requirements section. After
+// The main entry point for the Account Section section. After
 // unlocking, the admin must first choose Fees or Requirements, then a class
 // (or "All Students") before anything else is shown — see finTabChooserHTML()
 // and classPickerHTML() below. "Advanced finance tools" is a link back to the
 // full original toolkit (itemized fee catalog, expenses, income, old students,
 // control) kept intact in financeAdvancedView() further down.
+// True when the Account Section password is the same as an Admin/Owner password or the Owner Code.
+function financePwMatchesAdminOrOwner(pw){
+  if(!pw) return false;
+  if(DB.info && DB.info.ownerCode && DB.info.ownerCode===pw) return true;
+  return (DB.accounts||[]).some(a=>a.role==='admin' && a.password===pw);
+}
+function financePwNeedsReset(){
+  return !!(DB && DB.info && DB.info.financePassword && financePwMatchesAdminOrOwner(DB.info.financePassword));
+}
+// Neutral prompt on purpose: it does not say why a new password is being asked for.
+function financeForceResetHTML(){
+  return `<div style="position:fixed;inset:0;z-index:99999;background:rgba(10,42,74,.72);display:flex;align-items:center;justify-content:center;padding:18px;">
+    <div style="background:#fff;max-width:420px;width:100%;border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.35);padding:22px;">
+      <h3 style="margin-top:0;">Reset Account Section password</h3>
+      <form data-form="forceFinanceReset">
+        <label>New password</label><input name="password" type="password" minlength="4" required autocomplete="new-password" autofocus>
+        <label>Confirm new password</label><input name="confirmPassword" type="password" minlength="4" required autocomplete="new-password">
+        <button class="btn" style="margin-top:14px;width:100%;">Save new password</button>
+      </form>
+      <button type="button" class="btn-outline" data-action="finResetLater" style="margin-top:10px;width:100%;">Later</button>
+    </div></div>`;
+}
 function financeRequirementsView(){
+  const html = financeRequirementsViewCore();
+  if(FINANCE_UNLOCKED && !FINANCE_RESET_SKIPPED && !FOUNDER_IMPERSONATING_SCHOOL && CUR && CUR.role==='admin' && financePwNeedsReset()) return html + financeForceResetHTML();
+  return html;
+}
+function financeRequirementsViewCore(){
   if(!FINANCE_UNLOCKED){
     const first=!DB.info.financePassword;
     const founderBtn = FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock" style="margin-top:14px;">🛟 Founder Emergency Access</button>`:'';
     if(!first && FINANCE_FORGOT){
-      if(!DB.info.ownerCode) return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">No owner code has been set for this school, so the Finance password can't be recovered here. Please contact ${esc(FOUNDER_CONTACT)}.</p><button type="button" class="btn-outline" data-action="finForgotBack">← Back</button>${founderBtn}</div>`;
-      return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><h3>Forgot Finance Password</h3><form data-form="finRecoverPassword"><label>Owner Code</label><input name="ownerCode" type="password" required autofocus autocomplete="off"><label>New Finance Password</label><input name="password" type="password" minlength="4" required autocomplete="new-password"><p class="small">Must be different from your own login password.</p><button class="btn" style="margin-top:14px;">Reset Finance Password</button></form><button type="button" class="btn-outline" data-action="finForgotBack" style="margin-top:10px;">← Back</button>${founderBtn}</div>`;
+      if(!DB.info.ownerCode) return `<h2>ACCOUNT SECTION</h2><div class="card"><p class="note">No owner code has been set for this school, so the Finance password can't be recovered here. Please contact ${esc(FOUNDER_CONTACT)}.</p><button type="button" class="btn-outline" data-action="finForgotBack">← Back</button>${founderBtn}</div>`;
+      return `<h2>ACCOUNT SECTION</h2><div class="card"><h3>Forgot Finance Password</h3><form data-form="finRecoverPassword"><label>Owner Code</label><input name="ownerCode" type="password" required autofocus autocomplete="off"><label>New Finance Password</label><input name="password" type="password" minlength="4" required autocomplete="new-password"><p class="small">Must be different from your own login password.</p><button class="btn" style="margin-top:14px;">Reset Finance Password</button></form><button type="button" class="btn-outline" data-action="finForgotBack" style="margin-top:10px;">← Back</button>${founderBtn}</div>`;
     }
-    return `<h2>FINANCE AND REQUIREMENTS</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Finance & Requirements password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}">${first?'':`<label>Username</label><input name="username" required autocomplete="username" autofocus><p class="small">Enter the school's Admin username.</p>`}<label>Finance Password</label><input name="password" type="password" minlength="4" required ${first?'autofocus':''}>${first?'<p class="small">Must be different from your own login password.</p>':''}${first && !DB.info.ownerCode ? '<label>Owner Code</label><input name="ownerCode" minlength="4" required autocomplete="off"><p class="small">Used to recover the Finance password if it is forgotten.</p>' : ''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Finance Section'}</button></form>${!first?`<p class="small" style="margin-top:12px;"><a href="#" data-action="finForgotPw">Forgot password?</a></p>`:''}${founderBtn}</div>`;
+    return `<h2>ACCOUNT SECTION</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Account Section password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}">${first?'':`<label>Username</label><input name="username" required autocomplete="username" autofocus><p class="small">Enter the school's Admin username.</p>`}<label>Finance Password</label><input name="password" type="password" minlength="4" required ${first?'autofocus':''}>${first?'<p class="small">Must be different from your own login password.</p>':''}${first && !DB.info.ownerCode ? '<label>Owner Code</label><input name="ownerCode" minlength="4" required autocomplete="off"><p class="small">Used to recover the Finance password if it is forgotten.</p>' : ''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Account Section'}</button></form>${(!first && !FINANCE_ONLY)?`<p class="small" style="margin-top:12px;"><a href="#" data-action="finForgotPw">Forgot password?</a></p>`:''}${founderBtn}</div>`;
   }
-  const lockHeader = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS</h2><p class="small">Choose Fees, Requirements, or one of the Analysis screens to get started.</p></div><div class="flex" style="gap:8px;"><button class="btn-outline" data-action="finTab:security">🔑 Passwords</button><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div></div>`;
+  const lockHeader = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>ACCOUNT SECTION</h2><p class="small">Choose Fees, Requirements, or one of the Analysis screens to get started.</p></div><div class="flex" style="gap:8px;">${FINANCE_ONLY?'':'<button class="btn-outline" data-action="finTab:security">🔑 Passwords</button>'}<button class="btn-outline" data-action="financeLock">🔒 Lock</button></div></div>`;
   const finTab = VIEW.params.finTab;
   if(!finTab) return lockHeader + finTabChooserHTML();
   if(finTab==='advanced') return financeAdvancedView();
   const d = financeData();
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const backTabs = `<p class="small" style="margin:8px 0 14px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p>`;
+  if(finTab==='security' && FINANCE_ONLY) return lockHeader + backTabs + financePasswordsView();
   if(finTab==='security') return lockHeader + backTabs + financePasswordsView();
   if(finTab==='analysis') return lockHeader + backTabs + feesAnalysisView(d);
   if(finTab==='reqanalysis') return lockHeader + backTabs + requirementsAnalysisView(d);
   if(finTab==='salaries') return lockHeader + backTabs + salariesView(d);
+  if(finTab==='summary'){
+    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
+    return lockHeader + backTabs + studentsSummaryView(d, term, year);
+  }
   if(finTab==='fees'){
     if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
     return lockHeader + backTabs + feesClassTableView(d, term, year);
@@ -7654,7 +7814,7 @@ function salariesView(d){
 // Change the Finance password and the Owner Code at any time (the section is already unlocked,
 // so no old value is needed). Used by the "Passwords" page and the Finance Control card.
 function financeSecurityFormsHTML(){
-  if(FINANCE_ONLY) return '<p class="note">The Finance password and Owner Code can only be changed by the Admin, from the Admin sign-in (Other Settings).</p>';
+  if(FINANCE_ONLY) return '<p class="note">The Finance password and Owner Code can only be changed by the Admin, from the Admin sign-in, inside the Account Section (🔑 Passwords).</p>';
   return `<form data-form="setFinancePassword"><h3>Finance Password</h3>
       <label>New Finance password</label><input name="password" type="password" minlength="4" required autocomplete="new-password">
       <label>Confirm new Finance password</label><input name="confirmPassword" type="password" minlength="4" required autocomplete="new-password">
@@ -7676,22 +7836,97 @@ function adminGateView(){
     <form data-form="adminGateUnlock"><label>Username</label><input name="username" required autocomplete="username" autofocus>
     <label>Admin Password</label><input name="password" type="password" required autocomplete="current-password">
     <button class="btn" style="margin-top:14px;">Open Admin Dashboard</button></form>
-    <p class="small" style="margin-top:12px;"><a href="#" data-action="nav:finance">← Back to Finance &amp; Requirements</a></p></div>`;
+    <p class="small" style="margin-top:12px;"><a href="#" data-action="nav:finance">← Back to Account Section</a></p></div>`;
 }
 // Tile chooser shown right after unlocking: Fees or Requirements first, as
 // requested, with a quiet link through to the original full toolkit.
 function finTabChooserHTML(){
-  return `<div class="card">
-    <div class="flex" style="gap:14px;flex-wrap:wrap;">
-      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:fees">💰 Fees</button>
-      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:requirements">📋 Requirements</button>
-      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:analysis">📊 School Fees Analysis</button>
-      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:reqanalysis">📋 School Requirements Analysis</button>
-      <button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="finTab:salaries">💼 Salaries</button>
-      ${FINANCE_ONLY?'<button type="button" class="btn-gold" style="padding:20px 30px;font-size:16px;" data-action="nav:admingate">🏠 Admin Dashboard</button>':''}
+  // Real icon tiles (same look as the dashboard tiles): square, three per line, icon over label.
+  const tiles = [
+    ['finTab:fees','💰','FEES'],
+    ['finTab:requirements','📋','REQUIREMENTS'],
+    ['finTab:analysis','📊','FEES ANALYSIS'],
+    ['finTab:reqanalysis','🧾','REQUIREMENTS ANALYSIS'],
+    ['finTab:salaries','💼','SALARIES'],
+    ['finTab:summary','🗂️','STUDENTS SUMMARY']
+  ];
+  if(FINANCE_ONLY) tiles.push(['nav:admingate','🏠','ADMIN DASHBOARD']);
+  tiles.push(['finTab:advanced','⚙️','ADVANCED TOOLS']);
+  return `<div class="tile-grid fin-tiles">${tiles.map(([act,icon,label])=>`
+    <button type="button" class="tile" data-action="${act}" aria-label="${esc(label)}">
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label">${esc(label)}</span>
+    </button>`).join('')}
+  </div>
+  <p class="small" style="margin-top:4px;">Advanced tools: fee item catalog, expenses, income analysis, old students, control.</p>`;
+}
+
+// Students Summary: every student with ALL fees and requirements details in separate columns,
+// ready to print, save as PDF, or download as a CSV (opens in Excel).
+function studentsSummaryData(d, term, year, finClassId){
+  const isAll = finClassId==='all';
+  const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
+  // Requirement columns: union of whatever is demanded for the classes shown.
+  const reqMap = new Map();
+  active.forEach(st=>studentDemandReqs(st,d).forEach(r=>{ if(!reqMap.has(r.id)) reqMap.set(r.id,r); }));
+  const reqs = [...reqMap.values()];
+  const maxInst = Math.max(0, ...active.map(st=>studentAgreedSummary(st,term,year,d).installments.length));
+  const header = ['Adm No.','Student','Class','Agreed Fees','Last Term Balance',
+    ...Array.from({length:maxInst},(_,i)=>`${ordinal(i+1)} Payment`),
+    'Total Paid','Fees Balance',
+    ...reqs.map(r=>r.name),'Requirements Outstanding'];
+  const rows = active.map(st=>{
+    const sum = studentAgreedSummary(st,term,year,d);
+    const clx = DB.classes.find(c=>c.id===st.classId);
+    const last = studentLastTermBalance(st,term,year,d);
+    const demanded = new Set(studentDemandReqs(st,d).map(r=>r.id));
+    let outstanding = 0;
+    const reqCells = reqs.map(r=>{
+      if(!demanded.has(r.id)) return '—';
+      const stat = reqStatusFor(r.id, st.id, d);
+      if(stat) return stat.method==='cash' ? `Cash paid (${money(stat.amount||0)})` : 'Submitted';
+      outstanding++; return 'Pending';
+    });
+    return [st.admNo, st.name, clx?clx.name:'—', sum.agreed, last===null?'—':last,
+      ...Array.from({length:maxInst},(_,i)=> i<sum.installments.length ? sum.installments[i].amount : ''),
+      sum.paid, sum.balance, ...reqCells, outstanding];
+  });
+  return {header, rows, active};
+}
+function studentsSummaryView(d, term, year){
+  const finClassId = VIEW.params.finClassId;
+  const isAll = finClassId==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===finClassId);
+  if(!isAll && !cls) return classPickerHTML();
+  const label = isAll ? 'All Students' : cls.name;
+  const {header, rows} = studentsSummaryData(d, term, year, finClassId);
+  const base = `${label.replace(/\s+/g,'_')}_summary_${term.replace(/\s+/g,'_')}_${year}`;
+  const pend = x=> x==='Pending' ? ' style="color:var(--danger);font-weight:700;"' : '';
+  return `<div class="flex" style="justify-content:space-between;align-items:center;">
+    <h3 style="margin:0;">${esc(label)} — Students Summary (${esc(term)} ${esc(String(year))})</h3>
+    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
+  </div>
+  <div class="card">
+    <p class="small" style="margin-top:0;">Every student with fees and each requirement in its own column.</p>
+    <div class="flex">
+      <button type="button" class="btn-outline" onclick="printFinanceTable('summaryTableExport')">🖨 Print</button>
+      <button type="button" class="btn-outline" onclick="runDownloadFinanceTablePdf(this, 'summaryTableExport', '${base}.pdf')">⬇ Download PDF</button>
+      <button type="button" class="btn-outline" onclick="downloadStudentsSummaryCsv('${finClassId}')">⬇ Download Excel (CSV)</button>
     </div>
-    <p class="small" style="margin-top:16px;"><a href="#" data-action="finTab:advanced">Advanced finance tools (fee item catalog, expenses, income analysis, old students, control)</a></p>
-  </div>`;
+  </div>
+  <div id="summaryTableExport"><div class="card" style="overflow-x:auto;">
+    <h3 style="margin-top:0;">${esc(label)} — Fees &amp; Requirements — ${esc(term)} ${esc(String(year))}</h3>
+    <table class="data-table"><tr>${header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>
+    ${rows.map(r=>`<tr>${r.map((c,i)=>`<td${pend(c)}>${typeof c==='number'?money(c):esc(c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${header.length}">No students.</td></tr>`}
+    </table>
+  </div></div>`;
+}
+function downloadStudentsSummaryCsv(finClassId){
+  const d = financeData(), term = DB.info.currentTerm, year = DB.info.currentYear;
+  const {header, rows} = studentsSummaryData(d, term, year, finClassId);
+  const cls = DB.classes.find(c=>c.id===finClassId);
+  const label = finClassId==='all' ? 'All_Students' : (cls?cls.name:'Class').replace(/\s+/g,'_');
+  downloadCsv(`${label}_summary_${term.replace(/\s+/g,'_')}_${year}.csv`, [header, ...rows]);
 }
 // Class chooser shown after picking Fees or Requirements: a named class, or
 // "Show All Students" across every class at once.
@@ -8161,7 +8396,7 @@ function requirementsClassView(d, term, year){
   out += requirementTypesCatalogHTML(d, active);
   return out;
 }
-// Everything below is the original full Finance & Requirements toolkit,
+// Everything below is the original full Account Section toolkit,
 // unchanged, now reached via the "Advanced finance tools" link above.
 function financeAdvancedView(){
   const d = financeData();
@@ -8188,7 +8423,7 @@ function financeAdvancedView(){
   const excludeStudentsOptions = (selectedIds)=>{ const sel=new Set(selectedIds||[]); return active.map(s=>`<option value="${s.id}" ${sel.has(s.id)?'selected':''}>${esc(s.name)} — ${esc(s.admNo)}</option>`).join(''); };
   const termOptions = (selTerm)=> ['Term 1','Term 2','Term 3'].map(t=>`<option ${(selTerm||DB.info.currentTerm)===t?'selected':''}>${t}</option>`).join('');
 
-  return `<p class="small" style="margin-bottom:10px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p><div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>FINANCE AND REQUIREMENTS — Advanced Tools</h2><p class="small">Live follow-up using students already registered in the system. Balances here are the same "Fees balance" shown on each student's report card — kept automatically in sync.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>
+  return `<p class="small" style="margin-bottom:10px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p><div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>ACCOUNT SECTION — Advanced Tools</h2><p class="small">Live follow-up using students already registered in the system. Balances here are the same "Fees balance" shown on each student's report card — kept automatically in sync.</p></div><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div>
   <div class="grid3">
     <div class="card"><div class="small">ACTIVE STUDENTS</div><h1>${active.length}</h1></div>
     <div class="card"><div class="small">TOTAL PAID</div><h1>${money(totals.paid)}</h1></div>
@@ -8411,7 +8646,7 @@ function oldStudentsFinanceSectionHTML(d){
 function financeStudentView(studentId){
   if(!FINANCE_UNLOCKED) return financeRequirementsView();
   const s = DB.students.find(x=>x.id===studentId);
-  if(!s) return `<h2>Student Follow-up</h2><div class="card"><p>Student not found.</p><button class="btn-outline" data-action="nav:finance">Back to Finance & Requirements</button></div>`;
+  if(!s) return `<h2>Student Follow-up</h2><div class="card"><p>Student not found.</p><button class="btn-outline" data-action="nav:finance">Back to Account Section</button></div>`;
   const d = financeData();
   const cl = DB.classes.find(c=>c.id===s.classId);
   const viewTerm = VIEW.params.finTerm || DB.info.currentTerm;
@@ -9338,6 +9573,49 @@ function stuRestoreAnchor(){
   setTimeout(place, 150);
   setTimeout(()=>{ if(STU_RETURN===a) STU_RETURN = null; }, 700);
 }
+
+// ---- Print / download the listed students with their full profile in tight columns ----
+let STU_LIST_VIEW = [], STU_LIST_LABEL = 'Students';
+function studentsListRows(){
+  const header = ['No.','Name','Adm No','Fees Code','Sex','Class','Combination','Religion','House','Home Place','Fees Balance','Next Term Fees'];
+  const rows = STU_LIST_VIEW.map(({s,clsId},i)=>{
+    const cls = DB.classes.find(c=>c.id===clsId);
+    const n = v=> (v===null||v===undefined||v==='') ? '' : v;
+    return [i+1, s.name||'', s.admNo||'', n(s.feesCode), n(s.gender), cls?cls.name:'', cls?comboLabel(s,cls):'', n(s.religion), n(s.house), n(s.homePlace), n(s.feesBalance), n(s.nextTermFees)];
+  });
+  return {header, rows};
+}
+function studentsListExportHTML(){
+  const {header, rows} = studentsListRows();
+  const title = `${esc(DB.info.schoolName||'')} — ${esc(STU_LIST_LABEL)} — Student List (${rows.length})`;
+  return `<div id="stuListExport"><style>#stuListExport table{width:100%;border-collapse:collapse;font-size:9px;}#stuListExport th,#stuListExport td{border:1px solid #444;padding:2px 3px;text-align:left;line-height:1.15;}#stuListExport th{background:#eee;}</style>
+    <h3 style="margin:0 0 6px;">${title}</h3>
+    <table>${'<tr>'+header.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>'}${rows.map(r=>'<tr>'+r.map(c=>`<td>${typeof c==='number'?c.toLocaleString():esc(c)}</td>`).join('')+'</tr>').join('')}</table></div>`;
+}
+function withStudentsListExport(fn){
+  if(!STU_LIST_VIEW.length){ alert('List some students first (pick a class or search).'); return Promise.resolve(); }
+  const old = document.getElementById('stuListExportHolder'); if(old) old.remove();
+  const h = document.createElement('div'); h.id='stuListExportHolder'; h.style.cssText='position:absolute;left:-99999px;top:0;width:1100px;';
+  h.innerHTML = studentsListExportHTML(); document.body.appendChild(h);
+  const done = ()=>{ if(document.body.contains(h)) h.remove(); };
+  return Promise.resolve(fn(done)).catch(e=>{ done(); throw e; });
+}
+function printStudentsList(){
+  withStudentsListExport(done=>{
+    window.addEventListener('afterprint', done, {once:true}); setTimeout(done, 20000);
+    printFinanceTable('stuListExport');
+  });
+}
+async function runDownloadStudentsListPdf(btn){
+  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
+  try{ await withStudentsListExport(async done=>{ try{ await downloadFinanceTablePdf('stuListExport', `${STU_LIST_LABEL.replace(/[^\w]+/g,'_')}_students.pdf`); } finally{ done(); } }); }
+  finally{ btn.disabled = false; btn.innerHTML = orig; }
+}
+function downloadStudentsListCsv(){
+  if(!STU_LIST_VIEW.length){ alert('List some students first (pick a class or search).'); return; }
+  const {header, rows} = studentsListRows();
+  downloadCsv(`${STU_LIST_LABEL.replace(/[^\w]+/g,'_')}_students.csv`, [header, ...rows]);
+}
 function renderStudentsTableHtml(){
   const classId = VIEW.params.stuClassFilter||'';
   const searchTerm = (VIEW.params.stuSearch||'').trim().toLowerCase();
@@ -9364,6 +9642,8 @@ function renderStudentsTableHtml(){
   }
   if(searchTerm) list = list.filter(s=>(s.name||'').toLowerCase().includes(searchTerm));
   list = sortByName(list);
+  STU_LIST_VIEW = list.map(s=>({s, clsId: isPast ? historicalClassFor(s, periodTerm, periodYear) : s.classId}));
+  STU_LIST_LABEL = (classId ? ((DB.classes.find(c=>c.id===classId)||{}).name||'Students') : 'Students') + (isPast ? ` (${periodTerm} ${periodYear})` : '');
   const banner = isPast ? `<div class="note" style="margin-bottom:10px;">Showing the class list as it stood in <b>${esc(periodTerm)}, ${esc(String(periodYear))}</b> — not the current class list. The actions below (edit, mark as left, remove) still act on the student's current record.</div>` : '';
   const bulkBar = list.length ? `
     <div class="flex" style="margin-bottom:10px;justify-content:space-between;">
@@ -9372,6 +9652,9 @@ function renderStudentsTableHtml(){
         <span id="stuSelCount">0 selected</span>
       </label>
       <div class="flex">
+        <button type="button" class="btn-outline" onclick="printStudentsList()">🖨 Print list</button>
+        <button type="button" class="btn-outline" onclick="runDownloadStudentsListPdf(this)">⬇ PDF</button>
+        <button type="button" class="btn-outline" onclick="downloadStudentsListCsv()">⬇ Excel (CSV)</button>
         <button type="button" class="btn-outline" onclick="markSelectedStudentsLeft(this)"><b>Mark selected as left</b></button>
         <button type="button" class="btn-danger" onclick="deleteSelectedStudents(this)">Delete selected</button>
         <button type="button" class="btn-danger" style="background:#5a1414;" onclick="deleteAllListedStudents(this)">Delete ALL listed (${list.length})</button>
@@ -9801,7 +10084,7 @@ function studentProfileView(studentId){
         <div><label>Fees balance</label><input name="feesBalance" type="number" step="0.01" value="${s.feesBalance!=null?s.feesBalance:''}"></div>
         <div><label>Next term fees</label><input name="nextTermFees" type="number" step="0.01" value="${s.nextTermFees!=null?s.nextTermFees:''}"></div>
       </div>
-      <p class="small">If this student has any fee items or payments recorded in <a href="#" data-action="nav:finance">Finance &amp; Requirements</a>, these two numbers are recalculated automatically from that record every time a fee or payment affecting them changes — anything typed here manually is then only a temporary override until the next finance update.</p>
+      <p class="small">If this student has any fee items or payments recorded in <a href="#" data-action="nav:finance">Account Section</a>, these two numbers are recalculated automatically from that record every time a fee or payment affecting them changes — anything typed here manually is then only a temporary override until the next finance update.</p>
       <button class="btn" style="margin-top:14px;">Submit — save student profile</button>
     </form>
   </div>
@@ -11706,18 +11989,6 @@ function otherSettingsView(){
     </div>
   </div>
 
-  ${CUR && CUR.role==='admin' ? `<div class="card" style="max-width:760px;">
-    <h3 style="margin-top:0;">Finance Password</h3>
-    <p class="small">The Finance &amp; Requirements section opens only with the school's Admin username <b>${esc(CUR.username||'')}</b> and this separate Finance password (your normal login password will not open it).</p>
-    ${DB.info.financePassword?'<div class="ok-banner" style="border-radius:6px;">A Finance password is set.</div>':'<div class="note">No Finance password set yet — Finance &amp; Requirements cannot be opened until you set one.</div>'}
-    <form data-form="setFinancePassword">
-      <label>${DB.info.financePassword?'New Finance password':'Finance password'}</label><input name="password" type="password" minlength="4" required autocomplete="new-password">
-      <label>Confirm Finance password</label><input name="confirmPassword" type="password" minlength="4" required autocomplete="new-password">
-      <p class="small">Must be different from your own login password.</p>
-      ${!DB.info.ownerCode?'<label>Owner Code</label><input name="ownerCode" minlength="4" required autocomplete="off"><p class="small">Used to recover the Finance password if it is forgotten.</p>':''}
-      <button class="btn" style="margin-top:10px;">Save Finance Password</button>
-    </form>
-  </div>` : ''}
 
   <div class="card" style="max-width:760px;">
     <h3 style="margin-top:0;">Password & Account</h3>
@@ -11735,7 +12006,7 @@ function otherSettingsView(){
   </div>
   ${(CUR && (CUR.role==='admin' || CUR.role==='teacher')) ? `<div class="card" style="max-width:760px;">
     <h3 style="margin-top:0;">🗑 Recycle Bin</h3>
-    <p class="small">Anything ${CUR.role==='admin'?'deleted or removed':'you delete or remove'} lands here first and is kept for <b>15 days</b>. Tap <b>↷ Redo</b> on an item to fetch its data back. After 15 days it is erased for good.</p>
+    <p class="small">Anything ${CUR.role==='admin'?'deleted or removed':'you delete or remove'} lands here first and is kept for <b>15 days</b>. Records from the <b>Account Section</b> (and the earlier version of any Account Section record that is corrected) are kept for <b>5 years</b>. Tap <b>↷ Redo</b> on an item to fetch its data back. After that time it is erased for good.</p>
     <div id="binHost" class="bin-host"></div>
   </div>` : ''}`;
   if(CUR && (CUR.role==='admin' || CUR.role==='teacher')) setTimeout(()=>binFillHost(document.getElementById('binHost')), 0);
@@ -12202,7 +12473,7 @@ function parentReportView(){
   const activeId = activeParentChildId(children);
   return `${parentChildPickerHTML(children, activeId)}${reportCardHTML(activeId, false)}`;
 }
-// Read-only mirror of the admin's per-student Finance & Requirements detail page,
+// Read-only mirror of the admin's per-student Account Section detail page,
 // for a parent to check their own child(ren)'s fees balance, invoiced items,
 // payment history and requirements status — with every editing control stripped
 // out, since a parent may look but never change financial records.
@@ -13713,12 +13984,13 @@ document.addEventListener('click', async (e)=>{
   try{
   switch(action){
     case 'installApp': installPWA(); break;
-    case 'financeLock': FINANCE_UNLOCKED=false; render(); break;
-    case 'finForgotPw': FINANCE_FORGOT=true; render(); break;
+    case 'financeLock': FINANCE_UNLOCKED=false; FINANCE_RESET_SKIPPED=false; render(); break;
+    case 'finResetLater': FINANCE_RESET_SKIPPED=true; render(); break;
+    case 'finForgotPw': if(FINANCE_ONLY){ alert('The Account Section password can only be changed from the Admin sign-in, inside the Account Section.'); break; } FINANCE_FORGOT=true; render(); break;
     case 'finForgotBack': FINANCE_FORGOT=false; render(); break;
     case 'founderFinanceUnlock': {
       if(!FOUNDER_IMPERSONATING_SCHOOL){ alert('Founder emergency access is only available while you are inside a school via the Founder Panel.'); break; }
-      const code = prompt('Enter your founder code to unlock Finance & Requirements for this school:');
+      const code = prompt('Enter your founder code to unlock Account Section for this school:');
       if(code===null) break;
       if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
       FINANCE_UNLOCKED = true;
@@ -13789,7 +14061,7 @@ document.addEventListener('click', async (e)=>{
       }
       const wasFounder = CUR && CUR.role==='founder';
       playUISound('close');
-      CUR=null; SCHOOL_ID=null; FINANCE_UNLOCKED=false; FINANCE_ONLY=false; await setPersonal('session', null);
+      CUR=null; SCHOOL_ID=null; FINANCE_UNLOCKED=false; FINANCE_RESET_SKIPPED=false; FINANCE_ONLY=false; await setPersonal('session', null);
       // Burn the token so any other device/browser holding the old founder
       // session (or someone who copied it out of localStorage) is kicked out too.
       if(wasFounder && SYSTEM_OWNER){ SYSTEM_OWNER.sessionToken = genSessionToken(); await saveSystemOwner(); }
@@ -13969,10 +14241,13 @@ Continue?`);
     case 'restoreStudent': {
       const s = DB.students.find(x=>x.id===arg);
       if(!s){ break; }
+      { const _ret = financeData().shortfalls.filter(sf=>sf.studentId===s.id); let _ok = true;
+        for(const sf of _ret){ if(!(await binFinGuard('shortfalls','Shortfall record (student made active again)',sf))){ _ok = false; break; } }
+        if(!_ok) break; }
       s.status = 'active';
       delete s.leftTerm; delete s.leftYear;
       // Back to active — any shortfall recorded when they left is retired, since
-      // their live balance is now tracked normally under Finance & Requirements.
+      // their live balance is now tracked normally under Account Section.
       {
         const d = financeData();
         d.shortfalls = d.shortfalls.filter(sf=>sf.studentId!==s.id);
@@ -14295,6 +14570,8 @@ Continue?`);
     case 'reqMarkItem': {
       const [reqId, studentId] = arg.split('|');
       const d = financeData();
+      const _oldSt = d.reqStatus.find(x=>x.requirementId===reqId && x.studentId===studentId);
+      if(_oldSt && !(await binFinCorrect('reqStatus','Requirement record',_oldSt))) break;
       d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
       d.reqStatus.push({requirementId:reqId, studentId, method:'item', submittedAt:new Date().toISOString(), term:DB.info.currentTerm, year:DB.info.currentYear, recordedBy:CUR.username});
       await saveInfo();
@@ -14305,6 +14582,8 @@ Continue?`);
       const [reqId, studentId] = arg.split('|');
       if(!confirm('Remove this requirement record? If it was a cash payment, that amount will no longer count in the cash analysis or account balance.')) break;
       const d = financeData();
+      const _oldSt = d.reqStatus.find(x=>x.requirementId===reqId && x.studentId===studentId);
+      if(_oldSt && !(await binFinCorrect('reqStatus','Requirement record',_oldSt,null,'removed'))) break;
       d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
       await saveInfo();
       render();
@@ -14348,7 +14627,7 @@ Continue?`);
       break;
     }
     case 'delShortfall': {
-      if(!confirm('Delete this shortfall record? It will be kept in the Recycle Bin (Other Settings) for 15 days.')) break;
+      if(!confirm('Delete this shortfall record? It will be kept in the Recycle Bin (Other Settings) for 5 years.')) break;
       const d = financeData();
       if(!(await binFinGuard('shortfalls','Shortfall record',d.shortfalls.find(x=>x.id===arg)))) break;
       d.shortfalls = d.shortfalls.filter(x=>x.id!==arg);
@@ -14731,7 +15010,7 @@ Continue?`)) break;
       const trimmed = newPw.trim();
       if(trimmed.length<4){ alert('The Finance password must be at least 4 characters.'); break; }
       if(trimmed===current){ alert('That is already the current Finance password. No change was made.'); break; }
-      if(!confirm(`Change the Finance password for ${info.schoolName||'this school'}?\n\nThe school's Admin will need to use the new password to open Finance & Requirements.\n\nContinue?`)) break;
+      if(!confirm(`Change the Finance password for ${info.schoolName||'this school'}?\n\nThe school's Admin will need to use the new password to open Account Section.\n\nContinue?`)) break;
       // Re-read so nothing the school saved since this page was opened is overwritten.
       const fresh = await getShared(`sch_${FOUNDER_LOGINS.schoolId}_info`, null) || info;
       fresh.financePassword = trimmed;
@@ -15099,7 +15378,7 @@ document.addEventListener('submit', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
     'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
-    'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
+    'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
     'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
   try{
@@ -15109,27 +15388,38 @@ document.addEventListener('submit', async (e)=>{
     if(type==='adminGateUnlock'){
       const gu=(fd.get('username')||'').trim();
       if(!FINANCE_ONLY || !CUR || CUR.role!=='admin' || gu!==CUR.username || fd.get('password')!==CUR.password){ alert('Incorrect username or Admin password.'); return; }
-      FINANCE_ONLY=false; FINANCE_UNLOCKED=false;
+      FINANCE_ONLY=false; FINANCE_UNLOCKED=false; FINANCE_RESET_SKIPPED=false;
       await setPersonal('session', {scope:'school', schoolId:SCHOOL_ID, username:CUR.username});
       VIEW={name:'dashboard', params:{}}; render(); return;
     }
     if(type==='financeUnlock'){ if(!DB.info.financePassword){ alert('No Finance password has been set. Ask the Admin to create one from this section.'); return; } const fu=(fd.get('username')||'').trim(); const adminAcc=(DB.accounts||[]).find(a=>a.role==='admin' && a.username===fu); if(!adminAcc || (CUR && CUR.role==='admin' && CUR.username!==fu)){ alert('Incorrect username or Finance password.'); return; } if(fd.get('password')!==DB.info.financePassword){ alert('Incorrect username or Finance password.'); return; } FINANCE_UNLOCKED=true; FINANCE_FORGOT=false; render(); return; }
+    else if(type==='forceFinanceReset'){
+      const npw=fd.get('password'), cpw=fd.get('confirmPassword');
+      if(npw!==cpw){ alert('The two passwords do not match.'); return; }
+      if(!npw || npw.length<4){ alert('The password must be at least 4 characters.'); return; }
+      if(npw===DB.info.financePassword || financePwMatchesAdminOrOwner(npw)){ alert('Please choose a different password.'); return; }
+      DB.info.financePassword=npw; await saveInfo();
+      FINANCE_RESET_SKIPPED=false;
+      alertOk('Password updated.'); render(); return;
+    }
     else if(type==='finRecoverPassword'){
+      if(FINANCE_ONLY){ alert('The Account Section password can only be changed from the Admin sign-in, inside the Account Section.'); return; }
       if(!DB.info.ownerCode){ alert('No owner code has been set for this school. Please contact the Founder.'); return; }
       if(fd.get('ownerCode')!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
       const npw=fd.get('password');
       if(CUR && CUR.password && npw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; }
       DB.info.financePassword=npw; await saveInfo();
       FINANCE_FORGOT=false; FINANCE_UNLOCKED=true;
-      alert('Finance password reset. You are now in Finance & Requirements.'); render(); return;
+      alert('Finance password reset. You are now in Account Section.'); render(); return;
     }
     else if(type==='setOwnerCode'){
+      if(FINANCE_ONLY){ alert('The Owner Code can only be changed from the Admin sign-in, inside the Account Section.'); return; }
       const nc=(fd.get('ownerCode')||'').trim();
       if(fd.has('confirmCode') && (fd.get('confirmCode')||'').trim()!==nc){ alert('The two owner codes do not match.'); return; }
       if(nc.length<4){ alert('Owner code must be at least 4 characters.'); return; }
       DB.info.ownerCode=nc; await saveInfo(); alert('Owner code saved.'); render(); return;
     }
-    else if(type==='setFinancePassword'){ const pw=fd.get('password'); if(fd.has('confirmPassword') && fd.get('confirmPassword')!==pw){ alert('The two Finance passwords do not match.'); return; } if(CUR && CUR.password && pw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; } if(!DB.info.ownerCode && fd.has('ownerCode')){ const oc=(fd.get('ownerCode')||'').trim(); if(oc.length<4){ alert('Owner code must be at least 4 characters.'); return; } DB.info.ownerCode=oc; } DB.info.financePassword=pw; await saveInfo(); alert('Finance password saved.'); render(); return; }
+    else if(type==='setFinancePassword'){ if(FINANCE_ONLY && DB.info.financePassword){ alert('The Account Section password can only be changed from the Admin sign-in, inside the Account Section.'); return; } const pw=fd.get('password'); if(fd.has('confirmPassword') && fd.get('confirmPassword')!==pw){ alert('The two Finance passwords do not match.'); return; } if(CUR && CUR.password && pw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; } if(!DB.info.ownerCode && fd.has('ownerCode')){ const oc=(fd.get('ownerCode')||'').trim(); if(oc.length<4){ alert('Owner code must be at least 4 characters.'); return; } DB.info.ownerCode=oc; } DB.info.financePassword=pw; await saveInfo(); alert('Finance password saved.'); render(); return; }
     else if(type==='addFinanceFee' || type==='editFinanceFee'){
       const name=(fd.get('name')||'').trim();
       if(!name){ alert('Please enter a fee/charge name.'); return; }
@@ -15138,6 +15428,7 @@ document.addEventListener('submit', async (e)=>{
       if(type==='editFinanceFee'){
         const existing = d.fees.find(f=>f.id===form.dataset.id);
         if(!existing){ alert('Fee item not found.'); return; }
+        if(!(await binFinCorrectIf('fees','Fee item',existing,rec))) return;
         Object.assign(existing, rec);
       } else {
         d.fees.push({id:uid('fee'), ...rec});
@@ -15159,6 +15450,7 @@ document.addEventListener('submit', async (e)=>{
       if(!date){ alert('Please enter the payment date.'); return; }
       const rec = { studentId, amount, date, receipt:(fd.get('receipt')||'').trim(), method:fd.get('method'), payerName:(fd.get('payerName')||'').trim(), payerRelationship:fd.get('payerRelationship')||'', payerContact:(fd.get('payerContact')||'').trim() };
       if(existingPay){
+        if(!(await binFinCorrectIf('payments','Payment record',existingPay,rec))) return;
         Object.assign(existingPay, rec); // term/year of the original recording are kept as-is
       } else {
         d.payments.push({id:uid('pay'), recordedBy:CUR.username, term:DB.info.currentTerm, year:DB.info.currentYear, ...rec});
@@ -15219,6 +15511,7 @@ document.addEventListener('submit', async (e)=>{
       if(type==='editExpenseType'){
         const existing = d.expenseTypes.find(x=>x.id===form.dataset.id);
         if(!existing){ alert('Expense category not found.'); return; }
+        if(!(await binFinCorrectIf('expenseTypes','Expense category',existing,{name, category:fd.get('category')}))) return;
         existing.name=name; existing.category=fd.get('category');
       } else {
         const existingNames = new Set(d.expenseTypes.map(x=>x.name.trim().toLowerCase()));
@@ -15244,6 +15537,7 @@ document.addEventListener('submit', async (e)=>{
       if(!name){ alert('Please choose an expense category.'); return; }
       const rec = { name, category, amount, date, term:fd.get('term')||DB.info.currentTerm, year:Number(fd.get('year')||DB.info.currentYear), receipt:(fd.get('receipt')||'').trim(), payee:(fd.get('payee')||'').trim(), note:(fd.get('note')||'').trim() };
       if(existingExp){
+        if(!(await binFinCorrectIf('expenses','Expense record',existingExp,rec))) return;
         Object.assign(existingExp, rec);
       } else {
         d.expenses.push({id:uid('expense'), recordedBy:CUR.username, ...rec});
@@ -15274,6 +15568,7 @@ document.addEventListener('submit', async (e)=>{
       const rec = {username:uname, name:acc.name||uname, personType: acc.role==='teacher' ? 'teacher' : 'nonteaching',
         payType: fd.get('payType')==='wage' ? 'wage' : 'salary', amount, frequency,
         fromTerm: fd.get('fromTerm'), fromYear, toTerm, toYear, contractStart, contractEnd, note:(fd.get('note')||'').trim()};
+      if(existing && !(await binFinCorrectIf('salaries','Pay record',existing,rec))) return;
       if(existing) Object.assign(existing, rec); else d.salaries.push({id:uid('salary'), recordedBy:CUR.username, ...rec});
       await saveInfo();
       VIEW.params = {...VIEW.params, editSalaryId:null};
@@ -15295,6 +15590,8 @@ document.addEventListener('submit', async (e)=>{
       if(!(amount>0)){ alert('Please enter a cash amount greater than zero.'); return; }
       const date = fd.get('date')||'';
       if(!date){ alert('Please enter the date.'); return; }
+      const _oldSt = d.reqStatus.find(x=>x.requirementId===reqId && x.studentId===studentId);
+      if(_oldSt && !(await binFinCorrect('reqStatus','Requirement record',_oldSt))) return;
       d.reqStatus = d.reqStatus.filter(x=>!(x.requirementId===reqId && x.studentId===studentId));
       d.reqStatus.push({requirementId:reqId, studentId, method:'cash', amount, date, receipt:(fd.get('receipt')||'').trim(), payerName:(fd.get('payerName')||'').trim(), payerRelationship:fd.get('payerRelationship')||'', payerContact:(fd.get('payerContact')||'').trim(), submittedAt:new Date().toISOString(), term:DB.info.currentTerm, year:DB.info.currentYear, recordedBy:CUR.username});
       await saveInfo();
@@ -15309,6 +15606,7 @@ document.addEventListener('submit', async (e)=>{
       const amount = Number(fd.get('amount')||0);
       if(!(amount>=0)){ alert('Please enter a valid amount.'); return; }
       let rec = classAgreedRecord(classId, DB.info.currentTerm, DB.info.currentYear, d);
+      if(rec && Number(rec.amount)!==amount && !(await binFinCorrect('classAgreed','Classwise agreed fee',rec))) return;
       if(rec) rec.amount = amount;
       else d.classAgreed.push({id:uid('cagree'), classId, term:DB.info.currentTerm, year:DB.info.currentYear, amount});
       // A classwide amount change affects every student in the class who isn't
@@ -15327,6 +15625,7 @@ document.addEventListener('submit', async (e)=>{
       const amount = Number(fd.get('amount')||0);
       if(!(amount>=0)){ alert('Please enter a valid amount.'); return; }
       let rec = studentAgreedRecord(studentId, DB.info.currentTerm, DB.info.currentYear, d);
+      if(rec && Number(rec.amount)!==amount && !(await binFinCorrect('studentAgreed','Student agreed fee',rec))) return;
       if(rec) rec.amount = amount;
       else d.studentAgreed.push({id:uid('sagree'), studentId, term:DB.info.currentTerm, year:DB.info.currentYear, amount});
       syncStudentFinance(studentId, d); // reflect the new agreed amount on this student's report card immediately
@@ -15357,6 +15656,7 @@ document.addEventListener('submit', async (e)=>{
       if(type==='editRequirement'){
         const existing = d.requirements.find(r=>r.id===form.dataset.id);
         if(!existing){ alert('Requirement not found.'); return; }
+        if(!(await binFinCorrectIf('requirements','Requirement',existing,{name, category:fd.get('category'), scope:fd.get('scope')||'all'}))) return;
         existing.name=name; existing.category=fd.get('category'); existing.scope=fd.get('scope')||'all';
       } else {
         d.requirements.push({id:uid('req'), name, category:fd.get('category'), scope:fd.get('scope')||'all', term:DB.info.currentTerm, year:DB.info.currentYear});
@@ -15608,7 +15908,7 @@ document.addEventListener('submit', async (e)=>{
       // read those schools' accounts docs to verify the password. For the
       // overwhelmingly common case of one school per username+role, that's
       // one index read + one accounts read, instead of N accounts reads.
-      const finLogin = fd.get('role')==='finance'; // Finance & Requirements slot: checked against the Owner/Admin account
+      const finLogin = fd.get('role')==='finance'; // Account Section slot: checked against the Owner/Admin account
       const role = finLogin ? 'admin' : fd.get('role'), u=(fd.get('username')||'').trim(), p=fd.get('password');
       const errEl = document.getElementById('loginErr');
       if(!u || !p){ errEl.textContent='Please enter your username and password.'; return; }
@@ -15641,7 +15941,7 @@ document.addEventListener('submit', async (e)=>{
           if(acc){ foundAcc=acc; foundSchoolId=remaining[i].id; await syncUsernameIndexForSchool(foundSchoolId, accountsPerRemaining[i]); break; }
         }
       }
-      // Finance & Requirements slot: the username must be the school's Admin username, but the password
+      // Account Section slot: the username must be the school's Admin username, but the password
       // must be the separate Finance password the Admin set (the Admin's own login password is NOT accepted).
       let finErr='';
       if(finLogin && foundAcc && foundAcc.status!=='pending' && foundAcc.status!=='closed'){
@@ -15671,7 +15971,7 @@ document.addEventListener('submit', async (e)=>{
         ]);
         CUR=foundAcc; SCHOOL_ID=foundSchoolId;
         // Finance slot: the Admin username and the separate Finance password have just been verified, so open
-        // Finance & Requirements directly. Normal logins keep Finance locked.
+        // Account Section directly. Normal logins keep Finance locked.
         FINANCE_UNLOCKED = !!finLogin;
         FINANCE_ONLY = !!finLogin;
         if(finLogin) VIEW = {name:'finance', params:{}};
@@ -15763,8 +16063,8 @@ document.addEventListener('submit', async (e)=>{
       // times the year is changed on this form.
       DB.info.currentTerm=newTerm; DB.info.currentYear=newYear;
       DB.info.termEndDate=fd.get('termEndDate'); DB.info.nextTermBeginDate=fd.get('nextTermBeginDate');
-      if(termChanged) pruneOldFinanceRecords(); // keep the shared info doc bounded, same retention window as old students/scores
-      if(termChanged) syncAllStudentsFinance(); // recompute report-card fees figures for the new current term (no-op if this school doesn't use Finance & Requirements)
+      if(termChanged) await pruneOldFinanceRecords(); // keep the shared info doc bounded, same retention window as old students/scores
+      if(termChanged) syncAllStudentsFinance(); // recompute report-card fees figures for the new current term (no-op if this school doesn't use Account Section)
       const sd={...(DB.info.scoreDeadlines||{})};
       for(const kind of ['AOI','EOT']){
         const newDeadline=fd.get(kind==='AOI'?'scoreDeadlineAOI':'scoreDeadlineEOT')||null;
