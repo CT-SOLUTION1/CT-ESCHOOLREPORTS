@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-10-29-2034'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-29-2118'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -126,34 +126,70 @@
 })();
 </script>
 <script id="cte-auto-next">
-/* Enter Scores picker: the guided path ends on "Submit — load student list".
-   After "marked out of" is typed (Enter, or a short pause) focus jumps to that Submit button.
+/* Enter Scores picker. When the guided path reaches "marked out of":
+   - the earlier fields are hidden for the moment and this field sits at the top of the screen
+     (a small "Change earlier choices" link brings them back);
+   - once the maximum mark is typed (Enter, or a short pause) the form is submitted automatically
+     and the student list / score sheet loads.
    Typing the scores themselves is NOT auto-advanced. */
 (function(){
-  function usable(el){ return !!el && !el.disabled && el.offsetParent!==null; }
-  function go(el){
-    try{ el.scrollIntoView({block:'center',behavior:'smooth'}); }catch(e){ try{ el.scrollIntoView(); }catch(_){} }
-    try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(_){} }
-    try{ el.classList.add('pick-flash'); setTimeout(function(){ el.classList.remove('pick-flash'); },1600); }catch(e){}
+  var st=document.createElement('style');
+  st.textContent='form[data-form="pickPaper"].pick-maxonly .pick-sec:not(.pick-keep){display:none !important;}'+
+    'form[data-form="pickPaper"].pick-maxonly{justify-content:flex-start !important;}'+
+    'form[data-form="pickPaper"] .pick-back{display:none;margin:0 0 8px;font:700 13px/1.2 Arial,sans-serif;color:#0f7a3a;text-decoration:underline;cursor:pointer;}'+
+    'form[data-form="pickPaper"].pick-maxonly .pick-back{display:inline-block;}';
+  (document.head||document.documentElement).appendChild(st);
+
+  var STEPS=['#assignSel','#paperSelect','#kindSel','#cwTestSel','#teacherTermSel'];
+  function shown(el){ return !!el && !el.disabled && el.type!=='hidden' && el.offsetParent!==null; }
+  function othersDone(f){
+    for(var i=0;i<STEPS.length;i++){ var el=f.querySelector(STEPS[i]); if(shown(el) && String(el.value||'').trim()==='') return false; }
+    return true;
   }
-  var idleT=0;
-  function pickSubmitBtn(inp){ var f=inp.closest('form[data-form="pickPaper"]'); return f ? f.querySelector('.pick-go button') : null; }
+  function formOf(el){ return el.closest ? el.closest('form[data-form="pickPaper"]') : null; }
   function maxDone(inp){ var v=parseFloat(inp.value); return isFinite(v) && v>=1; }
+
+  function showOnlyMax(f,inp){
+    var keep=inp.closest('.pick-sec'); if(keep) keep.classList.add('pick-keep');
+    var go=f.querySelector('.pick-go'); if(go) go.classList.add('pick-keep');
+    if(!f.querySelector('.pick-back')){
+      var a=document.createElement('a'); a.href='#'; a.className='pick-back'; a.textContent='\u25C0 Change earlier choices';
+      a.addEventListener('click',function(ev){ ev.preventDefault(); f.classList.remove('pick-maxonly'); },false);
+      f.insertBefore(a,f.firstChild);
+    }
+    f.classList.add('pick-maxonly');
+    try{ window.scrollTo(0,0); }catch(e){}
+    try{ (f.closest('.card')||f).scrollIntoView({block:'start'}); }catch(e){}
+  }
+  // focus arrives on "marked out of" (the guided flow does this after the last earlier field is filled)
+  document.addEventListener('focusin', function(e){
+    var el=e.target; if(!el || el.id!=='maxScoreInput') return;
+    var f=formOf(el); if(!f || f.classList.contains('pick-maxonly')) return;
+    if(!othersDone(f)) return;
+    showOnlyMax(f,el);
+  }, true);
+
+  // automatic submit
+  var idleT=0;
+  function submitNow(inp){
+    var f=formOf(inp); if(!f || !maxDone(inp)) return;
+    if(f.dataset.autoSubmitting==='1') return;
+    f.dataset.autoSubmitting='1'; setTimeout(function(){ delete f.dataset.autoSubmitting; },1500);
+    try{ inp.blur(); }catch(e){}
+    if(f.requestSubmit) f.requestSubmit();
+    else { var b=f.querySelector('.pick-go button'); if(b) b.click(); }
+  }
   document.addEventListener('input', function(e){
     var el=e.target; if(!el || el.id!=='maxScoreInput') return;
     clearTimeout(idleT);
     if(!maxDone(el)) return;
-    idleT=setTimeout(function(){
-      if(document.activeElement!==el || !maxDone(el)) return;
-      var b=pickSubmitBtn(el); if(usable(b)) go(b);
-    },1100);
+    idleT=setTimeout(function(){ if(document.activeElement===el) submitNow(el); },2000);
   }, true);
   document.addEventListener('keydown', function(e){
     var el=e.target; if(!el || el.id!=='maxScoreInput' || e.key!=='Enter') return;
     clearTimeout(idleT);
-    if(!maxDone(el)) return;
-    var b=pickSubmitBtn(el); if(!usable(b)) return;
-    e.preventDefault(); e.stopPropagation(); go(b);   // first Enter reaches the button; Enter again submits
+    e.preventDefault(); e.stopPropagation();
+    if(maxDone(el)) submitNow(el);
   }, true);
 })();
 </script>
@@ -13593,7 +13629,7 @@ function scoresEntryView(mine){
       </div>
 ` : ''}
       <div class="pick-sec">
-      <label class="max-out-label">What was this test/exam marked out of? <span style="color:var(--danger);">*compulsory</span></label>
+      <label class="max-out-label"><span class="fit-t" data-fit>What was this test/exam marked out of?</span><br><span style="color:var(--danger);font-size:.8em;">*compulsory</span></label>
       <input name="maxScore" id="maxScoreInput" type="number" min="1" step="1" value="" placeholder="Type the maximum mark here — required" required>
       </div>
 
