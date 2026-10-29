@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-29-18'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-10-29-20'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -5363,6 +5363,36 @@ async function requireOwnerCode(what, confirmLabel){
   if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was changed.'); return false; }
   return true;
 }
+// Private-owner-code gate used for every EXEMPTION and every DELETION. Works for any signed-in role that can reach the
+// action (including the Account Section sign-in); a teacher deleting their own work uses their password instead.
+async function requireOwnerGate(what, confirmLabel, teacherPasswordOk){
+  hideActionBanner();
+  if(!CUR){ alert('Please sign in again.'); return false; }
+  if(teacherPasswordOk && CUR.role==='teacher') return requireDeleteAuth(what);
+  if(!DB.info.ownerCode){ alert('No owner code has been set for this school yet, so this cannot be done. Please set an owner code first (Account Section → Owner Code), or contact the Founder.'); return false; }
+  const code = await askSecret('Owner code required', `Enter the private owner code to ${what}.`, confirmLabel||'Confirm');
+  if(code===null) return false;
+  if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was changed.'); return false; }
+  return true;
+}
+// Actions that must be authorised with the private owner code before they run. (Deletes that already ask for it
+// themselves — students, old students, shortfalls, accounts, teachers — are not listed, so nobody is asked twice.)
+const OWNER_CODE_ACTIONS = {
+  // exemptions (and undoing them)
+  feeExempt:'exempt this student from fees', feeExemptAll:'exempt this student from fees (all time)', feeUndoAdjust:'undo this fee exemption / clearance',
+  reqExemptAll:'exempt this student from requirements', reqExemptAllTime:'exempt this student from requirements (all time)',
+  reqReopenAll:'undo this requirement clearance / exemption', reqUndoAllTime:'undo this all-time requirement clearance / exemption',
+  // deletions
+  delClass:'delete this class', delAssign:'delete this assignment', delOSubject:'delete this subject', delPSubject:'delete this subject', delASubject:'delete this subject',
+  delCwTest:'delete this test', delClassCwTest:'delete this test', delAllClassScores:'delete these scores', delSelectedClassScores:'delete these scores',
+  removeLevelRow:'remove this row', removeSchoolStamp:'remove the school stamp', removeTeacherSignature:'remove this signature',
+  delFinanceFee:'delete this fee item', delFinancePayment:'delete this payment', delRequirement:'delete this requirement', delExpenseType:'delete this expense category',
+  delStaffPay:'delete this staff payment', delSalary:'delete this salary record', delExpense:'delete this expense', delShortfallSettlement:'delete this settlement',
+  reqUndoStatus:'remove this requirement record'
+};
+// Agreed fees (class-wide and per learner) and exemptions (fees and requirements) can only be made under GENERAL.
+const GENERAL_ONLY_ACTIONS = new Set(['feeExempt','feeExemptAll','reqExemptAll','reqExemptAllTime','editClassAgreedFee','editStudentAgreedFee']);
+const OWNER_CODE_TEACHER_OK = new Set(['delCwTest','delClassCwTest','delAllClassScores','delSelectedClassScores','delAssign']);
 function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return d; } }
 function fmtDateTime(d){ if(!d) return '—'; try{ return new Date(d).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return d; } }
 // ---- Score submission deadline ----
@@ -6977,7 +7007,7 @@ const FIN_SUBS = [['fees','💰','FEES'],['requirements','📋','REQUIREMENTS'],
 const FIN_SUB_TABS = {
   fees:['fees','analysis','termsummary','statements','summary'],
   requirements:['requirements','reqanalysis','termsummary','statements','summary'],
-  general:['termsummary','statements','salaries','summary','students','staff','parents','promote','advanced']
+  general:['agreed','exemptions','termsummary','statements','salaries','summary','students','staff','parents','promote','advanced']
 };
 function finTabAllowed(sub, tab){ return !tab || tab==='security' || !!(FIN_SUB_TABS[sub] && FIN_SUB_TABS[sub].includes(tab)); }
 // 'fees' | 'requirements' | 'both' — which kind of content the page being shown/printed may contain.
@@ -7980,6 +8010,14 @@ function financeRequirementsViewCore(){
   const backTabs = `<p class="small" style="margin:8px 0 14px;"><a href="#" data-action="finBackToTabs">← Back to sections</a></p>`;
   if(finTab==='security' && FINANCE_ONLY) return lockHeader + backTabs + financePasswordsView();
   if(finTab==='security') return lockHeader + backTabs + financePasswordsView();
+  if(finTab==='agreed'){
+    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
+    return lockHeader + backTabs + agreedFeesView(d, term, year);
+  }
+  if(finTab==='exemptions'){
+    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
+    return lockHeader + backTabs + exemptionsView(d, term, year);
+  }
   if(finTab==='analysis') return lockHeader + backTabs + feesAnalysisView(d);
   if(finTab==='termsummary') return lockHeader + backTabs + accountsSummaryView(d);
   if(finTab==='statements') return lockHeader + backTabs + accountStatementsView(d);
@@ -8225,6 +8263,8 @@ function finTabChooserHTML(){
     ['finTab:requirements','📋','REQUIREMENTS'],
     ['finTab:analysis','📊','FEES ANALYSIS'],
     ['finTab:reqanalysis','🧾','REQUIREMENTS ANALYSIS'],
+    ['finTab:agreed','🤝','AGREED FEES'],
+    ['finTab:exemptions','🅴','EXEMPTIONS'],
     ['finTab:termsummary','📑','END OF TERM / YEAR SUMMARY'],
     ['finTab:statements','🧮','ACCOUNT STATEMENTS'],
     ['finTab:salaries','💼','SALARIES'],
@@ -8325,6 +8365,80 @@ function classPickerHTML(){
     ${!DB.classes.length?'<p class="small">No classes set up yet — add one under "Classes" first.</p>':''}
   </div>`;
 }
+// GENERAL → AGREED FEES: the ONLY place agreed fees are set or edited — class-wide and per learner.
+function agreedFeesView(d, term, year){
+  const finClassId = VIEW.params.finClassId;
+  const isAll = finClassId==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===finClassId);
+  if(!isAll && !cls) return classPickerHTML();
+  const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
+  let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
+    <h3 style="margin:0;">${isAll?'All Students':esc(cls.name)} — Agreed Fees (${esc(term)} ${esc(String(year))})</h3>
+    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
+  </div>`;
+  if(!isAll){
+    const rec = classAgreedRecord(finClassId, term, year, d);
+    if(!rec || VIEW.params.editClassAgreed){
+      out += `<div class="card"><form data-form="setClassAgreedFee" data-classid="${finClassId}">
+        <label>${rec?'Edit':'Set'} Classwide Agreed Fees for ${esc(cls.name)} (${esc(term)} ${esc(String(year))})</label>
+        <input name="amount" type="number" min="0" step="0.01" required value="${rec?rec.amount:''}">
+        <div class="flex" style="margin-top:10px;"><button class="btn">Save</button>${rec?`<a href="#" class="btn-outline" data-action="cancelEditClassAgreed" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}</div>
+      </form></div>`;
+    } else {
+      out += `<div class="card flex" style="justify-content:space-between;align-items:center;">
+        <div><span class="small">CLASSWIDE AGREED FEES</span><h2 style="margin:4px 0;">${money(rec.amount)}</h2></div>
+        <button type="button" class="btn-outline" data-action="editClassAgreedFee:${finClassId}">Edit classwise fees</button>
+      </div>`;
+    }
+  }
+  const editId = VIEW.params.editAgreedStudentId;
+  const rows = active.map(st=>{
+    const sum = studentAgreedSummary(st, term, year, d);
+    const clx = DB.classes.find(c=>c.id===st.classId);
+    const cell = editId===st.id
+      ? `<form data-form="setStudentAgreedFee" data-studentid="${st.id}" class="flex" style="gap:4px;flex-wrap:nowrap;"><input name="amount" type="number" min="0" step="0.01" value="${sum.agreed}" style="width:110px;"><button class="btn-outline" style="padding:4px 8px;">Save</button> <a href="#" class="btn-outline" data-action="cancelEditAgreedStudent" style="text-decoration:none;padding:4px 8px;">Cancel</a></form>`
+      : `${sum.exempt?`<span style="color:var(--good);font-weight:700;">EXEMPT</span> `:''}${money(sum.agreed)} <button type="button" class="btn-outline" style="padding:2px 6px;font-size:11px;" data-action="editStudentAgreedFee:${st.id}">Edit</button>`;
+    return `<tr><td>${esc(st.admNo)}</td><td class="stu-name">${esc(st.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td>${cell}</td></tr>`;
+  }).join('');
+  out += `<div class="card" style="overflow-x:auto;"><p class="small" style="margin-top:0;">Change one learner's agreed fees away from the class figure with Edit.</p>
+    <table class="data-table"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Agreed Fees</th></tr>${rows || `<tr><td colspan="99">No students.</td></tr>`}</table></div>`;
+  return out;
+}
+// GENERAL → EXEMPTIONS: the ONLY place fees and requirements exemptions are made or undone. FEES and REQUIREMENTS
+// only show that a learner is exempt.
+function exemptionsView(d, term, year){
+  const finClassId = VIEW.params.finClassId;
+  const isAll = finClassId==='all';
+  const cls = isAll ? null : DB.classes.find(c=>c.id===finClassId);
+  if(!isAll && !cls) return classPickerHTML();
+  const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
+  const rows = active.map(st=>{
+    const clx = DB.classes.find(c=>c.id===st.classId);
+    const sum = studentAgreedSummary(st, term, year, d);
+    const feeCell = sum.exempt
+      ? `<span style="color:var(--good);font-weight:700;">Exempt</span> <button type="button" class="btn-outline" data-action="feeUndoAdjust:${st.id}">↩ Undo</button>`
+      : sum.cleared>0
+      ? `<span class="small">Cleared — undo it under FEES to exempt</span>`
+      : `<button type="button" class="btn-outline" data-action="feeExempt:${st.id}">Exempt</button> <button type="button" class="btn-outline" data-action="feeExemptAll:${st.id}">Exempt (All time)</button>`;
+    const dem = studentDemandReqs(st, d);
+    const allTime = (d.reqAllTime||{})[st.id];
+    const outCnt = dem.filter(r=>!reqStatusFor(r.id, st.id, d)).length;
+    const exCnt = dem.filter(r=>{ const x=reqStatusFor(r.id, st.id, d); return x && x.method==='exempt'; }).length;
+    const reqCell = allTime==='exempt'
+      ? `<span style="color:var(--good);font-weight:700;">Exempt (all time)</span> <button type="button" class="btn-outline" data-action="reqUndoAllTime:${st.id}">↩ Undo</button>`
+      : allTime==='cleared'
+      ? `<span class="small">Cleared (all time) — undo it under REQUIREMENTS to exempt</span>`
+      : `${outCnt>0?`<button type="button" class="btn-outline" data-action="reqExemptAll:${st.id}">Exempt</button> `:''}<button type="button" class="btn-outline" data-action="reqExemptAllTime:${st.id}">Exempt (All time)</button>${exCnt>0?` <span class="small" style="font-weight:700;color:var(--good);">${exCnt} exempt</span> <button type="button" class="btn-outline" data-action="reqReopenAll:${st.id}">↩ Undo Clear/Exempt</button>`:''}`;
+    return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td>${esc(st.admNo)}</td><td class="stu-name">${esc(st.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}<td class="flex">${feeCell}</td><td class="flex">${reqCell}</td></tr>`;
+  }).join('');
+  return `<div class="flex" style="justify-content:space-between;align-items:center;">
+    <h3 style="margin:0;">${isAll?'All Students':esc(cls.name)} — Exemptions (${esc(term)} ${esc(String(year))})</h3>
+    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
+  </div>
+  <div class="card" style="overflow-x:auto;"><p class="small" style="margin-top:0;">Every exemption needs the private owner code. FEES and REQUIREMENTS only show the result.</p>
+  <label>Search</label><input placeholder="Search by name or admission number…" oninput="filterFinanceRows(this.value)">
+  <table class="data-table" id="financeStudentTable"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Fees</th><th>Requirements</th></tr>${rows || `<tr><td colspan="99">No students.</td></tr>`}</table></div>`;
+}
 // Fees tab, once a class (or "all") has been chosen. For a single class, this
 // first lets the admin set/edit the classwide Agreed Fees amount for the
 // current term; then shows every active student with their own agreed
@@ -8347,18 +8461,8 @@ function feesClassTableView(d, term, year){
   if(!isAll){
     const rec = classAgreedRecord(finClassId, term, year, d);
     const editing = VIEW.params.editClassAgreed;
-    if(!rec || editing){
-      out += `<div class="card"><form data-form="setClassAgreedFee" data-classid="${finClassId}">
-        <label>${rec?'Edit':'Set'} Classwide Agreed Fees for ${esc(cls.name)} (${esc(term)} ${esc(String(year))})</label>
-        <input name="amount" type="number" min="0" step="0.01" required value="${rec?rec.amount:''}">
-        <div class="flex" style="margin-top:10px;"><button class="btn">Save</button>${rec?`<a href="#" class="btn-outline" data-action="cancelEditClassAgreed" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}</div>
-      </form></div>`;
-    } else {
-      out += `<div class="card flex" style="justify-content:space-between;align-items:center;">
-        <div><span class="small">CLASSWIDE AGREED FEES</span><h2 style="margin:4px 0;">${money(rec.amount)}</h2></div>
-        <button type="button" class="btn-outline" data-action="editClassAgreedFee:${finClassId}">Edit classwise fees</button>
-      </div>`;
-    }
+    // Agreed fees can only be set or edited under GENERAL → AGREED FEES; here they are shown for reference.
+    out += `<div class="card"><span class="small">CLASSWIDE AGREED FEES</span>${rec?`<h2 style="margin:4px 0;">${money(rec.amount)}</h2>`:`<p class="small" style="margin:4px 0;">Not set yet.</p>`}<p class="small" style="margin:0;">Set or change agreed fees under GENERAL → AGREED FEES.</p></div>`;
   }
 
   const summaries = active.map(s=>({s, sum: studentAgreedSummary(s, term, year, d)}));
@@ -8381,12 +8485,13 @@ function feesClassTableView(d, term, year){
 
   const rows = summaries.map(({s,sum})=>{
     const clx = DB.classes.find(c=>c.id===s.classId);
-    const agreedCell = editAgreedId===s.id
-      ? `<form data-form="setStudentAgreedFee" data-studentid="${s.id}" class="flex" style="gap:4px;flex-wrap:nowrap;"><input name="amount" type="number" min="0" step="0.01" value="${sum.agreed}" style="width:90px;"><button class="btn-outline" style="padding:4px 8px;">Save</button></form>`
-      : `${sum.exempt?`<span style="color:var(--good);font-weight:700;">EXEMPT${studentFeeAdjust(s.id,term,year,d)?.term==='all'?' (all time)':''}</span> `:money(sum.agreed)+' '}${sum.cleared>0?`<span class="small" style="color:var(--good);font-weight:700;" title="${esc(money(sum.cleared))} written off">(Cleared)</span> `:''}<button type="button" class="btn-outline" style="padding:2px 6px;font-size:11px;" data-action="editStudentAgreedFee:${s.id}">Edit</button>`;
-    const feeAdjBtns = (sum.exempt||sum.cleared>0)
-      ? `<button type="button" class="btn-outline" data-action="feeUndoAdjust:${s.id}">↩ Undo ${sum.exempt?'Exempt':'Clear'}</button>`
-      : `${sum.balance>0?`<button type="button" class="btn-outline" data-action="feeClear:${s.id}">✔ Clear</button> `:''}<button type="button" class="btn-outline" data-action="feeExempt:${s.id}">Exempt</button> ${cumulativeAgreedBalance(s,term,year,d)>0?`<button type="button" class="btn-outline" data-action="feeClearAll:${s.id}">✔ Clear (All time)</button> `:''}<button type="button" class="btn-outline" data-action="feeExemptAll:${s.id}">Exempt (All time)</button>`;
+    const agreedCell = `${sum.exempt?`<span style="color:var(--good);font-weight:700;">EXEMPT${studentFeeAdjust(s.id,term,year,d)?.term==='all'?' (all time)':''}</span> `:money(sum.agreed)+' '}${sum.cleared>0?`<span class="small" style="color:var(--good);font-weight:700;" title="${esc(money(sum.cleared))} written off">(Cleared)</span> `:''}`;
+    // Exemptions are made (and undone) only under GENERAL → EXEMPTIONS; here an exemption is shown but not changeable.
+    const feeAdjBtns = sum.exempt
+      ? `<span class="small" style="font-weight:700;color:var(--good);">Exempt (change under GENERAL)</span>`
+      : sum.cleared>0
+      ? `<button type="button" class="btn-outline" data-action="feeUndoAdjust:${s.id}">↩ Undo Clear</button>`
+      : `${sum.balance>0?`<button type="button" class="btn-outline" data-action="feeClear:${s.id}">✔ Clear</button> `:''}${cumulativeAgreedBalance(s,term,year,d)>0?`<button type="button" class="btn-outline" data-action="feeClearAll:${s.id}">✔ Clear (All time)</button> `:''}`;
     const lastBal = studentLastTermBalance(s, term, year, d);
     const lastBalCell = lastBal===null ? '<td>—</td>' : (lastBal>0 ? `<td style="color:var(--danger);font-weight:700;">${money(lastBal)}</td>` : `<td style="color:var(--good);font-weight:700;">Cleared</td>`);
     const instCells = Array.from({length:maxInst},(_,i)=>{
@@ -9337,17 +9442,19 @@ function requirementsClassView(d, term, year){
       const method = reqStatusMethod(stat);
       if(!stat) return `<td><button type="button" class="btn-outline req-qbtn" data-action="reqMarkItem:${pair}">Pay item</button><button type="button" class="btn-outline req-qbtn" data-action="reqQuickCash:${pair}">Pay cash${r.subFee>0?' '+money(r.subFee):''}</button></td>`;
       const lbl = method==='cash' ? `💵 Cash ${money(stat.amount||0)}` : method==='exempt' ? '🅴 Exempt' : method==='cleared' ? '✔ Cleared' : '✅ Item';
-      return `<td title="${esc(reqStatusLabel(stat))}">${lbl}${stat.allTime?'':` <button type="button" class="btn-outline req-qbtn" data-action="reqUndoStatus:${pair}" title="Undo">↩</button>`}</td>`;
+      return `<td title="${esc(reqStatusLabel(stat))}">${lbl}${(stat.allTime||method==='exempt')?'':` <button type="button" class="btn-outline req-qbtn" data-action="reqUndoStatus:${pair}" title="Undo">↩</button>`}</td>`;
     }).join('');
     const lastBalCell = requirementLastTermBalanceCell(st, d);
     const _dem = studentDemandReqs(st, d);
     const _outCnt = _dem.filter(r=>!reqStatusFor(r.id, st.id, d)).length;
     const _adjCnt = _dem.filter(r=>{ const x=reqStatusFor(r.id, st.id, d); return x && (x.method==='cleared'||x.method==='exempt'); }).length;
+    const _exCnt = _dem.filter(r=>{ const x=reqStatusFor(r.id, st.id, d); return x && x.method==='exempt'; }).length;
     const _allTime = (d.reqAllTime||{})[st.id];
+    // Exemptions are made and undone only under GENERAL → EXEMPTIONS; here they are shown, not changeable.
     const reqAdjBtns = _allTime
-      ? `<span class="small" style="font-weight:700;color:var(--good);">${_allTime==='exempt'?'Exempt':'Cleared'} (all time)</span> <button type="button" class="btn-outline" data-action="reqUndoAllTime:${st.id}">↩ Undo All time</button> `
-      : (_dem.length ? `${_outCnt>0?`<button type="button" class="btn-outline" data-action="reqClearAll:${st.id}">✔ Clear</button> <button type="button" class="btn-outline" data-action="reqExemptAll:${st.id}">Exempt</button> `:''}${_adjCnt>0?`<button type="button" class="btn-outline" data-action="reqReopenAll:${st.id}">↩ Undo Clear/Exempt</button> `:''}` : '')
-        + (!_allTime ? `<button type="button" class="btn-outline" data-action="reqClearAllTime:${st.id}">✔ Clear (All time)</button> <button type="button" class="btn-outline" data-action="reqExemptAllTime:${st.id}">Exempt (All time)</button> ` : '');
+      ? `<span class="small" style="font-weight:700;color:var(--good);">${_allTime==='exempt'?'Exempt':'Cleared'} (all time)</span> ${_allTime==='exempt'?'':`<button type="button" class="btn-outline" data-action="reqUndoAllTime:${st.id}">↩ Undo All time</button> `}`
+      : (_dem.length ? `${_outCnt>0?`<button type="button" class="btn-outline" data-action="reqClearAll:${st.id}">✔ Clear</button> `:''}${_exCnt>0?`<span class="small" style="font-weight:700;color:var(--good);">${_exCnt} exempt</span> `:''}${(_adjCnt>0 && _exCnt===0)?`<button type="button" class="btn-outline" data-action="reqReopenAll:${st.id}">↩ Undo Clear</button> `:''}` : '')
+        + (!_allTime ? `<button type="button" class="btn-outline" data-action="reqClearAllTime:${st.id}">✔ Clear (All time)</button> ` : '');
     return `<tr data-searchtext="${esc((st.name+' '+st.admNo).toLowerCase())}"><td><input type="checkbox" style="width:auto;" ${SELECTED_REQ_NOTES.has(st.id)?'checked':''} onchange="toggleReqNoteSelect('${st.id}')"></td><td>${esc(st.admNo)}</td>${lastBalCell}<td class="stu-name">${esc(st.name)}</td>${isAll?`<td>${clx?esc(clx.name):'—'}</td>`:''}${cells}<td class="flex">${reqAdjBtns}<button type="button" class="btn-outline" data-action="financeStudent:${st.id}">View</button> <button type="button" class="btn-outline" data-action="printReqDemandNote:${st.id}">🖨 Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${st.id}">⬇ Download</button></td></tr>`;
   }).join('') || `<tr><td colspan="99">No students${isAll?'':' in this class'}.</td></tr>`}
   </table></div></div></div>`;
@@ -9619,14 +9726,14 @@ function financeStudentView(studentId){
   const myReqs = studentRequirements(s,d);
   const agreedTerm = DB.info.currentTerm, agreedYear = DB.info.currentYear;
   const agreedSum = studentAgreedSummary(s, agreedTerm, agreedYear, d);
-  const editingAgreed = VIEW.params.editAgreedStudentId===s.id;
+  const editingAgreed = false; // agreed fees are edited only under GENERAL → AGREED FEES
   const agreedBlock = editingAgreed
     ? `<form data-form="setStudentAgreedFee" data-studentid="${s.id}" class="flex" style="align-items:flex-end;gap:8px;flex-wrap:wrap;">
         <div><label>Agreed Fees</label><input name="amount" type="number" min="0" step="0.01" value="${agreedSum.agreed}" required></div>
         <button class="btn">Save</button>
         <a href="#" class="btn-outline" data-action="cancelEditAgreedStudent" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>
       </form>`
-    : `<div class="flex" style="justify-content:space-between;align-items:center;"><h1 style="margin:4px 0;">${money(agreedSum.agreed)}</h1><button type="button" class="btn-outline" data-action="editStudentAgreedFee:${s.id}">Edit</button></div>`;
+    : `<div><h1 style="margin:4px 0;">${money(agreedSum.agreed)}</h1><p class="small" style="margin:0;">Change under GENERAL → AGREED FEES.</p></div>`;
   const agreedFeesSection = `<div class="card"><h3>Fees Follow-up — ${esc(agreedTerm)} ${esc(String(agreedYear))}</h3>
     <div class="grid3">
       <div><div class="small">AGREED FEES</div>${agreedBlock}</div>
@@ -9702,6 +9809,7 @@ function financeStudentView(studentId){
         actionCell = `<button class="btn-outline" data-action="reqMarkItem:${pairArg}">Switch to Item</button> <button class="btn-danger" data-action="reqUndoStatus:${pairArg}">Remove</button>`;
       } else if(method==='exempt' || method==='cleared'){
         statusCell = method==='exempt' ? '🅴 Exempted' : '✔ Cleared by admin';
+        if(method==='exempt') actionCell = `<span class="small">Exemptions are changed under GENERAL → EXEMPTIONS</span>`; else
         actionCell = stat.allTime ? `<span class="small">All-time setting — undo it from the Requirements table</span>` : `<button class="btn-outline" data-action="reqMarkItem:${pairArg}">Mark Submitted (Item)</button> <button class="btn-danger" data-action="reqUndoStatus:${pairArg}">Undo</button>`;
       } else {
         statusCell = '✅ Submitted (Item)';
@@ -14953,6 +15061,12 @@ document.addEventListener('click', async (e)=>{
   // actually done. A case can call showActionSuccess/showActionFailure itself with a
   // specific message; otherwise the fallback after the switch (or the catch, on
   // error) resolves it.
+  if(GENERAL_ONLY_ACTIONS.has(action) && FIN_SUB!=='general'){
+    alert('Agreed fees and exemptions can only be set or changed under GENERAL.'); return;
+  }
+  if(OWNER_CODE_ACTIONS[action]){
+    if(!(await requireOwnerGate(OWNER_CODE_ACTIONS[action], 'Confirm', OWNER_CODE_TEACHER_OK.has(action)))) return;
+  }
   if(MUTATING_ACTIONS.has(action)) showActionProgress('Processing…', el);
   try{
   switch(action){
@@ -16584,9 +16698,12 @@ document.addEventListener('submit', async (e)=>{
       if(type==='editFinanceFee'){
         const existing = d.fees.find(f=>f.id===form.dataset.id);
         if(!existing){ alert('Fee item not found.'); return; }
+        { const before=(existing.excludeIds||[]).slice().sort().join(','), after=rec.excludeIds.slice().sort().join(',');
+          if(before!==after && !(await requireOwnerGate('change who is exempted from this fee item'))) return; }
         if(!(await binFinCorrectIf('fees','Fee item',existing,rec))) return;
         Object.assign(existing, rec);
       } else {
+        if(rec.excludeIds.length && !(await requireOwnerGate('exempt students from this fee item'))) return;
         d.fees.push({id:uid('fee'), ...rec});
       }
       syncAllStudentsFinance();
@@ -16779,6 +16896,7 @@ document.addEventListener('submit', async (e)=>{
       render(); return;
     }
     else if(type==='setClassAgreedFee'){
+      if(FIN_SUB!=='general'){ alert('Agreed fees can only be set or edited under GENERAL → AGREED FEES.'); return; }
       const d = financeData();
       const classId = form.dataset.classid;
       const cls = DB.classes.find(c=>c.id===classId);
@@ -16798,6 +16916,7 @@ document.addEventListener('submit', async (e)=>{
       render(); return;
     }
     else if(type==='setStudentAgreedFee'){
+      if(FIN_SUB!=='general'){ alert('Agreed fees can only be set or edited under GENERAL → AGREED FEES.'); return; }
       const d = financeData();
       const studentId = form.dataset.studentid;
       const stu = DB.students.find(s=>s.id===studentId);

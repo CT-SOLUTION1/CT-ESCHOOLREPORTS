@@ -2,7 +2,7 @@
 // (they must be the same string). Browsers re-fetch sw.js each time the app is opened; any byte
 // change installs this new worker, which takes over at once and makes already-open (and
 // old-version) pages reload themselves.
-const SW_VERSION = 'BUILD-2026-10-29-15';
+const SW_VERSION = 'BUILD-2026-10-29-20';
 
 // Small static files kept for offline use. Each one is added separately so a missing file
 // can never make the whole install fail.
