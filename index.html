@@ -18513,6 +18513,9 @@ document.addEventListener('submit', async (e)=>{
         if(colHasSaved && !changed && !newBlank && !conflictExcluded.length){
           if(prevMissNow) MISSING_MARKERS[missKeyNow] = prevMissNow; else delete MISSING_MARKERS[missKeyNow];
           scoreBtnState('already');
+          // Nothing new to save, so nothing is at risk: clear the "unsaved" flag and the on-device draft,
+          // otherwise leaving the page wrongly warns that scores are not saved.
+          FORM_DIRTY = false; try{ localStorage.removeItem(seDraftKey(form)); }catch(_){}
           return;
         }
       }
@@ -19787,7 +19790,7 @@ document.addEventListener('focus', ()=>{ if(updatePending && blurSettleTimer){ c
 // on-screen entry, not just our own auto-update reload. This is the same FORM_DIRTY
 // flag, so it stays in sync with the update logic above for free.
 window.addEventListener('beforeunload', (e)=>{
-  if(FORM_DIRTY){
+  if(FORM_DIRTY && (!seForm() || seReallyDirty())){
     seWriteDraft();
     try{ const f = seForm(); if(f && CUR) f.requestSubmit(); }catch(_){}   // best-effort auto-save
     e.preventDefault(); e.returnValue = '';
@@ -19803,7 +19806,21 @@ window.addEventListener('beforeunload', (e)=>{
 const SE_DRAFT_PREFIX = 'cte_se_draft:';
 function seForm(){ return document.querySelector('form[data-form="saveScores"]'); }
 function seDraftKey(f){ return SE_DRAFT_PREFIX + [SCHOOL_ID||'', (CUR&&CUR.username)||'', f.dataset.assign, f.dataset.paper, f.dataset.kind, f.dataset.label||'', f.dataset.term||'', f.dataset.year||''].join('|'); }
-function seNeedsGuard(){ return !!(FORM_DIRTY && CUR && seForm()); }
+// True only if a typed mark really differs from what is saved (the form is drawn from saved data, so
+// defaultValue = the saved mark). Typing then re-typing the same mark, or re-tapping Submit, is NOT unsaved work.
+function seReallyDirty(){
+  const f = seForm(); if(!f) return false;
+  const ins = f.querySelectorAll('input[name^="m_"]');
+  if(!ins.length) return true;
+  for(const i of ins){ if(!i.disabled && i.value !== i.defaultValue) return true; }
+  return false;
+}
+function seNeedsGuard(){
+  if(!(FORM_DIRTY && CUR && seForm())) return false;
+  if(seReallyDirty()) return true;
+  FORM_DIRTY = false; try{ localStorage.removeItem(seDraftKey(seForm())); }catch(_){}
+  return false;
+}
 function seNote(msg){
   try{
     const old = document.getElementById('seNote'); if(old) old.remove();
@@ -19861,7 +19878,8 @@ async function seConfirmLeave(){
     const saved = await seSaveNow();
     if(saved){
       try{ const f = seForm(); if(f) localStorage.removeItem(seDraftKey(f)); }catch(e){}
-      return confirm('Your entered scores have been saved.\n\nOK = leave this page\nCancel = go back to the page');
+      seNote('\u2713 Your scores were saved.');
+      return true;   // saved, so the page can be left freely
     }
     const leave = confirm('Your entered scores could NOT be saved (see the message on screen).\n\nOK = leave and lose them\nCancel = go back and fix them');
     if(leave) FORM_DIRTY = false;
