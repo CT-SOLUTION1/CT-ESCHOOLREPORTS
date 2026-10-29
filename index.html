@@ -2,7 +2,161 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script>const BUILD_ID = 'BUILD-2026-10-29-20'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>
+/* ---- Compatibility layer: lets older phones / browsers run the app, and shows a clear message
+   (instead of a blank page) on the few that truly can't. Plain ES5 on purpose. ---- */
+(function(){
+  try{
+    var P=Array.prototype, S=String.prototype, O=Object;
+    function def(o,n,f){ if(!o[n]) try{ O.defineProperty(o,n,{value:f,writable:true,configurable:true}); }catch(e){ o[n]=f; } }
+    def(P,'includes',function(x,i){ return this.indexOf(x,i)!==-1; });
+    def(P,'flat',function(d){ d=d===undefined?1:d; var r=[]; (function f(a,l){ for(var i=0;i<a.length;i++){ if(Array.isArray(a[i])&&l>0) f(a[i],l-1); else r.push(a[i]); } })(this,d); return r; });
+    def(P,'flatMap',function(fn,t){ return P.map.call(this,fn,t).flat(1); });
+    def(P,'find',function(fn,t){ for(var i=0;i<this.length;i++) if(fn.call(t,this[i],i,this)) return this[i]; });
+    def(P,'findIndex',function(fn,t){ for(var i=0;i<this.length;i++) if(fn.call(t,this[i],i,this)) return i; return -1; });
+    def(S,'includes',function(x,i){ return this.indexOf(x,i)!==-1; });
+    def(S,'startsWith',function(x,i){ i=i||0; return this.substr(i,x.length)===x; });
+    def(S,'endsWith',function(x,l){ var t=String(this); if(l===undefined||l>t.length) l=t.length; return t.substring(l-x.length,l)===x; });
+    def(S,'repeat',function(n){ var r=''; for(var i=0;i<n;i++) r+=this; return r; });
+    def(S,'padStart',function(n,c){ var t=String(this); c=c===undefined?' ':String(c); while(t.length<n) t=c+t; return t.length>n?t.slice(t.length-n):t; });
+    def(S,'padEnd',function(n,c){ var t=String(this); c=c===undefined?' ':String(c); while(t.length<n) t+=c; return t.slice(0,n); });
+    def(S,'trimStart',function(){ return this.replace(/^\s+/,''); });
+    def(S,'trimEnd',function(){ return this.replace(/\s+$/,''); });
+    def(S,'replaceAll',function(a,b){ return a instanceof RegExp ? this.replace(a,b) : this.split(a).join(b); });
+    def(O,'values',function(o){ return O.keys(o).map(function(k){ return o[k]; }); });
+    def(O,'entries',function(o){ return O.keys(o).map(function(k){ return [k,o[k]]; }); });
+    def(O,'fromEntries',function(it){ var r={}; (Array.isArray(it)?it:Array.from(it)).forEach(function(e){ r[e[0]]=e[1]; }); return r; });
+    if(window.Promise && !Promise.prototype.finally){ Promise.prototype.finally=function(f){ var C=this.constructor||Promise; return this.then(function(v){ return C.resolve(f()).then(function(){ return v; }); },function(e){ return C.resolve(f()).then(function(){ throw e; }); }); }; }
+    if(window.Element){
+      var E=Element.prototype; if(!E.matches) E.matches=E.msMatchesSelector||E.webkitMatchesSelector;
+      if(!E.closest) E.closest=function(sel){ var n=this; while(n&&n.nodeType===1){ if(n.matches(sel)) return n; n=n.parentElement||n.parentNode; } return null; };
+    }
+    if(!window.CSS) window.CSS={};
+    if(!window.CSS.escape) window.CSS.escape=function(v){ return String(v).replace(/[^a-zA-Z0-9_\u00A0-\uFFFF-]/g,function(c){ return '\\'+c; }).replace(/^(-?)(\d)/,'$1\\3$2 '); };
+  }catch(e){}
+
+  // Can this browser run the app at all?
+  var why=[];
+  try{ new Function('return async function(){ await 1; }'); }catch(e){ why.push('async'); }
+  try{ new Function('var a=1,b=[1];return `${a}`+[...b].length+(()=>1)();'); }catch(e){ why.push('es6'); }
+  if(!window.Promise||!window.Map||!window.Set||!window.fetch) why.push('api');
+  try{ localStorage.setItem('_t','1'); localStorage.removeItem('_t'); }catch(e){ /* private mode: app already handles empty storage */ }
+  if(why.length){
+    window.__CTE_UNSUPPORTED=true;
+    var show=function(){
+      var d=document.createElement('div');
+      d.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#fff;color:#222;font:18px/1.5 Arial,sans-serif;padding:28px;overflow:auto;text-align:center';
+      d.innerHTML='<h2 style="color:#b3261e">Your phone\u2019s browser is too old</h2><p>CT-E SOLUTIONS needs a newer browser to run.</p><p><b>Please do one of these:</b></p><p>1. Update <b>Chrome</b> (Play Store / App Store), or<br>2. Open this same link in <b>Chrome</b> or <b>Safari</b> / <b>Firefox</b>, or<br>3. Use another phone, tablet or computer.</p><p style="color:#777;font-size:14px">If the link was opened inside WhatsApp / Facebook, tap \u22EE or Share and choose \u201COpen in browser\u201D.</p>';
+      (document.body||document.documentElement).appendChild(d);
+    };
+    if(document.body) show(); else document.addEventListener('DOMContentLoaded',show);
+  }
+})();
+</script>
+<script>const BUILD_ID = 'BUILD-2026-10-29-2034'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script id="cte-pick-flow">
+/* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
+   (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
+   (or the form submitted) while an earlier one is still empty. */
+(function(){
+  var STEPS=['#assignSel','#paperSelect','#kindSel','#cwTestSel','#teacherTermSel','#maxScoreInput'];
+  var NAMES={'#assignSel':'subject / class','#paperSelect':'paper','#kindSel':'assessment type','#cwTestSel':'test','#teacherTermSel':'term','#maxScoreInput':'maximum mark (marked out of)'};
+  var st=document.createElement('style');
+  st.textContent='.pick-flash{outline:3px solid #0f7a3a !important;outline-offset:2px;box-shadow:0 0 0 5px rgba(15,122,58,.25) !important;transition:box-shadow .3s;}'+
+    '#pickFlowHint{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:2147483000;background:#0f7a3a;color:#fff;font:700 16px/1.3 Arial,sans-serif;padding:10px 16px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:90vw;text-align:center;}';
+  (document.head||document.documentElement).appendChild(st);
+
+  function formOf(el){ return el && el.closest ? el.closest('form[data-form="pickPaper"]') : null; }
+  function shown(el){ return !!el && !el.disabled && el.type!=='hidden' && el.offsetParent!==null; }
+  function done(el){ return String(el.value==null?'':el.value).trim()!==''; }
+  function steps(form){ return STEPS.map(function(s){ return {sel:s, el:form.querySelector(s)}; }).filter(function(x){ return shown(x.el); }); }
+  function firstOpen(form){ var a=steps(form); for(var i=0;i<a.length;i++) if(!done(a[i].el)) return a[i]; return null; }
+  function indexOfEl(form,el){ var a=steps(form); for(var i=0;i<a.length;i++) if(a[i].el===el) return i; return -1; }
+
+  var hintT=0;
+  function hint(txt){
+    var h=document.getElementById('pickFlowHint'); if(!h){ h=document.createElement('div'); h.id='pickFlowHint'; document.body.appendChild(h); }
+    h.textContent=txt; h.style.display='block'; clearTimeout(hintT); hintT=setTimeout(function(){ h.style.display='none'; },2600);
+  }
+  function goTo(step, openPicker){
+    var el=step.el;
+    try{ el.scrollIntoView({block:'center',behavior:'smooth'}); }catch(e){ try{ el.scrollIntoView(); }catch(_){} }
+    try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(_){} }
+    el.classList.add('pick-flash'); setTimeout(function(){ el.classList.remove('pick-flash'); },1600);
+    if(openPicker && el.tagName==='SELECT' && el.showPicker){ setTimeout(function(){ try{ el.showPicker(); }catch(e){} },350); }
+  }
+
+  // After a choice is made, move on to the next unfinished field.
+  document.addEventListener('change', function(e){
+    var el=e.target, form=formOf(el); if(!form || el.id==='maxScoreInput') return;
+    if(STEPS.indexOf('#'+el.id)<0) return;
+    setTimeout(function(){   // let the page's own change handlers (e.g. rebuilding the paper list) finish first
+      var nx=firstOpen(form); if(nx && nx.el!==el) goTo(nx,true);
+    },60);
+  }, true);
+
+  // A later field can't be used while an earlier one is still empty.
+  function guard(e){
+    var el=e.target, form=formOf(el); if(!form) return;
+    var i=indexOfEl(form,el); if(i<0) return;
+    var nx=firstOpen(form); if(!nx) return;
+    if(indexOfEl(form,nx.el)<i){
+      if(e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      hint('Please choose the '+NAMES[nx.sel]+' first');
+      goTo(nx,false);
+    }
+  }
+  document.addEventListener('mousedown', guard, true);
+  document.addEventListener('touchstart', guard, {capture:true,passive:false});
+  document.addEventListener('focusin', function(e){
+    var el=e.target, form=formOf(el); if(!form) return;
+    var i=indexOfEl(form,el); if(i<0) return;
+    var nx=firstOpen(form);
+    if(nx && indexOfEl(form,nx.el)<i){ hint('Please choose the '+NAMES[nx.sel]+' first'); goTo(nx,false); }
+  }, true);
+
+  // The form can't be submitted until every step is done.
+  document.addEventListener('submit', function(e){
+    var form=e.target; if(!form || !form.matches || !form.matches('form[data-form="pickPaper"]')) return;
+    var nx=firstOpen(form); if(!nx) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    hint('Please choose the '+NAMES[nx.sel]+' first'); goTo(nx,false);
+  }, true);
+})();
+</script>
+<script id="cte-auto-next">
+/* Enter Scores picker: the guided path ends on "Submit — load student list".
+   After "marked out of" is typed (Enter, or a short pause) focus jumps to that Submit button.
+   Typing the scores themselves is NOT auto-advanced. */
+(function(){
+  function usable(el){ return !!el && !el.disabled && el.offsetParent!==null; }
+  function go(el){
+    try{ el.scrollIntoView({block:'center',behavior:'smooth'}); }catch(e){ try{ el.scrollIntoView(); }catch(_){} }
+    try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(_){} }
+    try{ el.classList.add('pick-flash'); setTimeout(function(){ el.classList.remove('pick-flash'); },1600); }catch(e){}
+  }
+  var idleT=0;
+  function pickSubmitBtn(inp){ var f=inp.closest('form[data-form="pickPaper"]'); return f ? f.querySelector('.pick-go button') : null; }
+  function maxDone(inp){ var v=parseFloat(inp.value); return isFinite(v) && v>=1; }
+  document.addEventListener('input', function(e){
+    var el=e.target; if(!el || el.id!=='maxScoreInput') return;
+    clearTimeout(idleT);
+    if(!maxDone(el)) return;
+    idleT=setTimeout(function(){
+      if(document.activeElement!==el || !maxDone(el)) return;
+      var b=pickSubmitBtn(el); if(usable(b)) go(b);
+    },1100);
+  }, true);
+  document.addEventListener('keydown', function(e){
+    var el=e.target; if(!el || el.id!=='maxScoreInput' || e.key!=='Enter') return;
+    clearTimeout(idleT);
+    if(!maxDone(el)) return;
+    var b=pickSubmitBtn(el); if(!usable(b)) return;
+    e.preventDefault(); e.stopPropagation(); go(b);   // first Enter reaches the button; Enter again submits
+  }, true);
+})();
+</script>
 <title>CT-E SOLUTIONS — School Report System</title>
 <!-- Desktop layout on every device: phones and tablets lay the page out at a 1280px-wide
      desktop viewport (dashboard, tables, report cards, sidebar — everything exactly as on a
@@ -1364,6 +1518,10 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
   font-size:min(calc(17*var(--uk)),2.4svh);padding:min(calc(13*var(--uk)),1.5svh) calc(22*var(--uk));}
 /* Assessment type + its test list: one full-width field per line, so "-- choose assessment type --" is never cut off. */
 .score-pick .pick-stack{grid-template-columns:1fr !important;gap:0;}
+/* Enter Scores: the Term row (and the admin's Term / Year row) is kept short — slimmer boxes, tighter labels and spacing */
+.score-pick .pick-term select,.score-pick .pick-term input:not([type="checkbox"]):not([type="hidden"]){min-height:calc(30*var(--uk)) !important;height:calc(30*var(--uk)) !important;padding-top:calc(3*var(--uk)) !important;padding-bottom:calc(3*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;line-height:1.2 !important;}
+.score-pick .pick-term label{margin:calc(2*var(--uk)) 0 calc(2*var(--uk)) !important;font-size:calc(13*var(--uk)) !important;}
+.score-pick .pick-term.pick-sec{padding-top:calc(2*var(--uk));padding-bottom:calc(4*var(--uk));}
 .score-pick select{text-overflow:clip;}
 </style>
 <script id="cte-login-fit">
@@ -1766,8 +1924,10 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-modal-foot .btn[disabled],.rc-modal-foot .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
 /* Enter Scores: the "marked out of" (maximum score) box is bold and thick so it can't be missed */
 #maxScoreInput{border:3px solid var(--navy,#0A2A4A) !important;border-radius:10px !important;font-size:20px !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;background:#fff !important;padding:12px 14px !important;min-height:52px;box-sizing:border-box;}
-#maxScoreInput::placeholder{font-size:15px;font-weight:700;color:#6b7c8d;}
-#maxScoreInput:focus{outline:none;border-color:var(--gold,#C9A227) !important;box-shadow:0 0 0 3px rgba(201,162,39,.35);}
+#maxScoreInput{border-color:#0f7a3a !important;color:#0f7a3a !important;font-size:calc(17*var(--uk,1)) !important;min-height:calc(46*var(--uk,1));padding-top:calc(8*var(--uk,1)) !important;padding-bottom:calc(8*var(--uk,1)) !important;}
+#maxScoreInput::placeholder{font-size:calc(14*var(--uk,1));font-weight:700;color:#0f7a3a;opacity:1;}
+.max-out-label{display:block;color:#0f7a3a !important;font-size:calc(17*var(--uk,1)) !important;font-weight:800 !important;line-height:1.3;margin-bottom:calc(6*var(--uk,1));}
+#maxScoreInput:focus{outline:none;border-color:#0b5c2b !important;box-shadow:0 0 0 3px rgba(15,122,58,.3);}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
 </style>
 <script>
@@ -8485,7 +8645,7 @@ function feesClassTableView(d, term, year){
 
   const rows = summaries.map(({s,sum})=>{
     const clx = DB.classes.find(c=>c.id===s.classId);
-    const agreedCell = `${sum.exempt?`<span style="color:var(--good);font-weight:700;">EXEMPT${studentFeeAdjust(s.id,term,year,d)?.term==='all'?' (all time)':''}</span> `:money(sum.agreed)+' '}${sum.cleared>0?`<span class="small" style="color:var(--good);font-weight:700;" title="${esc(money(sum.cleared))} written off">(Cleared)</span> `:''}`;
+    const agreedCell = `${sum.exempt?`<span style="color:var(--good);font-weight:700;">EXEMPT${(studentFeeAdjust(s.id,term,year,d)||{}).term==='all'?' (all time)':''}</span> `:money(sum.agreed)+' '}${sum.cleared>0?`<span class="small" style="color:var(--good);font-weight:700;" title="${esc(money(sum.cleared))} written off">(Cleared)</span> `:''}`;
     // Exemptions are made (and undone) only under GENERAL → EXEMPTIONS; here an exemption is shown but not changeable.
     const feeAdjBtns = sum.exempt
       ? `<span class="small" style="font-weight:700;color:var(--good);">Exempt (change under GENERAL)</span>`
@@ -13425,7 +13585,7 @@ function scoresEntryView(mine){
         </div>
       </div>
       ${!isAdmin ? `
-      <div class="grid2 pick-sec">
+      <div class="grid2 pick-sec pick-term">
         <div><label>Term (${esc(String(DB.info.currentYear))} academic year)</label><select name="teacherTerm" id="teacherTermSel">
           ${['Term 1','Term 2','Term 3'].map(t=>`<option value="${t}" ${t===DB.info.currentTerm?'selected':''}>${t}</option>`).join('')}
         </select></div>
@@ -13433,7 +13593,7 @@ function scoresEntryView(mine){
       </div>
 ` : ''}
       <div class="pick-sec">
-      <label>What was this test/exam marked out of? <span style="color:var(--danger);">*compulsory</span></label>
+      <label class="max-out-label">What was this test/exam marked out of? <span style="color:var(--danger);">*compulsory</span></label>
       <input name="maxScore" id="maxScoreInput" type="number" min="1" step="1" value="" placeholder="Type the maximum mark here — required" required>
       </div>
 
@@ -13445,7 +13605,7 @@ function scoresEntryView(mine){
   <div class="card score-pick" style="margin-top:14px;${isPastPeriod?'background:#fff8e6;border:1px solid #e8d38a;':''}">
     <h3 style="margin-top:0;">Scoring period</h3>
 
-    <div class="grid2">
+    <div class="grid2 pick-term">
       <div><label>Term</label><select onchange="setScorePeriodParam('pTerm', this.value)">
         ${['Term 1','Term 2','Term 3'].map(t=>`<option value="${t}" ${periodTerm===t?'selected':''}>${t}</option>`).join('')}
       </select></div>
@@ -14944,12 +15104,17 @@ async function inlineSaveReportScore(el){
       && sc.kind===kind && (sc.label||'')===label && sc.term===term && sc.year===year);
     let savePromise = null;
     if(valRaw===''){
-      if(existing){ savePromise = deleteScores([existing]); }
+      if(!existing){ try{ showDeliveredToast('All scores already saved'); }catch(_){} return; }
+      savePromise = deleteScores([existing]);
     } else {
       const num = Number(valRaw);
       if(!isFinite(num) || num<0 || num>max){
         alert(`That mark must be between 0 and ${max}.`);
         el.value = existing ? existing.marks : '';
+        return;
+      }
+      if(existing && Number(existing.marks)===num && Number(existing.max)===max){
+        try{ showDeliveredToast('All scores already saved'); }catch(_){}
         return;
       }
       const row = {id: existing?existing.id:uid('sc'), studentId, subject, paper, kind, label, term, year, marks:num, max, teacher:CUR.username};
@@ -18404,7 +18569,16 @@ document.addEventListener('submit', async (e)=>{
         }
         imported++;
       }
-      await upsertScores(importRows); form.reset();
+      const changedImport = importRows.filter(r=>{
+        const old = DB.scores.find(sc=>sc.id===r.id);
+        return !old || Number(old.marks)!==Number(r.marks) || Number(old.max)!==Number(r.max);
+      });
+      if(importRows.length && !changedImport.length){
+        form.reset();
+        alertOk('All scores in this file are already saved — nothing was changed.');
+        return;
+      }
+      await upsertScores(changedImport); form.reset();
       const skipMsgParts = [];
       if(skipped) skipMsgParts.push(`${skipped} row(s) skipped (blank marks or admission number not on your list)`);
       if(outOfRange) skipMsgParts.push(`${outOfRange} row(s) rejected (mark outside 0–${max})`);
@@ -18509,10 +18683,10 @@ document.addEventListener('submit', async (e)=>{
           const old = DB.scores.find(sc=>sc.id===r.id);
           return !old || Number(old.marks)!==Number(r.marks) || Number(old.max)!==Number(r.max);
         });
-        const newBlank = [...missSetNow].some(id=>!(prevMissNow && prevMissNow.has(id)));
-        if(colHasSaved && !changed && !newBlank && !conflictExcluded.length){
+        if(colHasSaved && !changed && !conflictExcluded.length){
           if(prevMissNow) MISSING_MARKERS[missKeyNow] = prevMissNow; else delete MISSING_MARKERS[missKeyNow];
           scoreBtnState('already');
+          try{ showDeliveredToast('All scores already saved'); }catch(_){}
           // Nothing new to save, so nothing is at risk: clear the "unsaved" flag and the on-device draft,
           // otherwise leaving the page wrongly warns that scores are not saved.
           FORM_DIRTY = false; try{ localStorage.removeItem(seDraftKey(form)); }catch(_){}
@@ -19985,7 +20159,7 @@ startUpdateWatcher();
 
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js').then(reg=>{
+    navigator.serviceWorker.register('./sw.snippet.js').then(reg=>{
       // Actively re-check for a new service worker (not just on next full navigation)
       // so an already-open tab notices a deploy without needing to be closed/reopened.
       setInterval(()=>reg.update().catch(()=>{}), 15*1000);
