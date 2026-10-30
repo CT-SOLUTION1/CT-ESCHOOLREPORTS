@@ -7799,21 +7799,8 @@ function demandNoteHTML(s, cl, d, term, year, mode){
 // Prints one student's Demand Note without leaving whatever table (Fees or
 // Requirements) triggered it — a temporary #printArea holder, printed, then
 // removed again once the browser's print dialog has closed.
-function printDemandNoteFor(studentId){
-  const d = financeData();
-  const s = DB.students.find(x=>x.id===studentId);
-  if(!s){ alert('Student not found.'); return; }
-  const cl = DB.classes.find(c=>c.id===s.classId);
-  const old = document.getElementById('multiPrintHolder');
-  if(old) old.remove();
-  const holder = document.createElement('div');
-  holder.id = 'multiPrintHolder';
-  holder.innerHTML = `<div id="printArea">${demandNoteHTML(s, cl, d, DB.info.currentTerm, DB.info.currentYear)}</div>`;
-  document.body.appendChild(holder);
-  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
-  window.addEventListener('afterprint', cleanup);
-  setTimeout(cleanup, 15000); // fallback in case a browser never fires afterprint
-  setTimeout(()=>printFramed(), 150);
+async function printDemandNoteFor(studentId){
+  await withPdfPrint(()=>downloadDemandNoteFor(studentId));
 }
 // Renders a Demand Note (or any similar half-page card) off-screen and captures it
 // as a single-page PDF via html2canvas — the note keeps its natural half-page size
@@ -7858,25 +7845,8 @@ async function downloadDemandNoteFor(studentId){
 // Prints every ticked student's Demand Note in one go, each on its own page —
 // used by the "Print selected" bulk button on both the Fees and Requirements
 // tables (see SELECTED_FEE_NOTES / SELECTED_REQ_NOTES below).
-function printSelectedDemandNotes(selectedSet){
-  if(CUR.role!=='admin'){ alert('Only an Admin can print demand notes.'); return; }
-  const d = financeData();
-  const term = DB.info.currentTerm, year = DB.info.currentYear;
-  const students = DB.students.filter(s=>selectedSet.has(s.id) && s.status!=='left');
-  if(!students.length){ alert('Tick at least one student first.'); return; }
-  const old = document.getElementById('multiPrintHolder');
-  if(old) old.remove();
-  const holder = document.createElement('div');
-  holder.id = 'multiPrintHolder';
-  holder.innerHTML = `<div id="printArea">${students.map((s,i)=>{
-    const cl = DB.classes.find(c=>c.id===s.classId);
-    return `<div${i<students.length-1?' style="page-break-after:always;"':''}>${demandNoteHTML(s, cl, d, term, year)}</div>`;
-  }).join('')}</div>`;
-  document.body.appendChild(holder);
-  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
-  window.addEventListener('afterprint', cleanup);
-  setTimeout(cleanup, 15000);
-  setTimeout(()=>printFramed(), 150);
+async function printSelectedDemandNotes(selectedSet){
+  await withPdfPrint(()=>downloadSelectedDemandNotesPdf(selectedSet));
 }
 // Downloads every ticked student's Demand Note as ONE combined PDF, one note per
 // page — the download counterpart of printSelectedDemandNotes above.
@@ -7961,15 +7931,8 @@ function clearReqNoteSelection(){ SELECTED_REQ_NOTES.clear(); render(); }
 // demand note print/download elsewhere on the very same page also relies on a
 // temporary #printArea — leaving this one permanently named #printArea would make
 // both show up together the moment either was triggered.
-function printFinanceTable(exportElId){
-  const el = document.getElementById(exportElId);
-  if(!el){ alert('Nothing to print yet.'); return; }
-  const oldId = el.id;
-  el.id = 'printArea';
-  const revert = ()=>{ if(el.id==='printArea') el.id = oldId; window.removeEventListener('afterprint', revert); };
-  window.addEventListener('afterprint', revert);
-  setTimeout(revert, 15000); // fallback in case a browser never fires afterprint
-  printListPaged({orientation:'landscape'});
+async function printFinanceTable(exportElId){
+  await withPdfPrint(()=>downloadFinanceTablePdf(exportElId, 'print.pdf'));
 }
 async function downloadFinanceTablePdf(exportElId, filename){
   const el = document.getElementById(exportElId);
@@ -9200,19 +9163,8 @@ function accountStatementsView(d){
   <div style="overflow-x:auto;">${preview}</div>`;
 }
 function setStmtClass(v){ VIEW.params = {...VIEW.params, stClass:v, stStu:''}; render(); }
-function printAccountStatements(){
-  const b = stmtBuild();
-  if(!b.docs.length){ alert('There are no statements to print for this selection.'); return; }
-  const old = document.getElementById('multiPrintHolder');
-  if(old) old.remove();
-  const holder = document.createElement('div');
-  holder.id = 'multiPrintHolder';
-  holder.innerHTML = `<div id="printArea">${b.docs.map((h,i)=>`<div${i<b.docs.length-1?' style="page-break-after:always;"':''}>${h}</div>`).join('')}</div>`;
-  document.body.appendChild(holder);
-  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
-  window.addEventListener('afterprint', cleanup);
-  setTimeout(cleanup, 15000);
-  setTimeout(()=>printFramed(true), 150);
+async function printAccountStatements(){
+  await withPdfPrint(()=>downloadAccountStatementsPdf());
 }
 // Every statement is captured and cut into A4 pages at row boundaries, so a long ledger runs onto
 // further pages instead of being squeezed onto one.
@@ -9954,7 +9906,7 @@ function financeStudentView(studentId){
       <label>Payer Contact</label><input name="payerContact" placeholder="Phone number">
       <div class="flex" style="margin-top:12px;"><button class="btn">Save Installment</button></div>
     </form>
-    <div class="flex" style="margin-top:16px;"><button type="button" class="btn-outline" onclick="printFramed()">🖨 Print Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download Demand Note</button></div>
+    <div class="flex" style="margin-top:16px;"><button type="button" class="btn-outline" onclick="printDemandNoteFor('${s.id}')">🖨 Print Demand Note</button> <button type="button" class="btn-outline" data-action="downloadDemandNote:${s.id}">⬇ Download Demand Note</button></div>
   </div>
   <div id="printArea">${demandNoteHTML(s, cl, d, agreedTerm, agreedYear)}</div>`;
   const showFees = cmode!=='requirements', showReqs = cmode!=='fees';
@@ -10876,10 +10828,9 @@ function withStudentsListExport(fn){
   return Promise.resolve(fn(done)).catch(e=>{ done(); throw e; });
 }
 function printStudentsList(){
-  withStudentsListExport(done=>{
-    window.addEventListener('afterprint', done, {once:true}); setTimeout(done, 20000);
-    printFinanceTable('stuListExport');
-  });
+  return withStudentsListExport(done=>withPdfPrint(async()=>{
+    try{ await downloadFinanceTablePdf('stuListExport', `${STU_LIST_LABEL.replace(/[^\w]+/g,'_')}_students.pdf`); } finally{ done(); }
+  }));
 }
 async function runDownloadStudentsListPdf(btn){
   const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
@@ -11925,23 +11876,7 @@ async function downloadReportCardPdf(studentId, term, year){
 // id the single report-card page uses to isolate what the browser Print dialog
 // shows) out of the ticked students only, prints it, then removes it again.
 async function printSelectedReports(){
-  if(CUR.role!=='admin'){ alert('Only an Admin can print report cards.'); return; }
-  const students = DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && s.status!=='left');
-  if(!students.length){ alert('Tick at least one student first.'); return; }
-  try{ await refreshScores(); }
-  catch(e){ console.warn('Score refresh failed; printing from current local data.', e); }
-  const old = document.getElementById('multiPrintHolder');
-  if(old) old.remove();
-  const holder = document.createElement('div');
-  holder.id = 'multiPrintHolder';
-  holder.innerHTML = `<div id="printArea">${students.map((s,i)=>
-    `<div${i<students.length-1?' style="page-break-after:always;"':''}>${reportCardHTML(s.id, true, null, null, true)}</div>`
-  ).join('')}</div>`;
-  document.body.appendChild(holder);
-  const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
-  window.addEventListener('afterprint', cleanup);
-  setTimeout(cleanup, 15000); // fallback in case a browser never fires afterprint
-  setTimeout(()=>printReportClean(), 150);
+  await withPdfPrint(()=>downloadSelectedReportsPdf());
 }
 
 /* ---------- Mark Sheets (blank download / integrated view) ---------- */
@@ -14134,7 +14069,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   return `
   ${periodPicker}
-  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?`<button class="btn" onclick="printReportClean()"><b>Print this report card</b></button>
+  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?`<button class="btn" onclick="printReportClean('${s.id}', decodeURIComponent('${encodeURIComponent(term)}'), '${year}')"><b>Print this report card</b></button>
   <button class="btn-outline" data-action="dlReportCardPdf:${s.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>`:''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
@@ -15441,7 +15376,7 @@ document.addEventListener('click', async (e)=>{
       VIEW = {name:'reportcard', params:{studentId:arg}};
       render();
       const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
-      setTimeout(()=>printReportClean(), 150);
+      setTimeout(()=>printReportClean(arg), 150);
       break;
     }
     case 'singlePdf': {
@@ -16189,13 +16124,7 @@ Continue?`);
     }
     case 'dlBlankPdf': {
       const [classId, subjEnc] = (arg||'').split(':');
-      const cls = DB.classes.find(c=>c.id===classId);
-      const subject = subjEnc?decodeURIComponent(subjEnc):'';
-      const term = DB.info.currentTerm, year = DB.info.currentYear;
-      await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
-        title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
-        ...marksheetHeaderOpts(classId, subject, 'blank')
-      });
+      await runBlankMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):'');
       break;
     }
     case 'imsPage': {
@@ -16206,22 +16135,7 @@ Continue?`);
     }
     case 'dlIntegratedPdf': {
       const [classId, subjEnc] = (arg||'').split(':');
-      const cls = DB.classes.find(c=>c.id===classId);
-      const subject = subjEnc?decodeURIComponent(subjEnc):'';
-      // Always exported from the FULL, unpaginated student list (forExport=true),
-      // regardless of which on-screen page the user was viewing when they clicked.
-      document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
-      try{
-        // Same row-paginating, always-landscape, no-column-splitting export as Class
-        // Analysis — see downloadTablesAsPdf / renderTableSectionsAsPdf.
-        const term = DB.info.currentTerm, year = DB.info.currentYear;
-        await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
-          title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
-          ...marksheetHeaderOpts(classId, subject, 'filled')
-        });
-      } finally {
-        render();
-      }
+      await runIntegratedMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):'');
       break;
     }
     case 'delAllClassScores':
@@ -16238,20 +16152,14 @@ Continue?`);
       break;
     }
     case 'printIntegrated': {
+      // Prints the exact PDF that "Download as PDF" produces (full student list, same layout).
       const [classId, subjEnc] = (arg||'').split(':');
-      const subject = subjEnc?decodeURIComponent(subjEnc):'';
-      // Same principle as dlIntegratedPdf: print the FULL student list, not just the
-      // page currently showing on screen, in portrait to save pages.
-      document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
-      { const _c = DB.classes.find(c=>c.id===classId);
-        printPortrait({title:`${_c?_c.name:''} — ${subject}`, subtitle:`${DB.info.currentTerm||''}, ${DB.info.currentYear||''}`, ...marksheetHeaderOpts(classId, subject, 'filled')}); }
-      render();
+      await withPdfPrint(()=>runIntegratedMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):''));
       break;
     }
     case 'printBlank': {
       const [classId, subjEnc] = (arg||'').split(':');
-      const subject = subjEnc?decodeURIComponent(subjEnc):'';
-      printPortrait({...marksheetHeaderOpts(classId, subject, 'blank')});
+      await withPdfPrint(()=>runBlankMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):''));
       break;
     }
     case 'spMode': {
@@ -16280,37 +16188,12 @@ Continue?`);
       break;
     }
     case 'dlMasterMarkSheetPdf': {
-      const [classId, termEnc, year, modeArg] = (arg||'').split(':');
-      showActionProgress('Downloading Master Mark Sheet — preparing data…', el);
-      setAppBusy(true);
-      const exportTerm = termEnc?decodeURIComponent(termEnc):DB.info.currentTerm;
-      const exportYear = year || DB.info.currentYear;
-      try{ await refreshScoresForPeriod(exportTerm, exportYear); } finally { setAppBusy(false); }
-      const cls = DB.classes.find(c=>c.id===classId);
-      const term = termEnc?decodeURIComponent(termEnc):'';
-      const modeLabel = ['grades','rank','level','lscores','lgrades'].includes(modeArg) ? modeArg : 'scores';
-      // Always exported from the FULL, unpaginated student list (forExport=true),
-      // regardless of which on-screen page the user was viewing when they clicked.
-      document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
-      try{
-        // Dedicated adapter (handles the two-row subject/paper header and the
-        // legend/footer text) feeding the same row-paginating, no-column-splitting
-        // export core as Class Analysis and the Integrated Mark Sheet.
-        await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
-      } finally {
-        render();
-      }
+      await runMasterMarkSheetPdf(arg, el, false);
       break;
     }
     case 'printMasterMarkSheet': {
-      // Same principle as dlMasterMarkSheetPdf: print the FULL student list, not just
-      // the page currently showing on screen. Only load the selected term/year shard.
-      const [printClassId, printTermEnc, printYear] = (arg||'').split(':');
-      showActionProgress('Preparing Master Mark Sheet for printing…', el);
-      await refreshScoresForPeriod(printTermEnc?decodeURIComponent(printTermEnc):DB.info.currentTerm, printYear||DB.info.currentYear);
-      document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
-      printPortrait({landscape:true, pageNumberBottom:true});
-      render();
+      // Prints the exact PDF that "Download as PDF" produces (full student list, same layout).
+      await withPdfPrint(()=>runMasterMarkSheetPdf(arg, el, true));
       break;
     }
     case 'approveAcc': { const code=prompt('Enter your private owner code to approve:'); if(code===null) break;
@@ -18897,32 +18780,130 @@ function drawPdfFrame(pdf, isList){
 // title (the system name) and the page address (the system link) on paper. Both are
 // suppressed here: the title is blanked and @page margin is 0 (which removes the browser's
 // header/footer area); the 10mm white space is re-created as padding on the print area.
-function printReportClean(){
-  const oldTitle = document.title;
-  document.title = ' ';
-  const st = document.createElement('style');
-  st.id = 'rcCleanPrintOverride';
-  st.textContent = '@media print{ @page{ size:A4; margin:0; } #printArea{ box-sizing:border-box !important; padding:10mm !important; } }';
-  document.head.appendChild(st);
-  const done = ()=>{
-    document.title = oldTitle;
-    const e = document.getElementById('rcCleanPrintOverride'); if(e) e.remove();
-    window.removeEventListener('afterprint', done);
-  };
-  window.addEventListener('afterprint', done);
-  setTimeout(done, 30000);
-  window.print();
+
+/* ---------- Mark-sheet PDF builders: shared by the Download buttons AND the Print buttons (print = the PDF) ---------- */
+async function runBlankMarksheetPdf(classId, subject){
+  const cls = DB.classes.find(c=>c.id===classId);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_blank_marksheet.pdf`, {
+    title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
+    ...marksheetHeaderOpts(classId, subject, 'blank')
+  });
+}
+async function runIntegratedMarksheetPdf(classId, subject){
+  const cls = DB.classes.find(c=>c.id===classId);
+  // Always built from the FULL, unpaginated student list (forExport=true), whichever on-screen page was showing.
+  document.getElementById('app').innerHTML = renderShellWithContent(integratedMarksheetView(classId, subject, 1, true));
+  try{
+    const term = DB.info.currentTerm, year = DB.info.currentYear;
+    await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_integrated_marksheet.pdf`, {
+      title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
+      ...marksheetHeaderOpts(classId, subject, 'filled')
+    });
+  } finally {
+    render();
+  }
+}
+async function runMasterMarkSheetPdf(arg, el, forPrint){
+  const [classId, termEnc, year, modeArg] = (arg||'').split(':');
+  showActionProgress(forPrint ? 'Preparing Master Mark Sheet for printing…' : 'Downloading Master Mark Sheet — preparing data…', el);
+  setAppBusy(true);
+  const exportTerm = termEnc?decodeURIComponent(termEnc):DB.info.currentTerm;
+  const exportYear = year || DB.info.currentYear;
+  try{ await refreshScoresForPeriod(exportTerm, exportYear); } finally { setAppBusy(false); }
+  const cls = DB.classes.find(c=>c.id===classId);
+  const term = termEnc?decodeURIComponent(termEnc):'';
+  const modeLabel = ['grades','rank','level','lscores','lgrades'].includes(modeArg) ? modeArg : 'scores';
+  document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
+  try{
+    await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
+  } finally {
+    render();
+  }
+}
+async function printReportClean(studentId, term, year){
+  const p = (typeof VIEW!=='undefined' && VIEW && VIEW.params) || {};
+  const id = studentId || p.studentId;
+  if(!id){ alert('Open a report card first.'); return; }
+  await withPdfPrint(()=>downloadReportCardPdf(id, term || p.term || undefined, year || p.year || undefined));
 }
 // Browser Print / Save-as-PDF: same frame on every printed page (see body.print-frame CSS).
+// Every browser print (any document) must not show the system name in the browser's header.
+(function(){
+  let _t=null;
+  window.addEventListener('beforeprint', ()=>{ if(_t===null){ _t=document.title; document.title=' '; } });
+  window.addEventListener('afterprint', ()=>{ if(_t!==null){ document.title=_t; _t=null; } });
+})();
 function printFramed(thin){
+  // Documents printed with the default page margin: drop the margin to 0 (this removes the
+  // browser's header/footer, i.e. the page address) and recreate it as inset + padding.
+  let cleanSt=null;
+  if(!document.getElementById('listPrintOverride') && !document.getElementById('portraitPrintOverride') && !document.getElementById('landscapePrintOverride')){
+    cleanSt=document.createElement('style');
+    cleanSt.id='frameCleanPrintOverride';
+    cleanSt.textContent='@media print{ @page{ size:A4; margin:0; } body.print-frame::after{top:10mm !important;left:10mm !important;right:10mm !important;bottom:10mm !important;} body.print-frame #printArea{padding:18mm !important;} }';
+    document.head.appendChild(cleanSt);
+  }
   document.body.classList.add('print-frame');
   if(thin) document.body.classList.add('print-thin'); // light 0.5px table rules (lists only, never report cards)
-  const done = ()=>{ document.body.classList.remove('print-frame'); document.body.classList.remove('print-thin'); window.removeEventListener('afterprint', done); };
+  const done = ()=>{ document.body.classList.remove('print-frame'); document.body.classList.remove('print-thin'); if(cleanSt) cleanSt.remove(); window.removeEventListener('afterprint', done); };
   window.addEventListener('afterprint', done);
   setTimeout(done, 20000); // fallback in case a browser never fires afterprint
   window.print();
 }
+/* ---------- PRINT = THE PDF ----------
+   Every Print button now builds the very same PDF its Download button builds, and sends THAT file to
+   the printer. Paper therefore matches the PDF in every respect (frame, fonts, spacing, pagination, colours).
+   withPdfPrint(fn) runs a PDF generator in "print mode": when the generator reaches openOrSavePdf(),
+   the finished PDF is printed instead of saved. */
+var __PDF_PRINT_DEPTH = 0;
+async function withPdfPrint(fn){
+  __PDF_PRINT_DEPTH++;
+  try{ return await fn(); }
+  finally{ __PDF_PRINT_DEPTH--; }
+}
+function showPdfReadyToPrint(url){
+  let toast = document.getElementById('deliveredToast');
+  if(!toast){ toast=document.createElement('div'); toast.id='deliveredToast'; document.body.appendChild(toast); }
+  if(_deliveredToastTimer) clearTimeout(_deliveredToastTimer);
+  toast.classList.add('show','pdf-ready');
+  toast.innerHTML = `<span class="tick">✓</span><span>PDF ready — open it and press Print</span><button type="button" class="pdf-open-btn" id="openGeneratedPdfBtn">Open PDF</button><button type="button" class="pdf-close-btn" id="closeGeneratedPdfBtn" aria-label="Close">×</button>`;
+  const openBtn=document.getElementById('openGeneratedPdfBtn'), closeBtn=document.getElementById('closeGeneratedPdfBtn');
+  if(openBtn) openBtn.onclick=()=>{ try{ window.open(url,'_blank','noopener'); }catch(e){ window.location.href=url; } };
+  if(closeBtn) closeBtn.onclick=()=>{ toast.classList.remove('show','pdf-ready'); };
+  _deliveredToastTimer=setTimeout(()=>toast.classList.remove('show','pdf-ready'),60000);
+  setTimeout(()=>URL.revokeObjectURL(url),1800000);
+}
+function printPdfDocument(pdf, filename){
+  let url;
+  try{ url = URL.createObjectURL(pdf.output('blob')); }
+  catch(e){ alert('Could not prepare the document for printing: ' + (e.message||e)); return; }
+  const ua = navigator.userAgent || '';
+  const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (navigator.maxTouchPoints>1 && /Mac/i.test(navigator.platform||''));
+  const safari = /safari/i.test(ua) && !/chrome|chromium|crios|fxios|edg|android/i.test(ua);
+  // Browsers with a built-in PDF viewer (desktop Chrome / Edge / Firefox) print the PDF straight from a hidden frame.
+  // Phones, tablets and Safari cannot reliably do that, so there the PDF is opened and printed from the viewer — still the same file.
+  if(mobile || safari || navigator.pdfViewerEnabled===false){ showPdfReadyToPrint(url); return; }
+  const fr = document.createElement('iframe');
+  fr.setAttribute('aria-hidden','true');
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;';
+  let settled = false;
+  const fallback = ()=>{ if(settled) return; settled = true; showPdfReadyToPrint(url); };
+  const fire = ()=>{
+    if(settled) return;
+    settled = true;
+    try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
+    catch(e){ settled = false; fallback(); }
+  };
+  fr.onload = ()=>setTimeout(fire, 600);
+  fr.src = url;
+  document.body.appendChild(fr);
+  setTimeout(fallback, 20000);   // viewer never loaded: hand the PDF over instead of leaving the user waiting
+  setTimeout(()=>{ try{ fr.remove(); }catch(e){} URL.revokeObjectURL(url); }, 1800000);
+}
 function openOrSavePdf(pdf, filename, opts={} ){
+  try{ pdf.setProperties({title:String(filename||'Document').replace(/\.pdf$/i,''), subject:'', author:'', creator:' ', keywords:''}); }catch(e){}
+  if(__PDF_PRINT_DEPTH>0){ printPdfDocument(pdf, filename); return; }
   const openPreviewTab = opts.openPreviewTab !== false;
   try{
     const blob = pdf.output('blob');
@@ -19116,10 +19097,11 @@ function printListPaged(opts){
 }
 // Result Analysis "Print": school letterhead + page numbers on every page; Student Performance prints on
 // PORTRAIT paper, the two Subject Performance forms (class-wise, level-wise) on LANDSCAPE paper.
-function printClassAnalysis(){
+async function printClassAnalysis(){
   const p = (typeof VIEW!=='undefined' && VIEW && VIEW.params) || {};
   const term = p.term || DB.info.currentTerm, year = p.year || DB.info.currentYear;
-  printListPaged({orientation:'landscape', subtitleSuffix: `${term||''}, ${year||''}`});
+  // Same builder as the "Download as PDF" button beside it, so paper = PDF.
+  await withPdfPrint(()=>downloadTablesAsPdf('printArea', 'result_analysis.pdf', {subtitleSuffix: `${term||''}, ${year||''}`}));
 }
 // Portrait print for mark sheets (landscape for the General Mark Sheets): 35 learners per page, school letterhead on EVERY page.
 // The on-screen #printArea is temporarily rebuilt into one block per page (page-break
