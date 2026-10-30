@@ -5713,7 +5713,7 @@ function rawScores(studentId, subject, term, year){
 // subject (and, when `kind` is 'AOI' or 'EOT', for that kind of assessment). Cached per score-data
 // version so printing a whole class of cards stays fast.
 let _peerScoreCache = {version:-1, map:new Map()};
-function peersHaveScore(student, subject, term, year, kind){
+function peersHaveScore(student, subject, term, year, kind, label, paper){
   if(_peerScoreCache.version!==SCORE_DATA_VERSION) _peerScoreCache = {version:SCORE_DATA_VERSION, map:new Map()};
   const key = [student.classId, subject, term, year].join('||');
   let byStudent = _peerScoreCache.map.get(key);
@@ -5723,12 +5723,15 @@ function peersHaveScore(student, subject, term, year, kind){
       if(st.classId!==student.classId || st.status==='left') return;
       const rows = rawScores(st.id, subject, term, year);
       if(!rows.length) return;
-      const kinds = new Set(['*']); rows.forEach(r=>kinds.add(r.kind));
+      const kinds = new Set(['*']); rows.forEach(r=>{ kinds.add(r.kind); if(r.kind==='AOI'){ kinds.add('AOI|'+(r.label||'')); kinds.add('AOI|'+(r.label||'')+'|'+r.paper); } });
       byStudent.set(st.id, kinds);
     });
     _peerScoreCache.map.set(key, byStudent);
   }
-  const k = kind || '*';
+  // A named Course Work test only counts as "given" once at least one classmate has a score for THAT test;
+  // until then its cells stay blank (no x).
+  let k = kind || '*';
+  if(kind==='AOI' && label!==undefined && label!==null) k = 'AOI|'+label+((paper!==undefined && paper!==null)?'|'+paper:'');
   for(const [id, kinds] of byStudent){ if(id!==student.id && kinds.has(k)) return true; }
   return false;
 }
@@ -12221,10 +12224,10 @@ function integratedMarksheetView(classId, subject, page, forExport){
     const bd = subjectBreakdown(s.id, subject, term, year);
     const grade = bd.final===null ? '—' : gradeFor(subject, bd.final, cls.level);
     // 'x' = this learner has nothing yet while classmates already have scores for it; plain '—' otherwise.
-    const gapTxt = (kind)=> peersHaveScore(s, subject, term, year, kind) ? 'x' : '—';
+    const gapTxt = (kind, label, paper)=> peersHaveScore(s, subject, term, year, kind, label, paper) ? 'x' : '—';
     const cells = cols.map(c=>{
       const row = scoreCellFor(s.id, subject, c, term, year);
-      if(!row) return `<td>${gapTxt(c.kind==='EOT'?'EOT':'AOI')}</td>`;
+      if(!row) return `<td>${c.kind==='EOT'?gapTxt('EOT'):gapTxt('AOI', c.label||'', c.paper)}</td>`;
       return `<td>${esc(row.marks)}/${esc(row.max)}</td>`;
     }).join('');
     return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?gapTxt('AOI'):bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?gapTxt('EOT'):bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?gapTxt():bd.final.toFixed(1)}</td><td>${bd.final===null?gapTxt():grade}</td></tr>`;
@@ -13926,7 +13929,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   // '—' only when this student is missing a score that others in the class already have;
   // otherwise a blank cell (nothing entered yet for anyone).
-  function dashFor(subject, kind){ return peersHaveScore(s, subject, term, year, kind) ? 'x' : '&nbsp;'; }
+  function dashFor(subject, kind, label, paper){ return peersHaveScore(s, subject, term, year, kind, label, paper) ? 'x' : '&nbsp;'; }
   // Builds the Course Work cell(s) for one physical row (either the whole subject, when
   // it has a single paper, or one paper's sub-row): the raw mark for each admin-defined
   // test plus, in the last sub-column, the scaled average actually used for grading.
@@ -13945,7 +13948,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // typed it out of 30 for a column configured as /20), so the raw number alone
       // would be misleading. scaleRow() does the same conversion already used for
       // averaging, keeping this cell consistent with the Avg column beside it.
-      return `<td>${row? scaleRow(row, t.max).toFixed(1) : dashFor(r_subject,'AOI')}</td>`;
+      return `<td>${row? scaleRow(row, t.max).toFixed(1) : dashFor(r_subject,'AOI',t.name,paper)}</td>`;
     }).join('');
     return testTds + `<td>${avgTxt}</td>`;
   }
@@ -14405,7 +14408,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   // record (paperRows), matching exactly how reportCardHTML decides rowspans.
   const subjectEntries = rows.map((r,i)=>{
     const bd = breakdowns[i];
-    const dashFor = (kind)=> peersHaveScore(s, r.subject, term, year, kind) ? 'x' : '';
+    const dashFor = (kind, label, paper)=> peersHaveScore(s, r.subject, term, year, kind, label, paper) ? 'x' : '';
     const descriptor = r.avg==null ? dashFor() : (isP ? primaryFinalRemark(r.avg) : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
@@ -14431,7 +14434,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
             // Same conversion as the on-screen report card: show the mark scaled onto
             // this column's configured maximum (t.max), not the raw teacher-entered
             // figure, in case it was recorded against a different max.
-            return row ? scaleRow(row, t.max).toFixed(1) : dashFor('AOI');
+            return row ? scaleRow(row, t.max).toFixed(1) : dashFor('AOI', t.name, paperForLookup);
           });
         }
       }
