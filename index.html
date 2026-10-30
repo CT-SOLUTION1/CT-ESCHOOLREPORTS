@@ -11911,6 +11911,7 @@ async function downloadReportCardPdf(studentId, term, year){
     if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
     if(data.photo) data.photo = await toPngDataUrl(data.photo);
     const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+    try{ pdf.setProperties({title:'Report Card', creator:(data.school&&data.school.name)||'', producer:(data.school&&data.school.name)||''}); }catch(e){}
     renderReportCardPageFitted(pdf, data);
     const stu = DB.students.find(s=>s.id===studentId);
     const termLbl = String(term||DB.info.currentTerm||'Term').replace(/\s+/g,'_');
@@ -11940,7 +11941,7 @@ async function printSelectedReports(){
   const cleanup = ()=>{ if(document.body.contains(holder)) holder.remove(); window.removeEventListener('afterprint', cleanup); };
   window.addEventListener('afterprint', cleanup);
   setTimeout(cleanup, 15000); // fallback in case a browser never fires afterprint
-  setTimeout(()=>window.print(), 150);
+  setTimeout(()=>printReportClean(), 150);
 }
 
 /* ---------- Mark Sheets (blank download / integrated view) ---------- */
@@ -14133,7 +14134,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   return `
   ${periodPicker}
-  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?`<button class="btn" onclick="window.print()"><b>Print this report card</b></button>
+  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?`<button class="btn" onclick="printReportClean()"><b>Print this report card</b></button>
   <button class="btn-outline" data-action="dlReportCardPdf:${s.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>`:''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
@@ -15440,7 +15441,7 @@ document.addEventListener('click', async (e)=>{
       VIEW = {name:'reportcard', params:{studentId:arg}};
       render();
       const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
-      setTimeout(()=>window.print(), 150);
+      setTimeout(()=>printReportClean(), 150);
       break;
     }
     case 'singlePdf': {
@@ -18891,6 +18892,26 @@ function drawPdfFrame(pdf, isList){
   // Lists: one THICK outer line + one THIN inner line. Other documents keep their existing frame.
   pdf.setLineWidth(2.8); pdf.rect(M+4, M+4, w-M*2-8, h-M*2-8);
   pdf.setLineWidth(isList ? 0.5 : 1.2); pdf.rect(M+8.5, M+8.5, w-M*2-17, h-M*2-17);
+}
+// Report-card printing: the browser's own print header/footer is what stamps the page
+// title (the system name) and the page address (the system link) on paper. Both are
+// suppressed here: the title is blanked and @page margin is 0 (which removes the browser's
+// header/footer area); the 10mm white space is re-created as padding on the print area.
+function printReportClean(){
+  const oldTitle = document.title;
+  document.title = ' ';
+  const st = document.createElement('style');
+  st.id = 'rcCleanPrintOverride';
+  st.textContent = '@media print{ @page{ size:A4; margin:0; } #printArea{ box-sizing:border-box !important; padding:10mm !important; } }';
+  document.head.appendChild(st);
+  const done = ()=>{
+    document.title = oldTitle;
+    const e = document.getElementById('rcCleanPrintOverride'); if(e) e.remove();
+    window.removeEventListener('afterprint', done);
+  };
+  window.addEventListener('afterprint', done);
+  setTimeout(done, 30000);
+  window.print();
 }
 // Browser Print / Save-as-PDF: same frame on every printed page (see body.print-frame CSS).
 function printFramed(thin){
