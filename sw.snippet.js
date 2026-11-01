@@ -7,8 +7,10 @@
    - Libraries from public CDNs: saved after first use, so reports/PDF tools still work offline.
    - Everything else (database / API / uploads, and every non-GET request): never touched. */
 
-const SHELL_CACHE = 'cte-snippet-shell-v1';
-const LIB_CACHE   = 'cte-snippet-libs-v1';
+// Paired with index.html BUILD-2026-11-01-1200. Cache names move to v2 so the old shell copy is purged on activate.
+const SW_BUILD   = 'BUILD-2026-11-01-1200';
+const SHELL_CACHE = 'cte-snippet-shell-v2';
+const LIB_CACHE   = 'cte-snippet-libs-v2';
 const SHELL_FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 const LIB_HOSTS   = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 

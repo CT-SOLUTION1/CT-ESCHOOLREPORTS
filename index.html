@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-10-29-2118'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-01-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -2330,6 +2330,61 @@ const AUTO_SNAPSHOT_CHECK_MS = 10 * 60 * 1000; // how often an open app checks w
 // Founder Panel topbar). Kept as one constant so all of them always stay in sync — change
 // the number here once and it updates everywhere.
 const FOUNDER_CONTACT = 'Tel: 0757132542 / 0786814513';
+// Why a school was disconnected -> the exact message its users see (1-4). Numbers come from FOUNDER_CONTACT.
+const DISCONNECT_REASONS = {
+  1:{label:'DEMO period over',          text:()=>`DEMO period for your school is over. Contact (${FOUNDER_CONTACT}) or clear with CT-E SOLUTIONS to continue enjoying our exciting services and features.`},
+  2:{label:'Term fees not cleared',     text:()=>`You need to clear with CT-E SOLUTIONS for this term, or else contact (${FOUNDER_CONTACT}) for more help.`},
+  3:{label:'Rules / limits violated',   text:()=>`Your school violated our agreed rules and limits. Contact (${FOUNDER_CONTACT}) for more help.`},
+  4:{label:'System under maintenance',  text:()=>`CT-E SOLUTIONS system under maintenance. We shall restore everything as soon as possible.`}
+};
+function disconnectMessage(reason){ const r = DISCONNECT_REASONS[reason] || DISCONNECT_REASONS[2]; return r.text(); }
+let DISCONNECT_NOTICE = '';
+// Wrong-password handling, one counter per gate (login, owner code, founder code, finance/section passwords ...).
+// 3 wrong tries -> warning. 5 wrong tries -> gate locked for 10 minutes (kept in localStorage, so a refresh does not clear it).
+const PW_WARN_AT = 3, PW_LOCK_AT = 5, PW_LOCK_MS = 10*60*1000, PW_PERM_AT = 10;
+// 10 wrong tries at a school section (owner code, Admin gate, Account Section / Fees / Requirements / General)
+// disconnects THAT section for good — saved with the school, only the Founder can reconnect it.
+let SEC_LOCKS = {};
+const PW_SECTION_NAMES = {owner:'Owner code', admingate:'Admin Dashboard gate', finmain:'Account Section', finsub_fees:'Account Section - FEES', finsub_requirements:'Account Section - REQUIREMENTS', finsub_general:'Account Section - GENERAL'};
+function pwIsSection(gate){ return Object.prototype.hasOwnProperty.call(PW_SECTION_NAMES, gate); }
+function pwPermLocked(gate){ return pwIsSection(gate) && !FOUNDER_IMPERSONATING_SCHOOL && !!SEC_LOCKS[gate]; }
+function pwState(gate){
+  let st; try{ st = JSON.parse(localStorage.getItem('cte_pw_'+gate)) || {n:0, until:0}; }catch(e){ st = (window.__pwf||{})[gate] || {n:0, until:0}; }
+  if(st.until && st.until<=Date.now()) st = {n:st.n||0, until:0};   // wait is over; the failure count is kept (10 in total = permanent disconnect)
+  return st;
+}
+function pwSave(gate, st){ try{ localStorage.setItem('cte_pw_'+gate, JSON.stringify(st)); }catch(e){ (window.__pwf = window.__pwf||{})[gate]=st; } }
+function pwLocked(gate){ return pwPermLocked(gate) || pwState(gate).until > Date.now(); }
+function pwReset(gate){ pwSave(gate, {n:0, until:0}); }
+function pwFail(gate){
+  if(pwPermLocked(gate)) return;
+  const st = pwState(gate); if(st.until > Date.now()) return;
+  st.n = (st.n||0)+1;
+  if(st.n >= PW_LOCK_AT) st.until = Date.now()+PW_LOCK_MS;
+  if(pwIsSection(gate) && !FOUNDER_IMPERSONATING_SCHOOL && SCHOOL_ID && st.n >= PW_PERM_AT){
+    SEC_LOCKS[gate] = {at:Date.now(), by:(CUR&&CUR.username)||''};
+    st.n = 0; st.until = 0;
+    try{ setShared(`sch_${SCHOOL_ID}_seclocks`, SEC_LOCKS); }catch(e){ console.error(e); }
+  }
+  pwSave(gate, st);
+}
+function pwCheck(gate, entered, real){
+  if(pwLocked(gate)) return false;            // locked: even the right password is refused until the wait is over
+  if(entered===real){ pwReset(gate); return true; }
+  pwFail(gate); return false;
+}
+function pwLockText(gate){
+  if(pwPermLocked(gate)) return `This section (${PW_SECTION_NAMES[gate]}) has been disconnected after too many incorrect passwords. Please wait for CT-E SOLUTIONS (the Founder) to reconnect it, or call for help. ${FOUNDER_CONTACT}`;
+  const mins = Math.max(1, Math.ceil((pwState(gate).until - Date.now())/60000));
+  return `Too many incorrect attempts. Please wait ${mins} minute${mins===1?'':'s'} before trying again, or call CT-E SOLUTIONS for help. ${FOUNDER_CONTACT}`;
+}
+function pwMsg(gate, normal){
+  if(pwLocked(gate)) return pwLockText(gate);
+  const n = pwState(gate).n||0;
+  if(n >= PW_LOCK_AT) return `${normal} WARNING: ${n} wrong attempts so far. ${PW_PERM_AT} wrong attempts will disconnect this section until the Founder reconnects it.`;
+  if(n >= PW_WARN_AT) return `${normal} WARNING: ${n} wrong attempts so far. After ${PW_LOCK_AT} wrong attempts you will have to wait 10 minutes before trying again.`;
+  return normal;
+}
 const BACKUP_SCHEMA_VERSION = 2;
 function migrateBackupData(raw){
   const d = (raw && typeof raw==='object') ? raw : {};
@@ -3799,6 +3854,7 @@ async function loadAll(){
     STORAGE_ESTIMATE = await getShared(STORAGE_ESTIMATE_KEY, null);
   } else if(sess && sess.scope==='school'){
     const reg = REGISTRY.find(r=>r.id===sess.schoolId);
+    if(reg && reg.status==='closed'){ DISCONNECT_NOTICE = disconnectMessage(reg.closeReason); }
     if(reg && reg.status==='active'){
       await loadSchoolData(sess.schoolId);
       const acc = (DB.accounts||[]).find(a=>a.username===sess.username);
@@ -3818,6 +3874,7 @@ async function loadAll(){
   }
 }
 async function loadSchoolData(id){
+  try{ SEC_LOCKS = (await getShared(`sch_${id}_seclocks`, {})) || {}; }catch(e){ SEC_LOCKS = {}; }
   // These 9 reads are all independent documents — awaiting them one at a time
   // (the old code) meant paying a full network round trip for each, back to
   // back, which is what made logging in and loading a school feel slow.
@@ -3899,7 +3956,8 @@ async function saveRegistry(){ await setShared('schools_registry', REGISTRY); }
 async function openFounderLogins(schoolId){
   const info = await getShared(`sch_${schoolId}_info`, null);
   const accounts = await getShared(`sch_${schoolId}_accounts`, []);
-  FOUNDER_LOGINS = { schoolId, info, accounts };
+  const secLocks = (await getShared(`sch_${schoolId}_seclocks`, {})) || {};
+  FOUNDER_LOGINS = { schoolId, info, accounts, secLocks };
   VIEW = { name:'fschoollogins' };
   render();
 }
@@ -3933,7 +3991,7 @@ async function loadFounderSnapshots(){
 }
 async function downloadFounderSnapshot(schoolId,ts){
   const code=prompt('Enter your founder code to download this snapshot:'); if(code===null)return;
-  if(code!==SYSTEM_OWNER.code){alert('Incorrect founder code.');return;}
+  if(!pwCheck('founder', code, SYSTEM_OWNER.code)){alert(pwMsg('founder','Incorrect founder code.'));return;}
   const raw=await getShared(`sch_${schoolId}_autosnap_${ts}`,null);
   if(!raw){alert('That snapshot could not be found — it may have already been cleaned up.');return;}
   const name=((REGISTRY.find(r=>r.id===schoolId)||{}).name||schoolId).replace(/[^a-z0-9]+/gi,'_');
@@ -3941,7 +3999,7 @@ async function downloadFounderSnapshot(schoolId,ts){
 }
 async function restoreFounderSnapshot(schoolId,ts){
   const code=prompt('Enter your founder code to restore this snapshot:'); if(code===null)return;
-  if(code!==SYSTEM_OWNER.code){alert('Incorrect founder code.');return;}
+  if(!pwCheck('founder', code, SYSTEM_OWNER.code)){alert(pwMsg('founder','Incorrect founder code.'));return;}
   const raw=await getShared(`sch_${schoolId}_autosnap_${ts}`,null);
   if(!raw){alert('That snapshot could not be found — it may have already been cleaned up.');return;}
   const data=migrateBackupData(raw);
@@ -5535,13 +5593,13 @@ async function requireDeleteAuth(what, note){
     if(!DB.info.ownerCode){ alert('No owner code has been set for this school, so nothing can be deleted yet. Please set an owner code first, or contact the Founder.'); return false; }
     const code = await askSecret('Owner code required', `Enter your private owner code to ${what}.${extra}`, 'Delete');
     if(code===null) return false;
-    if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was deleted.'); return false; }
+    if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code. Nothing was deleted.')); return false; }
     return true;
   }
   if(CUR.role==='teacher'){
     const pw = await askSecret('Password required', `Enter your password to ${what}.${extra}`, 'Delete');
     if(pw===null) return false;
-    if(pw!==CUR.password){ alert('Incorrect password. Nothing was deleted.'); return false; }
+    if(!pwCheck('userpw', pw, CUR.password)){ alert(pwMsg('userpw','Incorrect password. Nothing was deleted.')); return false; }
     return true;
   }
   alert('You are not allowed to delete this.');
@@ -5556,7 +5614,7 @@ async function requireOwnerCode(what, confirmLabel){
   if(!DB.info.ownerCode){ alert('No owner code has been set for this school yet, so this cannot be done. Please set an owner code first (Account Section → Owner Code), or contact the Founder.'); return false; }
   const code = await askSecret('Owner code required', `Enter your private owner code to ${what}.`, confirmLabel||'Confirm');
   if(code===null) return false;
-  if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was changed.'); return false; }
+  if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code. Nothing was changed.')); return false; }
   return true;
 }
 // Private-owner-code gate used for every EXEMPTION and every DELETION. Works for any signed-in role that can reach the
@@ -5568,7 +5626,7 @@ async function requireOwnerGate(what, confirmLabel, teacherPasswordOk){
   if(!DB.info.ownerCode){ alert('No owner code has been set for this school yet, so this cannot be done. Please set an owner code first (Account Section → Owner Code), or contact the Founder.'); return false; }
   const code = await askSecret('Owner code required', `Enter the private owner code to ${what}.`, confirmLabel||'Confirm');
   if(code===null) return false;
-  if(code!==DB.info.ownerCode){ alert('Incorrect owner code. Nothing was changed.'); return false; }
+  if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code. Nothing was changed.')); return false; }
   return true;
 }
 // Actions that must be authorised with the private owner code before they run. (Deletes that already ask for it
@@ -6627,7 +6685,7 @@ async function founderEnterSchool(schoolId){
   if(reg.status!=='active'){ alert(`\"${reg.name}\" is not active. Approve/reconnect the school before entering it.`); return; }
   const code = prompt(`Enter your founder code to enter \"${reg.name}\" directly:`);
   if(code===null) return;
-  if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); return; }
+  if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); return; }
   try{
     await loadSchoolData(schoolId);
     SCHOOL_ID = schoolId;
@@ -6689,7 +6747,7 @@ function renderFounderView(view){
     <div class="note">Closing a school here disconnects it immediately — the school does not need to agree, and its own owner code cannot override you. <b>Enter School</b> lets the Founder open an active school's normal Admin interface directly using the Founder Code, without needing the school's Admin username or password. "View logins" shows the school's account details for support and recovery.</div>
     <div class="card" style="margin-top:14px;"><table class="data-table"><tr><th>School</th><th>Owner</th><th>Status</th><th>Action</th></tr>
     ${others.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.ownerUsername)}</td>
-      <td>${r.status==='closed'?'<span style="color:var(--danger);font-weight:700;">disconnected</span>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
+      <td>${r.status==='closed'?`<span style="color:var(--danger);font-weight:700;">disconnected</span><div class="small">${esc((DISCONNECT_REASONS[r.closeReason]||{}).label||'')}</div>`:'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
       <td class="flex">
         <button class="btn" data-action="foundEnterSchool:${r.id}">Enter School</button>
         <button class="btn-outline" data-action="foundViewLogins:${r.id}">View logins</button>
@@ -6726,10 +6784,19 @@ function renderFounderView(view){
         <div class="small">CURRENT FINANCE PASSWORD</div>
         <div style="font-family:monospace;font-size:20px;font-weight:800;margin-top:4px;letter-spacing:1px;">${esc((FOUNDER_LOGINS.info&&FOUNDER_LOGINS.info.financePassword)||'Not set')}</div>
       </div>
+      ${FIN_SUBS.map(([k,icon,label])=>`<div style="background:#fff7e0;border:1px solid var(--gold);border-radius:8px;padding:12px;margin-top:10px;">
+        <div class="small">CURRENT ${esc(label)} PASSWORD</div>
+        <div style="font-family:monospace;font-size:20px;font-weight:800;margin-top:4px;letter-spacing:1px;">${esc(((FOUNDER_LOGINS.info&&FOUNDER_LOGINS.info.financeSubPasswords)||{})[k]||'Not set')}</div>
+      </div>`).join('')}
       <div class="flex" style="margin-top:12px;">
         <button class="btn-outline" data-action="foundChangeFinancePw:${FOUNDER_LOGINS.schoolId}">${(FOUNDER_LOGINS.info&&FOUNDER_LOGINS.info.financePassword)?'Change finance password':'Set finance password'}</button>
       </div>
     </div>
+    ${Object.keys(FOUNDER_LOGINS.secLocks||{}).length ? `<div class="card" style="margin-top:14px;border-left:4px solid var(--danger);">
+      <h3>Disconnected sections (too many wrong passwords)</h3>
+      <p class="small">These sections stay closed to the school until you reconnect them.</p>
+      ${Object.keys(FOUNDER_LOGINS.secLocks).map(g=>`<div class="flex" style="align-items:center;gap:10px;margin-top:8px;"><b>${esc(PW_SECTION_NAMES[g]||g)}</b><span class="small">${fmtDateTime(FOUNDER_LOGINS.secLocks[g].at)}</span><button class="btn" data-action="foundReconnectSection:${esc(g)}">Reconnect</button></div>`).join('')}
+    </div>` : ''}
     <div class="card" style="margin-top:14px;overflow:auto;"><table class="data-table"><tr><th>Name</th><th>Role</th><th>Username</th><th>Password</th><th>Status</th><th>Action</th></tr>
     ${accounts.map(a=>`<tr>
         <td>${esc(a.name||'')}</td>
@@ -6827,7 +6894,7 @@ function renderPlatformAuth(){
           <label>Password</label><input name="password" type="password" required>
           <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Sign in</button>
         </form>
-        <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></p>
+        <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:8px;${DISCONNECT_NOTICE?'font-weight:700;':''}">${esc(DISCONNECT_NOTICE||'')}</p>
         ${loginRole!=='parent' ? `<p class="small" style="text-align:center;margin-top:6px;"><a href="#" data-action="gotoSchoolRecovery">Forgot your password${(loginRole==='admin'||loginRole==='finance')?' or owner code':''}?</a></p>` : ''}
       </div>
       <div class="login-section" style="text-align:center;">
@@ -6957,6 +7024,7 @@ function renderTeacherSignupSlot(){
   const activeSchools = REGISTRY.filter(r=>r.status==='active');
   return `
   <div class="auth-wrap"><div class="auth-box">
+    <button type="button" class="btn-outline" style="width:100%;margin-bottom:12px;padding:12px;" data-action="gotoLogin">◀ Back to Login</button>
     <div class="school-name-big" style="font-size:20px;text-align:center;">Teacher Sign-Up</div>
     <div class="note">Your account will be pending until your school's owner approves it.</div>
     <form data-form="signupTeacher" novalidate style="margin-top:12px;">
@@ -6968,13 +7036,14 @@ function renderTeacherSignupSlot(){
       <p class="small">Set this so you can reset your own password later if you forget it, without waiting on your school owner.</p>
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
     </form>
-    <p class="small" style="text-align:center;margin-top:12px;"><a href="#" data-action="gotoLogin">Back to sign in</a></p>
+    <button type="button" class="btn-outline" style="width:100%;margin-top:12px;padding:12px;" data-action="gotoLogin">◀ Back to Login</button>
   </div></div>`;
 }
 function renderParentSignupSlot(){
   const activeSchools = REGISTRY.filter(r=>r.status==='active');
   return `
   <div class="auth-wrap"><div class="auth-box">
+    <button type="button" class="btn-outline" style="width:100%;margin-bottom:12px;padding:12px;" data-action="gotoLogin">◀ Back to Login</button>
     <div class="school-name-big" style="font-size:20px;text-align:center;">Parent Sign-Up</div>
     <div class="note">Your account will be pending until the school owner approves it.</div>
     <form data-form="signupParent" novalidate style="margin-top:12px;">
@@ -6986,7 +7055,7 @@ function renderParentSignupSlot(){
       <label>Password</label><input name="password" type="password" required minlength="4">
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
     </form>
-    <p class="small" style="text-align:center;margin-top:12px;"><a href="#" data-action="gotoLogin">Back to sign in</a></p>
+    <button type="button" class="btn-outline" style="width:100%;margin-top:12px;padding:12px;" data-action="gotoLogin">◀ Back to Login</button>
   </div></div>`;
 }
 
@@ -10538,7 +10607,7 @@ async function performBulkTeacherDelete(usernames, btn){
   if(!usernames.length){ alert('No teachers selected.'); return; }
   const code = prompt(`Enter your private owner code to permanently delete ${usernames.length} teacher account${usernames.length===1?'':'s'}:`);
   if(code===null) return;
-  if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+  if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); return; }
   if(!confirm(`Delete ${usernames.length} teacher account${usernames.length===1?'':'s'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) return;
   showActionProgress('Deleting…', btn);
   try{
@@ -10579,7 +10648,7 @@ async function performBulkParentDelete(usernames, btn){
   if(!usernames.length){ alert('No accounts selected.'); return; }
   const code = prompt(`Enter your private owner code to permanently delete ${usernames.length} account${usernames.length===1?'':'s'}:`);
   if(code===null) return;
-  if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+  if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); return; }
   if(!confirm(`Delete ${usernames.length} account${usernames.length===1?'':'s'} for good? This cannot be undone.`)) return;
   showActionProgress('Deleting…', btn);
   try{
@@ -11997,7 +12066,7 @@ function blankSheetStudents(classId, subject){
   const asns = DB.assignments.filter(a=>a.classId===classId && a.subject===subject);
   const rosterIds = new Set();
   let anyRosterSet = false;
-  asns.forEach(a=>{ if(Array.isArray(a.studentIds)){ anyRosterSet=true; a.studentIds.forEach(id=>rosterIds.add(id)); } });
+  asns.forEach(a=>{ if(Array.isArray(a.studentIds) && !isCompulsorySubjectFor(subject, cls)){ anyRosterSet=true; a.studentIds.forEach(id=>rosterIds.add(id)); } });
   return sortByName(anyRosterSet
     ? DB.students.filter(s=>s.status!=='left' && s.classId===classId && rosterIds.has(s.id))
     : DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
@@ -12295,7 +12364,7 @@ function downloadMarksheetCSV(assignId, paper, kind, label, max){
   const a = DB.assignments.find(x=>x.id===assignId);
   if(!a){ alert('Assignment not found.'); return; }
   const cls = DB.classes.find(c=>c.id===a.classId);
-  const students = sortByName(Array.isArray(a.studentIds)
+  const students = sortByName((Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, cls))
     ? DB.students.filter(s=>s.status!=='left' && a.studentIds.includes(s.id))
     : DB.students.filter(s=>s.classId===a.classId && studentSubjects(s,cls).includes(a.subject)));
   if(!students.length){ alert('No students on your list yet — select your students first.'); return; }
@@ -13287,9 +13356,12 @@ function scoresEntryView(mine){
     // admin registration never decides who takes a subject, so eligibility here is
     // simply "in this class", not "already recorded as taking this subject".
     const eligible = sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===a.classId));
-    const rosterSet = Array.isArray(a.studentIds);
+    // Compulsory subject: every student in the class is marked automatically (new admissions
+    // included) - no "select my students" step, no add/edit/remove of a personal list.
+    const compulsoryAssign = isCompulsorySubjectFor(a.subject, cls);
+    const rosterSet = compulsoryAssign ? true : Array.isArray(a.studentIds);
     const labelBit = encodeURIComponent(sel.label||'');
-    if(!rosterSet || sel.editRoster){
+    if(!compulsoryAssign && (!rosterSet || sel.editRoster)){
       // Step: teacher ticks (once) which of these students actually take this subject
       // with them. Nothing is pre-ticked — only students the teacher actively ticks end
       // up on the roster and count as taking this subject.
@@ -13343,14 +13415,14 @@ function scoresEntryView(mine){
       // that still exists isn't covered by this class-based lookup (their classId has
       // moved on) — for that case use "Add a student who isn't listed above" below.
       // Always A-Z by name (same order as the score/mark sheets), never admission-number order.
-      let students = sortByName(DB.students.filter(s=>a.studentIds.includes(s.id) && (
+      let students = sortByName(DB.students.filter(s=>(compulsoryAssign || a.studentIds.includes(s.id)) && (
         (s.classId===a.classId && s.status!=='left') ||
         (isPastPeriod && s.status==='left' && s.classId===a.classId)
       )));
       // Students just added to the list (and with no score yet for this subject this term) wait at the
       // bottom, in the order they were added. Once any score is saved for them they drop back into
       // the normal list order automatically.
-      if(a.pending && a.pending.key===`${periodTerm}|${periodYear}` && Array.isArray(a.pending.ids)){
+      if(!compulsoryAssign && a.pending && a.pending.key===`${periodTerm}|${periodYear}` && Array.isArray(a.pending.ids)){
         const waitingIds = a.pending.ids.filter(id=>students.some(x=>x.id===id) && !rawScores(id, a.subject, periodTerm, periodYear).length);
         if(waitingIds.length){
           students = [...students.filter(x=>!waitingIds.includes(x.id)), ...waitingIds.map(id=>students.find(x=>x.id===id))];
@@ -13360,7 +13432,7 @@ function scoresEntryView(mine){
         const extraOnes = DB.students.filter(s=>sel.extraIds.includes(s.id) && !students.some(x=>x.id===s.id));
         students = sortByName([...students, ...extraOnes]);
       }
-      const newCount = eligible.filter(s=>!a.studentIds.includes(s.id)).length;
+      const newCount = compulsoryAssign ? 0 : eligible.filter(s=>!a.studentIds.includes(s.id)).length;
       const term = periodTerm, year = periodYear;
       // Every other test/exam already on record this term for this subject, so the
       // teacher can see the full picture for each learner (not just the one column
@@ -13443,7 +13515,7 @@ function scoresEntryView(mine){
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
-          ${students.length ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
+          ${(!compulsoryAssign && students.length) ? `<div style="display:flex;justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn-danger" style="padding:6px 14px;" data-action="removeAllFromRoster:${a.id}">Remove all students from this list</button></div>` : ''}
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -13457,14 +13529,15 @@ function scoresEntryView(mine){
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline se-act" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">CLEAR X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button></div></td></tr>`;
-          }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
+            return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAssign ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
+          }).join('') || `<tr><td colspan="${otherCols.length?4:3}">${compulsoryAssign ? 'No students in this class yet.' : 'No students on your list yet. Use "Edit my student list" below.'}</td></tr>`}
           </table></div>
-          <div class="note" style="margin-top:10px;">
-            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(7*var(--uk));font-weight:900;white-space:nowrap;display:inline-block;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
+          ${`          <div class="note" style="margin-top:10px;">
+            ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="refreshRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(7*var(--uk));font-weight:900;white-space:nowrap;display:inline-block;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
             <span class="small"> — students you add appear here, just below the list, until their scores are saved.</span>
-          </div>
+          </div>`}
 
+          ${(!compulsoryAssign && !sel.hideMissingMsg) ? `<div class="note miss-banner" style="margin:0 0 10px;border-color:#e67e00;background:#fff4e5;"><div style="font-weight:800;color:#8a3b00;">If you have missing students on this list, add them here</div><div class="flex" style="gap:8px;margin-top:8px;"><button type="button" class="btn-outline" data-action="ignoreMissingMsg">Ignore</button><button type="button" class="btn" data-action="refreshRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Add missing students</button></div></div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
           <button class="btn btn-big" style="margin-top:18px;min-height:calc(64*var(--uk));font-size:calc(21*var(--uk));" ${scoresLocked?'disabled title="Deadline has passed — ask your admin to reopen entry for you"':''}>SUBMIT AND SAVE SCORES</button>
           ${syncStatusBanner(scoreSyncKey(a.id, sel.paper, sel.kind, sel.label||''))}
         </form>
@@ -15223,7 +15296,7 @@ document.addEventListener('click', async (e)=>{
       if(!FOUNDER_IMPERSONATING_SCHOOL){ alert('Founder emergency access is only available while you are inside a school via the Founder Panel.'); break; }
       const code = prompt('Enter your founder code to unlock Account Section for this school:');
       if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       FINANCE_UNLOCKED = true;
       alert(DB.info.financePassword ? `Emergency access granted.\n\nThis school's current Finance password is: ${DB.info.financePassword}\n\nShare it with the school's Admin if they've lost it, or they can change it from Finance Control while you're inside.` : 'Emergency access granted. This school has not set a Finance password yet.');
       render();
@@ -15653,6 +15726,32 @@ Continue?`);
         });
       }
       finally{ el.disabled = false; el.innerHTML = _origLbl2; }
+      break;
+    }
+    case 'ignoreMissingMsg': {
+      VIEW.params = {...VIEW.params, hideMissingMsg:true};
+      const b = el && el.closest ? el.closest('.miss-banner') : null;
+      if(b) b.style.display='none';
+      break;
+    }
+    case 'refreshRoster': {
+      // "Edit my student list": first re-read students / assignments / classes from the database so anyone
+      // newly added or missed is picked up, then re-draw the page (optional subjects: open the add-students step).
+      const [assignId] = (arg||'').split(':');
+      try{
+        const [st, asg, cl] = await Promise.all([
+          getShared(`sch_${SCHOOL_ID}_students`, DB.students),
+          getShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments),
+          getShared(`sch_${SCHOOL_ID}_classes`, DB.classes)]);
+        if(Array.isArray(st)) DB.students = st;
+        if(Array.isArray(asg)) DB.assignments = asg;
+        if(Array.isArray(cl)) DB.classes = cl;
+      }catch(e){ console.error(e); }
+      const aR = DB.assignments.find(x=>x.id===assignId);
+      const cR = aR ? DB.classes.find(c=>c.id===aR.classId) : null;
+      const comp = !!(aR && isCompulsorySubjectFor(aR.subject, cR));
+      VIEW = {name:VIEW.name, params:{...VIEW.params, editRoster:!comp}};
+      render();
       break;
     }
     case 'editRoster': {
@@ -16197,21 +16296,21 @@ Continue?`);
       break;
     }
     case 'approveAcc': { const code=prompt('Enter your private owner code to approve:'); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); showActionSuccess('Approved', el); render(); } break; }
     case 'rejectAcc': { const code=prompt('Enter your private owner code to reject:'); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       { const _rej = DB.accounts.find(a=>a.username===arg);
         if(_rej && !(await binGuard('account', `${_rej.name||''} (${_rej.username})`, 'Rejected sign-up request', {accounts:[_rej], assignments:[], slots:[]}))) break; }
       DB.accounts = DB.accounts.filter(a=>a.username!==arg); await saveAccounts(); showActionSuccess('Rejected', el); render(); break; }
     case 'closeAcc': { const code=prompt('Enter your private owner code to close this account:'); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='closed'; await saveAccounts(); showActionSuccess('Account closed', el); render(); } break; }
     case 'reopenAcc': { const code=prompt('Enter your private owner code to reopen:'); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(acc){ acc.status='active'; await saveAccounts(); showActionSuccess('Account reopened', el); render(); } break; }
     case 'resetAccPw': { const code=prompt('Enter your private owner code to reset this teacher\'s password:'); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(!acc) break;
       const newPw = prompt(`New password for ${acc.name} (${acc.username}), at least 4 characters:`); if(newPw===null) break;
       if(newPw.trim().length<4){ alert('Password must be at least 4 characters.'); break; }
@@ -16221,26 +16320,26 @@ Continue?`);
       alert(`Password reset for ${acc.name}. Share the new password with them directly.`); render(); break; }
     case 'delCorruptTeachers': { const bad = DB.accounts.filter(isCorruptTeacher); if(!bad.length) break;
       const code=prompt(`Enter your private owner code to permanently delete ${bad.length} garbled teacher entr${bad.length===1?'y':'ies'}:`); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       if(!confirm(`Delete ${bad.length} garbled entr${bad.length===1?'y':'ies'} for good, with any assignments attached? This cannot be undone.`)) break;
       if((await purgeTeachers(bad.map(a=>a.username).filter(u=>typeof u==='string'), bad))===false) break;
       showActionSuccess('Garbled entries deleted.', el, true); render(); break; }
     case 'delTeacherAny': { const acc = DB.accounts[parseInt(arg,10)]; if(!acc) break;
       const label = (acc.name||'').toString() + (acc.username?` (${acc.username})`:'');
       const code=prompt(`Enter your private owner code to permanently delete ${label||'this teacher'}:`); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       if(!confirm(`Delete ${label||'this teacher'} for good? Their subject/class assignments will also be removed; scores they already entered stay on record. This cannot be undone.`)) break;
       if((await purgeTeachers([acc.username],[acc]))===false) break;
       showActionSuccess('Teacher deleted successfully.', el, true); render(); break; }
     case 'delOrphanTeacher': { let u; try{ u=decodeURIComponent(arg); }catch(e){ u=arg; }
       const code=prompt(`Enter your private owner code to remove "${u}":`); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       if(!confirm(`Remove "${u}" from all subject assignments and class-teacher slots? This cannot be undone.`)) break;
       if((await purgeTeachers([u]))===false) break;
       showActionSuccess('Entry removed.', el, true); render(); break; }
     case 'delAcc': { const acc = DB.accounts.find(a=>a.username===arg); if(!acc) break;
       const code=prompt(`Enter your private owner code to permanently delete ${acc.name} (${acc.username}):`); if(code===null) break;
-      if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); break; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); break; }
       const linkedNote = acc.role==='teacher' ? ' Their subject/class assignments will also be removed; scores they already entered stay on record.' : '';
       if(!confirm(`Delete ${acc.name} (${acc.username}) ? It stays in the Recycle Bin (Other Settings) for 15 days, then is erased.${linkedNote}`)) break;
       if(!(await binGuard('account', `${acc.name||''} (${acc.username})`, acc.role==='teacher'?'Teacher account':'Account', {accounts:[acc], assignments:(acc.role==='teacher'?DB.assignments.filter(x=>x.teacherUsername===arg):[]), slots:[]}))) break;
@@ -16249,37 +16348,41 @@ Continue?`);
       await saveAccounts();
       showActionSuccess(`${acc.name} has been deleted successfully.`, el, true); render(); break; }
     case 'foundApprove': { const code=prompt('Enter your founder code to approve this school:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='active'; await saveRegistry(); render(); } break; }
     case 'foundReject': { const code=prompt('Enter your founder code to reject this school:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       REGISTRY = REGISTRY.filter(x=>x.id!==arg); await saveRegistry();
       speak(`School ${r ? r.name : 'registration'} was rejected and removed successfully.`); render(); break; }
     case 'foundClose': { const code=prompt('Enter your founder code to disconnect this school:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
-      const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='closed'; await saveRegistry(); render(); } break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
+      const pick = prompt('Why is this school being disconnected? Type the number:\n\n1 = DEMO period is over\n2 = Has not cleared for this term\n3 = Violated agreed rules and limits\n4 = System under maintenance');
+      if(pick===null) break;
+      const reason = Number(String(pick).trim());
+      if(![1,2,3,4].includes(reason)){ alert('Please type 1, 2, 3 or 4. The school was NOT disconnected.'); break; }
+      const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='closed'; r.closeReason=reason; await saveRegistry(); render(); } break; }
     case 'foundReopen': { const code=prompt('Enter your founder code to reconnect this school:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
-      const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='active'; await saveRegistry(); render(); } break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
+      const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='active'; delete r.closeReason; await saveRegistry(); render(); } break; }
     case 'foundViewLogins': { const code=prompt('Enter your founder code to view this school\'s login details:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       await openFounderLogins(arg); break; }
     case 'foundBackupSchool': { const code=prompt('Enter your founder code to download a backup of this school\'s data:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       await downloadFounderSchoolBackup(arg); break; }
-    case 'foundBackupSystem': { const code=prompt('Enter your founder code to download the complete system backup:'); if(code===null) break; if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; } await downloadFounderSystemBackup(); break; }
-    case 'foundOpenSnapshots': { const code=prompt('Enter your founder code to access system snapshots:'); if(code===null) break; if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; } await loadFounderSnapshots(); VIEW={name:'fsnapshots'}; render(); break; }
+    case 'foundBackupSystem': { const code=prompt('Enter your founder code to download the complete system backup:'); if(code===null) break; if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; } await downloadFounderSystemBackup(); break; }
+    case 'foundOpenSnapshots': { const code=prompt('Enter your founder code to access system snapshots:'); if(code===null) break; if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; } await loadFounderSnapshots(); VIEW={name:'fsnapshots'}; render(); break; }
     case 'foundDownloadSnapshot': { const parts=arg.split(':'); await downloadFounderSnapshot(parts[0],Number(parts[1])); break; }
     case 'foundRestoreSnapshot': { const parts=arg.split(':'); await restoreFounderSnapshot(parts[0],Number(parts[1])); break; }
     case 'foundRecalcStorage': { const code=prompt('Enter your founder code to recalculate the storage estimate (this reads every school\'s data, so it may take a moment):'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       const btn = document.querySelector('[data-action="foundRecalcStorage"]');
       if(btn){ btn.disabled = true; btn.textContent = 'Recalculating…'; }
       try{ await computeStorageEstimate(); render(); }
       catch(e){ console.error(e); alert('Could not recalculate right now — check your connection and try again.'); if(btn){ btn.disabled=false; btn.textContent='Recalculate now'; } }
       break; }
     case 'foundEditLogin': { const code=prompt('Enter your founder code to edit this login:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       if(!FOUNDER_LOGINS){ break; }
       const acc = FOUNDER_LOGINS.accounts.find(a=>a.username===arg); if(!acc) break;
       const newU = prompt(`New username for ${acc.name} (currently "${acc.username}"). Leave blank to keep.`, acc.username);
@@ -16293,7 +16396,7 @@ Continue?`);
       await syncUsernameIndexForSchool(FOUNDER_LOGINS.schoolId, FOUNDER_LOGINS.accounts); // username changed, so the index must follow
       alertOk('Username updated.'); render(); break; }
     case 'foundResetLoginPw': { const code=prompt('Enter your founder code to reset this password:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       if(!FOUNDER_LOGINS){ break; }
       const acc = FOUNDER_LOGINS.accounts.find(a=>a.username===arg); if(!acc) break;
       const newPw = prompt(`New password for ${acc.name} (${acc.username}), at least 4 characters:`); if(newPw===null) break;
@@ -16304,14 +16407,14 @@ Continue?`);
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_accounts`, FOUNDER_LOGINS.accounts);
       alert(`Password reset for ${acc.name}. Share the new password with them directly.`); render(); break; }
     case 'foundReopenLogin': { const code=prompt('Enter your founder code to reopen this account:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       if(!FOUNDER_LOGINS){ break; }
       const acc = FOUNDER_LOGINS.accounts.find(a=>a.username===arg); if(!acc) break;
       acc.status = 'active';
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_accounts`, FOUNDER_LOGINS.accounts);
       alert(`${acc.name} (${acc.username}) has been reopened.`); render(); break; }
     case 'foundResetOwnerCode': { const code=prompt('Enter your founder code to reset this school owner/admin code:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       if(!FOUNDER_LOGINS || FOUNDER_LOGINS.schoolId!==arg){ break; }
       const info = FOUNDER_LOGINS.info || {};
       const current = info.ownerCode || '';
@@ -16331,7 +16434,7 @@ Continue?`)) break;
       alertOk(`Owner code reset successfully for ${info.schoolName||'this school'}. The new owner code is: ${trimmed}`);
       render(); break; }
     case 'foundChangeFinancePw': { if(!CUR || CUR.role!=='founder'){ alert('Only the Founder can do that.'); break; } const code=prompt('Enter your founder code to change this school\'s Finance password:'); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       if(!FOUNDER_LOGINS || FOUNDER_LOGINS.schoolId!==arg){ break; }
       const info = FOUNDER_LOGINS.info || {};
       const current = info.financePassword || '';
@@ -16348,9 +16451,16 @@ Continue?`)) break;
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_info`, fresh);
       alertOk(`Finance password changed for ${fresh.schoolName||'this school'}. The new password is: ${trimmed}`);
       render(); break; }
+    case 'foundReconnectSection': { if(!CUR || CUR.role!=='founder'){ alert('Only the Founder can do that.'); break; }
+      const code=prompt('Enter your founder code to reconnect this section:'); if(code===null) break;
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
+      if(!FOUNDER_LOGINS) break;
+      const cur = (await getShared(`sch_${FOUNDER_LOGINS.schoolId}_seclocks`, {})) || {};
+      delete cur[arg]; await setShared(`sch_${FOUNDER_LOGINS.schoolId}_seclocks`, cur);
+      FOUNDER_LOGINS.secLocks = cur; alertOk('Section reconnected.'); render(); break; }
     case 'foundDeleteSchool': { const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
       const code=prompt(`Enter your founder code to PERMANENTLY delete "${r.name}":`); if(code===null) break;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); break; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); break; }
       if(!confirm(`This deletes "${r.name}" and ALL of its data (accounts, classes, students, scores, everything) forever — it cannot be undone.\n\nProceed?`)) break;
       await purgeSchool(r.id);
       if(FOUNDER_LOGINS && FOUNDER_LOGINS.schoolId===r.id) FOUNDER_LOGINS=null;
@@ -16691,7 +16801,7 @@ function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPer
     document.getElementById('termSafetyDelete').onclick=()=>{
       const code=prompt(`DATA LOSS WARNING\n\nYou selected option 3.\nThis will permanently delete score data belonging to ${oldPeriod}.\n\nEnter the school Owner Code to continue:`);
       if(code===null) return;
-      if(code!==DB.info.ownerCode){ alert('Incorrect Owner Code. No data has been deleted and the term/year has NOT been changed.'); return; }
+      if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect Owner Code. No data has been deleted and the term/year has NOT been changed.')); return; }
       finish('delete');
     };
   });
@@ -16717,7 +16827,7 @@ document.addEventListener('submit', async (e)=>{
     }
     if(type==='adminGateUnlock'){
       const gu=(fd.get('username')||'').trim();
-      if(!FINANCE_ONLY || !CUR || CUR.role!=='admin' || gu!==CUR.username || fd.get('password')!==CUR.password){ alert('Incorrect username or Admin password.'); return; }
+      if(!FINANCE_ONLY || !CUR || CUR.role!=='admin' || gu!==CUR.username || !pwCheck('admingate', fd.get('password'), CUR.password)){ if(CUR && gu!==CUR.username) pwFail('admingate'); alert(pwMsg('admingate','Incorrect username or Admin password.')); return; }
       FINANCE_ONLY=false; FINANCE_UNLOCKED=false; FINANCE_RESET_SKIPPED=false; finSubReset();
       await setPersonal('session', {scope:'school', schoolId:SCHOOL_ID, username:CUR.username});
       VIEW={name:'dashboard', params:{}}; render(); return;
@@ -16726,14 +16836,14 @@ document.addEventListener('submit', async (e)=>{
       const k = form.dataset.sub;
       if(!FIN_SUBS.some(x=>x[0]===k)) return;
       if(!finSubPasswords()[k]){ alert('No password has been set for this section yet.'); return; }
-      if(fd.get('password')!==finSubPasswords()[k]){ alert('Incorrect password.'); return; }
+      if(!pwCheck('finsub_'+k, fd.get('password'), finSubPasswords()[k])){ alert(pwMsg('finsub_'+k,'Incorrect password.')); return; }
       FIN_SUB = k; FIN_SUB_OPEN[k] = true; FIN_SUB_FORGOT = false; VIEW.params = {}; render(); return;
     }
     if(type==='finSubSetPassword'){
       const k = form.dataset.sub;
       if(!FIN_SUBS.some(x=>x[0]===k)) return;
       if(finSubPasswords()[k] && !finCanReset()){ alert('Passwords can only be reset by the Admin, from the Admin Dashboard.'); return; }
-      if(!DB.info.financePassword || fd.get('mainPassword')!==DB.info.financePassword){ alert('Incorrect main Account Section password.'); return; }
+      if(!DB.info.financePassword || !pwCheck('finmain', fd.get('mainPassword'), DB.info.financePassword)){ alert(pwMsg('finmain','Incorrect main Account Section password.')); return; }
       const pw = fd.get('password'), why = finSubCheckNew(k, pw, fd.get('confirmPassword'));
       if(why){ alert(why); return; }
       finSubPasswords()[k] = pw; await saveInfo();
@@ -16749,7 +16859,7 @@ document.addEventListener('submit', async (e)=>{
       finSubPasswords()[k] = pw; await saveInfo();
       alertOk(finSubName(k)+' password updated.'); render(); return;
     }
-    if(type==='financeUnlock'){ if(!DB.info.financePassword){ alert('No Finance password has been set. Ask the Admin to create one from this section.'); return; } const fu=(fd.get('username')||'').trim(); const adminAcc=(DB.accounts||[]).find(a=>a.role==='admin' && a.username===fu); if(!adminAcc || (CUR && CUR.role==='admin' && CUR.username!==fu)){ alert('Incorrect username or Finance password.'); return; } if(fd.get('password')!==DB.info.financePassword){ alert('Incorrect username or Finance password.'); return; } FINANCE_UNLOCKED=true; FINANCE_FORGOT=false; render(); return; }
+    if(type==='financeUnlock'){ if(!DB.info.financePassword){ alert('No Finance password has been set. Ask the Admin to create one from this section.'); return; } const fu=(fd.get('username')||'').trim(); const adminAcc=(DB.accounts||[]).find(a=>a.role==='admin' && a.username===fu); if(!adminAcc || (CUR && CUR.role==='admin' && CUR.username!==fu)){ pwFail('finmain'); alert(pwMsg('finmain','Incorrect username or Finance password.')); return; } if(!pwCheck('finmain', fd.get('password'), DB.info.financePassword)){ alert(pwMsg('finmain','Incorrect username or Finance password.')); return; } FINANCE_UNLOCKED=true; FINANCE_FORGOT=false; render(); return; }
     else if(type==='forceFinanceReset'){
       if(!finCanReset()){ alert('Passwords can only be reset by the Admin, from the Admin Dashboard.'); return; }
       const npw=fd.get('password'), cpw=fd.get('confirmPassword');
@@ -16763,7 +16873,7 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='finRecoverPassword'){
       if(!finCanReset()){ alert('The Account Section password can only be changed from the Admin sign-in, inside the Account Section.'); return; }
       if(!DB.info.ownerCode){ alert('No owner code has been set for this school. Please contact the Founder.'); return; }
-      if(fd.get('ownerCode')!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+      if(!pwCheck('owner', fd.get('ownerCode'), DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); return; }
       const npw=fd.get('password');
       if(CUR && CUR.password && npw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; }
       DB.info.financePassword=npw; await saveInfo();
@@ -17188,8 +17298,9 @@ document.addEventListener('submit', async (e)=>{
         return;
       }
       const u=fd.get('username'), p=fd.get('password');
+      if(pwLocked('founderlogin')){ document.getElementById('loginErr').textContent = pwLockText('founderlogin'); return; }
       if(SYSTEM_OWNER && SYSTEM_OWNER.username===u && SYSTEM_OWNER.password===p){
-        clearFounderLoginFailures();
+        clearFounderLoginFailures(); pwReset('founderlogin');
         // Fresh token per login: also invalidates any older founder session
         // sitting in localStorage on another device/browser.
         SYSTEM_OWNER.sessionToken = genSessionToken();
@@ -17199,8 +17310,8 @@ document.addEventListener('submit', async (e)=>{
         STORAGE_ESTIMATE = await getShared(STORAGE_ESTIMATE_KEY, null);
         render();
       } else {
-        recordFounderLoginFailure();
-        document.getElementById('loginErr').textContent = 'Invalid founder username or password.';
+        recordFounderLoginFailure(); pwFail('founderlogin');
+        document.getElementById('loginErr').textContent = pwMsg('founderlogin','Invalid founder username or password.');
       }
     }
     else if(type==='founderRecovery'){
@@ -17304,6 +17415,7 @@ document.addEventListener('submit', async (e)=>{
       const role = finLogin ? 'admin' : fd.get('role'), u=(fd.get('username')||'').trim(), p=fd.get('password');
       const errEl = document.getElementById('loginErr');
       if(!u || !p){ errEl.textContent='Please enter your username and password.'; return; }
+      if(pwLocked('login_'+u.toLowerCase())){ errEl.textContent = pwLockText('login_'+u.toLowerCase()); return; }
       DATA_LOAD_FAILED = false;
       const activeSchools = REGISTRY.filter(r=>r.status==='active');
       const activeSchoolIds = new Set(activeSchools.map(r=>r.id));
@@ -17342,13 +17454,32 @@ document.addEventListener('submit', async (e)=>{
         else if(finInfo.financePassword!==p) finErr='Invalid username or Finance password.';
       }
       let err='';
-      if(finErr) err=finErr;
+      if(finErr){ pwFail('login_'+u.toLowerCase()); err=pwMsg('login_'+u.toLowerCase(), finErr); }
       else if(!foundAcc && (DATA_LOAD_FAILED || navigator.onLine===false)) err='Could not sign you in. Check your internet connection or data, then try again. Call : TONTE CHARLES or help lines — '+FOUNDER_CONTACT;
-      else if(!foundAcc) err=finLogin?'Invalid username or Finance password.':'Invalid username, password, or role.';
+      else if(!foundAcc){
+        // Not found among ACTIVE schools: if the credentials are right for a DISCONNECTED school, say why it is disconnected.
+        let closedMsg = '';
+        try{
+          const closedIds = new Set(REGISTRY.filter(r=>r.status==='closed').map(r=>r.id));
+          if(closedIds.size){
+            let cands = [...new Set((idx[u.toLowerCase()]||[]).filter(e=>e.role===role && closedIds.has(e.schoolId)).map(e=>e.schoolId))];
+            if(!cands.length) cands = [...closedIds];
+            for(const sid of cands){
+              const accs = await getShared(`sch_${sid}_accounts`, []);
+              const hit = accs.find(a=>a.username===u && a.role===role && (finLogin ? true : a.password===p));
+              if(!hit) continue;
+              if(finLogin){ const inf = await getShared(`sch_${sid}_info`, null); if(!inf || inf.financePassword!==p) continue; }
+              closedMsg = disconnectMessage((REGISTRY.find(r=>r.id===sid)||{}).closeReason); break;
+            }
+          }
+        }catch(e){ console.error(e); }
+        if(closedMsg){ pwReset('login_'+u.toLowerCase()); err = closedMsg; }
+        else { pwFail('login_'+u.toLowerCase()); err = pwMsg('login_'+u.toLowerCase(), finLogin?'Invalid username or Finance password.':'Invalid username, password, or role.'); }
+      }
       else if(foundAcc.status==='pending') err='This account is awaiting owner approval.';
       else if(foundAcc.status==='closed') err='This account has been closed.';
       errEl.textContent = err;
-      if(foundAcc && !err){
+      if(foundAcc && !err){ pwReset('login_'+u.toLowerCase()); DISCONNECT_NOTICE='';
         // Run in parallel, not sequentially: loading the school's data and
         // switching this device's auth identity both need the network, and
         // neither depends on the other finishing first. Only the switch needs
@@ -17574,7 +17705,7 @@ document.addEventListener('submit', async (e)=>{
       }
       const code = prompt(`Enter your founder code to restore this backup into "${reg?reg.name:schoolId}":`);
       if(code===null) return;
-      if(code!==SYSTEM_OWNER.code){ alert('Incorrect founder code.'); return; }
+      if(!pwCheck('founder', code, SYSTEM_OWNER.code)){ alert(pwMsg('founder','Incorrect founder code.')); return; }
       const sure = confirm(`This will REPLACE ALL current data for "${reg?reg.name:schoolId}" with the backup from ${data.exportedAt?new Date(data.exportedAt).toLocaleString():'this file'}.\n\nStudents in file: ${data.students.length}\n\nThis cannot be undone. Continue?`);
       if(!sure) return;
       await founderRestoreSchoolBackup(schoolId, data);
@@ -18036,7 +18167,7 @@ document.addEventListener('submit', async (e)=>{
       if(usernameChanged || passwordChanged){
         const code = prompt(`Enter your private owner code to change ${t.name}'s ${usernameChanged && passwordChanged?'username and password':usernameChanged?'username':'password'}:`);
         if(code===null) return;
-        if(code!==DB.info.ownerCode){ alert('Incorrect owner code.'); return; }
+        if(!pwCheck('owner', code, DB.info.ownerCode)){ alert(pwMsg('owner','Incorrect owner code.')); return; }
       }
       if(usernameChanged && isUsernameTakenInSchool(newUsername, DB.accounts, oldUsername)){
         alert('That username is already used by another account at this school. Pick a different username.'); return;
@@ -18467,7 +18598,7 @@ document.addEventListener('submit', async (e)=>{
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
       if(!lines.length){ alert('That file appears to be empty.'); return; }
-      const rosterIds = Array.isArray(a.studentIds) ? a.studentIds : DB.students.filter(s=>s.classId===a.classId).map(s=>s.id);
+      const rosterIds = (Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, DB.classes.find(c=>c.id===a.classId))) ? a.studentIds : DB.students.filter(s=>s.classId===a.classId).map(s=>s.id);
       const byAdmNo = new Map(DB.students.filter(s=>rosterIds.includes(s.id)).map(s=>[s.admNo, s]));
       let imported=0, skipped=0, outOfRange=0;
       const importRows = [];
@@ -19640,7 +19771,7 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
   const a = DB.assignments.find(x=>x.id===assignId);
   if(!a){ alert('Assignment not found.'); return; }
   const cls = DB.classes.find(c=>c.id===a.classId);
-  const students = sortByName(Array.isArray(a.studentIds)
+  const students = sortByName((Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, cls))
     ? DB.students.filter(s=>s.status!=='left' && a.studentIds.includes(s.id))
     : DB.students.filter(s=>s.classId===a.classId && studentSubjects(s,cls).includes(a.subject)));
   if(!students.length){ alert('No students on your list yet — select your students first.'); return; }
@@ -19814,7 +19945,7 @@ function askPasswordConfirm(opts){
     const tryOk=()=>{
       const real=CUR && CUR.password;
       if(!real){ err.textContent='No password is set on this account, so this cannot be confirmed. Ask your admin.'; return; }
-      if(inp.value!==real){ err.textContent='Wrong password. Nothing was changed.'; inp.value=''; inp.focus(); return; }
+      if(!pwCheck('userpw', inp.value, real)){ err.textContent=pwMsg('userpw','Wrong password. Nothing was changed.'); inp.value=''; inp.focus(); return; }
       done(true);
     };
     m.querySelector('#pwConfirmOk').onclick=tryOk;
@@ -20209,7 +20340,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
     }).catch((e)=>console.warn('Service worker not registered:', e));
   });
   // Fires once the new service worker has actually taken control of this page
-  // (after it calls skipWaiting()+clients.claim() — see sw.js). Reload so the
+  // (after it calls skipWaiting()+clients.claim() — see sw.snippet.js). Reload so the
   // freshly-controlled page also picks up any cache changes the new worker makes,
   // respecting the same "not mid-edit" safety check as the version poll above.
   let swControllerChanged = false;
