@@ -5342,7 +5342,49 @@ async function schoolGateTryFor(schoolId, key, ok){
   return {ok:false, blocked:!!rec.locked, msg:gateFailMsg(rec, true)};
 }
 function schoolGateTry(key, ok){ return schoolGateTryFor(SCHOOL_ID, key, ok); }
-function gateAlert(r, baseText){ alert(r.blocked ? r.msg : (baseText + (r.msg ? '\n\n'+r.msg : ''))); }
+function gateAlert(r, baseText){ if(r.blocked || isDisconnectLikeMsg(r.msg)){ showDisconnectSticker(r.msg, 'LOCKED — TOO MANY WRONG PASSWORDS'); return; } alert(baseText + (r.msg ? '\n\n'+r.msg : '')); }
+
+// ---- Sticker shown to a disconnected user (and for wrong-password lockouts) ----
+function showDisconnectSticker(msg, title){
+  const old = document.getElementById('disconnectSticker'); if(old) old.remove();
+  const o = document.createElement('div');
+  o.id = 'disconnectSticker';
+  o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,42,74,.78);display:flex;align-items:center;justify-content:center;padding:20px;';
+  o.innerHTML = `<div style="position:relative;max-width:420px;width:100%;background:#fff3a8;border:3px solid #e0a800;border-radius:6px;box-shadow:0 18px 50px rgba(0,0,0,.45);padding:34px 22px 22px;transform:rotate(-1.5deg);text-align:center;">
+    <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:30px;">📌</div>
+    <div style="font-size:42px;line-height:1;">⛔</div>
+    <div style="font-weight:900;font-size:20px;color:#8a1c1c;margin:8px 0 12px;letter-spacing:.5px;">${esc(title||'ACCESS DISCONNECTED')}</div>
+    <div style="font-size:18px;font-weight:700;color:#1a1a1a;line-height:1.4;">${esc(msg)}</div>
+    <div style="margin-top:14px;font-size:13px;color:#5a4a00;">CT-E SOLUTIONS · ${esc(FOUNDER_CONTACT)}</div>
+    <button type="button" id="disconnectStickerOk" class="btn" style="margin-top:16px;width:100%;">OK</button>
+  </div>`;
+  document.body.appendChild(o);
+  document.getElementById('disconnectStickerOk').onclick = ()=>o.remove();
+}
+function isDisconnectLikeMsg(m){ return !!m && (m.includes('incorrect password many times') || m.includes('DEMO period for your school') || m.includes('need to clear with CT-E') || m.includes('violated our agreed rules') || m.includes('under maintenance') || m.includes('currently disconnected')); }
+// Founder ticks the reason (instead of typing a number). Resolves to a reason key, or null if cancelled.
+function pickDisconnectReason(){
+  return new Promise(resolve=>{
+    const o = document.createElement('div');
+    o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,42,74,.72);display:flex;align-items:center;justify-content:center;padding:18px;';
+    o.innerHTML = `<div style="background:#fff;max-width:460px;width:100%;border-radius:14px;padding:20px;box-shadow:0 20px 70px rgba(0,0,0,.35);max-height:90vh;overflow:auto;">
+      <h3 style="margin:0 0 6px;">Why is this school being disconnected?</h3>
+      <p class="small" style="margin:0 0 10px;">Tick one reason. The school will see that message when it tries to sign in.</p>
+      ${DISCONNECT_PICK.map(k=>`<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #cfd9e3;border-radius:8px;margin-bottom:8px;cursor:pointer;">
+        <input type="checkbox" class="dcReason" value="${k}" style="width:22px;height:22px;flex:none;margin-top:2px;">
+        <span><b>${esc(disconnectLabel(k))}</b><br><span class="small" style="text-transform:none;">${esc(disconnectMessage(k))}</span></span></label>`).join('')}
+      <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:12px;">
+        <button type="button" class="btn-outline" id="dcCancel">Cancel</button>
+        <button type="button" class="btn-danger" id="dcOk" disabled>Disconnect</button>
+      </div></div>`;
+    document.body.appendChild(o);
+    const boxes = [...o.querySelectorAll('.dcReason')], ok = o.querySelector('#dcOk');
+    boxes.forEach(b=>b.addEventListener('change',()=>{ if(b.checked) boxes.forEach(x=>{ if(x!==b) x.checked=false; }); ok.disabled = !boxes.some(x=>x.checked); }));
+    o.querySelector('#dcCancel').onclick = ()=>{ o.remove(); resolve(null); };
+    ok.onclick = ()=>{ const c = boxes.find(x=>x.checked); o.remove(); resolve(c ? c.value : null); };
+  });
+}
+
 async function ownerCodeCheck(code, baseText){
   const r = await schoolGateTry('owner', !!(DB.info && DB.info.ownerCode) && code === DB.info.ownerCode);
   if(r.ok) return true;
@@ -6911,7 +6953,7 @@ function renderPlatformAuth(){
   if(AUTH_VIEW==='founderRecovery') return renderFounderRecoveryForm();
   if(AUTH_VIEW==='schoolRecovery') return renderSchoolRecoveryForm();
   const roleLabel = loginRole==='admin'?'Owner/Admin':loginRole==='teacher'?'Teacher':loginRole==='finance'?'Account Section':'Parent';
-  const disconnectBanner = DISCONNECT_NOTICE ? `<div class="note" style="border-color:var(--danger);color:var(--danger);font-weight:700;margin:10px 0;">${esc(DISCONNECT_NOTICE)}</div>` : '';
+  const disconnectBanner = DISCONNECT_NOTICE ? `<div style="background:#fff3a8;border:3px solid #e0a800;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:16px;margin:14px 6px;transform:rotate(-1deg);text-align:center;"><div style="font-size:26px;">📌 ⛔</div><div style="font-weight:900;color:#8a1c1c;margin:4px 0;">SCHOOL DISCONNECTED</div><div style="font-weight:700;font-size:16px;line-height:1.4;">${esc(DISCONNECT_NOTICE)}</div></div>` : '';
   const roleIcon = loginRole==='admin'?'🗝️':loginRole==='teacher'?'🎓':loginRole==='finance'?'💰':'👪';
   return `
   <div class="auth-wrap"><div class="auth-box platform-login-box">
@@ -13578,7 +13620,9 @@ function scoresEntryView(mine){
             return `<tr><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
-          ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(cls.name)}</b> is listed automatically — including students added to the class later.</div>` : `          <div class="note" style="margin-top:10px;">
+          ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(cls.name)}</b> is listed automatically — including students added to the class later.
+            <div class="flex" style="margin-top:10px;"><button type="button" class="btn-outline" data-action="refreshRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">ADD MY MISSING STUDENTS</button></div>
+            <div class="small" style="margin-top:6px;text-transform:none;">Tap to refresh the list and pick up newly added students. Scores you have typed but not saved are kept.</div></div>` : `          <div class="note" style="margin-top:10px;">
             ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(7*var(--uk));font-weight:900;white-space:nowrap;display:inline-block;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
             <span class="small"> — students you add appear here, just below the list, until their scores are saved.</span>
           </div>`}
@@ -16152,6 +16196,18 @@ Continue?`);
       render();
       break;
     }
+    case 'refreshRoster': {
+      // Compulsory subjects: reload the class list (new students appear) without losing typed-but-unsaved marks.
+      clearTimeout(_seDraftT); seWriteDraft();            // store what is typed right now (restored by render)
+      try{
+        const fresh = await getShared(`sch_${SCHOOL_ID}_students`, null);
+        if(Array.isArray(fresh)) DB.students = fresh;
+      }catch(e){ console.error(e); }
+      const [assignId, paper, kind, labelEnc, maxScoreStr] = (arg||'').split(':');
+      VIEW = {name:VIEW.name, params:Object.assign({}, VIEW.params, {assignId, paper, kind, label: labelEnc?decodeURIComponent(labelEnc):'', maxScore: Number(maxScoreStr)||100, editRoster:false})};
+      render();
+      break;
+    }
     case 'dismissMissBanner': { const mb = el && el.closest ? el.closest('[data-miss-banner]') : null; if(mb) mb.style.display='none'; break; }
     case 'removeFromRoster': {
       const [assignId, studentId] = (arg||'').split(':');
@@ -16386,10 +16442,8 @@ Continue?`);
     case 'foundClose': { const code=prompt('Enter your founder code to disconnect this school:'); if(code===null) break;
       if(!founderCodeCheck(code)) break;
       const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
-      const pickTxt = prompt('Why is this school being disconnected? The school will see the matching message when it tries to sign in.\n\n' + DISCONNECT_PICK.map((k,i)=>`${i+1} = ${disconnectLabel(k)}`).join('\n') + '\n\nType 1, 2, 3 or 4:');
-      if(pickTxt===null) break;
-      const reasonKey = DISCONNECT_PICK[Number(String(pickTxt).trim())-1];
-      if(!reasonKey){ alert('Please type 1, 2, 3 or 4. Nothing was changed.'); break; }
+      const reasonKey = await pickDisconnectReason();
+      if(!reasonKey) break;
       r.status='closed'; r.closedReason=reasonKey; r.closedAt=Date.now();
       await saveRegistry(); render(); break; }
     case 'foundReopen': { const code=prompt('Enter your founder code to reconnect this school:'); if(code===null) break;
@@ -17541,6 +17595,7 @@ document.addEventListener('submit', async (e)=>{
       else if(foundAcc.status==='pending') err='This account is awaiting owner approval.';
       else if(foundAcc.status==='closed') err='This account has been closed.';
       errEl.textContent = err;
+      if(err && isDisconnectLikeMsg(err)) showDisconnectSticker(err, (foundReg && foundReg.status==='closed') ? 'SCHOOL DISCONNECTED' : 'LOCKED — TOO MANY WRONG PASSWORDS');
       if(foundAcc && !err){
         deviceGateSet('login-unknown', {fails:0, waitUntil:0});
         // Run in parallel, not sequentially: loading the school's data and
