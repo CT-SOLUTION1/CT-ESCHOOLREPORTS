@@ -1659,12 +1659,12 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
           while((n=wk.nextNode())){ if(!/\S/.test(n.nodeValue)) continue; rg.selectNodeContents(n); var x=rg.getBoundingClientRect().width; if(x>m) m=x; }
           return m;
         }
-        var ths=tb.querySelectorAll('tr:first-child > th'), others=0;
-        for(var j=1;j<ths.length;j++){ if(ths[j]!==th) others+=ths[j].offsetWidth; }
+        var ths=tb.querySelectorAll('tr:first-child > th'), others=0, nameTh=ths[1];
+        for(var j=0;j<ths.length;j++){ if(ths[j]!==th && ths[j]!==nameTh) others+=ths[j].offsetWidth; }
         // ---- Student column: as wide as the longest name (or its heading); names longer than the room swipe sideways
         var sNat=0, nms=tb.querySelectorAll('.se-nm'); for(var k=0;k<nms.length;k++){ var nw=textW(nms[k]); if(nw>sNat) sNat=nw; }
-        var h0=ths[0]?textW(ths[0]):0; if(h0>sNat) sNat=h0;
-        var c0=tb.querySelector('td:first-child'), pad0=0;
+        var h0=nameTh?textW(nameTh):0; if(h0>sNat) sNat=h0;
+        var c0=tb.querySelector('td:nth-child(2)'), pad0=0;
         if(c0){ var cs0=getComputedStyle(c0); pad0=(parseFloat(cs0.paddingLeft)||0)+(parseFloat(cs0.paddingRight)||0)+2; }
         var sFull=Math.ceil(sNat)+2, sW=sFull;
         // ---- ALREADY SCORED column: as wide as its sub-columns need
@@ -1794,12 +1794,12 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
 .se-table th{position:sticky;top:0;z-index:2;font-size:calc(11*var(--uk));line-height:1.2;white-space:normal;}
 .se-table th .small{font-size:calc(9.5*var(--uk));}
 /* Student names: wrap onto two lines rather than push other columns off screen. */
-.se-table td:first-child,.se-table th:first-child{white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(10.5*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
+.se-table td:nth-child(2),.se-table th:nth-child(2){white-space:normal;line-height:1.2;text-align:left;font-weight:700;font-size:calc(10.5*var(--uk));letter-spacing:-.01em;overflow:hidden;line-height:1.1;padding-top:0;padding-bottom:0;padding-left:calc(3*var(--uk));padding-right:calc(3*var(--uk));}
 .se-name{overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;line-height:1.1;}
 .se-name::-webkit-scrollbar{display:none;}
 .se-nm{display:inline-block;}
-.se-table td:first-child .pill{font-size:calc(9*var(--uk));padding:1px 5px;}
-.se-table th:not(:first-child),.se-table td:not(:first-child){padding-left:calc(2*var(--uk));padding-right:calc(2*var(--uk));}
+.se-table td:nth-child(2) .pill{font-size:calc(9*var(--uk));padding:1px 5px;}
+.se-table th:not(:nth-child(2)),.se-table td:not(:nth-child(2)){padding-left:calc(2*var(--uk));padding-right:calc(2*var(--uk));}
 /* Earlier-test scores: big, bold, dark and never wrapped, so every student's marks read clearly on a single line. */
 table.data-table.se-table td.small{font-size:var(--se-ocfs,calc(13*var(--uk)));font-weight:800;color:#0A2A4A;white-space:nowrap;word-break:normal;text-align:center;letter-spacing:-.01em;}
 table.data-table.se-table td.small[style*="muted"]{font-weight:400;color:var(--muted);}
@@ -1830,7 +1830,7 @@ table.data-table.se-table th .se-en span{display:block;white-space:nowrap;font-s
 .se-table th.se-prevh.se-more{width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
 /* The ALREADY SCORED column is exactly as wide as its title (measured in the page); exactly THREE tight sub-columns
    fit under it, any further tests scroll sideways. The Student column takes whatever width is left. */
-.se-score .se-table th:first-child{width:auto;}
+.se-score .se-table th:nth-child(2){width:auto;}
 .se-table th .se-ph-title{display:inline-block;max-width:none;}
 .se-table th.se-prevh{text-align:left;}
 /* more tests than fit: a small arrow in a 6px gutter tells users to swipe sideways; it fades once the end is reached. */
@@ -1851,10 +1851,12 @@ table.data-table.se-table th:nth-last-child(2){background:#0f6b3a !important;}
 table.data-table.se-table th:last-child,
 table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-danger{font-size:calc(5.5*var(--uk)) !important;}
 .se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(5.5*var(--uk));padding:calc(2*var(--uk)) calc(2*var(--uk)) !important;line-height:1;white-space:nowrap;letter-spacing:-.02em;max-width:100%;box-sizing:border-box;}
-.se-table th:first-child{width:45%;}
+.se-table th:nth-child(2){width:45%;}
 .se-table th.small{width:min(13%,calc(var(--se-osh,56%) / var(--se-oc,1)));}
 .se-table th:last-child{width:12%;text-align:right;padding-right:calc(2*var(--uk));}
 .se-table th:nth-last-child(2){width:15%;}
+.se-table th.se-tk,.se-table td.se-tk{width:calc(22*var(--uk)) !important;min-width:calc(22*var(--uk)) !important;max-width:calc(22*var(--uk)) !important;padding:0 !important;text-align:center !important;white-space:nowrap !important;overflow:hidden;font-size:calc(11*var(--uk));}
+.se-table td.se-tk input{width:calc(16*var(--uk));height:calc(16*var(--uk));margin:0;padding:0;vertical-align:middle;}
 .se-table td.flex{display:table-cell;}
 .se-table td.flex{white-space:nowrap;text-align:right !important;padding-left:0;padding-right:calc(2*var(--uk));}
 .se-table td.flex .btn-outline,.se-table td.flex .btn-danger{display:block;width:fit-content;margin:calc(1*var(--uk)) 0 calc(1*var(--uk)) auto;}
@@ -2026,10 +2028,10 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   /* ENTER SCORES table: columns hug their contents. Student takes only what is left over (its names still swipe
      sideways), ALREADY SCORED grows with its sub-columns, the entering and Actions columns stay tight. */
   .se-wrap.se-score .se-table{table-layout:auto;width:auto;max-width:100%;}   /* the table is only as wide as its columns: no idle space between them */
-  .se-wrap.se-score .se-table th:first-child{width:auto;}
+  .se-wrap.se-score .se-table th:nth-child(2){width:auto;}
   .se-wrap.se-score .se-table .se-name{width:var(--se-nw,auto);}
-  .se-wrap.se-score .se-table th:not(:first-child){white-space:nowrap;}
-  .se-wrap.se-score .se-table th:not(:first-child) .se-en span{white-space:nowrap;}
+  .se-wrap.se-score .se-table th:not(:nth-child(2)){white-space:nowrap;}
+  .se-wrap.se-score .se-table th:not(:nth-child(2)) .se-en span{white-space:nowrap;}
   .se-wrap.se-score .se-table th.se-prevh{min-width:var(--se-pw,calc(44*var(--uk)));}
   .se-wrap.se-score .se-table th.se-prevh.se-more{min-width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
   .se-wrap.se-score .se-table th:nth-last-child(2){min-width:calc(32*var(--uk));padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
@@ -13620,7 +13622,7 @@ function scoresEntryView(mine){
               <button type="button" class="btn-danger" data-action="removeAllFromRoster:${a.id}">REMOVE ALL FROM LIST</button>
             </div>
             <div class="small" style="margin-top:6px;text-transform:none;">Tick the small box before a student's name, then press REMOVE SELECTED FROM LIST — or remove everyone. Saved scores are not deleted.</div>
-          </div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
+          </div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th class="se-tk" title="Tick the small box before a name to select that student">☑</th><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
@@ -13634,9 +13636,9 @@ function scoresEntryView(mine){
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline se-act" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">CLEAR X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
-            const pickBox = (existingRow || !compulsoryAll) ? `<input type="checkbox" class="se-pick" data-sid="${s.id}" ${existingRow?`data-rowid="${existingRow.id}"`:''} title="Tick to select this student" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);width:15px;height:15px;margin:0;padding:0;">` : '';
-            return `<tr><td style="text-align:left;position:relative;padding-left:calc(20*var(--uk));">${pickBox}<div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
-          }).join('') || `<tr><td colspan="${otherCols.length?4:3}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
+            const pickBox = (existingRow || !compulsoryAll) ? `<input type="checkbox" class="se-pick" data-sid="${s.id}" ${existingRow?`data-rowid="${existingRow.id}"`:''} title="Tick to select this student">` : '';
+            return `<tr><td class="se-tk">${pickBox}</td><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
+          }).join('') || `<tr><td colspan="${otherCols.length?5:4}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(cls.name)}</b> is listed automatically — including students added to the class later.
             <div class="flex" style="margin-top:10px;"><button type="button" class="btn-outline" data-action="refreshRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">ADD MY MISSING STUDENTS</button></div>
