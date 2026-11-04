@@ -1153,19 +1153,25 @@ table.as-table tr.as-done td{color:var(--muted);}
 .as-paper-ticks{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:4px;}
 
 
-/* Assign Subjects to Teachers: compact and clear — several subjects stay visible at once; tick boxes are 9px,
+/* Assign Subjects to Teachers: compact and clear — several subjects stay visible at once; tick boxes are 15px,
    with the whole row / cell still tappable so a finger or cursor can use them easily. */
 .as-subj{border-width:1px;border-radius:8px;margin:6px 0;}
 .as-subj>label.as-head{font-size:15px;padding:9px 12px;gap:8px;min-height:0;}
-.as-subj>label.as-head::before{content:"";flex:0 0 9px;width:9px;height:9px;border:1.5px solid var(--blue);border-radius:2px;background:#fff;box-sizing:content-box;}
+.as-subj>label.as-head::before{content:"";flex:0 0 15px;width:15px;height:15px;border:1.5px solid var(--blue);border-radius:2px;background:#fff;box-sizing:content-box;}
 .as-subj>input.as-subj-cb:checked~label.as-head::before{background:var(--blue) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23fff' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat;}
 .as-subj .as-count{font-size:12px;}
 .as-subj .as-body{padding:8px 12px 10px;}
-.as-subj input[type=checkbox]:not(.as-subj-cb){width:9px !important;height:9px !important;min-width:9px;flex:0 0 9px;margin:0;cursor:pointer;accent-color:var(--blue);}
-label.as-cls{font-size:14px;gap:8px;padding:3px 0;cursor:pointer;}
+.as-subj input[type=checkbox]:not(.as-subj-cb){width:15px !important;height:15px !important;min-width:15px;flex:0 0 15px;margin:0;cursor:pointer;accent-color:var(--blue);}
+label.as-cls{font-size:16px;gap:9px;padding:4px 0;cursor:pointer;}
+.as-subj>label.as-head{font-size:17px;}
+.as-subj .as-count{font-size:13px;}
+/* Use the idle space on the right: page is full width and subjects flow in columns. */
+.main:has(form[data-form="assignBulk"]){max-width:none;}
+.as-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:10px 16px;align-items:start;margin-top:6px;}
+.as-grid>.as-subj{margin:0;min-width:0;}
 .as-subj .as-body>label.as-cls{margin-bottom:4px !important;}
 .as-tbl-wrap{margin:4px 0 8px;}
-table.as-table th,table.as-table td{padding:5px 10px;font-size:14px;}
+table.as-table th,table.as-table td{padding:6px 12px;font-size:16px;}
 table.as-table td input[type=checkbox]{display:block;margin:0 auto;}
 table.as-table td:not(:first-child){min-width:64px;cursor:pointer;}
 table.as-table tr:hover td{background:#f3f8fd;}
@@ -1358,7 +1364,7 @@ html .platform-login-box p.small a{font-size:calc(17*var(--u));font-weight:700;}
 html .platform-login-box .school-name-big{text-align:center;}
 </style>
 <script id="cte-as-cell-tap">
-/* Assign Subjects: tapping/clicking anywhere in a paper cell ticks its 9px box. */
+/* Assign Subjects: tapping/clicking anywhere in a paper cell ticks its 15px box. */
 document.addEventListener('click', function(e){
   var td = e.target && e.target.closest ? e.target.closest('table.as-table td') : null;
   if(!td || e.target.tagName==='INPUT' || e.target.closest('label')) return;
@@ -11480,7 +11486,7 @@ function assignSubjectsView(){
     }).join('');
     pickerHtml = `
       <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick each class and its papers. Existing assignments show ticked — untick a class (or a whole subject) to remove it, tick new ones to add them, then save.</p>
-      ${blocks || '<p class="small">No classes or subjects have been set up yet.</p>'}
+      ${blocks ? `<div class="as-grid">${blocks}</div>` : '<p class="small">No classes or subjects have been set up yet.</p>'}
       <button class="btn" style="margin-top:14px;">Submit — save all assignments</button>`;
   }
   return `
