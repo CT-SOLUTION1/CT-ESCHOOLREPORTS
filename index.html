@@ -517,6 +517,18 @@ img{max-width:100%;height:auto;}
 table{border-collapse:collapse;width:100%;background:#fff;}
 table.report-table, table.data-table{border:2px solid var(--blue);}
 table.report-table th, table.report-table td, table.data-table th, table.data-table td{border:1px solid var(--blue);padding:7px 9px;font-size:13px;text-align:center;}
+/* Stream students: bigger opening button, and a tight, evenly-sized placement table (same on phones and desktop). */
+.btn.stm-open-btn{font-size:20px;padding:16px 34px;border-radius:8px;letter-spacing:.2px;}
+.btn.stm-big{font-size:16px;padding:12px 22px;}
+.btn-outline.stm-big{font-size:16px;padding:11px 20px;}
+table#stmTable{width:max-content !important;max-width:none;display:table !important;margin:0;}
+table#stmTable tbody{display:table-row-group !important;}
+table#stmTable tr{display:table-row !important;width:auto !important;}
+table#stmTable th, table#stmTable td{font-size:16px !important;font-weight:600;text-transform:none;letter-spacing:0;padding:6px 8px;white-space:nowrap;line-height:1.3;vertical-align:middle;}
+table#stmTable th{font-weight:800;}
+table#stmTable th.stm-fit, table#stmTable td.stm-fit{width:1%;}
+table#stmTable td.stm-name-cell{text-align:left;}
+table#stmTable input.stm-cb{display:block;margin:0 auto;width:22px !important;height:22px !important;padding:0;cursor:pointer;}
 /* Result Analysis merged cells (Subject + grade columns spanning a subject's paper sub-rows) */
 td.ra-mt{border-bottom:none !important;background:#fff;}
 td.ra-mm{border-top:none !important;border-bottom:none !important;background:#fff;}
@@ -3830,7 +3842,21 @@ async function refreshScoresForPeriod(term, year){
 async function getPersonal(key, fallback){
   try{ const raw = localStorage.getItem('cte_session_'+key); return raw!==null? JSON.parse(raw): fallback; }catch(e){ return fallback; }
 }
-async function setPersonal(key, val){ try{ localStorage.setItem('cte_session_'+key, JSON.stringify(val)); }catch(e){} }
+async function setPersonal(key, val){
+  try{
+    // A school session remembers a fingerprint of the username+password it was opened with, so a later change
+    // (made by the admin or anyone else) is noticed on this device — see ensureSessionValid().
+    if(key==='session' && val && val.scope==='school' && CUR && String(CUR.username).toLowerCase()===String(val.username).toLowerCase()){
+      // Finance-only sign-ins use the school's Finance password, so that is what their fingerprint is built from.
+      val = Object.assign({}, val, {username:CUR.username, cred: val.financeOnly ? credFp(CUR.username, (DB.info||{}).financePassword) : credFp(CUR.username, CUR.password)});
+      SESSION_FP = val.cred; SESSION_GRACE_UNTIL = Date.now()+15000; SESSION_CHECK_AT = Date.now();
+    } else if(key==='session' && val && val.scope==='founder' && SYSTEM_OWNER){
+      val = Object.assign({}, val, {cred: credFp(SYSTEM_OWNER.username, SYSTEM_OWNER.password)});
+      SESSION_GRACE_UNTIL = Date.now()+15000; SESSION_CHECK_AT = Date.now();
+    }
+    localStorage.setItem('cte_session_'+key, JSON.stringify(val));
+  }catch(e){}
+}
 
 async function loadAll(){
   // Fresh attempt — any earlier failure shouldn't keep flagging us as offline
@@ -3845,19 +3871,38 @@ async function loadAll(){
   const sess = await getPersonal('session', null);
   CUR = null; SCHOOL_ID = null; FINANCE_ONLY = false;
   if(sess && sess.scope==='founder' && SYSTEM_OWNER
-     && sess.token && SYSTEM_OWNER.sessionToken && sess.token===SYSTEM_OWNER.sessionToken){
+     && sess.token && SYSTEM_OWNER.sessionToken && sess.token===SYSTEM_OWNER.sessionToken
+     && (!sess.cred || sess.cred===credFp(SYSTEM_OWNER.username, SYSTEM_OWNER.password))){
     CUR = {role:'founder', name:'Founder', username:SYSTEM_OWNER.username};
     // Cheap single-doc read of whatever storage estimate was last computed —
     // never blocks on recomputing it fresh (that's a deliberate, on-demand
     // action from the founder dashboard, not something every login pays for).
     STORAGE_ESTIMATE = await getShared(STORAGE_ESTIMATE_KEY, null);
+  } else if(sess && sess.scope==='founder' && SYSTEM_OWNER && sess.token && sess.token===SYSTEM_OWNER.sessionToken && sess.cred){
+    // Same founder session, but the founder username/password was changed since it was opened: sign in again.
+    DISCONNECT_NOTICE = 'Your username or password was changed. Please sign in again with your new details to continue.';
+    await setPersonal('session', null);
   } else if(sess && sess.scope==='school'){
     const reg = REGISTRY.find(r=>r.id===sess.schoolId);
     if(reg && reg.status==='closed'){ DISCONNECT_NOTICE = disconnectMessage(reg.closedReason); }
     if(reg && reg.status==='active'){
       await loadSchoolData(sess.schoolId);
       const acc = (DB.accounts||[]).find(a=>a.username===sess.username);
-      if(acc && acc.status==='active'){ CUR = acc; SCHOOL_ID = sess.schoolId; FINANCE_ONLY = !!sess.financeOnly && acc.role==='admin'; }
+      if(!acc && sess.cred){
+        // This username no longer exists (it was changed or removed): do not resume.
+        DISCONNECT_NOTICE = 'Your username or password was changed. Please sign in again with your new details to continue.';
+        await setPersonal('session', null);
+      }
+      if(acc && acc.status==='active'){
+        if(sess.cred && sess.cred!==(sess.financeOnly ? credFp(acc.username, (DB.info||{}).financePassword) : credFp(acc.username, acc.password))){
+          // Username/password changed since this device signed in: do not resume — they must sign in again.
+          DISCONNECT_NOTICE = 'Your username or password was changed. Please sign in again with your new details to continue.';
+          await setPersonal('session', null);
+        } else {
+          CUR = acc; SCHOOL_ID = sess.schoolId; FINANCE_ONLY = !!sess.financeOnly && acc.role==='admin';
+          SESSION_FP = sess.cred || credFp(acc.username, acc.password); SESSION_CHECK_AT = 0;
+        }
+      }
     }
   }
   // First open of the day for this school (or 6+ hours since its last snapshot)? Capture the
@@ -4204,7 +4249,10 @@ async function removeSchoolFromUsernameIndex(schoolId){
   if(changed) await setShared(USERNAME_INDEX_KEY, idx);
 }
 async function saveSystemOwner(){ await setShared('system_owner', SYSTEM_OWNER); }
-async function saveInfo(){ try{ stampFinanceCapture(); }catch(e){ console.error(e); } await undoTracked('info', ()=>setShared(`sch_${SCHOOL_ID}_info`, DB.info)); }
+async function saveInfo(){ try{ stampFinanceCapture(); }catch(e){ console.error(e); } await undoTracked('info', ()=>setShared(`sch_${SCHOOL_ID}_info`, DB.info));
+  // A Finance-only sign-in is tied to the Finance password: if this person just changed it, keep THIS device signed in with the new one.
+  if(FINANCE_ONLY && SESSION_FP && CUR){ try{ await setPersonal('session', {scope:'school', schoolId:SCHOOL_ID, username:CUR.username, financeOnly:true}); }catch(e){} }
+}
 async function saveAccounts(){ await undoTracked('accounts', ()=>setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts)); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
 async function saveClasses(){ await undoTracked('classes', ()=>setShared(`sch_${SCHOOL_ID}_classes`, DB.classes)); }
 async function saveStudents(){ await undoTracked('students', ()=>setShared(`sch_${SCHOOL_ID}_students`, DB.students)); }
@@ -5491,6 +5539,180 @@ function showDisconnectSticker(msg, title){
   document.body.appendChild(o);
   document.getElementById('disconnectStickerOk').onclick = ()=>o.remove();
 }
+
+/* ---- First sign-in: a square sticker asks the teacher to pick their own 4-digit password (or keep the one the admin gave) ----
+   Shown once per teacher (CUR.pwPromptDone). Either answer — change or ignore — marks it done. The admin's Edit profile /
+   Reset password clears the flag again, so a freshly issued password is offered for replacement at the next sign-in. */
+function maybeShowFirstLoginPwSticker(){
+  if(!CUR || CUR.role!=='teacher' || !SCHOOL_ID || FINANCE_ONLY || CUR.pwPromptDone) return;
+  if(document.getElementById('firstPwSticker')) return;
+  const o = document.createElement('div');
+  o.id = 'firstPwSticker';
+  o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,42,74,.85);display:flex;align-items:center;justify-content:center;';
+  const sq = 'box-sizing:border-box;width:min(calc(100vw - 24px),calc(100vh - 24px));height:min(calc(100vw - 24px),calc(100vh - 24px));'
+           + 'width:min(calc(100vw - 24px),calc(100dvh - 24px));height:min(calc(100vw - 24px),calc(100dvh - 24px));';
+  o.innerHTML = `<div style="${sq}background:#fff3a8;border:4px solid #e0a800;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:clamp(10px,3.5vmin,26px);display:flex;flex-direction:column;justify-content:center;gap:clamp(6px,1.8vmin,14px);text-align:center;overflow:auto;">
+    <div style="font-size:clamp(30px,9vmin,64px);line-height:1;">&#128274;</div>
+    <div style="font-weight:900;font-size:clamp(18px,5.6vmin,34px);color:#8a1c1c;letter-spacing:.5px;line-height:1.1;">CHANGE YOUR PASSWORD</div>
+    <div style="font-size:clamp(14px,3.8vmin,22px);font-weight:700;color:#1a1a1a;line-height:1.3;">${esc(CUR.name||'Teacher')}, choose any new <b>4-digit</b> password. Or ignore this and keep your current one.</div>
+    <input id="fpwNew" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="New 4-digit password" style="width:100%;box-sizing:border-box;text-align:center;font-size:clamp(16px,4.6vmin,26px);padding:clamp(8px,2vmin,14px);letter-spacing:4px;">
+    <input id="fpwConfirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="Confirm new password" style="width:100%;box-sizing:border-box;text-align:center;font-size:clamp(16px,4.6vmin,26px);padding:clamp(8px,2vmin,14px);letter-spacing:4px;">
+    <label style="font-size:clamp(12px,3vmin,16px);color:#5a4a00;display:flex;align-items:center;justify-content:center;gap:6px;"><input id="fpwShow" type="checkbox" style="width:auto;margin:0;"> Show digits</label>
+    <div id="fpwErr" style="min-height:1.2em;font-size:clamp(12px,3.2vmin,17px);font-weight:700;color:#8a1c1c;"></div>
+    <button type="button" id="fpwSave" class="btn" style="width:100%;padding:clamp(10px,2.4vmin,16px);font-size:clamp(15px,4vmin,22px);">Change password</button>
+    <button type="button" id="fpwIgnore" class="btn-outline" style="width:100%;padding:clamp(8px,2vmin,14px);font-size:clamp(13px,3.4vmin,18px);">Ignore &mdash; keep my current password</button>
+  </div>`;
+  document.body.appendChild(o);
+  const $ = id=>document.getElementById(id);
+  const nw=$('fpwNew'), cf=$('fpwConfirm'), err=$('fpwErr'), saveB=$('fpwSave'), ignB=$('fpwIgnore');
+  [nw,cf].forEach(el=>el.addEventListener('input', ()=>{ el.value = el.value.replace(/\D/g,'').slice(0,4); err.textContent=''; }));
+  $('fpwShow').addEventListener('change', e=>{ nw.type = cf.type = e.target.checked ? 'text' : 'password'; });
+  const finish = async (newPw)=>{
+    saveB.disabled = ignB.disabled = true;
+    try{
+      const apply = a=>{ if(!a) return; if(newPw) a.password = newPw; a.pwPromptDone = true; };
+      const acc = (DB.accounts||[]).find(a=>a.username===CUR.username && a.role==='teacher');
+      apply(acc); if(acc!==CUR) apply(CUR);
+      await saveAccounts();
+      if(newPw) await setPersonal('session', {scope:'school', schoolId:SCHOOL_ID, username:CUR.username});
+      o.remove();
+      try{ if(typeof showDeliveredToast==='function') showDeliveredToast(newPw ? 'Password changed' : 'Keeping your current password'); }catch(e){}
+    }catch(e){
+      console.error(e);
+      err.textContent = 'Could not save. Check your connection and try again.';
+      saveB.disabled = ignB.disabled = false;
+    }
+  };
+  ignB.addEventListener('click', ()=>finish(null));
+  saveB.addEventListener('click', async ()=>{
+    const a = nw.value, b = cf.value;
+    if(!/^\d{4}$/.test(a)){ err.textContent = 'The password must be exactly 4 digits (0-9).'; return; }
+    if(a!==b){ err.textContent = 'The two passwords do not match.'; return; }
+    if(a===CUR.password){ err.textContent = 'That is your current password. Type a different one, or tap Ignore.'; return; }
+    saveB.disabled = ignB.disabled = true;
+    try{
+      const c = await checkCredentialUniqueness(CUR.username, a, {excludeSchoolId:SCHOOL_ID, excludeUsername:CUR.username});
+      if(c && c.exactMatch){ err.textContent = 'Please choose a different 4-digit password.'; saveB.disabled = ignB.disabled = false; return; }
+    }catch(e){ console.error(e); }
+    await finish(a);
+  });
+  setTimeout(()=>{ try{ nw.focus(); }catch(e){} }, 50);
+}
+
+/* ---- Forced sign-out when this account's username or password is changed (e.g. by the admin) ----
+   Every school session remembers a fingerprint of the credentials it signed in with. On any tap, form submit, return to the
+   app, and every 15 seconds, the live accounts record is read and compared. If this account's username or password no longer
+   matches (or the account is gone) the user is signed out on the spot and must sign in again with the new details. */
+let SESSION_FP = null, SESSION_GRACE_UNTIL = 0, SESSION_CHECK_AT = 0, SESSION_CHECK_P = null;
+function credFp(u,p){
+  const str = String(u==null?'':u)+'\u0001'+String(p==null?'':p);
+  let h1=0x811c9dc5, h2=0x9747b28c;
+  for(let i=0;i<str.length;i++){ const c=str.charCodeAt(i); h1^=c; h1=Math.imul(h1,16777619); h2=Math.imul(h2^c,0x85ebca6b); h2^=h2>>>13; }
+  return (h1>>>0).toString(36)+'.'+(h2>>>0).toString(36);
+}
+async function quietGetShared(key){   // like getShared, but a failed read is silent and returns null (never shows an error)
+  if(DEMO_MODE){ try{ const raw = localStorage.getItem('cte_demo_'+key); return raw!==null ? JSON.parse(raw) : null; }catch(e){ return null; } }
+  try{
+    if(AUTH_READY) await AUTH_READY;
+    const snap = await db.collection(COLLECTION).doc(key).get();
+    return snap.exists ? snap.data().value : null;
+  }catch(e){ return null; }
+}
+// Which kind of signed-in session (if any) must be kept in step with the stored credentials.
+function sessionWatched(){
+  if(!CUR) return null;
+  if(CUR.role==='founder' || FOUNDER_IMPERSONATING_SCHOOL) return 'founder';
+  if(SESSION_FP && SCHOOL_ID) return 'school';
+  return null;
+}
+function sessionCheckDue(){
+  return !!(sessionWatched() && (SESSION_CHECK_P || (Date.now()>=SESSION_GRACE_UNTIL && Date.now()-SESSION_CHECK_AT>=3000)));
+}
+// Founder sessions: valid only while the founder doc still has the same login token AND the same username/password.
+async function founderSessionCheck(){
+  const sess = await getPersonal('session', null);
+  if(!sess || sess.scope!=='founder') return {ok:true};
+  const owner = await quietGetShared('system_owner');
+  SESSION_CHECK_AT = Date.now();
+  if(!owner || typeof owner!=='object') return {ok:true};   // unreadable / offline: never sign anyone out on a guess
+  const tokenOk = !!owner.sessionToken && sess.token===owner.sessionToken;
+  const credOk = !sess.cred || sess.cred===credFp(owner.username, owner.password);
+  return {ok: tokenOk && credOk, owner};
+}
+async function ensureSessionValid(force){
+  const kind = sessionWatched();
+  if(!kind) return true;
+  if(SESSION_CHECK_P) return SESSION_CHECK_P;
+  if(Date.now()<SESSION_GRACE_UNTIL) return true;
+  if(!force && Date.now()-SESSION_CHECK_AT<3000) return true;
+  SESSION_CHECK_P = (async()=>{
+    try{
+      if(kind==='founder'){
+        const r = await founderSessionCheck();
+        if(r.ok || sessionWatched()!=='founder' || Date.now()<SESSION_GRACE_UNTIL) return true;
+        if(r.owner) SYSTEM_OWNER = r.owner;   // so the new founder details are accepted at the next sign-in
+        await forceSignOutCredentialsChanged();
+        return false;
+      }
+      const sid = SCHOOL_ID, uname = CUR.username, role = CUR.role, fin = FINANCE_ONLY;
+      const accs = await quietGetShared(`sch_${sid}_accounts`);
+      const info = fin ? await quietGetShared(`sch_${sid}_info`) : null;   // finance-only sign-ins depend on the Finance password
+      SESSION_CHECK_AT = Date.now();
+      if(!Array.isArray(accs)) return true;   // offline / unreadable: never sign anyone out on a guess
+      if(fin && (!info || typeof info!=='object')) return true;
+      if(!CUR || SCHOOL_ID!==sid || CUR.username!==uname || Date.now()<SESSION_GRACE_UNTIL) return true;
+      const mine = accs.find(a=>a.username===uname && a.role===role);
+      if(mine && credFp(mine.username, fin ? info.financePassword : mine.password)===SESSION_FP) return true;
+      await forceSignOutCredentialsChanged();
+      return false;
+    }catch(e){ console.error(e); return true; }
+    finally{ SESSION_CHECK_P = null; }
+  })();
+  return SESSION_CHECK_P;
+}
+async function forceSignOutCredentialsChanged(){
+  try{ const o = document.getElementById('firstPwSticker'); if(o) o.remove(); }catch(e){}
+  CUR=null; SCHOOL_ID=null; SESSION_FP=null; FOUNDER_IMPERSONATING_SCHOOL=null; FINANCE_UNLOCKED=false; finSubReset(); FINANCE_RESET_SKIPPED=false; FINANCE_ONLY=false;
+  await setPersonal('session', null);
+  try{ syncSessionWatch(); }catch(e){}
+  render();
+  showDisconnectSticker('Your username or password was changed. Please sign in again with your new details to continue.', 'SIGNED OUT');
+}
+// Instant sign-out: while signed in, listen to the record that holds this sign-in's credentials. The moment it changes
+// on the server (from any device) the session is re-checked, so nobody has to tap anything first.
+let SESSION_WATCH = {sig:'', unsubs:[]}, SESSION_WATCH_RETRY_AT = 0;
+function sessionWatchKeys(){
+  const k = sessionWatched();
+  if(k==='founder') return ['system_owner'];
+  if(k==='school') return FINANCE_ONLY ? [`sch_${SCHOOL_ID}_accounts`, `sch_${SCHOOL_ID}_info`] : [`sch_${SCHOOL_ID}_accounts`];
+  return [];
+}
+function syncSessionWatch(){
+  try{
+    if(DEMO_MODE || !db) return;
+    const keys = sessionWatchKeys(), sig = keys.join('|');
+    if(sig===SESSION_WATCH.sig) return;
+    if(keys.length && Date.now()<SESSION_WATCH_RETRY_AT) return;
+    SESSION_WATCH.unsubs.forEach(u=>{ try{ u(); }catch(e){} });
+    SESSION_WATCH = {sig:'', unsubs:[]};
+    if(!keys.length) return;
+    SESSION_WATCH.sig = sig;
+    keys.forEach(key=>{
+      let first = true;
+      SESSION_WATCH.unsubs.push(db.collection(COLLECTION).doc(key).onSnapshot(snap=>{
+        if(first){ first=false; return; }
+        if(snap.metadata && snap.metadata.hasPendingWrites) return;   // our own unsent write
+        ensureSessionValid(true);
+      }, ()=>{ SESSION_WATCH.sig=''; SESSION_WATCH_RETRY_AT = Date.now()+30000; }));
+    });
+  }catch(e){ console.error(e); }
+}
+setInterval(syncSessionWatch, 3000);
+window.addEventListener('storage', e=>{ try{ if(e.key && e.key.indexOf('cte_demo_')===0 && sessionWatched()) ensureSessionValid(true); }catch(_){} });   // demo mode: another tab changed the data
+document.addEventListener('click', ()=>{ try{ if(sessionCheckDue()) ensureSessionValid(); }catch(e){} }, true);
+document.addEventListener('visibilitychange', ()=>{ try{ if(!document.hidden && sessionWatched()) ensureSessionValid(true); }catch(e){} });
+window.addEventListener('online', ()=>{ try{ if(sessionWatched()) ensureSessionValid(true); }catch(e){} });
+setInterval(()=>{ try{ if(!document.hidden && sessionWatched()) ensureSessionValid(true); }catch(e){} }, 15000);
 function isDisconnectLikeMsg(m){ return !!m && (m.includes('incorrect password many times') || m.includes('DEMO period for your school') || m.includes('need to clear with CT-E') || m.includes('violated our agreed rules') || m.includes('under maintenance') || m.includes('currently disconnected')); }
 // Founder ticks the reason (instead of typing a number). Resolves to a reason key, or null if cancelled.
 function pickDisconnectReason(){
@@ -6772,6 +6994,7 @@ function render(){
   // This is harmless on browsers that do not expose an install prompt.
   updatePWAInstallState();
   try{ stuRestoreAnchor(); }catch(e){}
+  try{ maybeShowFirstLoginPwSticker(); }catch(e){}
 }
 
 /* ============================================================
@@ -10615,6 +10838,7 @@ function staffAccountsView(){
     </table>
   </div>
   <div class="card"><h3>All Staff List</h3>
+    <div style="margin:0 0 10px;"><button type="button" class="btn-outline" onclick="downloadAccountsPdf('teacher')">⬇ Download login details (PDF)</button></div>
     <label>Showing staff — filter by class if needed</label>
     <select onchange="filterStaffByClass(this.value)">
       <option value="">All staff</option>
@@ -10666,6 +10890,80 @@ function staffAccountsView(){
   </div>
   ${corruptedTeachersCard()}
   ${unrecognisedTeachersCard()}`;
+}
+
+/* ---------- Login-details PDF (Teaching staff / Parents / Non teaching staff) ----------
+   Columns: No., Name, Username, Provisional password (as set by the admin) and, for teaching staff,
+   the subjects taught written like ENG(S.1), LIT(S.3), GP(S.5 East). Closed and pending accounts are left out. */
+function teacherSubjectsText(username){
+  const seen = new Set(), out = [];
+  DB.assignments.filter(x=>x.teacherUsername===username).forEach(x=>{
+    const c = DB.classes.find(k=>k.id===x.classId);
+    const t = `${msAbbr(x.subject)}(${c?classFullName(c):'?'})`;
+    if(!seen.has(t)){ seen.add(t); out.push(t); }
+  });
+  return out.join(', ');
+}
+async function downloadAccountsPdf(kind){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can download login details.'); return; }
+  const isT = kind==='teacher';
+  const live = a => a.status!=='pending' && a.status!=='closed';
+  const list = sortByName(isT
+    ? DB.accounts.filter(a=>a.role==='teacher' && live(a) && !isCorruptTeacher(a))
+    : DB.accounts.filter(a=>a.role==='parent' && live(a) && accCategory(a)===kind));
+  if(!list.length){ alert('There are no active accounts to download.'); return; }
+  const title = isT ? 'Teaching Staff — Login Details' : kind==='nonteaching' ? 'Non Teaching Staff — Login Details' : 'Parents — Login Details';
+  setAppBusy(true);
+  try{
+    try{ await loadJsPdfOnly(); }catch(e){ alert(e.message||'Could not load the PDF tools. Check your internet connection and try again.'); return; }
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+    const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+    const X0 = 52, USABLE = W - X0*2, TOP = 62, BOTTOM = H - 58, FS = 10, LH = 13, PADY = 5, PADX = 5;
+    const cols = isT
+      ? [['No.',26],['Name',128],['Username',96],['Provisional password',104],['Teaching subjects',USABLE-26-128-96-104]]
+      : [['No.',28],['Name',170],['Username',140],['Provisional password',USABLE-28-170-140]];
+    const mono = new Set(isT ? [2,3] : [2,3]);
+    const drawHead = y=>{
+      pdf.setFillColor(10,42,74); pdf.rect(X0, y, USABLE, 22, 'F');
+      pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(FS);
+      let x = X0; cols.forEach(([h,w])=>{ pdf.text(h, x+PADX, y+15); x += w; });
+      pdf.setTextColor(0,0,0); return y+22;
+    };
+    const newPage = first=>{
+      if(!first) pdf.addPage();
+      drawPdfFrame(pdf, true);
+      pdf.setTextColor(10,42,74); pdf.setFont('helvetica','bold'); pdf.setFontSize(13);
+      pdf.text(String(DB.info.schoolName||'').toUpperCase(), W/2, 50, {align:'center'});
+      pdf.setFontSize(11); pdf.text(title, W/2, 66, {align:'center'});
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.setTextColor(90,90,90);
+      pdf.text(`${list.length} account${list.length===1?'':'s'} · printed ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}`, W/2, 79, {align:'center'});
+      pdf.setTextColor(0,0,0);
+      return drawHead(88);
+    };
+    let y = newPage(true);
+    pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6);
+    list.forEach((a,i)=>{
+      const cells = [String(i+1), a.name||a.username||'', a.username||'', a.password||'—'];
+      if(isT) cells.push(teacherSubjectsText(a.username) || '—');
+      pdf.setFontSize(FS);
+      const wrapped = cells.map((t,ci)=>{ pdf.setFont(mono.has(ci)?'courier':'helvetica', ci===1?'bold':'normal'); return pdf.splitTextToSize(String(t), cols[ci][1]-PADX*2); });
+      const rowH = Math.max(...wrapped.map(l=>l.length))*LH + PADY*2;
+      if(y+rowH > BOTTOM){ y = newPage(false); pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6); }
+      let x = X0;
+      wrapped.forEach((lines,ci)=>{
+        pdf.rect(x, y, cols[ci][1], rowH);
+        pdf.setFont(mono.has(ci)?'courier':'helvetica', ci===1?'bold':'normal'); pdf.setFontSize(FS);
+        pdf.text(lines, x+PADX, y+PADY+LH-3);
+        x += cols[ci][1];
+      });
+      y += rowH;
+    });
+    pdf.setFont('helvetica','italic'); pdf.setFontSize(8.5); pdf.setTextColor(90,90,90);
+    if(y+16 <= H-46) pdf.text('Confidential — hand each person only their own details and advise them to change the provisional password after first sign-in.', X0, y+14);
+    const base = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_${isT?'teaching_staff':kind==='nonteaching'?'non_teaching_staff':'parents'}_login_details`;
+    openOrSavePdf(pdf, `${base}.pdf`, {openPreviewTab:false});
+  } finally { setAppBusy(false); }
 }
 function isCorruptTeacher(a){
   if(a.role!=='teacher') return false;
@@ -10811,7 +11109,10 @@ function accountSectionHTML(title, list, grp, emptyMsg){
       <td><button type="button" class="${allowed?'btn':'btn-danger'}" style="white-space:nowrap;" title="Tap to ${allowed?'stop':'allow'} report card access" onclick="setAccountReportAccess('${u}', ${allowed?'false':'true'})">${allowed?'✔ Access':'✖ No access'}</button></td>
       <td class="flex">${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${u}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${u}">Close</button>`} <button class="btn-danger" data-action="delAcc:${u}" style="background:#5a1414;">Delete</button></td></tr>`;
   }).join('') || `<tr><td colspan="8">${emptyMsg}</td></tr>`;
+  const pdfKind = grp==='nts' ? 'nonteaching' : 'parent';
+  const pdfBtn = list.length ? `<div style="margin:0 0 10px;"><button type="button" class="btn-outline" onclick="downloadAccountsPdf('${pdfKind}')">⬇ Download login details (PDF)</button></div>` : '';
   return `<div class="card"><h3>${title} (${list.length})</h3>
+    ${pdfBtn}
     ${bulk}
     <table class="data-table"><tr><th></th><th>Name</th><th>Username</th><th>Status</th><th>Saved as</th><th>Linked Children</th><th>Report cards</th><th>Action</th></tr>
     ${rows}
@@ -11013,7 +11314,7 @@ function stmNameProblem(g, names){
 }
 function stmPanelHtml(){
   if(!STM.open){
-    return `<button type="button" class="btn" data-action="stmOpen">Stream students</button>
+    return `<button type="button" class="btn stm-open-btn" data-action="stmOpen">Stream students</button>
       <p class="small" style="margin-top:6px;">Split a class into streams, choose each stream's class teacher and place every student in a stream. Students keep their records — admission number, marks and history — and the class's subject assignments carry over to each new stream.</p>`;
   }
   const groups = classGroups();
@@ -11035,13 +11336,13 @@ function stmPanelHtml(){
         <td><input class="stm-name" value="${esc(STM.names[i]||'')}" placeholder="e.g. ${ph[i]}" ${i<ex.length?'readonly style="background:#f1f1f1;"':''}></td>
         <td><select class="stm-teacher">${streamTeacherOptions(STM.teachers[i]||'')}</select></td></tr>`).join('')}
       </table></div>
-      <button type="button" class="btn" style="margin-top:12px;" data-action="stmNext">Next — place students in streams</button>`;
+      <button type="button" class="btn stm-big" style="margin-top:12px;" data-action="stmNext">Next — place students in streams</button>`;
   }
   return h;
 }
 function stmSaveBtnHtml(g){
   const total = stmStudents(g).length, placed = stmPlacedCount(g), ok = placed===total;
-  return `<button type="button" class="btn" id="stmSaveBtn" data-action="stmSaveAssign" ${ok?'':'disabled'} style="${ok?'':'opacity:.5;cursor:not-allowed;'}">Save</button>`;
+  return `<button type="button" class="btn stm-big" id="stmSaveBtn" data-action="stmSaveAssign" ${ok?'':'disabled'} style="${ok?'':'opacity:.5;cursor:not-allowed;'}">Save</button>`;
 }
 function stmTableHtml(g){
   const names = STM.names.map(x=>(x||'').trim());
@@ -11049,16 +11350,16 @@ function stmTableHtml(g){
   const total = studs.length, placed = stmPlacedCount(g);
   return `<p class="small" style="margin:10px 0 6px;">Tick the stream each student belongs to — <b>every student must be placed</b> before you can save. Ticking one stream switches off the others in that row.</p>
     <p style="margin:0 0 6px;font-weight:700;"><span id="stmPlaced">${placed}</span> of ${total} student${total===1?'':'s'} placed${total&&placed<total?` — <span style="color:var(--danger,#c0392b);">${total-placed} still to tick</span>`:''}</p>
-    <div style="overflow-x:auto;"><table class="data-table" id="stmTable"><tr><th>Admission No</th><th style="text-align:left;">Student name</th>${names.map(n=>`<th>${esc(n)}</th>`).join('')}</tr>
+    <div style="overflow-x:auto;"><table class="data-table" id="stmTable"><tr><th class="stm-fit">Admission No</th><th class="stm-fit" style="text-align:left;">Student name</th>${names.map(n=>`<th class="stm-fit">${esc(n)}</th>`).join('')}</tr>
     ${studs.map(x=>{
       const cur = STM.assign[x.id];
-      return `<tr data-stu="${esc(x.id)}"><td>${esc(x.admNo||'')}</td><td style="text-align:left;">${esc(x.name)}</td>${names.map((n,i)=>{
+      return `<tr data-stu="${esc(x.id)}"><td class="stm-fit">${esc(x.admNo||'')}</td><td class="stm-fit stm-name-cell">${esc(x.name)}</td>${names.map((n,i)=>{
         const on = cur===i;
-        return `<td><input type="checkbox" class="stm-cb" data-idx="${i}" ${on?'checked':''} ${cur!==undefined&&!on?'disabled':''} style="width:18px;height:18px;cursor:pointer;"></td>`;
+        return `<td class="stm-fit"><input type="checkbox" class="stm-cb" data-idx="${i}" ${on?'checked':''} ${cur!==undefined&&!on?'disabled':''}></td>`;
       }).join('')}</tr>`;
     }).join('') || `<tr><td colspan="${names.length+2}">No students in this class.</td></tr>`}
     </table></div>
-    <div class="flex" style="margin-top:12px;gap:10px;"><span id="stmSaveWrap">${stmSaveBtnHtml(g)}</span><button type="button" class="btn-outline" data-action="stmBack">Back — edit streams</button></div>`;
+    <div class="flex" style="margin-top:12px;gap:10px;"><span id="stmSaveWrap">${stmSaveBtnHtml(g)}</span><button type="button" class="btn-outline stm-big" data-action="stmBack">Back — edit streams</button></div>`;
 }
 function stmRefresh(){ const el = document.getElementById('stmPanel'); if(el) el.innerHTML = stmPanelHtml(); }
 // Live update of the "x of y placed" line and the Save button while ticking.
@@ -11716,8 +12017,9 @@ function teacherProfileView(username){
       <label>Recovery code (optional)</label>
       <input name="recovery" value="${esc(t.recovery||'')}" placeholder="${t.recovery?'':'Not set yet — add one so this teacher can reset their own password'}">
       <p class="small" style="margin-top:4px;">Lets this teacher reset their own password later without going through you. Leave blank to clear it.</p>
-      <label>New password (optional)</label>
-      <input name="password" placeholder="Leave blank to keep the current password" autocomplete="new-password">
+      <label>Password</label>
+      <input name="password" value="${esc(t.password||'')}" placeholder="Password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="small" style="margin-top:4px;">This is the teacher's current password, shown as it is so you can read it out or change it. If you change it, the teacher is asked to choose their own 4-digit password the next time they sign in (they can ignore that and keep yours).</p>
       <p class="small" style="margin-top:4px;">Changing the username or password here requires your owner code and will not sign this teacher out of any device already logged in — let them know the new details directly.</p>
       <button class="btn" style="margin-top:14px;">Submit — save changes</button>
     </form>
@@ -15712,6 +16014,7 @@ document.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
   e.preventDefault();
+  if(sessionCheckDue()){ if(!(await ensureSessionValid())) return; }
   const _raw = el.dataset.action;
   const _sep = _raw.indexOf(':');
   const action = _sep===-1 ? _raw : _raw.slice(0,_sep);
@@ -16920,7 +17223,7 @@ Continue?`);
       if(newPw.trim().length<4){ alert('Password must be at least 4 characters.'); break; }
       const conflict = await checkCredentialUniqueness(acc.username, newPw.trim(), {excludeSchoolId:SCHOOL_ID, excludeUsername:acc.username});
       if(conflict.exactMatch){ alert('That username and password combination is already used by another account. Please choose a different password.'); break; }
-      acc.password = newPw.trim(); await saveAccounts();
+      acc.password = newPw.trim(); acc.pwPromptDone = false; await saveAccounts();
       alert(`Password reset for ${acc.name}. Share the new password with them directly.`); render(); break; }
     case 'delCorruptTeachers': { const bad = DB.accounts.filter(isCorruptTeacher); if(!bad.length) break;
       const code=prompt(`Enter your private owner code to permanently delete ${bad.length} garbled teacher entr${bad.length===1?'y':'ies'}:`); if(code===null) break;
@@ -17481,6 +17784,7 @@ function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPer
 
 document.addEventListener('submit', async (e)=>{
   e.preventDefault();
+  if(sessionCheckDue()){ if(!(await ensureSessionValid())) return; }
   const form = e.target;
   const type = form.dataset.form;
   const fd = new FormData(form);
@@ -18016,7 +18320,10 @@ document.addEventListener('submit', async (e)=>{
       if(fd.get('newPassword')) SYSTEM_OWNER.password = fd.get('newPassword');
       if(fd.get('newCode')) SYSTEM_OWNER.code = fd.get('newCode');
       if(fd.get('newRecovery') && fd.get('newRecovery').trim()) SYSTEM_OWNER.recovery = fd.get('newRecovery').trim();
-      await saveSystemOwner(); alertOk('Updated.');
+      if(fd.get('newPassword')) SYSTEM_OWNER.sessionToken = genSessionToken();   // signs out every other device still using the old password
+      await saveSystemOwner();
+      if(fd.get('newPassword')) await setPersonal('session', {scope:'founder', token:SYSTEM_OWNER.sessionToken});
+      alertOk('Updated.');
     }
     else if(type==='createSchool'){
       // Email is required for every NEW school (existing schools registered before this
@@ -18058,7 +18365,7 @@ document.addEventListener('submit', async (e)=>{
       { const conflict = await checkCredentialUniqueness(uname, fd.get('password'));
         if(conflict.exactMatch){ showFatal('That exact username and password combination is already used by another account (at this or another school). Please change the username or the password.'); return; } }
       if(type==='signupTeacher'){
-        accounts.push({username:uname, password:fd.get('password'), role:'teacher', name:fd.get('name'), status:'pending', recovery:(fd.get('recovery')||'').trim()||null});
+        accounts.push({username:uname, password:fd.get('password'), role:'teacher', name:fd.get('name'), status:'pending', pwPromptDone:true, recovery:(fd.get('recovery')||'').trim()||null});
       } else {
         const students = await getShared(`sch_${schoolId}_students`, []);
         // Supports one or several admission numbers (comma-separated) so a parent
@@ -18228,7 +18535,7 @@ document.addEventListener('submit', async (e)=>{
       const newPassword = fd.get('newPassword'), newRecovery = fd.get('newRecovery');
       { const conflict = await checkCredentialUniqueness(u, newPassword, {excludeSchoolId:foundSchoolId, excludeUsername:u});
         if(conflict.exactMatch){ errEl.textContent='That username and password combination is already used by another account. Please choose a different password.'; return; } }
-      foundAcc.password = newPassword;
+      foundAcc.password = newPassword; foundAcc.pwPromptDone = true;
       if(newRecovery && newRecovery.trim()) foundAcc.recovery = newRecovery.trim();
       await setShared(`sch_${foundSchoolId}_accounts`, foundAccounts);
       // password/recovery changed but username+role didn't, so the index entry is still valid — no sync needed here
@@ -18888,7 +19195,7 @@ document.addEventListener('submit', async (e)=>{
       if(!newUsername){ alert('Please enter a username.'); return; }
       const newPassword = (fd.get('password')||'').trim();
       const usernameChanged = newUsername.toLowerCase()!==oldUsername.toLowerCase();
-      const passwordChanged = !!newPassword;
+      const passwordChanged = !!newPassword && newPassword!==t.password;
       if(passwordChanged && newPassword.length<4){ alert('Password must be at least 4 characters.'); return; }
       if(usernameChanged || passwordChanged){
         const code = prompt(`Enter your private owner code to change ${t.name}'s ${usernameChanged && passwordChanged?'username and password':usernameChanged?'username':'password'}:`);
@@ -18916,7 +19223,7 @@ document.addEventListener('submit', async (e)=>{
         if(changedAssignments.length) await saveAssignments();
         if(changedScores.length) await upsertScores(changedScores);
       }
-      if(passwordChanged) t.password = newPassword;
+      if(passwordChanged){ t.password = newPassword; t.pwPromptDone = false; }
       t.recovery = ((fd.get('recovery')||'').trim()) || null;
       await saveAccounts();
       alertOk('Teacher profile updated.'); render();
@@ -19207,6 +19514,7 @@ document.addEventListener('submit', async (e)=>{
         if(conflict.exactMatch){ alert('Another account already uses that username with the same password. Please choose a different username or password.'); return; } }
       CUR.username=newUsername;
       CUR.password=fd.get('new');
+      CUR.pwPromptDone=true;
       if((CUR.role==='admin' || CUR.role==='teacher') && fd.get('recovery') && fd.get('recovery').trim()){ CUR.recovery = fd.get('recovery').trim(); }
       const idx = DB.accounts.findIndex(a=>a.username===oldUsername);
       if(idx<0){ alert('Your account could not be found. Please sign in again.'); return; }
