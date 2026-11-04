@@ -1152,6 +1152,25 @@ table.as-table td input[type=checkbox]{width:auto;margin:0;}
 table.as-table tr.as-done td{color:var(--muted);}
 .as-paper-ticks{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:4px;}
 
+
+/* Assign Subjects to Teachers: compact and clear — several subjects stay visible at once; tick boxes are 9px,
+   with the whole row / cell still tappable so a finger or cursor can use them easily. */
+.as-subj{border-width:1px;border-radius:8px;margin:6px 0;}
+.as-subj>label.as-head{font-size:15px;padding:9px 12px;gap:8px;min-height:0;}
+.as-subj>label.as-head::before{content:"";flex:0 0 9px;width:9px;height:9px;border:1.5px solid var(--blue);border-radius:2px;background:#fff;box-sizing:content-box;}
+.as-subj>input.as-subj-cb:checked~label.as-head::before{background:var(--blue) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23fff' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat;}
+.as-subj .as-count{font-size:12px;}
+.as-subj .as-body{padding:8px 12px 10px;}
+.as-subj input[type=checkbox]:not(.as-subj-cb){width:9px !important;height:9px !important;min-width:9px;flex:0 0 9px;margin:0;cursor:pointer;accent-color:var(--blue);}
+label.as-cls{font-size:14px;gap:8px;padding:3px 0;cursor:pointer;}
+.as-subj .as-body>label.as-cls{margin-bottom:4px !important;}
+.as-tbl-wrap{margin:4px 0 8px;}
+table.as-table th,table.as-table td{padding:5px 10px;font-size:14px;}
+table.as-table td input[type=checkbox]{display:block;margin:0 auto;}
+table.as-table td:not(:first-child){min-width:64px;cursor:pointer;}
+table.as-table tr:hover td{background:#f3f8fd;}
+@media (max-width:760px){ table.as-table{display:table !important;} }
+
 /* ---- Bold tables & rules in downloaded / printed PDFs ---- */
 .pdf-bold table{border-collapse:collapse;}
 .pdf-bold table.report-table,.pdf-bold table.data-table{border-width:3.5px !important;}
@@ -1321,6 +1340,32 @@ html .platform-login-box .login-panel-title{font-size:calc(19*var(--u)) !importa
 html .platform-login-box [data-action="clearRole"]{font-size:calc(14*var(--u)) !important;padding:calc(8*var(--u)) calc(14*var(--u)) !important;}
 html .platform-login-box .panel-indicator-row{gap:calc(12*var(--u));}
 </style>
+<style id="cte-auth-forms-match-login">
+/* Register-a-school and Forgot-password pages: same full card, centring, stacking and sizing as the sign-in screen
+   (they now use .platform-login-box, so the sign-in fit-to-screen script and sizes apply to them too). */
+html .platform-login-box form input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+html .platform-login-box form select,
+html .platform-login-box form textarea{
+  width:100%;box-sizing:border-box;text-align:left;
+  padding:calc(16*var(--u)) calc(16*var(--u));font-size:calc(21*var(--u));
+  border:calc(1.5*var(--u)) solid #b9c9da;border-radius:calc(8*var(--u));
+}
+html .platform-login-box form label{display:block;text-align:left;}
+html .platform-login-box form .small{text-align:left;margin-top:calc(6*var(--u));}
+html .platform-login-box form hr{margin:calc(14*var(--u)) 0 !important;}
+html .platform-login-box form .btn{width:100%;}
+html .platform-login-box p.small a{font-size:calc(17*var(--u));font-weight:700;}
+html .platform-login-box .school-name-big{text-align:center;}
+</style>
+<script id="cte-as-cell-tap">
+/* Assign Subjects: tapping/clicking anywhere in a paper cell ticks its 9px box. */
+document.addEventListener('click', function(e){
+  var td = e.target && e.target.closest ? e.target.closest('table.as-table td') : null;
+  if(!td || e.target.tagName==='INPUT' || e.target.closest('label')) return;
+  var cb = td.querySelector('input[type=checkbox]:not(:disabled)');
+  if(cb) cb.click();
+});
+</script>
 <style id="cte-marksheet-fix">
 /* Mark Sheets & General Mark Sheets: the last column always has a closing vertical line,
    on screen, in print and in the PDF export. */
@@ -3072,7 +3117,7 @@ const NAV_DETAIL_LABELS = {
   financestudent:'Student Follow-up', fschoollogins:'School Logins', password:'Other Settings'
 };
 const NAV_FOUNDER_LABELS = {
-  fdash:'Dashboard', fpending:'Pending School Approvals', fschools:'All Schools',
+  fdash:'Dashboard', fpending:'Pending School Approvals', fschools:'All Schools', flocked:'Locked Schools (Wrong Password)',
   fsnapshots:'System Backups & Snapshots', fpassword:'Change Password'
 };
 const NAV_AUTH_LABELS = {
@@ -3262,6 +3307,7 @@ window.addEventListener('appinstalled', ()=>{ DEFERRED_INSTALL_PROMPT=null; PWA_
 // the founder's own session) and cleared when they navigate away.
 let FOUNDER_LOGINS = null;
 let FOUNDER_SNAPSHOTS = [];
+let FOUNDER_LOCKED = null, FOUNDER_LOCKED_FAILED = [], FOUNDER_LOCKED_LOADING = false, FOUNDER_LOCKED_AT = 0;
 // When the founder temporarily enters a school, keep the founder session intact
 // so they can return to the Founder Panel without needing the school's credentials.
 let FOUNDER_IMPERSONATING_SCHOOL = null;
@@ -3926,6 +3972,42 @@ async function downloadFounderSystemBackup(){
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const dateStr=new Date().toISOString().slice(0,10);
   triggerBlobDownload(blob,`CT-E_SOLUTIONS_ENTIRE_SYSTEM_BACKUP_${dateStr}.json`);
+}
+// ---- Founder: schools locked out for entering wrong passwords ----
+// A school stays listed for as long as any section is disconnected (10 wrong attempts) or still
+// waiting (5 wrong attempts). The Founder can unlock it at any time, without waiting out the minutes.
+function lockedGateKeys(gl){
+  const now = Date.now();
+  return Object.keys(gl||{}).filter(k=>gl[k] && (gl[k].locked || (gl[k].waitUntil && gl[k].waitUntil>now)));
+}
+function founderIsLocked(schoolId){ return !!(FOUNDER_LOCKED||[]).some(x=>x.schoolId===schoolId); }
+async function loadFounderLockedSchools(){
+  FOUNDER_LOCKED_LOADING = true;
+  const rows = [], failed = [];
+  try{
+    await Promise.all(REGISTRY.map(async reg=>{
+      let gl;
+      try{ gl = (await getShared(`sch_${reg.id}_gates`, {})) || {}; }catch(e){ failed.push(reg.name||reg.id); return; }
+      const keys = lockedGateKeys(gl);
+      if(keys.length) rows.push({schoolId:reg.id, schoolName:reg.name, ownerUsername:reg.ownerUsername,
+        gates:keys.map(k=>({key:k, fails:gl[k].fails||0, locked:!!gl[k].locked, waitUntil:gl[k].waitUntil||0, at:gl[k].lockedAt||gl[k].last||0}))});
+    }));
+  } finally { FOUNDER_LOCKED_LOADING = false; }
+  rows.sort((a,b)=>String(a.schoolName||'').localeCompare(String(b.schoolName||'')));
+  FOUNDER_LOCKED = rows; FOUNDER_LOCKED_FAILED = failed; FOUNDER_LOCKED_AT = Date.now();
+}
+function founderLockedAutoLoad(view){
+  if((view==='fdash' || view==='fschools') && !FOUNDER_LOCKED_LOADING && (!FOUNDER_LOCKED || Date.now()-FOUNDER_LOCKED_AT>60000)){
+    loadFounderLockedSchools().then(()=>{ if(CUR && CUR.role==='founder') render(); }).catch(()=>{});
+  }
+}
+// Clears every wrong-password lock/wait on the school, so its current usernames and passwords work again straight away.
+async function founderUnlockSchool(schoolId){
+  const gl = (await getShared(`sch_${schoolId}_gates`, {})) || {};
+  const keys = lockedGateKeys(gl);
+  keys.forEach(k=>{ delete gl[k]; });
+  await setShared(`sch_${schoolId}_gates`, gl);
+  return keys.length;
 }
 async function loadFounderSnapshots(){
   FOUNDER_SNAPSHOTS=[];
@@ -5232,6 +5314,46 @@ async function restoreAutoSnapshot(ts){
    5. HELPERS
    ============================================================ */
 function uid(p){ return p+'_'+Math.random().toString(36).slice(2,9); }
+// Score display: any mark below 10 is written with a leading zero (5 -> "05", 7.5 -> "07.5")
+// on score entry boxes, mark/score sheets and report cards. Only a single digit before the
+// decimal point is padded; "x", "—", blanks and values of 10+ pass through untouched.
+function zp(v){
+  if(v===null || v===undefined) return v;
+  const t = String(v);
+  return /^\d(\.\d+)?$/.test(t) ? '0'+t : t;
+}
+// Percentages: same rule as marks (7 -> "07%", 7.5 -> "07.5%").
+function zpct(n, d){ const x = Number(n); return isFinite(x) ? zp(x.toFixed(d||0)) + '%' : '—'; }
+// Pad one typed mark: 5 -> "05", 7.5 -> "07.5", "007" -> "07"; blanks / 10+ untouched.
+function zpFix(el){
+  if(!el || el.value==='') return;
+  const n = Number(el.value);
+  if(isFinite(n)) el.value = zp(el.value.replace(/^0+(?=\d)/,'').replace(/^\./,'0.'));
+}
+// Pad every mark box the moment a teacher saves (button tap OR Enter key), before the form is read,
+// so a score like 5, 7 or 8 is always saved and shown as 05, 07, 08.
+document.addEventListener('submit', (e)=>{
+  const f = e.target;
+  if(f && f.querySelectorAll) f.querySelectorAll('input.zp-in').forEach(zpFix);
+}, true);
+document.addEventListener('change', (e)=>{
+  if(e.target && e.target.classList && e.target.classList.contains('zp-in')) zpFix(e.target);
+}, true);
+// Typed marks in zp-in boxes: digits and one dot only, padded when the box loses focus.
+document.addEventListener('input', (e)=>{
+  const el = e.target;
+  if(el && el.classList && el.classList.contains('zp-in')){
+    const clean = el.value.replace(/[^0-9.]/g,'').replace(/^(\d*\.\d*)\..*$/,'$1');
+    if(clean!==el.value) el.value = clean;
+  }
+});
+document.addEventListener('focusout', (e)=>{
+  const el = e.target;
+  if(el && el.classList && el.classList.contains('zp-in') && el.value!==''){
+    const n = Number(el.value);
+    if(isFinite(n)) el.value = zp(el.value.replace(/^0+(?=\d)/,'').replace(/^\./,'0.'));
+  }
+});
 
 // ---- Founder-account hardening helpers ----
 // A real random, unguessable token (not Math.random-based uid()) used to prove
@@ -6688,7 +6810,7 @@ function renderFounderSetup(){
 }
 
 function renderFounderShell(){
-  const nav = [['fdash','Dashboard'],['fpending','Pending School Approvals'],['fschools','All Schools'],['fsnapshots','System Backups & Snapshots'],['fpassword','Change Password']];
+  const nav = [['fdash','Dashboard'],['fpending','Pending School Approvals'],['fschools','All Schools'],['flocked','Locked Schools (Wrong Password)'],['fsnapshots','System Backups & Snapshots'],['fpassword','Change Password']];
   const extraViews = ['fschoollogins'];
   const view = (VIEW.name==='boot'||!(nav.some(n=>n[0]===VIEW.name)||extraViews.includes(VIEW.name))) ? 'fdash' : VIEW.name;
   navTrackView(view);
@@ -6797,6 +6919,7 @@ function founderReturnToPanel(){
 function renderFounderView(view){
   const pending = REGISTRY.filter(r=>r.status==='pending');
   const others = REGISTRY.filter(r=>r.status!=='pending');
+  founderLockedAutoLoad(view);
   if(view==='fdash'){
     return `<h2>Welcome, ${esc(CUR.name)}</h2>
     <div class="grid3">
@@ -6809,6 +6932,11 @@ function renderFounderView(view){
       <p class="small">Founder-only access to the entire platform backup and all automatic school snapshots.</p>
       <button class="btn-outline" data-action="foundBackupSystem">Download entire system backup (.json)</button>
       <button class="btn-outline" data-action="foundOpenSnapshots" style="margin-left:8px;">Access snapshots</button>
+    </div>
+    <div class="card" style="margin-top:16px;border-left:4px solid var(--danger);">
+      <div class="small">LOCKED SCHOOLS (WRONG PASSWORD)</div>
+      <h1 style="margin:4px 0;color:var(--danger);">${FOUNDER_LOCKED ? FOUNDER_LOCKED.length : '…'}</h1>
+      <button class="btn-outline" data-action="nav:flocked">Open locked schools</button>
     </div>
     ${renderStorageEstimateCard()}`;
   }
@@ -6826,9 +6954,10 @@ function renderFounderView(view){
     <div class="note">Closing a school here disconnects it immediately — the school does not need to agree, and its own owner code cannot override you. <b>Enter School</b> lets the Founder open an active school's normal Admin interface directly using the Founder Code, without needing the school's Admin username or password. "View logins" shows the school's account details for support and recovery.</div>
     <div class="card" style="margin-top:14px;"><table class="data-table"><tr><th>School</th><th>Owner</th><th>Status</th><th>Action</th></tr>
     ${others.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.ownerUsername)}</td>
-      <td>${r.status==='closed'?'<span style="color:var(--danger);font-weight:700;">disconnected</span><div class="small" style="margin:2px 0 0;">'+esc(disconnectLabel(r.closedReason))+'</div>':'<span style="color:var(--good);font-weight:700;">active</span>'}</td>
+      <td>${r.status==='closed'?'<span style="color:var(--danger);font-weight:700;">disconnected</span><div class="small" style="margin:2px 0 0;">'+esc(disconnectLabel(r.closedReason))+'</div>':'<span style="color:var(--good);font-weight:700;">active</span>'}${founderIsLocked(r.id)?'<div class="small" style="margin:2px 0 0;color:var(--danger);font-weight:700;">locked — wrong password</div>':''}</td>
       <td class="flex">
         <button class="btn" data-action="foundEnterSchool:${r.id}">Enter School</button>
+        ${founderIsLocked(r.id)?`<button class="btn" data-action="foundUnlockSchool:${r.id}" style="background:var(--danger);">Unlock</button>`:''}
         <button class="btn-outline" data-action="foundViewLogins:${r.id}">View logins</button>
         <button class="btn-outline" data-action="foundBackupSchool:${r.id}">Download backup</button>
         ${r.status==='closed'
@@ -6837,6 +6966,22 @@ function renderFounderView(view){
         <button class="btn-danger" data-action="foundDeleteSchool:${r.id}" style="background:#5a1414;">Delete school</button>
       </td></tr>`).join('') || '<tr><td colspan="4">No schools yet.</td></tr>'}
     </table></div>`;
+  }
+  if(view==='flocked'){
+    const L = FOUNDER_LOCKED, now = Date.now(), failed = FOUNDER_LOCKED_FAILED || [];
+    const sec = g => `<div style="margin-bottom:4px;"><b>${esc(gateLabel(g.key))}</b> — ${g.locked ? '<span style="color:var(--danger);font-weight:700;">DISCONNECTED</span>' : 'Waiting ' + Math.max(1,Math.ceil((g.waitUntil-now)/60000)) + ' min'} · ${esc(g.fails)} wrong attempts${g.at ? ' · ' + esc(fmtDateTime(g.at)) : ''}</div>`;
+    return `<h2>Locked Schools — Wrong Password</h2>
+    <div class="note">Every school locked out after wrong passwords is listed here for as long as it stays locked (disconnected after 10 wrong attempts, or waiting 10 minutes after 5). <b>Unlock</b> works at any time: the school's current username and password start working again immediately, without waiting out the minutes.</div>
+    <div class="card" style="margin-top:14px;border-left:4px solid var(--danger);overflow:auto;">
+      <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3 style="margin:0;">${L ? L.length : '…'} locked school${L && L.length===1 ? '' : 's'}</h3>
+        <div class="flex"><button class="btn-outline" data-action="foundRefreshLocked">Refresh</button>${L && L.length>1 ? '<button class="btn" data-action="foundUnlockAllSchools">Unlock all</button>' : ''}</div>
+      </div>
+      <table class="data-table"><tr><th>School</th><th>Locked sections</th><th>Action</th></tr>
+      ${L ? (L.map(r=>`<tr><td>${esc(r.schoolName)}<div class="small" style="margin:2px 0 0;">Owner: ${esc(r.ownerUsername||'')}</div></td><td>${r.gates.map(sec).join('')}</td><td><button class="btn" data-action="foundUnlockSchool:${r.schoolId}">Unlock</button></td></tr>`).join('') || '<tr><td colspan="3">No school is locked out right now.</td></tr>') : '<tr><td colspan="3">Loading…</td></tr>'}
+      </table>
+      ${failed.length ? `<p class="small" style="color:var(--danger);margin-top:10px;">Could not check: ${esc(failed.join(', '))}. Tap Refresh to try again.</p>` : ''}
+    </div>`;
   }
   if(view==='fschoollogins'){
     if(!FOUNDER_LOGINS || FOUNDER_LOGINS.schoolId==null){
@@ -7035,7 +7180,7 @@ function renderFounderLoginForm(){
   const lockedMs = founderLockoutRemainingMs();
   const locked = lockedMs > 0;
   return `
-  <div class="auth-wrap"><div class="auth-box">
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div class="school-name-big" style="font-size:20px;text-align:center;">Founder Sign-In</div>
     <form data-form="founderLogin" novalidate style="margin-top:14px;">
       <label>Username</label><input name="username" required ${locked?'disabled':''}>
@@ -7049,7 +7194,7 @@ function renderFounderLoginForm(){
 }
 function renderFounderRecoveryForm(){
   return `
-  <div class="auth-wrap"><div class="auth-box">
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div class="school-name-big" style="font-size:20px;text-align:center;">Recover Founder Account</div>
     <div class="note" style="margin-top:10px;">Enter your founder username and your recovery code to set a new password and founder code.</div>
     <form data-form="founderRecovery" novalidate style="margin-top:14px;">
@@ -7067,7 +7212,7 @@ function renderFounderRecoveryForm(){
 function renderSchoolRecoveryForm(){
   const role = (loginRole==='parent'||loginRole==='finance') ? 'admin' : loginRole;
   return `
-  <div class="auth-wrap"><div class="auth-box">
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div class="school-name-big" style="font-size:20px;text-align:center;">Recover Your Account</div>
     <div class="note" style="margin-top:10px;">This only works if a recovery code was set on the account beforehand. ${role==='admin'?'If your school never set one, contact CT-E SOLUTIONS.':"If you never set one, ask your school's owner/admin to help — they can create you a fresh login from Staff &amp; Parent Accounts."}</div>
     <form data-form="schoolRecovery" novalidate style="margin-top:14px;">
@@ -7088,7 +7233,7 @@ function renderSchoolRecoveryForm(){
 }
 function renderCreateSchoolForm(){
   return `
-  <div class="auth-wrap"><div class="auth-box">
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div class="school-name-big" style="font-size:20px;text-align:center;">Register Your School</div>
     <div class="note" style="margin-top:10px;">Your school will be <b>pending</b> until the CT-E SOLUTIONS founder approves it.</div>
     <form data-form="createSchool" novalidate style="margin-top:12px;">
@@ -7113,7 +7258,7 @@ function renderCreateSchoolForm(){
 function renderTeacherSignupSlot(){
   const activeSchools = REGISTRY.filter(r=>r.status==='active');
   return `
-  <div class="auth-wrap"><div class="auth-box">
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div style="margin-bottom:12px;"><button type="button" class="btn-outline" data-action="gotoLogin" style="width:100%;">← Back to login</button></div>
     <div class="school-name-big" style="font-size:20px;text-align:center;">Teacher Sign-Up</div>
     <div class="note">Your account will be pending until your school's owner approves it.</div>
@@ -7132,7 +7277,7 @@ function renderTeacherSignupSlot(){
 function renderParentSignupSlot(){
   const activeSchools = REGISTRY.filter(r=>r.status==='active');
   return `
-  <div class="auth-wrap"><div class="auth-box">
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
     <div style="margin-bottom:12px;"><button type="button" class="btn-outline" data-action="gotoLogin" style="width:100%;">← Back to login</button></div>
     <div class="school-name-big" style="font-size:20px;text-align:center;">Parent Sign-Up</div>
     <div class="note">Your account will be pending until the school owner approves it.</div>
@@ -11315,10 +11460,10 @@ function assignSubjectsView(){
       const prev = mine.find(a=>a.subject===sj && Array.isArray(a.papers) && a.papers.length && (DB.classes.find(c=>c.id===a.classId)||{}).level!=='P');
       const free = cls.length - done;
       return `<div class="as-subj">
-        <input type="checkbox" class="as-subj-cb" id="asSubj${i}" name="subj" value="${esc(sj)}">
+        <input type="checkbox" class="as-subj-cb" id="asSubj${i}" name="subj" value="${esc(sj)}" ${done?'checked':''}>
         <label class="as-head" for="asSubj${i}"><span>${esc(sj)}</span><span class="as-count">${done?`${done} of ${cls.length} classes assigned`:`${cls.length} class${cls.length===1?'':'es'} available`}</span></label>
         <div class="as-body">
-          ${free? `<label class="as-cls" style="font-weight:700;margin-bottom:4px;"><input type="checkbox" class="as-all"> Select all available classes</label>`:''}
+          <label class="as-cls" style="font-weight:700;margin-bottom:4px;"><input type="checkbox" class="as-all" ${free?'':'checked'}> Select all classes</label>
           ${(()=>{
             const opts = ['1','2'];
             mine.filter(x=>x.subject===sj && Array.isArray(x.papers)).forEach(x=>x.papers.map(String).forEach(pp=>{ if(!opts.includes(pp)) opts.push(pp); }));
@@ -11327,20 +11472,20 @@ function assignSubjectsView(){
               const asg = mine.find(x=>x.subject===sj && x.classId===c.id);
               const d = !!asg;
               const dp = asg && Array.isArray(asg.papers) ? asg.papers.map(String) : [];
-              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked disabled':''}> ${esc(c.name)}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> c.level==='P' ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked ':'')+'disabled':'disabled'}></td>`).join('') : ''}</tr>`;
+              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked':''}> ${esc(c.name)}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> c.level==='P' ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked':''):'disabled'}></td>`).join('') : ''}</tr>`;
             }).join('')}</table></div>`;
           })()}
         </div>
       </div>`;
     }).join('');
     pickerHtml = `
-      <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick each class and its papers. Anything already assigned shows locked — you can come back later and add more.</p>
+      <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick each class and its papers. Existing assignments show ticked — untick a class (or a whole subject) to remove it, tick new ones to add them, then save.</p>
       ${blocks || '<p class="small">No classes or subjects have been set up yet.</p>'}
       <button class="btn" style="margin-top:14px;">Submit — save all assignments</button>`;
   }
   return `
   <h2>Assign Subjects to Teachers</h2>
-  <div class="note">Pick a teacher, tick every subject they teach, then tick the classes for each subject and save everything in one go. You can return to the same teacher later to add more subjects or classes.</div>
+  <div class="note">Pick a teacher, tick every subject they teach, then tick the classes for each subject and save everything in one go. Already-assigned subjects and classes show ticked: untick to remove, tick new ones to add, and change papers if needed.</div>
   <div class="card" style="margin-top:14px;">
     <form data-form="assignBulk" autocomplete="off">
       <label>Teacher <span class="small">(select first)</span></label>
@@ -11751,6 +11896,28 @@ function scoreDeadlineCardsHTML(){
 // DB.info.currentYear. A class/student that isn't included in a promotion submission
 // simply isn't touched — its class and year stay exactly as they were, no matter how
 // many times Term settings are changed on this same page.
+// Class-teacher dropdown used by both promotion forms. "" leaves the next class's teacher
+// alone, "__MOVE__" moves the promoted class's own class teacher up with the students,
+// anything else is a teacher username to set as the next class's class teacher.
+function promoTeacherOptions(){
+  return `<option value="">-- leave unchanged --</option><option value="__MOVE__">↗ Move up with the class (same class teacher)</option>`
+    + DB.accounts.filter(a=>a.role==='teacher').sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(t=>`<option value="${esc(t.username)}">${esc(t.name)}</option>`).join('');
+}
+// Applies the class-teacher choices of a promotion. Snapshots every class's teacher first so
+// the order of moves never matters (a class can be both a source and a destination).
+function applyPromoTeachers(moves){
+  const orig = {}; DB.classes.forEach(c=>{ orig[c.id] = c.classTeacher||''; });
+  const assign = {}, vacate = new Set();
+  moves.forEach(m=>{
+    if(!m.to || m.to==='__OLD__' || !m.teacher) return;
+    if(m.teacher==='__MOVE__'){ if(!orig[m.from]) return; assign[m.to] = orig[m.from]; vacate.add(m.from); }
+    else assign[m.to] = m.teacher;
+  });
+  let changed = false;
+  vacate.forEach(id=>{ if(!(id in assign)){ const c = DB.classes.find(x=>x.id===id); if(c && c.classTeacher){ c.classTeacher = null; changed = true; } } });
+  Object.keys(assign).forEach(id=>{ const c = DB.classes.find(x=>x.id===id); if(c && (c.classTeacher||'')!==assign[id]){ c.classTeacher = assign[id]; changed = true; } });
+  return changed;
+}
 function promoteView(){
   const i = DB.info;
   const defaultCurr = i.currentYear || new Date().getFullYear();
@@ -11767,6 +11934,8 @@ function promoteView(){
         <div><label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required></div>
         <div><label>Next class</label><select name="toClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select></div>
       </div>
+      <div style="margin-top:10px;"><label>Class teacher of the next class</label><select name="classTeacher">${promoTeacherOptions()}</select>
+        <p class="small" style="margin-top:4px;">Optional. Pick a teacher to become the next class's class teacher, or "Move up with the class" so the current class teacher advances with their students (they're then removed from the old class). Ignored when moving to Old Students.</p></div>
       <p class="small">Moves every student currently in "Class" into "Next class". Choosing "Old Students" instead moves them out of active classes into Old Students — same as marking them left, but for a whole class at once. Score history is kept, tagged to the term/year it was entered in. Once moved, these students immediately stop appearing on their old class's roster for any subject teacher — they can no longer receive new scores in the class or term they've left.</p>
       <button class="btn" style="margin-top:10px;">Submit — promote class</button>
     </form>
@@ -11777,10 +11946,10 @@ function promoteView(){
     <form data-form="promoteAll">
       <label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required>
       <table class="data-table" style="margin-top:8px;">
-        <tr><th>Class</th><th>Promote to</th></tr>
+        <tr><th>Class</th><th>Promote to</th><th>Class teacher of next class</th></tr>
         ${DB.classes.map(c=>`<tr><td>${esc(c.name)}</td><td>
           <select name="to__${c.id}"><option value="">-- don't promote --</option>${DB.classes.filter(o=>o.id!==c.id).map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
-        </td></tr>`).join('') || `<tr><td colspan="2">No classes yet — add a class first.</td></tr>`}
+        </td><td><select name="ct__${c.id}">${promoTeacherOptions()}</select></td></tr>`).join('') || `<tr><td colspan="3">No classes yet — add a class first.</td></tr>`}
       </table>
       <button class="btn" style="margin-top:10px;">Submit — promote all classes</button>
     </form>
@@ -12323,9 +12492,9 @@ function integratedMarksheetView(classId, subject, page, forExport){
     const cells = cols.map(c=>{
       const row = scoreCellFor(s.id, subject, c, term, year);
       if(!row) return `<td>${c.kind==='EOT'?gapTxt('EOT'):gapTxt('AOI', c.label||'', c.paper)}</td>`;
-      return `<td>${esc(row.marks)}/${esc(row.max)}</td>`;
+      return `<td>${esc(zp(row.marks))}/${esc(row.max)}</td>`;
     }).join('');
-    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?gapTxt('AOI'):bd.aoiAvg.toFixed(1)}</td><td>${bd.eotAvg===null?gapTxt('EOT'):bd.eotAvg.toFixed(1)}</td><td>${bd.final===null?gapTxt():bd.final.toFixed(1)}</td><td>${bd.final===null?gapTxt():grade}</td></tr>`;
+    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?gapTxt('AOI'):zp(bd.aoiAvg.toFixed(1))}</td><td>${bd.eotAvg===null?gapTxt('EOT'):zp(bd.eotAvg.toFixed(1))}</td><td>${bd.final===null?gapTxt():zp(bd.final.toFixed(1))}</td><td>${bd.final===null?gapTxt():grade}</td></tr>`;
   }).join('');
   // ---- Summary at the foot of the sheet (counted over EVERY learner on the sheet, not just the page
   // showing on screen): how many learners earned each grade, plus the highest, lowest and average
@@ -12345,7 +12514,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
   const sumHi = sumFinals.length ? Math.max(...sumFinals) : null;
   const sumLo = sumFinals.length ? Math.min(...sumFinals) : null;
   const sumAvg = sumFinals.length ? sumFinals.reduce((a,b)=>a+b,0)/sumFinals.length : null;
-  const fmt1 = (v)=> v===null ? '—' : v.toFixed(1);
+  const fmt1 = (v)=> v===null ? '—' : zp(v.toFixed(1));
   // On screen the sheet is split into pages of 25, so the summary appears only after the LAST learner
   // (print and PDF always contain every learner, so they always end with it).
   const summaryRows = (allStudents.length && pg.page>=pg.totalPages) ? `
@@ -12745,7 +12914,7 @@ function classAnalysisViewCore(){
           ? `<td style="text-align:left;font-weight:700;">${tName}</td>`
           : `<td class="${!sameP ? 'ra-mt' : (sameN ? 'ra-mm' : 'ra-mb')}" style="text-align:left;font-weight:700;">${sameP ? '&nbsp;' : tName}</td>`;
       }
-      return `<tr${first?'':' class="ra-cont"'}>${mTd(esc(r.subject),'text-align:left;')}<td>${esc(String(p.paper))}</td><td>${p.sat}/${p.enrolled}</td><td>${p.avg==null?'—':p.avg.toFixed(1)+'%'}</td><td>${p.max===null?'—':p.max.toFixed(1)}</td><td>${p.min===null?'—':p.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
+      return `<tr${first?'':' class="ra-cont"'}>${mTd(esc(r.subject),'text-align:left;')}<td>${esc(String(p.paper))}</td><td>${p.sat}/${p.enrolled}</td><td>${p.avg==null?'—':zpct(p.avg,1)}</td><td>${p.max===null?'—':p.max.toFixed(1)}</td><td>${p.min===null?'—':p.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
     }).join('');
   };
   const statRow = (r, cols, withTeacher)=>{
@@ -12753,7 +12922,7 @@ function classAnalysisViewCore(){
     const gradeCells = cols.map(g=>`<td>${r.grades[g]||0}</td>`).join('');
     const tCell = withTeacher ? `<td style="text-align:left;font-weight:700;">${r.subject==='TOTAL' ? '' : (esc(teacherNamesFor(r.subject, r.soloPaper==null ? null : r.soloPaper, r.classList).join(', ')) || '—')}</td>` : '';
     const pCell = `<td>${r.subject==='TOTAL' ? '' : (esc(r.papers||'') || '—')}</td>`;
-    return `<tr><td style="text-align:left;">${esc(r.subject)}</td>${pCell}<td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':r.avg.toFixed(1)+'%'}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
+    return `<tr><td style="text-align:left;">${esc(r.subject)}</td>${pCell}<td>${r.sat}/${r.enrolled}</td><td>${r.avg==null?'—':zpct(r.avg,1)}</td><td>${r.max===null?'—':r.max.toFixed(1)}</td><td>${r.min===null?'—':r.min.toFixed(1)}</td>${gradeCells}${tCell}</tr>`;
   };
   const totalsRow = (list, cols, withTeacher)=>{
     const t = {subject:'TOTAL', enrolled:0, sat:0, sum:0, max:null, min:null, grades:{}};
@@ -12800,7 +12969,7 @@ function classAnalysisViewCore(){
   const buildStudents = ()=>{
   const studentStats = classStudentStats(cls, term, year);
   const studentRowsHtml = studentStats.map(r=>{
-    const metricTxt = isA ? `${r.metric}/${r.maxP}` : `${r.metric.toFixed(1)}%`;
+    const metricTxt = isA ? `${r.metric}/${r.maxP}` : zpct(r.metric,1);
     const gradeTxt = isA ? '—' : (r.overallGrade || '—');
     return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td class="stu-name" style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td><td style="font-weight:800;">${r.result}</td></tr>`;
   }).join('');
@@ -12917,8 +13086,8 @@ function projectAssessmentView(){
       if(!takes(s,su) && !has) return '<td>—</td>';
       const grade = has ? projectGradeFor(Number(rec.score)) : null;
       const gradeTxt = grade ? ` <b title="${esc(comments[grade]||'')}" style="color:${gradeColorFor(grade)};">${grade}</b>` : '';
-      if(canEnterScores) return `<td style="white-space:nowrap;"><input name="score|${esc(s.id)}|${i}" type="number" min="0" max="100" step="0.1" value="${has?rec.score:''}" style="width:80px;">${gradeTxt}</td>`;
-      return `<td>${has?esc(String(rec.score)):'—'}${gradeTxt}</td>`;
+      if(canEnterScores) return `<td style="white-space:nowrap;"><input name="score|${esc(s.id)}|${i}" type="text" inputmode="decimal" autocomplete="off" class="zp-in" min="0" max="100" value="${has?esc(zp(rec.score)):''}" style="width:80px;">${gradeTxt}</td>`;
+      return `<td>${has?esc(zp(String(rec.score))):'—'}${gradeTxt}</td>`;
     }).join('');
     return `<tr><td>${ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}</tr>`;
   }).join('');
@@ -13080,10 +13249,10 @@ function masterMarkSheetView(forExport){
           const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
           if(!row || !row.hasAny) return gap;
           const val = combinePaper(row.aoiAvg, row.eotAvg, cfg);
-          return val===null ? gap : val.toFixed(1);
+          return val===null ? gap : zp(val.toFixed(1));
         });
       }
-      return { paperCells, avg: bd.final===null?gap:bd.final.toFixed(1), grade };
+      return { paperCells, avg: bd.final===null?gap:zp(bd.final.toFixed(1)), grade };
     });
     return { student:s, clsName: cls.name + (cls.stream?(' '+cls.stream):''), perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
   });
@@ -13104,7 +13273,7 @@ function masterMarkSheetView(forExport){
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
         return `${paperTds}<td>${ps.avg}</td>`;
       }).join('');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${r.avgPct.toFixed(1)}%</td>${gradeTd(r.overallGradeTxt)}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${zpct(r.avgPct,1)}</td>${gradeTd(r.overallGradeTxt)}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
     }).join('');
     colCount = 8 + (isLevelSheet?1:0) + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
@@ -13117,7 +13286,7 @@ function masterMarkSheetView(forExport){
     headerRow2 = '';
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
-      const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : `${r.avgPct.toFixed(0)}%`;
+      const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : zpct(r.avgPct,0);
       const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
       return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
     }).join('');
@@ -13248,7 +13417,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     const tail = isP
       ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${esc(String(primaryDivisionFor(r.agg)||'—'))}</td>`
       : gradeTd(r.grade||'—');
-    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${r.avgPct.toFixed(1)}%</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}</tr>`;
+    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${zpct(r.avgPct,1)}</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}</tr>`;
   }).join('');
   const title = isLevel ? `General Rank List — ${mmLevelLabel(level)}` : 'Rank List';
   const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}`;
@@ -13592,7 +13761,7 @@ function scoresEntryView(mine){
         <table class="data-table"><tr><th>Student</th><th>${currentColLabel}</th></tr>
         ${students.map(s=>{
           const existingRow = existingScoreFor(s.id);
-          return `<tr><td style="text-align:left;">${esc(s.name)}</td><td>${existingRow?esc(existingRow.marks)+'/'+esc(existingRow.max):'<span style="color:var(--muted);">— not entered —</span>'}</td></tr>`;
+          return `<tr><td style="text-align:left;">${esc(s.name)}</td><td>${existingRow?esc(zp(existingRow.marks))+'/'+esc(existingRow.max):'<span style="color:var(--muted);">— not entered —</span>'}</td></tr>`;
         }).join('')}
         </table>
       </div>`;
@@ -13630,14 +13799,14 @@ function scoresEntryView(mine){
             const delScoreBtn = existingRow ? `<button type="button" class="btn-danger se-act" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE SCORE</button>` : '';
             const otherCells = otherCols.map(c=>{
               const row = scoreCellFor(s.id, a.subject, c, term, year);
-              return row ? `<span class="se-pc">${esc(row.marks)}</span>` : `<span class="se-pc se-nil">—</span>`;
+              return row ? `<span class="se-pc">${esc(zp(row.marks))}</span>` : `<span class="se-pc se-nil">—</span>`;
             }).join('');
             const isMissing = !existingRow && missSet.has(s.id);
             const clearMissingBtn = isMissing ? `<button type="button" class="btn-outline se-act" title="The score wasn't actually missing — just clear the X flag" data-action="clearMissing:${a.id}:${sel.paper}:${sel.kind}:${encodeURIComponent(sel.label||'')}:${s.id}">CLEAR X</button>` : '';
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
             const pickBox = (existingRow || !compulsoryAll) ? `<input type="checkbox" class="se-pick" data-sid="${s.id}" ${existingRow?`data-rowid="${existingRow.id}"`:''} title="Tick to select this student">` : '';
-            return `<tr><td class="se-tk">${pickBox}</td><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="number" min="0" max="${sel.maxScore||100}" step="0.01" value="${existing}" placeholder="${isMissing?'X':''}" class="${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
+            return `<tr><td class="se-tk">${pickBox}</td><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="text" inputmode="decimal" autocomplete="off" min="0" max="${sel.maxScore||100}" value="${esc(zp(existing))}" placeholder="${isMissing?'X':''}" class="zp-in ${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?5:4}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(cls.name)}</b> is listed automatically — including students added to the class later.
@@ -14045,7 +14214,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     return acc ? initials(acc.name) : null;
   }
   function scoreInputHtml(subject, paper, kind, label, max, current, width){
-    return `<input type="number" min="0" max="${max}" step="0.5" value="${current===null||current===undefined?'':esc(current)}" `+
+    return `<input type="text" inputmode="decimal" autocomplete="off" class="zp-in" min="0" max="${max}" value="${current===null||current===undefined?'':esc(zp(current))}" `+
       `style="width:${width||54}px;padding:3px 4px;font-size:12px;text-align:center;" `+
       `data-student="${esc(s.id)}" data-subject="${esc(subject)}" data-paper="${paper==null?'':esc(String(paper))}" `+
       `data-kind="${esc(kind)}" data-label="${esc(label||'')}" data-max="${esc(max)}" `+
@@ -14060,7 +14229,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // test plus, in the last sub-column, the scaled average actually used for grading.
   function cwCellsFor(paper, avgVal){
     if(!showCW) return '';
-    const avgTxt = (avgVal===null || avgVal===undefined) ? dashFor(r_subject,'AOI') : avgVal.toFixed(1);
+    const avgTxt = (avgVal===null || avgVal===undefined) ? dashFor(r_subject,'AOI') : zp(avgVal.toFixed(1));
     if(!useCwTestCols) return `<td>${avgTxt}</td>`;
     const testTds = cwTests.map(t=>{
       const row = cwTestScore(s.id, r_subject, t.name, paper, term, year);
@@ -14073,7 +14242,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // typed it out of 30 for a column configured as /20), so the raw number alone
       // would be misleading. scaleRow() does the same conversion already used for
       // averaging, keeping this cell consistent with the Avg column beside it.
-      return `<td>${row? scaleRow(row, t.max).toFixed(1) : dashFor(r_subject,'AOI',t.name,paper)}</td>`;
+      return `<td>${row? zp(scaleRow(row, t.max).toFixed(1)) : dashFor(r_subject,'AOI',t.name,paper)}</td>`;
     }).join('');
     return testTds + `<td>${avgTxt}</td>`;
   }
@@ -14132,7 +14301,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
           // 55 became 44 once scaled onto /80), throwing off Paper Avg and Final Average.
           eotHtml = `<td>${scoreInputHtml(r.subject, paperForLookup, 'EOT', '', (eotRow&&eotRow.max)?eotRow.max:cfg.eotPercent, eotRow?eotRow.marks:null)}</td>`;
         } else {
-          eotHtml = `<td>${(p.eotAvg===null||p.eotAvg===undefined)?dashFor(r.subject,'EOT'):p.eotAvg.toFixed(1)}</td>`;
+          eotHtml = `<td>${(p.eotAvg===null||p.eotAvg===undefined)?dashFor(r.subject,'EOT'):zp(p.eotAvg.toFixed(1))}</td>`;
         }
       }
       // This paper's own average out of 100 (Course Work + End of Term, or whichever one
@@ -14142,7 +14311,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // subjects too (paperRows has one entry in that case), not just multi-paper ones.
       const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg);
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
-      const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject):paperFinal.toFixed(1)}</td>`;
+      const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject):zp(paperFinal.toFixed(1))}</td>`;
       // Cells that apply to the WHOLE subject (Subject name, Final Average, Grade,
       // Points, Descriptor) rather than one paper are visually merged down across every
       // paper sub-row. On screen and in the browser Print dialog that's just a normal
@@ -14170,7 +14339,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         return `<tr>`+
           mergedTd(esc(r.subject))+
           `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
-          mergedTd(r.avg==null?dashFor(r.subject):r.avg.toFixed(1))+
+          mergedTd(r.avg==null?dashFor(r.subject):zp(r.avg.toFixed(1)))+
           mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level, r.avg)) : dashFor(r.subject), 'rc-td-grade')+
           (isA?mergedTd(r.avg==null?dashFor(r.subject):r.pts):'')+
           mergedTd(r.avg==null?dashFor(r.subject):esc(descriptor))+
@@ -14179,7 +14348,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       return `<tr class="subrow">`+
         mergedTd(esc(r.subject))+
         `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
-        mergedTd(r.avg==null?dashFor(r.subject):r.avg.toFixed(1))+
+        mergedTd(r.avg==null?dashFor(r.subject):zp(r.avg.toFixed(1)))+
         mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level, r.avg)) : dashFor(r.subject), 'rc-td-grade')+
         (isA?mergedTd(r.avg==null?dashFor(r.subject):r.pts):'')+
         mergedTd(r.avg==null?dashFor(r.subject):esc(descriptor))+
@@ -14195,13 +14364,13 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // so they're left blank in this row — only the overall Course Work average is shown.
   const cwVals = breakdowns.map(b=>b.aoiAvg).filter(v=>v!==null);
   const eotVals = breakdowns.map(b=>b.eotAvg).filter(v=>v!==null);
-  const cwTotalTxt = cwVals.length ? (cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1) : '\u00A0';
-  const eotTotalTxt = eotVals.length ? (eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1) : '\u00A0';
+  const cwTotalTxt = cwVals.length ? zp((cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1)) : '\u00A0';
+  const eotTotalTxt = eotVals.length ? zp((eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1)) : '\u00A0';
   // Paper Avg column, TOTAL row (O/A-Level only; Primary does not render this column): the average of every Paper Avg value shown above it
   // on the card — the same underlying figures that each subject's own Final Average
   // is built from — so this cell is a real, traceable number rather than a dash, and
   // so "Paper Avg" here means exactly what "Paper Avg" means in every row above it.
-  const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '\u00A0';
+  const totalPaperAvgTxt = allPaperFinals.length ? zp((allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1)) : '\u00A0';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
   const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
   // Final Average column, TOTAL row: this column is a percentage (see header "Final
@@ -14210,7 +14379,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // next to this one. Uses avgPct (the average of every subject's own Final Average) so
   // it's the true average, not points-in-disguise. O-Level/Primary formatting (with the
   // trailing %) is unchanged.
-  const totalFinalTxt = isA ? avgPct.toFixed(1) : avgPct.toFixed(0)+'%';
+  const totalFinalTxt = isA ? zp(avgPct.toFixed(1)) : zpct(avgPct,0);
   const totalCwHtml = showCW ? (useCwTestCols ? cwTests.map(()=>'<td>&nbsp;</td>').join('') + `<td>${cwTotalTxt}</td>` : `<td>${cwTotalTxt}</td>`) : '';
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
@@ -14335,7 +14504,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <table class="rc-project-table">
       <colgroup><col style="width:34%"><col style="width:18%"><col style="width:14%"><col style="width:34%"></colgroup>
       <tr><th>Subject Assessed</th><th>Score</th><th>Grade</th><th>Descriptor</th></tr>
-      ${projectRows.map(pr=>{ const g = projectGradeFor(Number(pr.score)); return `<tr><td>${esc(pr.subject)}</td><td>${Number(pr.score)}</td><td><b>${g}</b></td><td>${esc(projectGradeComments()[g]||'')}</td></tr>`; }).join('')}
+      ${projectRows.map(pr=>{ const g = projectGradeFor(Number(pr.score)); return `<tr><td>${esc(pr.subject)}</td><td>${zp(String(Number(pr.score)))}</td><td><b>${g}</b></td><td>${esc(projectGradeComments()[g]||'')}</td></tr>`; }).join('')}
     </table>` : ''}
 
     <div class="rc-section-title">Performance Summary</div>
@@ -14343,7 +14512,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <colgroup><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.665%"></colgroup>
       <tr>
         <td class="lbl">Total Subjects</td><td class="val">${rows.length}</td>
-        <td class="lbl">${isA?'Total Points':'Total Final Average'}</td><td class="val">${isA?`${totalPoints}/${maxP}`:avgPct.toFixed(0)+'%'}</td>
+        <td class="lbl">${isA?'Total Points':'Total Final Average'}</td><td class="val">${isA?`${totalPoints}/${maxP}`:zpct(avgPct,0)}</td>
         <td class="lbl">${isP?'Total Aggregates':'Overall Grade'}</td><td class="val">${isP?(pAggregate!==null?pAggregate:'—'):(overallGrade||'—')}</td>
       </tr>
       <tr>
@@ -14552,27 +14721,27 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       let cwTestVals = [];
       let cwAvgTxt = '';
       if(showCW){
-        cwAvgTxt = (p.aoiAvg===null || p.aoiAvg===undefined) ? dashFor('AOI') : p.aoiAvg.toFixed(1);
+        cwAvgTxt = (p.aoiAvg===null || p.aoiAvg===undefined) ? dashFor('AOI') : zp(p.aoiAvg.toFixed(1));
         if(useCwTestCols){
           cwTestVals = cwTests.map(t=>{
             const row = cwTestScore(s.id, r.subject, t.name, paperForLookup, term, year);
             // Same conversion as the on-screen report card: show the mark scaled onto
             // this column's configured maximum (t.max), not the raw teacher-entered
             // figure, in case it was recorded against a different max.
-            return row ? scaleRow(row, t.max).toFixed(1) : dashFor('AOI', t.name, paperForLookup);
+            return row ? zp(scaleRow(row, t.max).toFixed(1)) : dashFor('AOI', t.name, paperForLookup);
           });
         }
       }
       let eotTxt = '';
-      if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT') : p.eotAvg.toFixed(1);
+      if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT') : zp(p.eotAvg.toFixed(1));
       const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg);
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
-      return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor():paperFinal.toFixed(1), teacherInitTxt: initTxt };
+      return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor():zp(paperFinal.toFixed(1)), teacherInitTxt: initTxt };
     });
 
     return {
       subject: r.subject,
-      finalAvgTxt: r.avg==null?dashFor():r.avg.toFixed(1),
+      finalAvgTxt: r.avg==null?dashFor():zp(r.avg.toFixed(1)),
       gradeTxt: r.grade ? gradeDisplay(r.subject, r.grade, cls.level, r.avg) : dashFor(),
       pointsVal: isA ? (r.avg==null?dashFor():r.pts) : null,
       descriptorTxt: descriptor,
@@ -14582,12 +14751,12 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 
   const cwVals = breakdowns.map(b=>b.aoiAvg).filter(v=>v!==null);
   const eotVals = breakdowns.map(b=>b.eotAvg).filter(v=>v!==null);
-  const cwTotalTxt = cwVals.length ? (cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1) : '\u00A0';
-  const eotTotalTxt = eotVals.length ? (eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1) : '\u00A0';
-  const totalPaperAvgTxt = allPaperFinals.length ? (allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1) : '\u00A0';
+  const cwTotalTxt = cwVals.length ? zp((cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1)) : '\u00A0';
+  const eotTotalTxt = eotVals.length ? zp((eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1)) : '\u00A0';
+  const totalPaperAvgTxt = allPaperFinals.length ? zp((allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1)) : '\u00A0';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
   const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
-  const totalFinalTxt = isA ? avgPct.toFixed(1) : avgPct.toFixed(0)+'%';
+  const totalFinalTxt = isA ? zp(avgPct.toFixed(1)) : zpct(avgPct,0);
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
   const ctName = classTeacherAcc? classTeacherAcc.name : '';
@@ -14601,7 +14770,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     // Project Work: same "only if this student has a score on file" rule as the
     // on-screen version (reportCardHTML) — an empty array here means the table
     // is simply skipped by drawReportCardPage below.
-    projectRows: projectRows.map(pr=>{ const g = projectGradeFor(Number(pr.score)); return { subject: pr.subject, scoreTxt: String(Number(pr.score)), grade: g, descriptor: projectGradeComments()[g] || '' }; }),
+    projectRows: projectRows.map(pr=>{ const g = projectGradeFor(Number(pr.score)); return { subject: pr.subject, scoreTxt: zp(String(Number(pr.score))), grade: g, descriptor: projectGradeComments()[g] || '' }; }),
     // O'/A' Level only: rows for the compact Grading Key table shown right below
     // Performance Summary. The descriptor sentence is fixed standard wording; the short
     // label ("Exceptional", etc.) still comes from the school's own gradeCommentsFor().
@@ -14996,7 +15165,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const sm = data.summary;
   const summaryRows = [
     ['Total Subjects', String(data.totals.subjectCount),
-     data.isA?'Total Points':'Total Final Average', data.isA?`${data.totals.totalPoints}/${sm.maxP}`:sm.avgPct.toFixed(0)+'%',
+     data.isA?'Total Points':'Total Final Average', data.isA?`${data.totals.totalPoints}/${sm.maxP}`:zpct(sm.avgPct,0),
      data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')],
     [data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—'),
      `${data.term} Position`, `${sm.position} / ${sm.size}`,
@@ -15274,7 +15443,7 @@ async function inlineSaveReportScore(el){
       const num = Number(valRaw);
       if(!isFinite(num) || num<0 || num>max){
         alert(`That mark must be between 0 and ${max}.`);
-        el.value = existing ? existing.marks : '';
+        el.value = existing ? zp(existing.marks) : '';
         return;
       }
       if(existing && Number(existing.marks)===num && Number(existing.max)===max){
@@ -15507,6 +15676,7 @@ document.addEventListener('click', async (e)=>{
       // another page. Nothing is lost — the page they are leaving has no pending work, saves
       // still in flight are waited for, and they land straight on the page they tapped.
       if(updateOnNavigate(arg)) break;
+      if(arg==='flocked' && CUR && CUR.role==='founder'){ VIEW={name:'flocked', params:{}}; FOUNDER_LOCKED=null; render(); await loadFounderLockedSchools(); if(VIEW.name==='flocked') render(); break; }
       VIEW = {name:arg, params:{}};
       // Render immediately with whatever's already in memory — DB.scores is
       // kept fresh locally on every save via upsertScores/deleteScores, so
@@ -16659,6 +16829,21 @@ Continue?`)) break;
       FOUNDER_LOGINS.gates = gl;
       await setShared(`sch_${FOUNDER_LOGINS.schoolId}_gates`, gl);
       alertOk('Reconnected: '+gateLabel(gk)); render(); break; }
+    case 'foundUnlockSchool': { if(!CUR || CUR.role!=='founder'){ alert('Only the Founder can do that.'); break; }
+      const ulReg = REGISTRY.find(x=>x.id===arg), ulName = ulReg ? ulReg.name : 'this school';
+      const ulCode = prompt(`Enter your founder code to unlock "${ulName}":`); if(ulCode===null) break;
+      if(!founderCodeCheck(ulCode)) break;
+      try{ await founderUnlockSchool(arg); await loadFounderLockedSchools(); alertOk(`"${ulName}" is unlocked. Its current username and password work again right now — no waiting.`); }
+      catch(e){ console.error(e); alert('Could not unlock right now. Please check the connection and try again.'); }
+      render(); break; }
+    case 'foundUnlockAllSchools': { if(!CUR || CUR.role!=='founder'){ alert('Only the Founder can do that.'); break; }
+      const ulIds = (FOUNDER_LOCKED||[]).map(x=>x.schoolId); if(!ulIds.length) break;
+      const ulCode2 = prompt(`Enter your founder code to unlock all ${ulIds.length} locked schools:`); if(ulCode2===null) break;
+      if(!founderCodeCheck(ulCode2)) break;
+      try{ for(const id of ulIds) await founderUnlockSchool(id); await loadFounderLockedSchools(); alertOk('All locked schools are unlocked. Their current usernames and passwords work again right now.'); }
+      catch(e){ console.error(e); alert('Could not unlock every school. Please check the connection and try again.'); try{ await loadFounderLockedSchools(); }catch(_){} }
+      render(); break; }
+    case 'foundRefreshLocked': { await loadFounderLockedSchools(); render(); break; }
     case 'foundDeleteSchool': { const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
       const code=prompt(`Enter your founder code to PERMANENTLY delete "${r.name}":`); if(code===null) break;
       if(!founderCodeCheck(code)) break;
@@ -18336,32 +18521,49 @@ document.addEventListener('submit', async (e)=>{
       const tUser = (fd.get('teacherUsername')||'').trim();
       if(!tUser){ alert('Please select a teacher.'); return; }
       const subjTicked = new Set(fd.getAll('subj'));
-      if(!subjTicked.size){ alert('Tick at least one subject this teacher teaches.'); return; }
+      const clsTicked = fd.getAll('cls').map(v=>v.split('||')); // [subject, classId]
       const papTicked = fd.getAll('pap').map(v=>v.split('||')); // [subject, classId, paper]
       const papersFor = (sj,cid)=>papTicked.filter(x=>x[0]===sj && x[1]===cid).map(x=>x[2]).sort();
-      const picks = []; // new (subject, class) pairs
+      const existing = DB.assignments.filter(a=>a.teacherUsername===tUser);
+      // Desired end state: every ticked class inside a ticked subject.
+      const desired = new Map(); // "subject||classId" -> papers
       const noClass = [];
       for(const sj of subjTicked){
-        const mine = fd.getAll('cls').map(v=>v.split('||')).filter(a=>a[0]===sj).map(a=>a[1]);
-        if(!mine.length){ noClass.push(sj); continue; }
-        mine.forEach(cid=>picks.push({subject:sj, classId:cid}));
+        const mine = clsTicked.filter(a=>a[0]===sj).map(a=>a[1]);
+        if(!mine.length){ if(!existing.some(a=>a.subject===sj)) noClass.push(sj); continue; }
+        for(const cid of mine){
+          const c = DB.classes.find(x=>x.id===cid);
+          if(!c) continue;
+          const papers = c.level==='P' ? ['1'] : papersFor(sj, cid);
+          if(c.level!=='P' && !papers.length){ alert('Please tick the papers taught for '+sj+' in '+c.name+'.'); return; }
+          desired.set(sj+'||'+cid, papers);
+        }
       }
-      if(noClass.length){ alert('Tick at least one new class for: '+noClass.join(', ')+'.\n\n(Untick a subject you do not want to add this round.)'); return; }
-      for(const pk of picks){
-        const c = DB.classes.find(x=>x.id===pk.classId);
-        if(c && c.level!=='P' && !papersFor(pk.subject, pk.classId).length){ alert('Please tick the papers taught for '+pk.subject+' in '+c.name+'.'); return; }
+      if(noClass.length){ alert('Tick at least one class for: '+noClass.join(', ')+'.\n\n(Untick a subject you do not want to assign.)'); return; }
+      const toRemove = existing.filter(a=>!desired.has(a.subject+'||'+a.classId));
+      let added = 0, updated = 0, removed = 0;
+      if(toRemove.length){
+        const names = toRemove.slice(0,6).map(binAsnLabel).join('\n• ');
+        if(!confirm(`Remove ${toRemove.length} assignment${toRemove.length===1?'':'s'} from this teacher?\n\n• ${names}${toRemove.length>6?'\n• …and '+(toRemove.length-6)+' more':''}\n\nScores already entered are kept. Removed assignments go to the Recycle Bin.`)) return;
+        if(!(await requireOwnerGate(`remove ${toRemove.length} subject assignment${toRemove.length===1?'':'s'}`, 'Remove'))) return;
+        for(const a of toRemove){ if(!(await binGuard('assignment', binAsnLabel(a), 'Subject assignment', {assignment:a}))) return; }
+        const ids = new Set(toRemove.map(a=>a.id));
+        DB.assignments = DB.assignments.filter(a=>!ids.has(a.id));
+        removed = toRemove.length;
       }
-      let added = 0, skipped = 0;
-      picks.forEach(pk=>{
-        const c = DB.classes.find(x=>x.id===pk.classId);
-        if(!c) return;
-        if(DB.assignments.some(a=>a.teacherUsername===tUser && a.classId===pk.classId && a.subject===pk.subject)){ skipped++; return; }
-        const papers = c.level==='P' ? ['1'] : papersFor(pk.subject, pk.classId);
-        DB.assignments.push({id:uid('asn'), teacherUsername:tUser, classId:pk.classId, subject:pk.subject, papers});
-        added++;
+      desired.forEach((papers,key)=>{
+        const [sj,cid] = key.split('||');
+        const cur = DB.assignments.find(a=>a.teacherUsername===tUser && a.subject===sj && a.classId===cid);
+        if(cur){
+          const same = Array.isArray(cur.papers) && cur.papers.map(String).sort().join(',')===papers.slice().sort().join(',');
+          if(!same){ cur.papers = papers; updated++; }
+        }else{
+          DB.assignments.push({id:uid('asn'), teacherUsername:tUser, classId:cid, subject:sj, papers}); added++;
+        }
       });
-      if(added) await saveAssignments();
-      showDeliveredToast(added ? `${added} assignment${added===1?'':'s'} saved${skipped?` (${skipped} already existed)`:''}` : 'Nothing new to save');
+      if(added||updated||removed) await saveAssignments();
+      const bits = [added&&`${added} added`, updated&&`${updated} updated`, removed&&`${removed} removed`].filter(Boolean);
+      showDeliveredToast(bits.length ? `Assignments saved (${bits.join(', ')})` : 'Nothing changed');
       render();
     }
     else if(type==='updateTeacherProfile'){
@@ -18658,7 +18860,8 @@ document.addEventListener('submit', async (e)=>{
         // point, then correctly in "to" from this point on.
         moved.forEach(s=>{ noteClassPlacement(s, to, DB.info.currentTerm, currYearVal); s.classId=to; });
       }
-      await Promise.all([saveStudents(), saveInfo()]); alertOk(`${moved.length} student(s) promoted successfully.`); render();
+      const ctChanged = applyPromoTeachers([{from, to, teacher:fd.get('classTeacher')||''}]);
+      await Promise.all([saveStudents(), saveInfo(), ...(ctChanged?[saveClasses()]:[])]); alertOk(`${moved.length} student(s) promoted successfully.${ctChanged?' Class teacher updated.':''}`); render();
     }
     else if(type==='promoteAll'){
       const currYearRaw = fd.get('currYear');
@@ -18671,7 +18874,7 @@ document.addEventListener('submit', async (e)=>{
       // "-- don't promote --" is skipped entirely, so its students keep their current
       // class untouched.
       const moves = DB.classes
-        .map(c=>({from:c.id, to:fd.get('to__'+c.id)}))
+        .map(c=>({from:c.id, to:fd.get('to__'+c.id), teacher:fd.get('ct__'+c.id)||''}))
         .filter(m=>m.to);
       if(!moves.length){ alert('Choose a destination for at least one class before submitting.'); return; }
       if(!(await requireOwnerCode(`promote ${moves.length} class${moves.length===1?'':'es'}`, 'Promote'))) return;
@@ -18685,7 +18888,8 @@ document.addEventListener('submit', async (e)=>{
         }
         totalMoved += moved.length;
       });
-      await Promise.all([saveStudents(), saveInfo()]); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.`); render();
+      const ctChanged = applyPromoTeachers(moves);
+      await Promise.all([saveStudents(), saveInfo(), ...(ctChanged?[saveClasses()]:[])]); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.${ctChanged?' Class teachers updated.':''}`); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
