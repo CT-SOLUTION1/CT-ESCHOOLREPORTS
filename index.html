@@ -10391,7 +10391,7 @@ function restoreItemsView(){
     </div>
     <div class="card">
       <h3>Classes (${d.classes.length})</h3>
-      ${d.classes.map(c=>`<label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="classes" value="${esc(c.id)}" style="width:auto;"><span>${esc(c.name)}${c.stream?' '+esc(c.stream):''} — ${esc(levelLabel(c))} ${flag(!curClassIds.has(c.id))}</span></label>`).join('') || '<p class="small">No classes in this backup.</p>'}
+      ${d.classes.map(c=>`<label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="classes" value="${esc(c.id)}" style="width:auto;"><span>${esc(classFullName(c))} — ${esc(levelLabel(c))} ${flag(!curClassIds.has(c.id))}</span></label>`).join('') || '<p class="small">No classes in this backup.</p>'}
     </div>
     <div class="card">
       <h3>Staff Accounts (${teacherAccounts.length})</h3>
@@ -10458,7 +10458,59 @@ function schoolInfoView(){
 }
 
 /* ---------- Admin: Classes ---------- */
+// Full display name of a class record: "S.3" + stream "East" -> "S.3 East" (never doubled
+// when the name already ends with the stream, as on older records).
+function classFullName(c){
+  const n = ((c && c.name) || '').trim(), st = ((c && c.stream) || '').trim();
+  if(!st) return n;
+  return n.toLowerCase().endsWith(st.toLowerCase()) ? n : (n+' '+st);
+}
+// The class a stream belongs to: "S.3 East" (stream East) -> "S.3".
+function classBaseName(c){
+  const n = ((c && c.name) || '').trim(), st = ((c && c.stream) || '').trim();
+  if(st && n.length>st.length && n.toLowerCase().endsWith(st.toLowerCase())) return n.slice(0, n.length-st.length).trim();
+  return n;
+}
+function streamTeacherOptions(selected){
+  return `<option value="">-- none yet --</option>` + DB.accounts.filter(a=>a.role==='teacher')
+    .map(t=>`<option value="${esc(t.username)}" ${t.username===selected?'selected':''}>${esc(t.name)}</option>`).join('');
+}
+// Builds the stream rows (stream name + class teacher) for the Add Class form.
+function streamFieldsHtml(count, keep){
+  keep = keep || [];
+  let h = '';
+  for(let i=0;i<count;i++){
+    const k = keep[i] || {name:'', teacher:''};
+    h += `<div class="grid2 stream-row">
+      <div><label>Stream ${i+1} name${count===1?' (optional)':''}</label><input name="streamName" value="${esc(k.name)}" placeholder="e.g. ${['East','West','North','South','Red','Blue','Green','Yellow','A','B'][i]}" ${count>1?'required':''}></div>
+      <div><label>Class teacher${count>1?' — '+esc('Stream '+(i+1)):''}</label><select name="streamTeacher">${streamTeacherOptions(k.teacher)}</select></div>
+    </div>`;
+  }
+  return h;
+}
 function classesView(){
+  // Group streams under the class they belong to, in the order the classes first appear.
+  const groups = [];
+  const byKey = {};
+  DB.classes.forEach(c=>{
+    const key = classBaseName(c).toLowerCase()+'|'+c.level+'|'+(c.form||'');
+    if(!byKey[key]){ byKey[key] = {base:classBaseName(c), rows:[]}; groups.push(byKey[key]); }
+    byKey[key].rows.push(c);
+  });
+  const rowsHtml = groups.map(g=>{
+    const first = g.rows[0];
+    const span = g.rows.length;
+    const missingForm = first.level!=='P' && !first.form;
+    return g.rows.map((c,idx)=>{
+      const t = DB.accounts.find(a=>a.username===c.classTeacher);
+      const count = DB.students.filter(s=>s.classId===c.id && s.status!=='left').length;
+      // Class, Level and look-back year are shared by every stream, so they are merged (rowspan) into one cell.
+      const merged = idx===0 ? `<td rowspan="${span}" style="font-weight:700;vertical-align:middle;">${esc(g.base)}${missingForm?' <span title="No Form set on this class — its admission year cannot look back correctly until you set one in Edit." style="color:var(--danger,#c0392b);font-weight:700;">⚠ Form not set</span>':''}</td><td rowspan="${span}" style="vertical-align:middle;">${esc(levelLabel(first))}</td>` : '';
+      const lookback = idx===0 ? `<td rowspan="${span}" style="vertical-align:middle;">${esc(String(computeLookbackAdmissionYear(first.level,first.form)))}</td>` : '';
+      return `<tr${missingForm?' style="background:#fff6e5;"':''}>${merged}<td>${esc(c.stream||'—')}</td>${lookback}<td>${t?esc(t.name):'—'}</td><td>${count}</td>
+      <td class="flex" style="justify-content:center;"><button class="btn-outline" style="padding:6px 12px;" data-action="editClass:${c.id}">Edit</button><button class="btn-danger" data-action="delClass:${c.id}">Remove</button></td></tr>`;
+    }).join('');
+  }).join('');
   return `
   <h2>Classes</h2>
   <div class="card" style="margin-bottom:14px;">
@@ -10467,34 +10519,23 @@ function classesView(){
   <div class="card">
     <form data-form="addClass">
       <div class="grid3">
-        <div><label>Class name</label><input name="name" placeholder="e.g. S.3 East" required></div>
+        <div><label>Class name</label><input name="name" placeholder="e.g. S.3" required></div>
         <div><label>Level</label><select name="level" id="clsLevel">${['O','A','P'].filter(l=>allowedClassLevels().includes(l)).map(l=>`<option value="${l}">${l==='O'?'O-Level':l==='A'?'A-Level':'Primary'}</option>`).join('')}</select></div>
         <div id="formWrap"><label>Form</label><select name="form" id="clsForm"><option>S.1</option><option>S.2</option><option>S.3</option><option>S.4</option></select></div>
       </div>
-      <div class="grid2">
-        <div><label>Stream (optional)</label><input name="stream" placeholder="e.g. East"></div>
-        <div><label>Class teacher</label><select name="classTeacher"><option value="">-- none yet --</option>
-          ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('')}
-        </select></div>
+      <div style="margin-top:6px;max-width:320px;">
+        <label>Streams — how many streams does this class have?</label>
+        <select id="streamCount" name="streamCount">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}">${n}</option>`).join('')}</select>
+        <p class="small">Choose 1–10. Each stream gets a name and its own class teacher, and is listed under this one class.</p>
       </div>
+      <div id="streamFields">${streamFieldsHtml(1)}</div>
       <button class="btn" style="margin-top:12px;">Submit — add class</button>
     </form>
   </div>
+  <div class="card" id="stmPanel">${stmPanelHtml()}</div>
   <div class="card">
     <table class="data-table"><tr><th>Class</th><th>Level</th><th>Stream</th><th>Next student's look-back year</th><th>Class Teacher</th><th>Students</th><th>Action</th></tr>
-    ${DB.classes.map(c=>{
-      const t = DB.accounts.find(a=>a.username===c.classTeacher);
-      const count = DB.students.filter(s=>s.classId===c.id && s.status!=='left').length;
-      // A class with no Form value saved (almost always a leftover from before this
-      // school's classes went through the Form-aware add/edit form) can't be
-      // look-back-computed correctly — it silently defaults to "no lookback at all"
-      // (the current year), same as if it were a genuine entry-point class. Flagging
-      // it here means every affected class can be found and fixed from the Classes
-      // list, without having to click into Edit on each one individually to notice.
-      const missingForm = c.level!=='P' && !c.form;
-      return `<tr${missingForm?' style="background:#fff6e5;"':''}><td>${esc(c.name)}${missingForm?' <span title="No Form set on this class — its admission year cannot look back correctly until you set one in Edit." style="color:var(--danger,#c0392b);font-weight:700;">⚠ Form not set</span>':''}</td><td>${esc(levelLabel(c))}</td><td>${esc(c.stream||'—')}</td><td>${esc(String(computeLookbackAdmissionYear(c.level,c.form)))}</td><td>${t?esc(t.name):'—'}</td><td>${count}</td>
-      <td class="flex" style="justify-content:center;"><button class="btn-outline" style="padding:6px 12px;" data-action="editClass:${c.id}">Edit</button><button class="btn-danger" data-action="delClass:${c.id}">Remove</button></td></tr>`;
-    }).join('') || '<tr><td colspan="7">No classes yet.</td></tr>'}
+    ${rowsHtml || '<tr><td colspan="7">No classes yet.</td></tr>'}
     </table>
   </div>`;
 }
@@ -10926,6 +10967,139 @@ async function unlinkParentChild(username, studentId){
 }
 
 /* ---------- Admin: Students ---------- */
+/* ---------- Streaming students (Classes page) ---------- */
+var STM = {open:false, key:'', count:0, names:[], teachers:[], step:'pick', assign:{}};
+function stmReset(open){ STM = {open:!!open, key:'', count:0, names:[], teachers:[], step:'pick', assign:{}}; }
+function classGroups(){
+  const groups = [], byKey = {};
+  DB.classes.forEach(c=>{
+    const key = classBaseName(c).toLowerCase()+'|'+c.level+'|'+(c.form||'');
+    if(!byKey[key]){ byKey[key] = {key, base:classBaseName(c), level:c.level, form:c.form||null, rows:[]}; groups.push(byKey[key]); }
+    byKey[key].rows.push(c);
+  });
+  return groups;
+}
+function stmGroup(){ return classGroups().find(g=>g.key===STM.key) || null; }
+function stmExisting(g){ return g ? g.rows.filter(c=>(c.stream||'').trim()) : []; }
+// Pre-fills the stream list from streams the class already has.
+function stmInitFromClass(g){
+  const ex = stmExisting(g);
+  STM.count = ex.length; STM.names = ex.map(c=>(c.stream||'').trim()); STM.teachers = ex.map(c=>c.classTeacher||''); STM.assign = {};
+}
+// Reads the stream names + teachers currently typed in the stream table.
+function stmReadRows(){
+  const box = document.getElementById('stmNames');
+  if(!box) return {names:STM.names.slice(), teachers:STM.teachers.slice()};
+  const rows = Array.from(box.querySelectorAll('tr.stm-row'));
+  return {names: rows.map(r=>r.querySelector('input.stm-name').value), teachers: rows.map(r=>r.querySelector('select.stm-teacher').value)};
+}
+function stmStudents(g){
+  const ids = new Set(g.rows.map(c=>c.id));
+  return sortByName(DB.students.filter(x=>ids.has(x.classId) && x.status!=='left'));
+}
+function stmPlacedCount(g){ return stmStudents(g).filter(x=>STM.assign[x.id]!==undefined).length; }
+// Returns a message if the typed stream names cannot be used, otherwise ''.
+function stmNameProblem(g, names){
+  if(!names.length) return 'Choose the number of streams first.';
+  if(names.some(n=>!n)) return 'Enter a name for every stream.';
+  const lower = names.map(n=>n.toLowerCase());
+  if(new Set(lower).size!==lower.length) return 'Two streams have the same name. Each stream needs a different name.';
+  for(const n of names){
+    if(g.rows.some(c=>(c.stream||'').trim().toLowerCase()===n.toLowerCase())) continue; // existing stream — reused
+    const rec = {name:g.base+' '+n, level:g.level, stream:n};
+    if(DB.classes.some(c=>classFullName(c).toLowerCase()===classFullName(rec).toLowerCase() && c.level===rec.level)) return `"${classFullName(rec)}" already exists as another class. Use a different stream name.`;
+  }
+  return '';
+}
+function stmPanelHtml(){
+  if(!STM.open){
+    return `<button type="button" class="btn" data-action="stmOpen">Stream students</button>
+      <p class="small" style="margin-top:6px;">Split a class into streams, choose each stream's class teacher and place every student in a stream. Students keep their records — admission number, marks and history — and the class's subject assignments carry over to each new stream.</p>`;
+  }
+  const groups = classGroups();
+  const g = stmGroup();
+  let h = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;"><h3 style="margin:0;">Stream students</h3><button type="button" class="btn-outline" style="padding:5px 12px;" data-action="stmClose">Close</button></div>
+    <label style="margin-top:10px;">Class</label>
+    <select id="stmClassSel"><option value="">-- select class --</option>${groups.map(x=>`<option value="${esc(x.key)}" ${x.key===STM.key?'selected':''}>${esc(x.base)} (${esc(levelLabel(x.rows[0]))})</option>`).join('')}</select>`;
+  if(!g) return h;
+  if(STM.step==='table') return h + stmTableHtml(g);
+  const ex = stmExisting(g);
+  const minCount = Math.max(2, ex.length);
+  h += `<div style="margin-top:10px;max-width:320px;"><label>Number of streams</label>
+      <select id="stmCount"><option value="">-- select --</option>${Array.from({length:10-minCount+1},(_,k)=>minCount+k).map(n=>`<option value="${n}" ${STM.count===n?'selected':''}>${n}</option>`).join('')}</select></div>`;
+  if(ex.length) h += `<p class="small" style="margin-top:6px;">${esc(g.base)} already has ${ex.length} stream${ex.length===1?'':'s'}: <b>${ex.map(c=>esc(c.stream)).join(', ')}</b>. Their names are fixed here; you can change their class teachers, add more streams and move students between them.</p>`;
+  if(STM.count>0){
+    const ph = ['East','West','North','South','Red','Blue','Green','Yellow','A','B'];
+    h += `<div style="overflow-x:auto;margin-top:8px;"><table class="data-table" id="stmNames"><tr><th>#</th><th style="text-align:left;">Stream name</th><th style="text-align:left;">Class teacher</th></tr>
+      ${Array.from({length:STM.count},(_,i)=>`<tr class="stm-row"><td>${i+1}</td>
+        <td><input class="stm-name" value="${esc(STM.names[i]||'')}" placeholder="e.g. ${ph[i]}" ${i<ex.length?'readonly style="background:#f1f1f1;"':''}></td>
+        <td><select class="stm-teacher">${streamTeacherOptions(STM.teachers[i]||'')}</select></td></tr>`).join('')}
+      </table></div>
+      <button type="button" class="btn" style="margin-top:12px;" data-action="stmNext">Next — place students in streams</button>`;
+  }
+  return h;
+}
+function stmSaveBtnHtml(g){
+  const total = stmStudents(g).length, placed = stmPlacedCount(g), ok = placed===total;
+  return `<button type="button" class="btn" id="stmSaveBtn" data-action="stmSaveAssign" ${ok?'':'disabled'} style="${ok?'':'opacity:.5;cursor:not-allowed;'}">Save</button>`;
+}
+function stmTableHtml(g){
+  const names = STM.names.map(x=>(x||'').trim());
+  const studs = stmStudents(g);
+  const total = studs.length, placed = stmPlacedCount(g);
+  return `<p class="small" style="margin:10px 0 6px;">Tick the stream each student belongs to — <b>every student must be placed</b> before you can save. Ticking one stream switches off the others in that row.</p>
+    <p style="margin:0 0 6px;font-weight:700;"><span id="stmPlaced">${placed}</span> of ${total} student${total===1?'':'s'} placed${total&&placed<total?` — <span style="color:var(--danger,#c0392b);">${total-placed} still to tick</span>`:''}</p>
+    <div style="overflow-x:auto;"><table class="data-table" id="stmTable"><tr><th>Admission No</th><th style="text-align:left;">Student name</th>${names.map(n=>`<th>${esc(n)}</th>`).join('')}</tr>
+    ${studs.map(x=>{
+      const cur = STM.assign[x.id];
+      return `<tr data-stu="${esc(x.id)}"><td>${esc(x.admNo||'')}</td><td style="text-align:left;">${esc(x.name)}</td>${names.map((n,i)=>{
+        const on = cur===i;
+        return `<td><input type="checkbox" class="stm-cb" data-idx="${i}" ${on?'checked':''} ${cur!==undefined&&!on?'disabled':''} style="width:18px;height:18px;cursor:pointer;"></td>`;
+      }).join('')}</tr>`;
+    }).join('') || `<tr><td colspan="${names.length+2}">No students in this class.</td></tr>`}
+    </table></div>
+    <div class="flex" style="margin-top:12px;gap:10px;"><span id="stmSaveWrap">${stmSaveBtnHtml(g)}</span><button type="button" class="btn-outline" data-action="stmBack">Back — edit streams</button></div>`;
+}
+function stmRefresh(){ const el = document.getElementById('stmPanel'); if(el) el.innerHTML = stmPanelHtml(); }
+// Live update of the "x of y placed" line and the Save button while ticking.
+function stmUpdateProgress(){
+  const g = stmGroup(); if(!g) return;
+  const total = stmStudents(g).length, placed = stmPlacedCount(g);
+  const el = document.getElementById('stmPlaced');
+  if(el){ el.textContent = placed; const p = el.parentNode; const tail = p.querySelector('.stm-left'); if(tail) tail.remove();
+    if(placed<total){ const sp = document.createElement('span'); sp.className = 'stm-left'; sp.style.color = 'var(--danger,#c0392b)'; sp.textContent = ` — ${total-placed} still to tick`; p.appendChild(sp); } }
+  const w = document.getElementById('stmSaveWrap'); if(w) w.innerHTML = stmSaveBtnHtml(g);
+}
+// Summary shown before anything is saved: totals per stream.
+function stmShowSummary(g){
+  const names = STM.names.map(x=>(x||'').trim());
+  const studs = stmStudents(g);
+  const parentHasAsn = g.rows.some(c=>!(c.stream||'').trim() && DB.assignments.some(a=>a.classId===c.id));
+  let anyNew = false, tB = 0, tG = 0;
+  const rows = names.map((n,i)=>{
+    const inS = studs.filter(x=>STM.assign[x.id]===i);
+    const boys = inS.filter(x=>x.gender==='Male').length, girls = inS.filter(x=>x.gender==='Female').length;
+    tB += boys; tG += girls;
+    const t = DB.accounts.find(a=>a.username===STM.teachers[i]);
+    const isNew = !g.rows.some(c=>(c.stream||'').trim().toLowerCase()===n.toLowerCase());
+    if(isNew) anyNew = true;
+    return `<tr><td style="text-align:left;font-weight:700;">${esc(g.base+' '+n)}${isNew?' <span class="small">(new)</span>':''}</td><td style="text-align:left;">${t?esc(t.name):'—'}</td><td>${boys}</td><td>${girls}</td><td style="font-weight:800;">${inS.length}</td></tr>`;
+  }).join('');
+  const old = document.getElementById('stmSummary'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'stmSummary';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;';
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:620px;width:100%;max-height:90vh;overflow:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.35);">
+    <h3 style="margin:0 0 4px;">Summary — ${esc(g.base)} streams</h3>
+    <p class="small" style="margin:0 0 10px;">Check the totals in each stream. Nothing is saved until you confirm.</p>
+    <div style="overflow-x:auto;"><table class="data-table"><tr><th style="text-align:left;">Stream</th><th style="text-align:left;">Class teacher</th><th>Boys</th><th>Girls</th><th>Total</th></tr>${rows}
+    <tr style="background:var(--blue-light);font-weight:900;"><td colspan="2" style="text-align:left;">All streams</td><td>${tB}</td><td>${tG}</td><td>${studs.length}</td></tr></table></div>
+    ${anyNew && parentHasAsn ? `<p class="small" style="margin-top:8px;">Subject assignments of ${esc(g.base)} will be copied to each new stream. You can change them later under Assign Subjects.</p>` : ''}
+    <div class="flex" style="margin-top:14px;gap:10px;justify-content:flex-end;"><button type="button" class="btn-outline" data-action="stmCancel">Go back</button><button type="button" class="btn" data-action="stmConfirm">Confirm and save</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function stmCloseSummary(){ const o = document.getElementById('stmSummary'); if(o) o.remove(); }
 function studentsView(){
   const resultsMode = !!(VIEW.params.stuClassFilter || (VIEW.params.stuSearch||'').trim());
   return `
@@ -13260,7 +13434,7 @@ function masterMarkSheetView(forExport){
       }
       return { paperCells, avg: bd.final===null?gap:zp(bd.final.toFixed(1)), grade };
     });
-    return { student:s, clsName: cls.name + (cls.stream?(' '+cls.stream):''), perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
+    return { student:s, clsName: classFullName(cls), perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
   });
 
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'&&g!=='x'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
@@ -13361,7 +13535,7 @@ function masterMarkSheetView(forExport){
     <div class="mm-header">
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
       <div class="mm-title">${isLevelSheet?'General Mark Sheet':'Master Mark Sheet'} — ${mode==='scores'?'Real Scores':'Letter Grades'}</div>
-      <div class="mm-meta">${isLevelSheet ? esc(mmLevelLabel(level))+' — all classes' : esc(cls.name)+(cls.stream?(' '+esc(cls.stream)):'')} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
+      <div class="mm-meta">${isLevelSheet ? esc(mmLevelLabel(level))+' — all classes' : esc(classFullName(cls))} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
     </div>
     <div class="mm-tablewrap">
       <table class="mm-table">
@@ -13419,14 +13593,14 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}`;
   const colCount = 5 + (isLevel?1:0) + (isA?1:0) + (isP?1:0);
   const body = pg.pageItems.map(r=>{
-    const clsName = r.c ? esc(r.c.name)+(r.c.stream?(' '+esc(r.c.stream)):'') : '—';
+    const clsName = r.c ? esc(classFullName(r.c)) : '—';
     const tail = isP
       ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${esc(String(primaryDivisionFor(r.agg)||'—'))}</td>`
       : gradeTd(r.grade||'—');
     return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${zpct(r.avgPct,1)}</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}</tr>`;
   }).join('');
   const title = isLevel ? `General Rank List — ${mmLevelLabel(level)}` : 'Rank List';
-  const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}`;
+  const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(classFullName(cls))}`;
   const arg = `${cls.id}:${encodeURIComponent(term)}:${year}:${mode}`;
   return `
   <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
@@ -14458,7 +14632,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         : '<col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%">'}</colgroup>
       <tr>
         <td class="lbl">Name</td><td class="val">${esc(s.name)}</td>
-        <td class="lbl">Class</td><td class="val">${esc(cls.name)}${cls.stream?(' '+esc(cls.stream)):''}</td>
+        <td class="lbl">Class</td><td class="val">${esc(classFullName(cls))}</td>
         ${s.photo?`<td class="photo-cell" rowspan="3"><img loading="lazy" decoding="async" src="${s.photo}" class="rc-bio-photo"></td>`:''}
       </tr>
       <tr>
@@ -14935,7 +15109,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const infoTableW = contentW - photoColW;
   const lblW = infoTableW*0.20, valW = infoTableW*0.30;
   const infoRows = [
-    ['Name', data.student.name, 'Class', data.cls.name+(data.cls.stream?(' '+data.cls.stream):'')],
+    ['Name', data.student.name, 'Class', classFullName(data.cls)],
     ['Term', `${data.term}, ${data.year}`, 'Sex', data.student.gender||'—'],
     [data.isA?'Combination':(data.isP?'Fees Pay Code':'Optional Subjects'),
       data.isP?(data.feesCode||'—'):comboLabel(data.student, data.cls),
@@ -15549,7 +15723,7 @@ document.addEventListener('click', async (e)=>{
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
-    'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature',
+    'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature','stmNext','stmSaveAssign','stmConfirm',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
     'printDemandNote','downloadDemandNote','editClassAgreedFee','editStudentAgreedFee','feeClear','feeExempt','feeUndoAdjust','feeClearAll','feeExemptAll','reqClearAllTime','reqExemptAllTime','reqUndoAllTime','reqClearAll','reqExemptAll','reqReopenAll',
     'settleShortfallFull','delShortfallSettlement','delShortfall',
@@ -15753,6 +15927,79 @@ document.addEventListener('click', async (e)=>{
       try{ await singleStudentPdf(arg); }
       finally{ el.disabled = false; el.innerHTML = _origLbl; }
       break;
+    }
+    case 'stmOpen': { stmReset(true); stmRefresh(); break; }
+    case 'stmClose': { stmCloseSummary(); stmReset(false); stmRefresh(); break; }
+    case 'stmBack': {
+      const r = stmReadRows(); STM.names = r.names; STM.teachers = r.teachers;
+      STM.step = 'pick'; stmRefresh(); break;
+    }
+    case 'stmNext': {
+      const g = stmGroup();
+      if(!g){ alert('Select a class first.'); break; }
+      const r = stmReadRows();
+      const names = r.names.map(x=>(x||'').trim());
+      STM.names = names; STM.teachers = r.teachers; STM.count = names.length;
+      const problem = stmNameProblem(g, names);
+      if(problem){ alert(problem); stmRefresh(); break; }
+      // Students already sitting in an existing stream start ticked; earlier ticks are kept.
+      const keep = {};
+      Object.keys(STM.assign).forEach(id=>{ if(STM.assign[id] < names.length) keep[id] = STM.assign[id]; });
+      stmStudents(g).forEach(x=>{
+        if(keep[x.id]!==undefined) return;
+        const c = g.rows.find(k=>k.id===x.classId);
+        const st = c ? (c.stream||'').trim().toLowerCase() : '';
+        const idx = st ? names.findIndex(n=>n.toLowerCase()===st) : -1;
+        if(idx>=0) keep[x.id] = idx;
+      });
+      STM.assign = keep; STM.step = 'table'; stmRefresh(); break;
+    }
+    case 'stmSaveAssign': {
+      const g = stmGroup();
+      if(!g){ break; }
+      const total = stmStudents(g).length, placed = stmPlacedCount(g);
+      if(placed<total){ alert(`${total-placed} student${total-placed===1?' is':'s are'} not yet placed in a stream. Tick a stream for every student before saving.`); break; }
+      const problem = stmNameProblem(g, STM.names.map(x=>(x||'').trim()));
+      if(problem){ alert(problem); break; }
+      stmShowSummary(g); break;
+    }
+    case 'stmCancel': { stmCloseSummary(); break; }
+    case 'stmConfirm': {
+      const g = stmGroup();
+      if(!g){ stmCloseSummary(); break; }
+      const names = STM.names.map(x=>(x||'').trim());
+      const total = stmStudents(g).length;
+      if(stmPlacedCount(g)<total){ stmCloseSummary(); alert('Every student must be placed in a stream before saving.'); break; }
+      const problem = stmNameProblem(g, names);
+      if(problem){ stmCloseSummary(); alert(problem); break; }
+      const parent = g.rows.find(c=>!(c.stream||'').trim()) || null;
+      const recs = []; let created = 0;
+      names.forEach((st,i)=>{
+        let rec = g.rows.find(c=>(c.stream||'').trim().toLowerCase()===st.toLowerCase());
+        if(rec){ rec.classTeacher = STM.teachers[i] || null; }
+        else {
+          rec = {id:uid('cls'), name:g.base+' '+st, level:g.level, form:g.form, stream:st, classTeacher:STM.teachers[i]||null, nextAdmSeq:0};
+          DB.classes.push(rec); created++;
+          // The original class's subject assignments carry over unchanged to the new stream.
+          if(parent) DB.assignments.filter(a=>a.classId===parent.id).forEach(a=>{
+            DB.assignments.push({id:uid('asn'), teacherUsername:a.teacherUsername, classId:rec.id, subject:a.subject, papers:Array.isArray(a.papers)?a.papers.slice():a.papers});
+          });
+        }
+        recs.push(rec);
+      });
+      let moved = 0;
+      stmStudents(g).forEach(stu=>{
+        const target = recs[STM.assign[stu.id]].id;
+        if(target===stu.classId) return;
+        // The student record, admission number and marks stay as they are; only the class placement changes (with history).
+        noteClassPlacement(stu, target, DB.info.currentTerm, DB.info.currentYear);
+        stu.classId = target; moved++;
+      });
+      await saveClasses(); await saveAssignments(); await saveStudents();
+      stmCloseSummary();
+      showDeliveredToast(`${names.length} stream${names.length===1?'':'s'} saved${moved?` — ${moved} student${moved===1?'':'s'} placed`:''}`);
+      stmReset(false);
+      render(); break;
     }
     case 'repairAdmissionNumbers': {
       if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); break; }
@@ -17000,6 +17247,39 @@ function refreshAssessmentTypeUI(form, classId){
 }
 
 document.addEventListener('change', (e)=>{
+  if(e.target.id==='stmClassSel'){
+    stmReset(true); STM.key = e.target.value;
+    const g = stmGroup(); if(g) stmInitFromClass(g);
+    stmRefresh(); return;
+  }
+  if(e.target.id==='stmCount'){
+    const typed = stmReadRows();
+    const g = stmGroup();
+    const ex = stmExisting(g);
+    STM.count = parseInt(e.target.value,10) || 0;
+    STM.names = Array.from({length:STM.count},(_,i)=> i<ex.length ? (ex[i].stream||'').trim() : (typed.names[i]||''));
+    STM.teachers = Array.from({length:STM.count},(_,i)=> typed.teachers[i]!==undefined ? typed.teachers[i] : (i<ex.length ? (ex[i].classTeacher||'') : ''));
+    stmRefresh(); return;
+  }
+  if(e.target.classList && e.target.classList.contains('stm-cb')){
+    const row = e.target.closest('tr');
+    const boxes = Array.from(row.querySelectorAll('input.stm-cb'));
+    boxes.forEach(b=>{ if(b!==e.target){ if(e.target.checked) b.checked = false; b.disabled = e.target.checked; } });
+    const sid = row.dataset.stu;
+    if(e.target.checked) STM.assign[sid] = parseInt(e.target.dataset.idx,10); else delete STM.assign[sid];
+    stmUpdateProgress();
+    return;
+  }
+  if(e.target.id==='streamCount'){
+    const box = document.getElementById('streamFields');
+    if(box){
+      const keep = Array.from(box.querySelectorAll('.stream-row')).map(r=>({
+        name:(r.querySelector('input[name="streamName"]')||{}).value||'',
+        teacher:(r.querySelector('select[name="streamTeacher"]')||{}).value||'' }));
+      box.innerHTML = streamFieldsHtml(parseInt(e.target.value,10)||1, keep);
+    }
+    return;
+  }
   if(e.target.id==='clsLevel'){
     const val = e.target.value;
     const wrap = document.getElementById('formWrap');
@@ -18181,8 +18461,25 @@ document.addEventListener('submit', async (e)=>{
     }
     else if(type==='addClass'){
       if(!allowedClassLevels().includes(fd.get('level'))){ alert('That class level is not available for your school\'s current grade setting.'); return; }
-      DB.classes.push({id:uid('cls'), name:fd.get('name'), level:fd.get('level'), form: fd.get('form')||null,
-        stream:fd.get('stream')||'', classTeacher:fd.get('classTeacher')||null, nextAdmSeq:0});
+      const base = (fd.get('name')||'').trim();
+      if(!base){ alert('Enter a class name.'); return; }
+      const names = fd.getAll('streamName').map(x=>(x||'').trim());
+      const teachers = fd.getAll('streamTeacher').map(x=>x||null);
+      const count = names.length || 1;
+      if(count>1 && names.some(n=>!n)){ alert('Enter a name for every stream.'); return; }
+      const lower = names.filter(Boolean).map(n=>n.toLowerCase());
+      if(new Set(lower).size!==lower.length){ alert('Two streams have the same name. Each stream of a class needs a different name.'); return; }
+      const fresh = [];
+      for(let i=0;i<count;i++){
+        const st = names[i]||'';
+        const rec = {id:uid('cls'), name: st ? (base+' '+st) : base, level:fd.get('level'), form: fd.get('form')||null,
+          stream:st, classTeacher:teachers[i]||null, nextAdmSeq:0};
+        if(DB.classes.some(c=>classFullName(c).toLowerCase()===classFullName(rec).toLowerCase() && c.level===rec.level)){
+          alert(`"${classFullName(rec)}" already exists. Use a different stream name.`); return;
+        }
+        fresh.push(rec);
+      }
+      fresh.forEach(r=>DB.classes.push(r));
       await saveClasses(); form.reset(); render();
     }
     else if(type==='updateClass'){
