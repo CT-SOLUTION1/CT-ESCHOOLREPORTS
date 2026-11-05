@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-01-1800'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-05-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -3126,12 +3126,12 @@ const NAV_HISTORY_MAX = 60;
 // Which params say "a different item" for the views that open a specific item.
 const NAV_ID_KEYS = {
   teacherprofile:['username'], studentprofile:['studentId'], classedit:['classId'],
-  integratedmarksheet:['classId','subject'], blankmarksheet:['classId','subject'], reportcard:['studentId'], financestudent:['studentId'],
+  integratedmarksheet:['classId','subject'], blankmarksheet:['classId','subject'], generalmarksheet:['mode','scope'], reportcard:['studentId'], financestudent:['studentId'],
   ascores:['assignId','paper','kind','label'], tscores:['assignId','paper','kind','label']
 };
 const NAV_DETAIL_LABELS = {
   teacherprofile:'Teacher Profile', studentprofile:'Student Profile', classedit:'Class Details',
-  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', blankmarksheet:'Blank Mark Sheet', reportcard:'Report Card',
+  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', blankmarksheet:'Blank Mark Sheet', generalmarksheet:'General Score Sheet', reportcard:'Report Card',
   financestudent:'Student Follow-up', fschoollogins:'School Logins', password:'Other Settings'
 };
 const NAV_FOUNDER_LABELS = {
@@ -7648,7 +7648,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet','projects']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','reportcard','financestudent']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','generalmarksheet','reportcard','financestudent']);
 function renderView(view){
   try{
     if(FINANCE_ONLY && view!=='finance' && view!=='financestudent' && view!=='admingate' && !(FIN_EMBED && (view==='studentprofile' || view==='teacherprofile'))){
@@ -7689,6 +7689,7 @@ function renderView(view){
       case 'marksheets': return marksheetsListView();
       case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
       case 'blankmarksheet': return blankMarksheetView(VIEW.params.classId, VIEW.params.subject);
+      case 'generalmarksheet': return generalSheetView(VIEW.params.mode, VIEW.params.scope);
       case 'classanalysis': return classAnalysisView();
       case 'projects': return projectAssessmentView();
       case 'mastermarksheet': return masterMarkSheetView();
@@ -12757,8 +12758,12 @@ function marksheetsListView(){
   const poolGroups = marksheetGroups(pool);
   const classes = isAdmin ? DB.classes : DB.classes.filter(c=>poolGroups.some(g=>g.classId===c.id));
   const selId = VIEW.params && VIEW.params.msClassId;
-  const cls = classes.find(c=>c.id===selId) || null;
-  const mode = cls && VIEW.params && VIEW.params.msMode ? VIEW.params.msMode : '';
+  const gsLevels = isAdmin ? ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l)) : [];
+  const lvSel = (typeof selId==='string' && selId.indexOf('LEVEL_')===0 && gsLevels.includes(selId.slice(6))) ? selId.slice(6) : null;
+  const cls = lvSel ? null : (classes.find(c=>c.id===selId) || null);
+  const gsScopeId = cls ? cls.id : (lvSel ? 'LEVEL_'+lvSel : '');
+  const gsAllowed = !!gsScopeId && (isAdmin || (cls && ctClassIds.includes(cls.id)));
+  const mode = (cls||lvSel) && VIEW.params && VIEW.params.msMode ? VIEW.params.msMode : '';
   let body = '';
   if(!classes.length){
     body = `<p class="small">${isAdmin?'No classes yet — add a class first.':"You haven't been assigned any subjects yet."}</p>`;
@@ -12766,19 +12771,24 @@ function marksheetsListView(){
     body = `
     <label>Select class</label>
     <select onchange="setMarksheetClass(this.value)" style="max-width:320px;">
-      <option value="" ${cls?'':'selected'}>— Select class —</option>
+      <option value="" ${(cls||lvSel)?'':'selected'}>— Select class —</option>
       ${classes.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      ${gsLevels.length ? `<optgroup label="Whole level (all classes)">${gsLevels.map(l=>`<option value="LEVEL_${l}" ${lvSel===l?'selected':''}>${esc(mmLevelLabel(l))} — all classes</option>`).join('')}</optgroup>` : ''}
     </select>
-    ${cls ? `
+    ${(cls||lvSel) ? `
     <div class="flex" style="margin-top:14px;gap:10px;flex-wrap:wrap;">
       <button class="${mode==='filled'?'btn':'btn-outline'}" data-action="msMode:filled"><b>FILLED MARKSHEETS</b></button>
       <button class="${mode==='empty'?'btn':'btn-outline'}" data-action="msMode:empty"><b>EMPTY MARKSHEETS</b></button>
     </div>` : ''}`;
   }
   let panel = '';
-  if(cls && mode==='filled'){
+  if(lvSel && mode==='filled'){
+    panel = generalSheetsCard('filled', gsScopeId);
+  } else if(lvSel && mode==='empty'){
+    panel = generalSheetsCard('empty', gsScopeId);
+  } else if(cls && mode==='filled'){
     const subs = [...new Set(poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject))].sort((x,y)=>x.localeCompare(y));
-    panel = `
+    panel = (gsAllowed ? generalSheetsCard('filled', gsScopeId) : '') + `
     <div class="note" style="margin-top:14px;">A filled mark sheet lists every test and exam recorded for a subject in this class, side by side for every student — handy for spotting missing marks or reviewing a subject at a glance.${ctClassIds.length?' As Class Teacher, you can also see and download every subject for your class(es), not just the ones you personally teach.':''}</div>
     <div class="card" style="margin-top:14px;">
       <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Action</th></tr>
@@ -12786,7 +12796,7 @@ function marksheetsListView(){
       </table>
     </div>`;
   } else if(cls && mode==='empty'){
-    panel = blankMarksheetsCard(pool, cls);
+    panel = (gsAllowed ? generalSheetsCard('empty', gsScopeId) : '') + blankMarksheetsCard(pool, cls);
   }
   const msInner = `
   <h2>Mark Sheets</h2>
@@ -12832,6 +12842,158 @@ function blankMarksheetsCard(pool, selCls){
   </div>`;
 }
 function setBlankSheetClass(id){ VIEW.params = {...VIEW.params, blankClassId:id}; render(); }
+
+/* ---------- General (no-subject) Score Sheets: empty + filled, for every class and every level ----------
+   Same look and same Download / Print (PDF) flow as the subject sheets, but with no subject: the sheet
+   covers a student's overall work. scope = a class id, or 'LEVEL_P' / 'LEVEL_O' / 'LEVEL_A' (admin) for
+   every class of that level together. */
+function gsScope(scope){
+  scope = String(scope||'');
+  if(scope.indexOf('LEVEL_')===0){
+    const level = scope.slice(6), classes = levelClasses(level);
+    return {isLevel:true, level, classes, cls:classes[0]||null, label: mmLevelLabel(level)+' — all classes', fileLabel: mmLevelLabel(level)};
+  }
+  const cls = DB.classes.find(c=>c.id===scope) || null;
+  return {isLevel:false, level:cls?cls.level:'', classes:cls?[cls]:[], cls, label:cls?classFullName(cls):'', fileLabel:cls?cls.name:'class'};
+}
+function gsStudents(g){
+  const ids = new Set(g.classes.map(c=>c.id));
+  const list = sortByName(DB.students.filter(s=>s.status!=='left' && ids.has(s.classId)));
+  return g.isLevel ? rcByClassOrder(list) : list;
+}
+function gsAssessCols(classes){
+  const out=[], seen=new Set();
+  const add=l=>{ if(!seen.has(l)){ seen.add(l); out.push(l); } };
+  classes.forEach(c=>{
+    const cfg = examConfig(c.id);
+    if(cfg.cwEnabled){ if(cfg.cwTests.length) cfg.cwTests.forEach(t=>add(`${t.name} (/${t.max})`)); else add(`${cfg.cwLabel} (/${cfg.cwPercent})`); }
+    if(cfg.eotEnabled) add(`${cfg.eotLabel} (/${cfg.eotPercent})`);
+  });
+  if(!out.length) out.push('Score');
+  return out;
+}
+function generalSheetsCard(mode, scope){
+  const g = gsScope(scope);
+  if(!g.classes.length) return '';
+  const n = gsStudents(g).length;
+  const note = mode==='empty'
+    ? 'A general empty score sheet is a blank, printable sheet with no subject: every current student of '+(g.isLevel?'the level (all its classes)':'the class')+' with empty columns to fill in by hand.'
+    : 'A general filled score sheet has no subject: it shows every student\'s overall results (average course work, average end of term, average, grade and position) from all the subjects recorded this term.';
+  return `
+  <div class="note" style="margin-top:14px;">${note}</div>
+  <div class="card" style="margin-top:14px;">
+    <table class="data-table"><tr><th>Sheet</th><th>Who is listed</th><th>Students</th><th>Action</th></tr>
+    <tr><td style="text-align:left;"><b>GENERAL (all subjects)</b> — ${esc(g.label)}</td><td>${g.isLevel?'Every current student of every class in the level':'Every current student of the class'}</td><td>${n}</td>
+    <td><button class="btn-outline" data-action="openGeneralSheet:${mode}:${scope}">Open general ${mode==='empty'?'empty':'filled'} sheet</button></td></tr>
+    </table>
+  </div>`;
+}
+function generalSheetHeaderOpts(mode, scope){
+  const g = gsScope(scope);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  return {
+    forceTitle: `${isSecondarySchool()?'SCORE SHEET':'MARKSHEET'} FOR ${[g.label, term||'', year||''].filter(Boolean).join(', ')}`,
+    forceSubtitle: mode==='empty' ? 'General • All subjects • Empty sheet' : 'General • All subjects • Overall results',
+    pageNumberBottom: true, fillPage: true
+  };
+}
+function generalSheetView(mode, scope){
+  mode = mode==='filled' ? 'filled' : 'empty';
+  const g = gsScope(scope);
+  if(!g.classes.length) return '<p>Choose a class or level from Mark Sheets.</p>';
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const students = gsStudents(g);
+  let head, rows, ncols, foot = '';
+  if(mode==='empty'){
+    const cols = gsAssessCols(g.classes).concat(['Total','Average','Position']);
+    head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('')}`;
+    const blanks = cols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
+    rows = students.map((s,i)=>{
+      const c = DB.classes.find(x=>x.id===s.classId);
+      return `<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${g.isLevel?`<td>${esc(c?classFullName(c):'')}</td>`:''}${blanks}</tr>`;
+    }).join('');
+    ncols = 3 + (g.isLevel?1:0) + cols.length;
+  } else {
+    const level = g.level, isA = level==='A', isP = level==='P', isO = level==='O';
+    const cfg0 = examConfig(g.cls.id);
+    const anyCw = g.classes.some(c=>examConfig(c.id).cwEnabled), anyEot = g.classes.some(c=>examConfig(c.id).eotEnabled);
+    // Level sheet: rank everyone of the level together (same rule as the General Rank List); class sheet: class position.
+    let levelPos = null;
+    if(g.isLevel){
+      const pool = students.map(st=>{ const c = DB.classes.find(x=>x.id===st.classId); const d = computeSubjectRows(st, c, term, year); return {st, k: rankKeyOf(d, c.level, st, c, term, year)}; })
+        .sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
+      levelPos = new Map(); let pp = 0;
+      pool.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, pool[i-1].k)) pp = i+1; levelPos.set(r.st.id, {position:pp, size:pool.length}); });
+    }
+    const mean = arr=>{ const v = arr.filter(x=>x!==null && x!==undefined); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
+    const gradeTd = (gr)=>`<td style="font-weight:800;${gr&&gr!=='—'?`color:${gradeColorFor(gr)};`:''}">${gr}</td>`;
+    head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}<th>Subjects</th>`
+      + (anyCw ? `<th>Avg ${esc(cfg0.cwLabel)} (/${esc(String(cfg0.cwPercent))})</th>` : '')
+      + (anyEot ? `<th>Avg ${esc(cfg0.eotLabel)} (/${esc(String(cfg0.eotPercent))})</th>` : '')
+      + `<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}${isO?'<th>Result</th>':''}<th>Position</th>`;
+    rows = students.map((s,i)=>{
+      const c = DB.classes.find(x=>x.id===s.classId) || g.cls;
+      const bds = studentSubjects(s, c).map(su=>subjectBreakdown(s.id, su, term, year));
+      const sat = bds.filter(b=>b.final!==null && b.final!==undefined).length;
+      const d = computeSubjectRows(s, c, term, year);
+      const has = sat>0 && d.countAvg>0;
+      const cw = mean(bds.map(b=>b.aoiAvg)), eot = mean(bds.map(b=>b.eotAvg));
+      const pos = has ? (g.isLevel ? levelPos.get(s.id) : classPosition(s, c, term, year)) : null;
+      const agg = (isP && has) ? primaryAggregate(s, c, term, year) : null;
+      const gr = has ? gradeFor('', d.avgPct, c.level) : '—';
+      return `<tr><td>${i+1}</td><td>${esc(s.admNo||'—')}</td><td style="text-align:left;">${esc(s.name)}</td>${g.isLevel?`<td>${esc(classFullName(c))}</td>`:''}<td>${sat}</td>`
+        + (anyCw ? `<td>${cw===null?'—':zp(cw.toFixed(1))}</td>` : '')
+        + (anyEot ? `<td>${eot===null?'—':zp(eot.toFixed(1))}</td>` : '')
+        + `<td>${has?zpct(d.avgPct,1):'—'}</td>`
+        + (isA ? `<td>${has?`${d.totalPoints}/${maxPointsFor(s,c)}`:'—'}</td>` : '')
+        + (isP ? `<td style="font-weight:800;">${agg!==null?agg:'—'}</td><td style="font-weight:800;">${agg!==null?esc(String(primaryDivisionFor(agg)||'—')):'—'}</td>` : gradeTd(gr||'—'))
+        + (isO ? `<td style="font-weight:800;">${has?resultTextFor(s,c,term,year):'—'}</td>` : '')
+        + `<td>${pos?`${pos.position}/${pos.size}`:'—'}</td></tr>`;
+    }).join('');
+    ncols = 3 + (g.isLevel?1:0) + 1 + (anyCw?1:0) + (anyEot?1:0) + 1 + (isA?1:0) + (isP?2:1) + (isO?1:0) + 1;
+    foot = `<p class="small" style="margin-top:10px;">Overall results across every subject recorded for ${esc(term||'')}, ${esc(String(year||''))}. “—” means no scores are recorded yet.</p>`;
+  }
+  const label = mode==='empty' ? 'Empty' : 'Filled';
+  const arg = `${mode}:${scope}`;
+  return `
+  <h2>General ${label} Score Sheet</h2>
+  <div class="card">
+    <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <div><b>${esc(g.label)}</b> — General (all subjects) — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
+      <div class="flex">
+        <button class="btn-outline" data-action="dlGeneralPdf:${arg}"><b>Download as PDF</b></button>
+        <button class="btn" data-action="printGeneral:${arg}">Print / Save as PDF</button>
+        <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
+      </div>
+    </div>
+  </div>
+  <div id="printArea">
+  <div class="card" style="overflow:auto;">
+    <h3>${esc(g.label)} — General — ${label} Score Sheet</h3>
+    <p class="small">${esc(term||'')}, ${esc(String(year||''))}</p>
+    <table class="data-table"><tr>${head}</tr>
+    ${rows || `<tr><td colspan="${ncols}">No students in this ${g.isLevel?'level':'class'} yet.</td></tr>`}
+    </table>
+    ${foot}
+  </div>
+  </div>`;
+}
+async function runGeneralSheetPdf(mode, scope){
+  mode = mode==='filled' ? 'filled' : 'empty';
+  const g = gsScope(scope);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  if(mode==='filled'){ try{ await refreshScores(); }catch(e){ console.warn('Score refresh failed; using current local data.', e); } }
+  // Built from the FULL student list (this view is never paginated), whichever page is showing.
+  document.getElementById('app').innerHTML = renderShellWithContent(generalSheetView(mode, scope));
+  try{
+    await downloadTablesAsPdf('printArea', `${String(g.fileLabel).replace(/[\s']+/g,'_')}_general_${mode==='empty'?'empty':'filled'}_scoresheet.pdf`, {
+      title: g.label, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
+      ...generalSheetHeaderOpts(mode, scope)
+    });
+  } finally {
+    render();
+  }
+}
 function blankMarksheetView(classId, subject){
   if(!classId || !subject) return '<p>Choose a class and subject from Mark Sheets.</p>';
   const cls = DB.classes.find(c=>c.id===classId);
@@ -17161,6 +17323,24 @@ Continue?`);
       // Prints the exact PDF that "Download as PDF" produces (full student list, same layout).
       const [classId, subjEnc] = (arg||'').split(':');
       await withPdfPrint(()=>runIntegratedMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):''));
+      break;
+    }
+    case 'openGeneralSheet': {
+      const _i = (arg||'').indexOf(':');
+      const gm = _i===-1 ? 'empty' : arg.slice(0,_i), gscope = _i===-1 ? '' : arg.slice(_i+1);
+      VIEW = {name:'generalmarksheet', params:{mode: gm==='filled'?'filled':'empty', scope: gscope}};
+      render();
+      break;
+    }
+    case 'dlGeneralPdf': {
+      const _i = (arg||'').indexOf(':');
+      await runGeneralSheetPdf(arg.slice(0,_i), arg.slice(_i+1));
+      break;
+    }
+    case 'printGeneral': {
+      const _i = (arg||'').indexOf(':');
+      const gm = arg.slice(0,_i), gscope = arg.slice(_i+1);
+      await withPdfPrint(()=>runGeneralSheetPdf(gm, gscope));
       break;
     }
     case 'printBlank': {
