@@ -1814,19 +1814,14 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
     el.querySelector('#ipNo').addEventListener('click', close);
     el.addEventListener('click', function(e){ if(e.target===el) close(); });
     el.querySelector('#ipYes').addEventListener('click', function(){
-      if(!ios && typeof DEFERRED_INSTALL_PROMPT!=='undefined' && DEFERRED_INSTALL_PROMPT && typeof installPWA==='function'){
-        close(); installPWA(); return;
-      }
-      // iPhone/iPad and browsers that can't open an install box from a button: show the steps right here.
+      if(!ios){ installPWA(); return; }   // opens the install box at once; the card then shows only "App installed" or "App not installed"
+      // iPhone/iPad cannot open an install box from a button: the Share-menu steps are the only way.
       steps.style.display='block';
-      steps.innerHTML = ios
-        ? '<b>On iPhone / iPad:</b><br>1. Tap the <b>Share</b> button in Safari.<br>2. Choose <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>, then open the app from your Home Screen.'
-        : '<b>To install:</b><br>1. Open your browser menu (⋮ or ☰).<br>2. Choose <b>Install app</b> or <b>Add to Home screen</b>.<br>3. Confirm, then open the app from your home screen.';
+      steps.innerHTML = '<b>On iPhone / iPad:</b><br>1. Tap the <b>Share</b> button in Safari.<br>2. Choose <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>, then open the app from your Home Screen.';
       el.querySelector('#ipYes').textContent='Got it';
       el.querySelector('#ipYes').onclick=close;
     });
   }
-  window.addEventListener('appinstalled', close);
   function start(){ setTimeout(show, 1800); }   // short delay so the screen and the browser's own install event are ready
   if(document.readyState==='complete') start(); else window.addEventListener('load', start);
 })();
@@ -3257,6 +3252,8 @@ let PWA_INSTALLED = false;
 // app). Lets the button switch from "Download/Install" straight to an
 // "Open in App" call-to-action instead of a dead-end "✓ App Installed".
 let PWA_JUST_INSTALLED = false;
+// True after an install attempt that did not complete (declined, or the browser could not open it) -> button reads "Re-install App".
+let PWA_INSTALL_FAILED = false;
 function isPWAInstalled(){
   return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
 }
@@ -3266,11 +3263,15 @@ function updatePWAInstallState(){
   if(!btn) return;
   if(PWA_INSTALLED){
     // Already running inside the installed app itself — nothing to open.
-    btn.textContent = '✓ You’re Using the App';
+    btn.textContent = '✓ App installed';
     btn.disabled = true;
     btn.style.opacity = '.7';
   } else if(PWA_JUST_INSTALLED){
-    btn.textContent = '📲 Open in App';
+    btn.textContent = '✓ App installed';
+    btn.disabled = true;
+    btn.style.opacity = '.7';
+  } else if(PWA_INSTALL_FAILED){
+    btn.textContent = 'Re-install App';
     btn.disabled = false;
     btn.style.opacity = '1';
   } else {
@@ -3279,25 +3280,43 @@ function updatePWAInstallState(){
     btn.style.opacity = '1';
   }
 }
+// The ONLY two messages an install attempt ever shows: "App installed" or "App not installed" + Re-install.
+function cteInstallResult(ok){
+  PWA_INSTALL_FAILED = !ok;
+  if(ok) PWA_JUST_INSTALLED = true;
+  updatePWAInstallState();
+  const pop = document.getElementById('cteInstallPopup');
+  const card = pop && pop.querySelector('.ip-card');
+  if(!card) return;
+  if(ok){
+    card.innerHTML = '<div class="ip-icon">✅</div><h3>App installed</h3>';
+    setTimeout(()=>{ const p=document.getElementById('cteInstallPopup'); if(p) p.remove(); }, 1800);
+  } else {
+    card.innerHTML = '<div class="ip-icon">⚠️</div><h3>App not installed</h3><div class="ip-row"><button type="button" class="ip-yes" id="ipRe">Re-install</button></div>';
+    const re = card.querySelector('#ipRe'); if(re) re.onclick = ()=>installPWA();
+  }
+}
 async function installPWA(){
-  if(PWA_INSTALLED){ return; }
-  if(PWA_JUST_INSTALLED){ openInstalledPWA(); return; }
+  if(PWA_INSTALLED) return;
+  if(PWA_JUST_INSTALLED){ cteInstallResult(true); return; }
+  // If the tap landed before the browser announced the install box, wait briefly (still inside the tap) instead of failing.
+  if(!DEFERRED_INSTALL_PROMPT && !/iphone|ipad|ipod/i.test(navigator.userAgent)){
+    await new Promise(function(res){
+      var t=setTimeout(done,2500);
+      function done(){ clearTimeout(t); window.removeEventListener('beforeinstallprompt',done); setTimeout(res,0); }
+      window.addEventListener('beforeinstallprompt',done);
+    });
+  }
   if(DEFERRED_INSTALL_PROMPT){
-    DEFERRED_INSTALL_PROMPT.prompt();
-    let choice=null;
-    try{ choice = await DEFERRED_INSTALL_PROMPT.userChoice; }catch(e){}
-    DEFERRED_INSTALL_PROMPT=null;
-    if(choice && choice.outcome==='accepted'){ PWA_JUST_INSTALLED=true; }
-    updatePWAInstallState();
-    if(PWA_JUST_INSTALLED) openInstalledPWA();
+    // Straight to the browser's own install box.
+    const p = DEFERRED_INSTALL_PROMPT; DEFERRED_INSTALL_PROMPT = null;
+    let choice = null;
+    try{ p.prompt(); choice = await p.userChoice; }catch(e){}
+    cteInstallResult(!!(choice && choice.outcome==='accepted'));
     return;
   }
-  // iOS and browsers that do not expose beforeinstallprompt cannot be opened
-  // programmatically. Give a simple platform-appropriate instruction instead.
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  alert(ios
-    ? 'To install CT-E SOLUTIONS: tap the Share button in your browser, then choose “Add to Home Screen”.'
-    : 'The app-install prompt is not available yet. If your browser shows an Install App or Add to Home Screen option in its menu, choose it to install CT-E SOLUTIONS.');
+  // iPhone/iPad cannot open an install box from code; no extra message is shown here, the result is simply "not installed".
+  cteInstallResult(false);
 }
 // Best-effort attempt to hand off to the freshly-installed app. There is no
 // universal browser API to force-launch an installed PWA from a page still
@@ -3309,16 +3328,13 @@ function openInstalledPWA(){
   const url = location.origin + location.pathname;
   try{ window.open(url, '_blank'); }catch(e){}
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  showUpdateToast(ios
-    ? 'Installed! Open CT-E SOLUTIONS from the icon on your Home Screen.'
-    : 'Installed! Open CT-E SOLUTIONS from your home screen or app list.');
 }
 window.addEventListener('beforeinstallprompt', e=>{
   e.preventDefault();
   DEFERRED_INSTALL_PROMPT=e;
   updatePWAInstallState();
 });
-window.addEventListener('appinstalled', ()=>{ DEFERRED_INSTALL_PROMPT=null; PWA_JUST_INSTALLED=true; updatePWAInstallState(); });
+window.addEventListener('appinstalled', ()=>{ DEFERRED_INSTALL_PROMPT=null; cteInstallResult(true); });
 
 // Holds the accounts list for whichever school the founder is currently
 // inspecting on the "View logins" screen. Loaded on demand (not part of
@@ -5546,30 +5562,83 @@ function showDisconnectSticker(msg, title){
 function maybeShowFirstLoginPwSticker(){
   if(!CUR || CUR.role!=='teacher' || !SCHOOL_ID || FINANCE_ONLY || CUR.pwPromptDone) return;
   if(document.getElementById('firstPwSticker')) return;
+  if(!document.getElementById('cte-pw-sticker-style')){
+    const st = document.createElement('style');
+    st.id = 'cte-pw-sticker-style';
+    st.textContent = `
+/* First-login "Change your password" sticker — same card, sizing and stacking as the sign-in screen.
+   --pu = one real screen pixel x the same phone-shrink factor (--ui-k) the sign-in uses, x --pwfit (shrinks
+   everything until the whole card fits the visible screen height, exactly like the sign-in fit script). */
+#firstPwSticker{--pu:calc(var(--ui-k,1) * var(--pwfit,1) * 1px);position:fixed;inset:0;z-index:100000;background:rgba(10,42,74,.85);
+  display:flex;align-items:center;justify-content:center;box-sizing:border-box;overflow:auto;
+  padding:max(30px,calc(36*var(--pu))) calc(16*var(--pu));}
+#firstPwSticker .pw-card{flex:0 0 auto;width:min(100%,calc(580*var(--pu)));max-width:calc(580*var(--pu));margin:auto;box-sizing:border-box;
+  background:#fff;border-radius:calc(16*var(--pu));box-shadow:0 18px 50px rgba(0,0,0,.5);
+  padding:calc(34*var(--pu)) calc(24*var(--pu));display:flex;flex-direction:column;align-items:stretch;justify-content:center;text-align:center;}
+#firstPwSticker .pw-lock{font-size:calc(40*var(--pu));line-height:1;}
+#firstPwSticker .pw-title{font-size:calc(34*var(--pu));font-weight:900;line-height:1.15;color:#8a1c1c;margin-top:calc(8*var(--pu));}
+#firstPwSticker .pw-msg{font-size:calc(16*var(--pu));line-height:1.4;color:#1a1a1a;margin:calc(12*var(--pu)) 0 calc(4*var(--pu));}
+#firstPwSticker .pw-sec{padding:calc(16*var(--pu)) 0 0;}
+#firstPwSticker .pw-or{display:flex;align-items:center;gap:calc(10*var(--pu));font-size:calc(14*var(--pu));font-weight:800;color:#64748b;
+  text-transform:uppercase;letter-spacing:.05em;margin-top:calc(18*var(--pu));}
+#firstPwSticker .pw-or span{flex:1;border-top:calc(1.5*var(--pu)) solid #e2e8f0;}
+#firstPwSticker label{display:block;text-align:left;font-size:calc(15*var(--pu));margin:calc(14*var(--pu)) 0 calc(6*var(--pu));}
+#firstPwSticker input[type="password"],#firstPwSticker input[type="text"]{width:100%;box-sizing:border-box;text-align:left;
+  padding:calc(16*var(--pu)) calc(16*var(--pu));font-size:calc(21*var(--pu));margin:0;
+  border:calc(1.5*var(--pu)) solid #b9c9da;border-radius:calc(8*var(--pu));background:#fff;color:#000;outline:none;}
+#firstPwSticker input[type="password"]:focus,#firstPwSticker input[type="text"]:focus{border-color:var(--blue,#0a2a4a);}
+#firstPwSticker .pw-show{display:flex;align-items:center;gap:calc(8*var(--pu));justify-content:flex-start;font-size:calc(15*var(--pu));margin:calc(12*var(--pu)) 0 0;}
+#firstPwSticker .pw-show input{width:calc(18*var(--pu));height:calc(18*var(--pu));margin:0;}
+#firstPwSticker #fpwErr{min-height:1.2em;font-size:calc(16*var(--pu));font-weight:700;color:#8a1c1c;margin-top:calc(10*var(--pu));}
+#firstPwSticker .btn{display:block;width:100%;box-sizing:border-box;font-size:calc(20*var(--pu)) !important;padding:calc(15*var(--pu)) calc(20*var(--pu)) !important;border-radius:calc(9*var(--pu));margin-top:calc(14*var(--pu));}
+#firstPwSticker .btn-outline{font-size:calc(17*var(--pu)) !important;padding:calc(12*var(--pu)) calc(14*var(--pu)) !important;border-width:calc(2*var(--pu));margin-top:calc(14*var(--pu));}`;
+    document.head.appendChild(st);
+  }
   const o = document.createElement('div');
   o.id = 'firstPwSticker';
-  o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,42,74,.85);display:flex;align-items:center;justify-content:center;';
-  const sq = 'box-sizing:border-box;width:min(calc(100vw - 24px),calc(100vh - 24px));height:min(calc(100vw - 24px),calc(100vh - 24px));'
-           + 'width:min(calc(100vw - 24px),calc(100dvh - 24px));height:min(calc(100vw - 24px),calc(100dvh - 24px));';
-  o.innerHTML = `<div style="${sq}background:#fff3a8;border:4px solid #e0a800;border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:clamp(10px,3.5vmin,26px);display:flex;flex-direction:column;justify-content:center;gap:clamp(6px,1.8vmin,14px);text-align:center;overflow:auto;">
-    <div style="font-size:clamp(30px,9vmin,64px);line-height:1;">&#128274;</div>
-    <div style="font-weight:900;font-size:clamp(18px,5.6vmin,34px);color:#8a1c1c;letter-spacing:.5px;line-height:1.1;">CHANGE YOUR PASSWORD</div>
-    <div style="font-size:clamp(14px,3.8vmin,22px);font-weight:700;color:#1a1a1a;line-height:1.3;">${esc(CUR.name||'Teacher')}, you can keep your current password, or choose a new <b>4-digit</b> one below.</div>
-    <button type="button" id="fpwIgnore" style="width:100%;box-sizing:border-box;border-radius:0;border:3px solid #000;font-weight:900;cursor:pointer;-webkit-appearance:none;appearance:none;background:#fff;color:#0a2a4a;padding:clamp(10px,2.4vmin,16px);font-size:clamp(14px,3.8vmin,20px);">Ignore &mdash; keep my current password</button>
-    <div style="display:flex;align-items:center;gap:8px;font-size:clamp(11px,2.8vmin,15px);font-weight:900;color:#5a4a00;"><span style="flex:1;border-top:2px solid #5a4a00;"></span>OR CHANGE PASSWORD<span style="flex:1;border-top:2px solid #5a4a00;"></span></div>
-    <input id="fpwNew" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="New 4-digit password" style="width:100%;box-sizing:border-box;text-align:center;font-size:clamp(16px,4.6vmin,26px);font-weight:800;padding:clamp(8px,2vmin,14px);letter-spacing:4px;background:#fff;color:#000;border:3px solid #000;border-radius:0;outline:none;-webkit-appearance:none;appearance:none;box-shadow:none;">
-    <input id="fpwConfirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="Confirm new password" style="width:100%;box-sizing:border-box;text-align:center;font-size:clamp(16px,4.6vmin,26px);font-weight:800;padding:clamp(8px,2vmin,14px);letter-spacing:4px;background:#fff;color:#000;border:3px solid #000;border-radius:0;outline:none;-webkit-appearance:none;appearance:none;box-shadow:none;">
-    <label style="font-size:clamp(12px,3vmin,16px);color:#5a4a00;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;"><input id="fpwShow" type="checkbox" style="width:auto;margin:0;"> Show digits</label>
-    <div id="fpwErr" style="min-height:1.2em;font-size:clamp(12px,3.2vmin,17px);font-weight:700;color:#8a1c1c;"></div>
-    <button type="button" id="fpwSave" style="width:100%;box-sizing:border-box;border-radius:0;border:3px solid #000;font-weight:900;cursor:pointer;-webkit-appearance:none;appearance:none;background:#0a2a4a;color:#fff;padding:clamp(10px,2.4vmin,16px);font-size:clamp(15px,4vmin,22px);">Change password</button>
+  o.innerHTML = `<div class="pw-card">
+    <div class="pw-lock">&#128274;</div>
+    <div class="pw-title">Change your password</div>
+    <div class="pw-msg">${esc(CUR.name||'Teacher')}, you can keep your current password, or choose a new <b>4-digit</b> one below.</div>
+    <button type="button" id="fpwIgnore" class="btn">Ignore &mdash; keep my current password</button>
+    <div class="pw-or"><span></span>or change password<span></span></div>
+    <label for="fpwNew">New 4-digit password</label>
+    <input id="fpwNew" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="New 4-digit password">
+    <label for="fpwConfirm">Confirm new password</label>
+    <input id="fpwConfirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="Confirm new password">
+    <label class="pw-show"><input id="fpwShow" type="checkbox"> Show digits</label>
+    <div id="fpwErr"></div>
+    <button type="button" id="fpwSave" class="btn">Change password</button>
   </div>`;
   document.body.appendChild(o);
+  // Fit-to-screen-height, same method as the sign-in screen: shrink --pwfit (0.3-1) until the whole card is visible.
+  const fitSticker = ()=>{
+    try{
+      if(!document.body.contains(o)) return;
+      const card = o.firstElementChild, avail = window.innerHeight || document.documentElement.clientHeight || 0;
+      if(!card || !avail) return;
+      const need = ()=>{ const cs = getComputedStyle(o); return card.getBoundingClientRect().height + (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0); };
+      let f = 1; o.style.setProperty('--pwfit','1');
+      for(let i=0;i<8;i++){
+        const n = need();
+        if(n <= avail-1 || f <= 0.3) break;
+        f = Math.max(0.3, f*(avail/n)*0.97);
+        o.style.setProperty('--pwfit', f.toFixed(3));
+      }
+    }catch(e){}
+  };
+  let fitRaf = 0;
+  const schedFit = ()=>{ if(fitRaf) return; fitRaf = requestAnimationFrame(()=>{ fitRaf = 0; fitSticker(); }); };
+  window.addEventListener('resize', schedFit);
+  window.addEventListener('orientationchange', ()=>{ setTimeout(schedFit,300); setTimeout(schedFit,900); });
+  try{ new MutationObserver(schedFit).observe(o, {childList:true, subtree:true, characterData:true}); }catch(e){}
+  schedFit(); setTimeout(schedFit,300);
   const $ = id=>document.getElementById(id);
   const nw=$('fpwNew'), cf=$('fpwConfirm'), err=$('fpwErr'), saveB=$('fpwSave'), ignB=$('fpwIgnore');
   [nw,cf].forEach(el=>el.addEventListener('input', ()=>{ el.value = el.value.replace(/\D/g,'').slice(0,4); err.textContent=''; }));
   $('fpwShow').addEventListener('change', e=>{ nw.type = cf.type = e.target.checked ? 'text' : 'password'; });
   const finish = async (newPw)=>{
-    saveB.disabled = ignB.disabled = true;
+    saveB.disabled = ignB.disabled = true; btnBusy(newPw ? saveB : ignB);
     try{
       const apply = a=>{ if(!a) return; if(newPw) a.password = newPw; a.pwPromptDone = true; };
       const acc = (DB.accounts||[]).find(a=>a.username===CUR.username && a.role==='teacher');
@@ -5581,7 +5650,7 @@ function maybeShowFirstLoginPwSticker(){
     }catch(e){
       console.error(e);
       err.textContent = 'Could not save. Check your connection and try again.';
-      saveB.disabled = ignB.disabled = false;
+      saveB.disabled = ignB.disabled = false; btnIdle(saveB); btnIdle(ignB);
     }
   };
   ignB.addEventListener('click', ()=>finish(null));
@@ -5590,10 +5659,10 @@ function maybeShowFirstLoginPwSticker(){
     if(!/^\d{4}$/.test(a)){ err.textContent = 'The password must be exactly 4 digits (0-9).'; return; }
     if(a!==b){ err.textContent = 'The two passwords do not match.'; return; }
     if(a===CUR.password){ err.textContent = 'That is your current password. Type a different one, or tap Ignore.'; return; }
-    saveB.disabled = ignB.disabled = true;
+    saveB.disabled = ignB.disabled = true; btnBusy(saveB);
     try{
       const c = await checkCredentialUniqueness(CUR.username, a, {excludeSchoolId:SCHOOL_ID, excludeUsername:CUR.username});
-      if(c && c.exactMatch){ err.textContent = 'Please choose a different 4-digit password.'; saveB.disabled = ignB.disabled = false; return; }
+      if(c && c.exactMatch){ err.textContent = 'Please choose a different 4-digit password.'; saveB.disabled = ignB.disabled = false; btnIdle(saveB); return; }
     }catch(e){ console.error(e); }
     await finish(a);
   });
@@ -5936,6 +6005,27 @@ function placeActionBannerNear(button){
   left=Math.max(w/2+12,Math.min(window.innerWidth-w/2-12,left));
   top=Math.max(h/2+12,Math.min(window.innerHeight-h/2-12,top));
   el.style.left=left+'px'; el.style.top=top+'px';
+}
+// Tapped-button feedback: the button turns amber and its label becomes "Please wait..." until the action finishes.
+(function(){
+  if(document.getElementById('cte-btn-wait-style')) return;
+  const st = document.createElement('style'); st.id = 'cte-btn-wait-style';
+  st.textContent = 'button.btn-wait,.btn.btn-wait{background:#e0a800 !important;border-color:#b88700 !important;color:#1a1a1a !important;cursor:wait !important;pointer-events:none;opacity:1 !important;}';
+  document.head.appendChild(st);
+})();
+function btnBusy(btn){
+  try{
+    if(!btn || btn.tagName!=='BUTTON' || btn.dataset.cteWaiting==='1') return;
+    btn.dataset.cteWaiting = '1'; btn.dataset.cteOrig = btn.innerHTML;
+    btn.classList.add('btn-wait'); btn.textContent = 'Please wait...';
+  }catch(e){}
+}
+function btnIdle(btn){
+  try{
+    if(!btn || btn.dataset.cteWaiting!=='1') return;
+    btn.classList.remove('btn-wait'); btn.innerHTML = btn.dataset.cteOrig || btn.innerHTML;
+    delete btn.dataset.cteWaiting; delete btn.dataset.cteOrig;
+  }catch(e){}
 }
 function showActionProgress(message, button, big){
   const el=_bannerEl(big);
@@ -14548,19 +14638,9 @@ function scoresEntryView(mine){
       </div>
       <div class="grid2 pick-stack pick-sec">
         <div><label>Assessment type</label><select name="kind" id="kindSel" required>
-          <option value="">-- choose assessment type --</option>
-          <option value="AOI">${esc(examConfig().cwLabel)} (continuous assessment test)</option>
-          <option value="EOT">${esc(examConfig().eotLabel)}</option>
+          ${kindOptionsHtml(examConfig())}
         </select></div>
-        <div id="labelWrap" style="display:none;">${examConfig().cwTests.length ? `
-          <label>${esc(examConfig().cwLabel)} test</label>
-          <select name="label" id="cwTestSel">
-            ${cwTestOptionsHtml(examConfig())}
-          </select>` : `
-          <input type="hidden" name="label" value="${esc(examConfig().cwLabel)}">
-          ${CUR.role==='admin' ? `<label>${esc(examConfig().cwLabel)}</label>
-` : ''}`}
-        </div>
+        <div id="labelWrap" style="display:none;"><input type="hidden" name="label" value="${esc(examConfig().cwLabel)}"></div>
       </div>
       ${!isAdmin ? `
       <div class="grid2 pick-sec pick-term">
@@ -17687,6 +17767,16 @@ async function loadStudentListFromWord(input){
 // set up SEVERAL tests, no test is pre-selected: a "choose test" placeholder comes first so
 // the admin/teacher must pick one on purpose (marks can't land on the wrong test by default).
 // With only one test there's nothing to choose between, so it stays as the default.
+// "Assessment type" dropdown: lists the assessments by the NAMES the admin set up (e.g. Test 1, Test 2, BOT,
+// End of Term) — never the generic "Course Work (continuous assessment test)" wording. A named test is stored
+// as value "AOI::<name>" (kind AOI + that test's label); the End-of-Term assessment keeps value "EOT".
+function kindOptionsHtml(cfg){
+  const tests = (cfg && cfg.cwTests) || [];
+  const cw = tests.length
+    ? tests.map(t=>`<option value="AOI::${esc(t.name)}">${esc(t.name)}</option>`).join('')
+    : `<option value="AOI">${esc(cfg.cwLabel)}</option>`;
+  return `<option value="">-- choose assessment type --</option>${cw}<option value="EOT">${esc(cfg.eotLabel)}</option>`;
+}
 function cwTestOptionsHtml(cfg){
   const tests = (cfg && cfg.cwTests) || [];
   const opts = tests.map(t=>`<option value="${esc(t.name)}" data-max="${t.max}">${esc(t.name)} (out of ${t.max})</option>`).join('');
@@ -17705,23 +17795,11 @@ function syncCwTestRequired(form){
 function refreshAssessmentTypeUI(form, classId){
   const cfg = examConfig(classId);
   const kindSel = form.querySelector('#kindSel');
-  if(kindSel){
-    const oA = kindSel.querySelector('option[value="AOI"]'), oE = kindSel.querySelector('option[value="EOT"]');
-    if(oA) oA.textContent = `${cfg.cwLabel} (continuous assessment test)`;
-    if(oE) oE.textContent = cfg.eotLabel;
-  }
+  if(kindSel) kindSel.innerHTML = kindOptionsHtml(cfg);   // the admin's own assessment names for THIS class
   const labelWrap = form.querySelector('#labelWrap');
   if(labelWrap){
-    labelWrap.innerHTML = cfg.cwTests.length ? `
-      <label>${esc(cfg.cwLabel)} test</label>
-      <select name="label" id="cwTestSel">
-        ${cwTestOptionsHtml(cfg)}
-      </select>` : `
-      <input type="hidden" name="label" value="${esc(cfg.cwLabel)}">
-      ${CUR.role==='admin' ? `<label>${esc(cfg.cwLabel)}</label>
-      <p class="small" style="margin-top:6px;">No named ${esc(cfg.cwLabel)} tests yet — add one under Settings → Grading Setup if you want separate columns (e.g. Test 1, Test 2). Until then, scores are recorded under a single "${esc(cfg.cwLabel)}" bucket.</p>` : ''}`;
-    labelWrap.style.display = (kindSel && kindSel.value==='AOI') ? 'block' : 'none';
-    syncCwTestRequired(form);
+    labelWrap.innerHTML = `<input type="hidden" name="label" value="${esc(cfg.cwLabel)}">`;
+    labelWrap.style.display = 'none';
   }
   // The maximum-mark field is compulsory and must be typed in fresh by the teacher
   // every time — it is never pre-filled, even when the newly-selected class has a
@@ -17817,7 +17895,7 @@ document.addEventListener('change', (e)=>{
   }
   if(e.target.id==='kindSel'){
     const wrap = document.getElementById('labelWrap');
-    if(wrap) wrap.style.display = e.target.value==='AOI' ? 'block':'none';
+    if(wrap) wrap.style.display = 'none';   // the test is part of the Assessment type choice now
     // With several tests configured, always start from "-- choose test --" whenever
     // Course Work is (re)selected, and only require a pick while that dropdown is showing.
     const _cwSel = document.getElementById('cwTestSel');
@@ -17970,7 +18048,7 @@ document.addEventListener('submit', async (e)=>{
   const type = form.dataset.form;
   const fd = new FormData(form);
   const actionButton = e.submitter || document.activeElement;
-  if(type==='saveScores') scoreBtnState('saving'); else showActionProgress('Saving your changes…', actionButton);
+  if(type==='saveScores') scoreBtnState('saving'); else { showActionProgress('Saving your changes…', actionButton); if(actionButton && actionButton.form===form) btnBusy(actionButton); }
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
@@ -19717,12 +19795,10 @@ document.addEventListener('submit', async (e)=>{
       const _pickCls = _pickA ? DB.classes.find(c=>c.id===_pickA.classId) : null;
       if(!(_pickCls && _pickCls.level==='P') && !fd.get('paper')){ alert('Please choose a paper.'); return; }
       if(!fd.get('kind')){ alert('Please choose an assessment type.'); return; }
-      // Course Work with several tests set up: a specific test must be chosen — none is assumed.
-      const _pickKind = fd.get('kind');
-      const _pickTestSel = form.querySelector('#cwTestSel');
-      if(_pickKind==='AOI' && _pickTestSel && !fd.get('label')){
-        alert(`Please choose a ${examConfig(_pickA ? _pickA.classId : null).cwLabel} test.`); return;
-      }
+      // A named test arrives as "AOI::<name>"; End of Term (or the single unnamed Course Work bucket) as plain "EOT" / "AOI".
+      const _kindRaw = String(fd.get('kind'));
+      const _pickKind = _kindRaw.split('::')[0];
+      const _pickLabel = _kindRaw.indexOf('::')>=0 ? _kindRaw.slice(_kindRaw.indexOf('::')+2) : (fd.get('label')||'');
       const maxRaw = fd.get('maxScore');
       const maxScore = Number(maxRaw);
       if(!maxRaw || !Number.isFinite(maxScore) || maxScore<1){
@@ -19742,7 +19818,7 @@ document.addEventListener('submit', async (e)=>{
           return;
         }
       }
-      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:fd.get('kind'), label:(_pickKind==='AOI' ? (fd.get('label')||'') : ''), maxScore}}; render();
+      VIEW={name:VIEW.name, params:{assignId:fd.get('assignId'), paper:fd.get('paper'), kind:_pickKind, label:(_pickKind==='AOI' ? _pickLabel : ''), maxScore}}; render();
     }
     else if(type==='saveRoster'){
       const assignId = form.dataset.assign;
@@ -20010,6 +20086,7 @@ document.addEventListener('submit', async (e)=>{
     // was actually saved, but don't touch an already-shown success/failure message.
     if(type==='saveScores' && !window.__cteScoreSaving){ const b=document.querySelector('form[data-form="saveScores"] button.btn-big'); if(b && /Saving scores/.test(b.textContent)) scoreBtnState('idle'); }
     if(type!=='saveScores' && actionBannerStillProcessing()) hideActionBanner();
+    if(type!=='saveScores') btnIdle(actionButton);
   }
 });
 
