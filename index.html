@@ -1771,6 +1771,37 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
   window.addEventListener('load',function(){ schedule(); setTimeout(schedule,600); });
 })();
 </script>
+<style id="cte-maxscore-caret-css">
+#maxScoreInput{caret-color:#0f7a3a;}
+#maxScoreInput:focus:placeholder-shown{text-indent:12px;}
+#maxScoreInput:focus::placeholder{opacity:.55;}
+.pick-sec{position:relative;}
+.cte-blink-bar{position:absolute;width:0;border-left:calc(3*var(--uk,1)) solid #0f7a3a;border-radius:2px;pointer-events:none;display:none;animation:cteBlink 1s steps(1,end) infinite;}
+@keyframes cteBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
+</style>
+<script id="cte-maxscore-caret">
+/* Shows a blinking | in the "marked out of" box while it is active and empty, so people can see it is waiting for input. */
+(function(){
+  var bar=null;
+  function inp(){ return document.getElementById('maxScoreInput'); }
+  function place(){
+    var el=inp(); if(!el || document.activeElement!==el){ hide(); return; }
+    if(String(el.value||'')!==''){ hide(); return; }   // once typing starts, the normal caret takes over
+    var host=el.parentElement; if(!host) return;
+    if(!bar || bar.parentElement!==host){ if(bar&&bar.parentElement) bar.remove(); bar=document.createElement('span'); bar.className='cte-blink-bar'; host.appendChild(bar); }
+    var cs=getComputedStyle(el), h=parseFloat(cs.fontSize)*1.3;
+    bar.style.height=h+'px';
+    bar.style.left=(el.offsetLeft+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft)+2)+'px';
+    bar.style.top=(el.offsetTop+(el.offsetHeight-h)/2)+'px';
+    bar.style.display='block';
+  }
+  function hide(){ if(bar) bar.style.display='none'; }
+  document.addEventListener('focusin',function(e){ if(e.target&&e.target.id==='maxScoreInput') setTimeout(place,0); },true);
+  document.addEventListener('focusout',function(e){ if(e.target&&e.target.id==='maxScoreInput') hide(); },true);
+  document.addEventListener('input',function(e){ if(e.target&&e.target.id==='maxScoreInput') place(); },true);
+  window.addEventListener('resize',place);
+})();
+</script>
 <style id="cte-install-popup-css">
 /* "Install the app" reminder — shown every time the system is opened, only to people NOT running the installed app. */
 #cteInstallPopup{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(10,42,74,.55);padding:calc(20*var(--uk));}
@@ -3267,9 +3298,9 @@ function updatePWAInstallState(){
     btn.disabled = true;
     btn.style.opacity = '.7';
   } else if(PWA_JUST_INSTALLED){
-    btn.textContent = '✓ App installed';
-    btn.disabled = true;
-    btn.style.opacity = '.7';
+    btn.textContent = '↗ Open in App';
+    btn.disabled = false;
+    btn.style.opacity = '1';
   } else if(PWA_INSTALL_FAILED){
     btn.textContent = 'Re-install App';
     btn.disabled = false;
@@ -3289,8 +3320,8 @@ function cteInstallResult(ok){
   const card = pop && pop.querySelector('.ip-card');
   if(!card) return;
   if(ok){
-    card.innerHTML = '<div class="ip-icon">✅</div><h3>App installed</h3>';
-    setTimeout(()=>{ const p=document.getElementById('cteInstallPopup'); if(p) p.remove(); }, 1800);
+    card.innerHTML = '<div class="ip-icon">✅</div><h3>App installed</h3><div class="ip-row"><button type="button" class="ip-yes" id="ipOpen">Open in App</button></div>';
+    const op = card.querySelector('#ipOpen'); if(op) op.onclick = ()=>{ openInstalledPWA(); const p=document.getElementById('cteInstallPopup'); if(p) p.remove(); };
   } else {
     card.innerHTML = '<div class="ip-icon">⚠️</div><h3>App not installed</h3><div class="ip-row"><button type="button" class="ip-yes" id="ipRe">Re-install</button></div>';
     const re = card.querySelector('#ipRe'); if(re) re.onclick = ()=>installPWA();
@@ -3298,7 +3329,7 @@ function cteInstallResult(ok){
 }
 async function installPWA(){
   if(PWA_INSTALLED) return;
-  if(PWA_JUST_INSTALLED){ cteInstallResult(true); return; }
+  if(PWA_JUST_INSTALLED){ openInstalledPWA(); return; }
   // If the tap landed before the browser announced the install box, wait briefly (still inside the tap) instead of failing.
   if(!DEFERRED_INSTALL_PROMPT && !/iphone|ipad|ipod/i.test(navigator.userAgent)){
     await new Promise(function(res){
@@ -12831,7 +12862,7 @@ function marksheetHeaderOpts(classId, subject, kind){
     if(cfg.eotEnabled) types.push(cfg.eotLabel);
   } else {
     const {students} = marksheetRoster(classId, subject);
-    marksheetColumns(students, subject).forEach(c=>types.push(c.kind==='EOT' ? cfg.eotLabel : (cfg.cwLabel + (c.label ? ': '+c.label : ''))));
+    marksheetColumns(students, subject).forEach(c=>types.push(c.kind==='EOT' ? cfg.eotLabel : ((c.label && c.label!==cfg.cwLabel) ? c.label : cfg.cwLabel)));
   }
   types = [...new Set(types.filter(Boolean))];
   if(!types.length) types = ['Score'];
@@ -13217,7 +13248,8 @@ function integratedMarksheetView(classId, subject, page, forExport){
   const students = pg.pageItems;
   const cols = marksheetColumns(allStudents, subject);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
-  const colHeaders = cols.map(c=>`<th>P${esc(String(c.paper))} ${c.kind==='EOT'?'EOT':('AOI'+(c.label?': '+esc(c.label):''))}</th>`).join('');
+  const _hc = examConfig(classId);   // headings use the exact assessment names the admin set
+  const colHeaders = cols.map(c=>`<th>P${esc(String(c.paper))} ${c.kind==='EOT'?esc(_hc.eotLabel):esc((c.label && c.label!==_hc.cwLabel) ? c.label : _hc.cwLabel)}</th>`).join('');
   const canBulk = !forExport && (CUR.role==='admin'||CUR.role==='teacher') && bulkDeletableScores(classId, subject).length>0;
   const rowsHtml = students.map((s,ri)=>{
     const bd = subjectBreakdown(s.id, subject, term, year);
@@ -13530,11 +13562,14 @@ function classAnalysisViewCore(){
   const isLevelForm = formKey==='levelwise';
   // Order of selection: 1) analysis form -> 2) assessment type -> 3) class (or level). Each step only
   // becomes available once the one before it has been chosen; the form loads after step 3.
-  const ASSESS_TYPES = [
-    ['cw','Course Work (CW)'],
-    ['eot','End of Term (EOT)'],
-    ['integrated','Integrated (CW + EOT)']
-  ];
+  const _selCls = isLevelForm ? (selLevel ? visibleClasses.find(c=>c.level===selLevel) : null)
+    : ((sel.classId && visibleClasses.find(c=>c.id===sel.classId)) || null);
+  const _acfg = examConfig(_selCls ? _selCls.id : undefined);   // the admin's own assessment names
+  const ASSESS_TYPES = [];
+  if(_acfg.cwEnabled) ASSESS_TYPES.push(['cw', _acfg.cwLabel]);
+  if(_acfg.eotEnabled) ASSESS_TYPES.push(['eot', _acfg.eotLabel]);
+  if(_acfg.cwEnabled && _acfg.eotEnabled) ASSESS_TYPES.push(['integrated', _acfg.cwLabel+' + '+_acfg.eotLabel]);
+  if(!ASSESS_TYPES.length) ASSESS_TYPES.push(['integrated','Score']);
   const assessKey = (formKey && ASSESS_TYPES.some(a=>a[0]===sel.assess)) ? sel.assess : '';
   const assessLabel = (ASSESS_TYPES.find(a=>a[0]===assessKey)||['',''])[1];
   const cls = !assessKey ? null : (isLevelForm
@@ -14438,11 +14473,11 @@ function scoresEntryView(mine){
         .filter(c=>students.some(s=>{ const r=scoreCellFor(s.id, a.subject, c, periodTerm, periodYear); return r && r.marks!==''&&r.marks!=null; }));
       // Primary has no concept of papers (a single implicit paper per subject), so the
       // "P1"/"Paper 1" prefix is omitted from every column label and heading here.
-      const colLabel = c => (!isP && c.paper!=null && c.paper!=='' ? 'P'+esc(String(c.paper))+' ' : '') + (c.kind==='EOT' ? esc(examConfig(a.classId).eotLabel) : (esc(examConfig(a.classId).cwLabel)+(c.label?': '+esc(c.label):'')));
+      const colLabel = c => (!isP && c.paper!=null && c.paper!=='' ? 'P'+esc(String(c.paper))+' ' : '') + (c.kind==='EOT' ? esc(examConfig(a.classId).eotLabel) : esc((c.label && c.label!==examConfig(a.classId).cwLabel) ? c.label : examConfig(a.classId).cwLabel));
       // Earlier-test headers: each test's whole title becomes ONE short code (initials of its words, up to 3 letters, plus any
       // numbers) — e.g. "Course Work: Test 1" -> "CWT1", "End of Term" -> "EOT". The full name stays in the header's tooltip.
       const abbrTest = t => { let L='', D=''; String(t).split(/[^\p{L}\p{N}]+/u).filter(Boolean).forEach(w=>{ if(/^\p{N}+$/u.test(w)){ D+=w; } else { const up=w.match(/^(\p{Lu}{2,})(\p{N}*)$/u); if(up){ L+=up[1]; D+=up[2]; } else { L+=w[0].toUpperCase(); const d=w.match(/\p{N}+$/u); if(d) D+=d[0]; } } }); return (L.slice(0,3)+D) || String(t); };
-      const colLabelShort = c => esc((!isP && c.paper!=null && c.paper!=='' ? 'P'+String(c.paper)+' ' : '') + abbrTest(c.kind==='EOT' ? examConfig(a.classId).eotLabel : (examConfig(a.classId).cwLabel+(c.label?' '+c.label:''))));
+      const colLabelShort = c => esc((!isP && c.paper!=null && c.paper!=='' ? 'P'+String(c.paper)+' ' : '') + abbrTest(c.kind==='EOT' ? examConfig(a.classId).eotLabel : ((c.label && c.label!==examConfig(a.classId).cwLabel) ? c.label : examConfig(a.classId).cwLabel)));
       const otherColHeaders = otherCols.map(c=>{
         // All scores in a column share the same max, so pull it off whichever student has
         // a mark recorded for this column already (every otherCol has at least one).
@@ -14450,8 +14485,8 @@ function scoresEntryView(mine){
         for(const s of students){ const r=scoreCellFor(s.id, a.subject, c, term, year); if(r){ colMax = r.max; break; } }
         return `<a class="se-sh" href="#" data-action="switchScoreCol:${a.id}:${c.paper}:${c.kind}:${encodeURIComponent(c.label||'')}:${colMax}" title="${colLabel(c)} — click to edit this test's scores">${colLabelShort(c)}<span class="se-hmax"> (${esc(colMax)})</span></a>`;
       }).join('');
-      const currentColLabel = (!isP && sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?(esc(examConfig(a.classId).cwLabel)+(sel.label?': '+esc(sel.label):'')):esc(examConfig(a.classId).eotLabel));
-      const currentColShort = esc((!isP && sel.paper ? 'P'+String(sel.paper)+' ' : '') + abbrTest(sel.kind==='AOI' ? (examConfig(a.classId).cwLabel+(sel.label?' '+sel.label:'')) : examConfig(a.classId).eotLabel));
+      const currentColLabel = (!isP && sel.paper?('P'+esc(String(sel.paper))+' '):'') + (sel.kind==='AOI'?esc((sel.label && sel.label!==examConfig(a.classId).cwLabel) ? sel.label : examConfig(a.classId).cwLabel):esc(examConfig(a.classId).eotLabel));
+      const currentColShort = esc((!isP && sel.paper ? 'P'+String(sel.paper)+' ' : '') + abbrTest(sel.kind==='AOI' ? ((sel.label && sel.label!==examConfig(a.classId).cwLabel) ? sel.label : examConfig(a.classId).cwLabel) : examConfig(a.classId).eotLabel));
       const missKey = missingMarkersKey(a.id, sel.paper, sel.kind, sel.label||'');
       const missSet = MISSING_MARKERS[missKey] || new Set();
       const cfgHere = examConfig(a.classId);
