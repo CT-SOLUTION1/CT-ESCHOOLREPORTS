@@ -4103,6 +4103,14 @@ function founderLockedAutoLoad(view){
     loadFounderLockedSchools().then(()=>{ if(CUR && CUR.role==='founder') render(); }).catch(()=>{});
   }
 }
+// Clears just ONE wrong-password lock/wait (e.g. a single teacher's sign-in) and leaves the school's other locks alone.
+async function founderUnlockGate(schoolId, key){
+  const gl = (await getShared(`sch_${schoolId}_gates`, {})) || {};
+  if(!gl[key]) return false;
+  delete gl[key];
+  await setShared(`sch_${schoolId}_gates`, gl);
+  return true;
+}
 // Clears every wrong-password lock/wait on the school, so its current usernames and passwords work again straight away.
 async function founderUnlockSchool(schoolId){
   const gl = (await getShared(`sch_${schoolId}_gates`, {})) || {};
@@ -7326,16 +7334,16 @@ function renderFounderView(view){
   }
   if(view==='flocked'){
     const L = FOUNDER_LOCKED, now = Date.now(), failed = FOUNDER_LOCKED_FAILED || [];
-    const sec = g => `<div style="margin-bottom:4px;"><b>${esc(gateLabel(g.key))}</b> — ${g.locked ? '<span style="color:var(--danger);font-weight:700;">DISCONNECTED</span>' : 'Waiting ' + Math.max(1,Math.ceil((g.waitUntil-now)/60000)) + ' min'} · ${esc(g.fails)} wrong attempts${g.at ? ' · ' + esc(fmtDateTime(g.at)) : ''}</div>`;
+    const sec = (g, schoolId) => `<div style="margin-bottom:6px;"><b>${esc(gateLabel(g.key))}</b> — ${g.locked ? '<span style="color:var(--danger);font-weight:700;">DISCONNECTED</span>' : 'Waiting ' + Math.max(1,Math.ceil((g.waitUntil-now)/60000)) + ' min'} · ${esc(g.fails)} wrong attempts${g.at ? ' · ' + esc(fmtDateTime(g.at)) : ''} <button class="btn-outline" style="padding:2px 10px;margin-left:6px;" data-action="foundUnlockGate:${esc(schoolId)}|${encodeURIComponent(g.key)}">Unlock</button></div>`;
     return `<h2>Locked Schools — Wrong Password</h2>
-    <div class="note">Every school locked out after wrong passwords is listed here for as long as it stays locked (disconnected after 10 wrong attempts, or waiting 10 minutes after 5). <b>Unlock</b> works at any time: the school's current username and password start working again immediately, without waiting out the minutes.</div>
+    <div class="note">Every school locked out after wrong passwords is listed here for as long as it stays locked (disconnected after 10 wrong attempts, or waiting 10 minutes after 5). <b>Unlock</b> works at any time: the school's current username and password start working again immediately, without waiting out the minutes. This includes teacher accounts locked for wrong passwords — unlock one account with the button beside it, or the whole school with the button on the right.</div>
     <div class="card" style="margin-top:14px;border-left:4px solid var(--danger);overflow:auto;">
       <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
         <h3 style="margin:0;">${L ? L.length : '…'} locked school${L && L.length===1 ? '' : 's'}</h3>
         <div class="flex"><button class="btn-outline" data-action="foundRefreshLocked">Refresh</button>${L && L.length>1 ? '<button class="btn" data-action="foundUnlockAllSchools">Unlock all</button>' : ''}</div>
       </div>
       <table class="data-table"><tr><th>School</th><th>Locked sections</th><th>Action</th></tr>
-      ${L ? (L.map(r=>`<tr><td>${esc(r.schoolName)}<div class="small" style="margin:2px 0 0;">Owner: ${esc(r.ownerUsername||'')}</div></td><td>${r.gates.map(sec).join('')}</td><td><button class="btn" data-action="foundUnlockSchool:${r.schoolId}">Unlock</button></td></tr>`).join('') || '<tr><td colspan="3">No school is locked out right now.</td></tr>') : '<tr><td colspan="3">Loading…</td></tr>'}
+      ${L ? (L.map(r=>`<tr><td>${esc(r.schoolName)}<div class="small" style="margin:2px 0 0;">Owner: ${esc(r.ownerUsername||'')}</div></td><td>${r.gates.map(g=>sec(g, r.schoolId)).join('')}</td><td><button class="btn" data-action="foundUnlockSchool:${r.schoolId}">Unlock</button></td></tr>`).join('') || '<tr><td colspan="3">No school is locked out right now.</td></tr>') : '<tr><td colspan="3">Loading…</td></tr>'}
       </table>
       ${failed.length ? `<p class="small" style="color:var(--danger);margin-top:10px;">Could not check: ${esc(failed.join(', '))}. Tap Refresh to try again.</p>` : ''}
     </div>`;
@@ -17728,6 +17736,14 @@ Continue?`)) break;
       if(!founderCodeCheck(ulCode2)) break;
       try{ for(const id of ulIds) await founderUnlockSchool(id); await loadFounderLockedSchools(); alertOk('All locked schools are unlocked. Their current usernames and passwords work again right now.'); }
       catch(e){ console.error(e); alert('Could not unlock every school. Please check the connection and try again.'); try{ await loadFounderLockedSchools(); }catch(_){} }
+      render(); break; }
+    case 'foundUnlockGate': { if(!CUR || CUR.role!=='founder'){ alert('Only the Founder can do that.'); break; }
+      const [ugSchool, ugKeyEnc] = String(arg||'').split('|'); const ugKey = decodeURIComponent(ugKeyEnc||'');
+      if(!ugSchool || !ugKey) break;
+      const ugCode = prompt(`Enter your founder code to unlock "${gateLabel(ugKey)}":`); if(ugCode===null) break;
+      if(!founderCodeCheck(ugCode)) break;
+      try{ await founderUnlockGate(ugSchool, ugKey); await loadFounderLockedSchools(); alertOk(`"${gateLabel(ugKey)}" is unlocked. That password works again right now — no waiting.`); }
+      catch(e){ console.error(e); alert('Could not unlock right now. Please check the connection and try again.'); }
       render(); break; }
     case 'foundRefreshLocked': { await loadFounderLockedSchools(); render(); break; }
     case 'foundDeleteSchool': { const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
