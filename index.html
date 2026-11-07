@@ -2838,7 +2838,11 @@ function oOptionalList(){ return [...O_OPTIONAL_BASE, ...((DB.info && DB.info.oE
 // since only a genuinely-unset (undefined/null) value falls back.
 function oCompulsoryFor(form){
   const lower = (form==='S.1'||form==='S.2');
-  const custom = DB.info && (lower ? DB.info.oCompulsoryLower : DB.info.oCompulsoryUpper);
+  // S.1 and S.2 each have their own list (oCompulsoryS1 / oCompulsoryS2). Data saved before the
+  // split only has the shared oCompulsoryLower, so each falls back to that, then to the defaults.
+  const custom = DB.info && (form==='S.1' ? (DB.info.oCompulsoryS1 || DB.info.oCompulsoryLower)
+                           : form==='S.2' ? (DB.info.oCompulsoryS2 || DB.info.oCompulsoryLower)
+                           : DB.info.oCompulsoryUpper);
   if(custom) return custom;
   return lower ? O_LOWER_COMPULSORY : O_UPPER_COMPULSORY;
 }
@@ -5193,6 +5197,8 @@ async function binApply(kind, data){
       if(!DB.info[data.key].includes(data.name)) DB.info[data.key].push(data.name);
       if(data.lower && Array.isArray(DB.info.oCompulsoryLower) && !DB.info.oCompulsoryLower.includes(data.name)) DB.info.oCompulsoryLower.push(data.name);
       if(data.upper && Array.isArray(DB.info.oCompulsoryUpper) && !DB.info.oCompulsoryUpper.includes(data.name)) DB.info.oCompulsoryUpper.push(data.name);
+      if(data.s1 && Array.isArray(DB.info.oCompulsoryS1) && !DB.info.oCompulsoryS1.includes(data.name)) DB.info.oCompulsoryS1.push(data.name);
+      if(data.s2 && Array.isArray(DB.info.oCompulsoryS2) && !DB.info.oCompulsoryS2.includes(data.name)) DB.info.oCompulsoryS2.push(data.name);
       await saveInfo();
       return {ok:true};
     }
@@ -11995,8 +12001,12 @@ function oLevelSubjectsView(){
     <form data-form="saveOCompulsory">
       <div class="flex" style="align-items:flex-start;gap:24px;">
         <div style="flex:1;min-width:200px;">
-          <h4 style="margin:8px 0 4px;">S.1 & S.2</h4>
-          ${oAllSubjectPool().map(s=>`<label class="flex" style="gap:6px;"><input type="checkbox" name="lowerSubjects" value="${esc(s)}" style="width:auto;" ${oCompulsoryFor('S.1').includes(s)?'checked':''}> <span>${esc(s)}</span></label>`).join('')}
+          <h4 style="margin:8px 0 4px;">S.1</h4>
+          ${oAllSubjectPool().map(s=>`<label class="flex" style="gap:6px;"><input type="checkbox" name="s1Subjects" value="${esc(s)}" style="width:auto;" ${oCompulsoryFor('S.1').includes(s)?'checked':''}> <span>${esc(s)}</span></label>`).join('')}
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <h4 style="margin:8px 0 4px;">S.2</h4>
+          ${oAllSubjectPool().map(s=>`<label class="flex" style="gap:6px;"><input type="checkbox" name="s2Subjects" value="${esc(s)}" style="width:auto;" ${oCompulsoryFor('S.2').includes(s)?'checked':''}> <span>${esc(s)}</span></label>`).join('')}
         </div>
         <div style="flex:1;min-width:200px;">
           <h4 style="margin:8px 0 4px;">S.3 & S.4</h4>
@@ -14364,6 +14374,27 @@ function setScorePeriodParam(key, value){
   VIEW.params = {...VIEW.params, [key]:value, assignId:null, paper:null, kind:null, label:null, maxScore:null, editRoster:false};
   render();
 }
+// A subject that WAS compulsory has no teacher roster (everyone in the class was on it automatically),
+// so scores were entered with no studentIds list. When it later becomes non-compulsory, build the
+// roster from the students who already have scores for it: they stay on the list, everyone else is
+// hidden until the teacher taps "Add missing students". Only runs for assignments with no roster
+// yet, and only when at least one student already has a score (otherwise the teacher ticks as usual).
+function seedRosterFromScores(a){
+  if(!a || Array.isArray(a.studentIds)) return false;
+  const cls = DB.classes.find(c=>c.id===a.classId);
+  if(!cls || isCompulsorySubjectFor(a.subject, cls)) return false;
+  const inClass = new Set(DB.students.filter(s=>s.status!=='left' && s.classId===a.classId).map(s=>s.id));
+  const ids = new Set();
+  (DB.scores||[]).forEach(r=>{ if(r.subject===a.subject && inClass.has(r.studentId)) ids.add(r.studentId); });
+  if(!ids.size) return false;
+  a.studentIds = [...ids];
+  return true;
+}
+function seedAllRostersFromScores(){
+  let changed = false;
+  (DB.assignments||[]).forEach(a=>{ if(seedRosterFromScores(a)) changed = true; });
+  return changed;
+}
 function scoresEntryView(mine){
   const sel = VIEW.params;
   const isAdmin = CUR.role==='admin';
@@ -14388,6 +14419,7 @@ function scoresEntryView(mine){
     // Compulsory subjects: EVERY student in the class is listed automatically (new students included) and
     // nobody can be removed. Optional subjects keep the teacher's own list.
     const compulsoryAll = isCompulsorySubjectFor(a.subject, cls);
+    if(!compulsoryAll && seedRosterFromScores(a)){ try{ saveAssignments(); }catch(e){ console.error(e); } }
     const rosterSet = compulsoryAll ? true : Array.isArray(a.studentIds);
     const labelBit = encodeURIComponent(sel.label||'');
     if(!compulsoryAll && (!rosterSet || sel.editRoster)){
@@ -14405,7 +14437,7 @@ function scoresEntryView(mine){
       const allChosen = listed.length>0 && listed.every(s=>chosen.has(s.id));
       studentRows = `
       <div class="card se-fit">
-        <h3 class="fit-line">${esc(a.subject)} — ${esc(cls.name)} — ${missingOnly?'Add missing students':'Select your students'}</h3>
+        <h3 class="fit-line">${esc(a.subject)} — ${esc(cls.name)}${missingOnly ? ' — Add missing students' : (compulsory ? ' — Select your students' : '<span style="display:block;color:#d00000;font-weight:800;margin-top:4px;">SELECT ONLY YOUR STUDENTS</span>')}</h3>
         <form data-form="saveRoster" data-assign="${a.id}" data-missing-only="${missingOnly?'1':''}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           ${compulsory && listed.length ? `
           <label class="sr-all">
@@ -16690,9 +16722,11 @@ Continue?`);
     case 'delAssign': { const removedAsn=DB.assignments.find(a=>a.id===arg); if(removedAsn && !(await binGuard('assignment', binAsnLabel(removedAsn), 'Subject assignment', {assignment:removedAsn}))) break; DB.assignments = DB.assignments.filter(a=>a.id!==arg); await saveAssignments(); showActionSuccess(`Assignment${removedAsn && removedAsn.subject ? ` for ${removedAsn.subject}` : ''} removed successfully`, el, true); render(); break; }
     case 'delOSubject': {
       const name = decodeURIComponent(arg);
-      if(!(await binGuard('subject', name, "O'Level subject", {key:'oExtraSubjects', name, lower:(Array.isArray(DB.info.oCompulsoryLower)&&DB.info.oCompulsoryLower.includes(name)), upper:(Array.isArray(DB.info.oCompulsoryUpper)&&DB.info.oCompulsoryUpper.includes(name))}))) break;
+      if(!(await binGuard('subject', name, "O'Level subject", {key:'oExtraSubjects', name, lower:(Array.isArray(DB.info.oCompulsoryLower)&&DB.info.oCompulsoryLower.includes(name)), upper:(Array.isArray(DB.info.oCompulsoryUpper)&&DB.info.oCompulsoryUpper.includes(name)), s1:(Array.isArray(DB.info.oCompulsoryS1)&&DB.info.oCompulsoryS1.includes(name)), s2:(Array.isArray(DB.info.oCompulsoryS2)&&DB.info.oCompulsoryS2.includes(name))}))) break;
       DB.info.oExtraSubjects = (DB.info.oExtraSubjects||[]).filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryLower)) DB.info.oCompulsoryLower = DB.info.oCompulsoryLower.filter(s=>s!==name);
+      if(Array.isArray(DB.info.oCompulsoryS1)) DB.info.oCompulsoryS1 = DB.info.oCompulsoryS1.filter(s=>s!==name);
+      if(Array.isArray(DB.info.oCompulsoryS2)) DB.info.oCompulsoryS2 = DB.info.oCompulsoryS2.filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
       await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
     }
@@ -19297,17 +19331,19 @@ document.addEventListener('submit', async (e)=>{
       await saveInfo(); form.reset(); render();
     }
     else if(type==='saveOCompulsory'){
-      DB.info.oCompulsoryLower = fd.getAll('lowerSubjects');
+      DB.info.oCompulsoryS1 = fd.getAll('s1Subjects');
+      DB.info.oCompulsoryS2 = fd.getAll('s2Subjects');
+      DB.info.oCompulsoryLower = DB.info.oCompulsoryS1.slice(); // legacy field kept in step with S.1
       DB.info.oCompulsoryUpper = fd.getAll('upperSubjects');
-      await saveInfo(); render();
+      await saveInfo(); if(seedAllRostersFromScores()) await saveAssignments(); render();
     }
     else if(type==='savePCompulsory'){
       DB.info.pCompulsory = fd.getAll('coreSubjects');
-      await saveInfo(); render();
+      await saveInfo(); if(seedAllRostersFromScores()) await saveAssignments(); render();
     }
     else if(type==='saveACompulsoryExtra'){
       DB.info.aCompulsoryExtra = fd.getAll('extraCompulsory');
-      await saveInfo(); render();
+      await saveInfo(); if(seedAllRostersFromScores()) await saveAssignments(); render();
     }
     else if(type==='addPSubject'){
       const name = (fd.get('subjectName')||'').trim().toUpperCase();
