@@ -723,7 +723,7 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 .rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.035;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
-.rc-topline .fees-code-tag{font-weight:900;color:var(--navy);position:relative;top:5px;} /* nudged down off the card border; relative offset so the logo/title below never moves */
+.rc-topline .fees-code-tag{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12.5px;font-weight:800;letter-spacing:.04em;color:var(--navy);position:relative;top:5px;} /* nudged down off the card border; relative offset so the logo/title below never moves */
 .rc-title-block{display:block;text-align:center;border-bottom:2px solid var(--navy);padding:10px 0;margin-bottom:14px;position:relative;min-height:74px;}
 /* The school logo is deliberately OUTSIDE the header's layout flow. This keeps the
    school name genuinely centered across the full report-card width, while the logo
@@ -768,7 +768,7 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 /* Frame for every printed / saved-as-PDF document other than report cards (which carry their own). */
 @media print{
   body.print-frame::after{content:"";position:fixed;top:0;left:0;right:0;bottom:0;border:2px solid #0A2A4A;box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 4px #0A2A4A;visibility:visible !important;pointer-events:none;z-index:9999;}
-  body.print-frame #printArea{padding:8mm !important;box-sizing:border-box;}
+  body.print-frame #printArea{padding:5mm !important;box-sizing:border-box;}
   body.print-frame #printArea .dn-card{width:172mm !important;max-width:172mm !important;}
 }
 
@@ -1054,9 +1054,9 @@ table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:norma
   #printArea, #printArea *{visibility:visible;}
   #printArea{position:absolute;top:0;left:0;width:100%;}
   /* Native browser printing must use the same A4 portrait geometry as the live card. */
-  #printArea .rc-card:not(.pdf-report-card){width:190mm !important;height:277mm !important;max-width:190mm !important;min-height:277mm !important;aspect-ratio:auto !important;overflow:hidden !important;box-shadow:none !important;}
+  #printArea .rc-card:not(.pdf-report-card){width:202mm !important;height:289mm !important;max-width:202mm !important;min-height:289mm !important;aspect-ratio:auto !important;overflow:hidden !important;box-shadow:none !important;}
   table{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @page{ size:A4; margin:10mm; }
+  @page{ size:A4; margin:4mm; }
 }
 @media (max-width:760px){
   .layout{flex-direction:column;}
@@ -2631,12 +2631,12 @@ function weakestSubjectNames(rows){
   if(g.length<2) return [];
   const min = Math.min(...g.map(r=>Number(r.avg)));
   const names = g.filter(r=>Math.abs(Number(r.avg)-min)<0.05).map(r=>r.subject);
-  return names.length>2 ? [] : names;
+  return names.length>=g.length ? [] : names;   // every subject tied = no single weakest; otherwise ALL tied subjects are named
 }
 // Weakest-subject sentence for the HEAD teacher's comment. tier: 0 strong, 1 middle, 2 weak.
 function weakSubjectSentence(names, tier, showEOT, seed){
   if(!names || !names.length) return '';
-  const W = names.join(' and '), pl = names.length>1;
+  const W = names.length>1 ? names.slice(0,-1).join(', ')+' and '+names[names.length-1] : names[0], pl = names.length>1;
   const sub = pl?'subjects':'subject', be = pl?'are':'is', it = pl?'them':'it', nd = pl?'need':'needs', sj = pl?'they':'it', kp = pl?'keep':'keeps';
   const T = showEOT ? [
     [ `Spend some extra time on ${W}, your weakest ${sub}, so ${sj} ${kp} pace with your other subjects next term.`,
@@ -6554,6 +6554,24 @@ function reportPaperLabels(studentId, subject, cls, term, year){
 // "any paper" when paper is null) — read straight off the score rows themselves (each
 // carries the username of whoever saved it), so this stays accurate even when several
 // teachers share a subject, one per paper.
+// Initials of whoever is assigned (in Assignments) to a subject for a class, looked up LIVE every time a report
+// card is drawn — so assigning a teacher AFTER the admin has already entered the scores still shows the initials.
+// Subject/class matching ignores case and stray spaces; paper-aware when one teacher is assigned per paper.
+function liveAssignedTeacherInit(subject, classId, paper){
+  const nk = v=>String(v==null?'':v).replace(/\s+/g,' ').trim().toLowerCase();
+  const asns = (DB.assignments||[]).filter(a=>nk(a.subject)===nk(subject) && String(a.classId)===String(classId));
+  if(!asns.length) return null;
+  const ordered = [];
+  if(paper!=null && paper!==''){
+    asns.forEach(a=>{ if(Array.isArray(a.papers) && a.papers.some(p=>String(p).trim()===String(paper).trim())) ordered.push(a); });
+  }
+  asns.forEach(a=>{ if(!ordered.includes(a)) ordered.push(a); });
+  for(const a of ordered){
+    const acc = (DB.accounts||[]).find(x=>String(x.username).trim().toLowerCase()===String(a.teacherUsername).trim().toLowerCase());
+    if(acc && acc.name) return initials(acc.name);
+  }
+  return null;
+}
 function paperTeacherInit(studentId, subject, paper, term, year){
   let rows = DB.scores.filter(sc=>sc.studentId===studentId && sc.subject===subject && sc.term===term && sc.year===year && sc.teacher);
   if(paper!=null) rows = rows.filter(sc=>String(sc.paper)===String(paper));
@@ -15082,7 +15100,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     return paperRows.map((p, idx)=>{
       const paperForLookup = useSubrows ? p.paper : singleLookup;
-      const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
+      const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || liveAssignedTeacherInit(r.subject, cls.id, paperForLookup) || liveAssignedTeacherInit(r.subject, cls.id, null) || r.teacherInit;
       const initTxt = (!teacherInit || teacherInit==='--') ? '&nbsp;' : esc(teacherInit);
       // Primary has no concept of papers (single, unlabeled paper per subject), so the
       // Papers column/cell is omitted entirely on Primary report cards — see isP checks
@@ -15320,7 +15338,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         <td class="lbl">${termLbl} Position</td><td class="val">${position} / ${size}</td>
         ${isP
           ? `<td class="lbl">Previous Position</td><td class="val">${prevPosition?`${prevPosition.position} / ${prevPosition.size} (${esc(prevPeriod.term)}, ${esc(String(prevPeriod.year))})`:'—'}</td>`
-          : `<td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.join(', ')):'—'}</td>`}
+          : `<td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'}</td>`}
       </tr>
     </table>
 
@@ -15515,7 +15533,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 
     const rowsOut = paperRows.map(p=>{
       const paperForLookup = useSubrows ? p.paper : singleLookup;
-      const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || r.teacherInit;
+      const teacherInit = paperTeacherInit(s.id, r.subject, paperForLookup, term, year) || assignedTeacherInit(r.subject, paperForLookup) || liveAssignedTeacherInit(r.subject, cls.id, paperForLookup) || liveAssignedTeacherInit(r.subject, cls.id, null) || r.teacherInit;
       const initTxt = (!teacherInit || teacherInit==='--') ? '' : teacherInit;
       const papersTxt = useSubrows ? String(p.paper) : (singleLabel ? singleLabel : (peersHaveScore(s, r.subject, term, year) ? '—' : ''));
       let cwTestVals = [];
@@ -15611,7 +15629,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   gapBoost = gapBoost || 0;
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const M = 26; // outer page margin, points
+  const M = 12; // outer page margin, points (small gap between page edge and frame)
   const cardX = M, cardY = M, cardW = pageW - M*2, cardH = pageH - M*2;
   const navy = [10,42,74], muted = [90,113,137], ink=[19,36,54];
   // Admin-chosen report-card colour (Report Cards > Table shading colour). With nothing chosen this
@@ -15672,7 +15690,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
 
   // ---- 3. Topline: fees code + printed date ----
   pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
-  if(data.feesCode){ pdf.setFont('courier','bold'); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy+4); /* +4: nudged down off the card border, still clear of the logo below */ pdf.setFont('courier','normal'); setC(muted); }
+  if(data.feesCode){ pdf.setFont('helvetica','bold'); pdf.setFontSize(10.5); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy+5); /* +4: nudged down off the card border, still clear of the logo below */ pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted); }
   pdf.text(`Printed ${fmtDate(Date.now())}`, contentX+contentW, cy, {align:'right'});
   cy += 10;
 
@@ -15808,9 +15826,14 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // COURSE WORK spans the named test columns plus their average. With one test (or no
   // tests), keep the original single Course Work column instead of pre-splitting it.
   const hasCwGroup = data.showCW && data.useCwTestCols && data.cwTests.length>1;
-  const headerH = hasCwGroup ? 32 : 20;
+  // Header height grows just enough for the tallest wrapped column label (never below the original size).
+  const _isCwCol = c=>c.key==='cwavg' || c.key.indexOf('cw_')===0;
+  const _maxHdrLines = cols.reduce((m,c)=>Math.max(m, wrap(c.label, c.width-4, (hasCwGroup&&_isCwCol(c))?6.2:6.6, 'bold').length), 1);
+  const _hdrLineGap = hasCwGroup ? 6.5 : 7;
+  const _hdrNeed = Math.ceil((_maxHdrLines-1)*_hdrLineGap + 6.6 + 7);
   const headerTopH = hasCwGroup ? 12 : 0;
-  const headerBottomH = hasCwGroup ? 20 : headerH;
+  const headerBottomH = Math.max(hasCwGroup ? 20 : 20, _hdrNeed);
+  const headerH = headerTopH + headerBottomH;
   setDrawC([29,78,137]); pdf.setLineWidth(0.6);
   pdf.setFillColor(hdrFill[0],hdrFill[1],hdrFill[2]); pdf.rect(contentX, cy, contentW, headerH, 'F');
   cols.forEach(c=>{
@@ -15971,7 +15994,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
      `${data.term} Position`, `${sm.position} / ${sm.size}`,
      data.isP?'Previous Position':`Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`,
      data.isP ? (sm.prevPosition?`${sm.prevPosition.position} / ${sm.prevPosition.size} (${sm.prevPeriod.term}, ${sm.prevPeriod.year})`:'—')
-              : (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.join(', '):'—')]
+              : (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]
   ];
   setDrawC([29,78,137]);
   summaryRows.forEach((row,ri)=>{
@@ -20279,8 +20302,8 @@ async function html2canvasBold(el, opts, thin){
   try{ return await html2canvas(el, opts); }
   finally{ el.classList.remove(cls); }
 }
-const PDF_FRAME_M = 26;
-const PDF_FRAME_CONTENT = 42;
+const PDF_FRAME_M = 12;
+const PDF_FRAME_CONTENT = 28;
 function drawPdfFrame(pdf, isList){
   const w = pdf.internal.pageSize.getWidth(), h = pdf.internal.pageSize.getHeight(), M = PDF_FRAME_M;
   pdf.setDrawColor(10,42,74);
@@ -20353,7 +20376,7 @@ function printFramed(thin){
   if(!document.getElementById('listPrintOverride') && !document.getElementById('portraitPrintOverride') && !document.getElementById('landscapePrintOverride')){
     cleanSt=document.createElement('style');
     cleanSt.id='frameCleanPrintOverride';
-    cleanSt.textContent='@media print{ @page{ size:A4; margin:0; } body.print-frame::after{top:10mm !important;left:10mm !important;right:10mm !important;bottom:10mm !important;} body.print-frame #printArea{padding:18mm !important;} }';
+    cleanSt.textContent='@media print{ @page{ size:A4; margin:0; } body.print-frame::after{top:4mm !important;left:4mm !important;right:4mm !important;bottom:4mm !important;} body.print-frame #printArea{padding:9mm !important;} }';
     document.head.appendChild(cleanSt);
   }
   document.body.classList.add('print-frame');
@@ -20482,7 +20505,7 @@ function preloadHeavyLibsWhenIdle(){
 function printLandscape(){
   const st = document.createElement('style');
   st.id = 'landscapePrintOverride';
-  st.textContent = '@page{ size: A4 landscape; margin:10mm; }';
+  st.textContent = '@page{ size: A4 landscape; margin:4mm; }';
   document.head.appendChild(st);
   printFramed();
   setTimeout(()=>{ const e=document.getElementById('landscapePrintOverride'); if(e) e.remove(); }, 1000);
@@ -20596,7 +20619,7 @@ function printListPaged(opts){
 
   const st = document.createElement('style');
   st.id = 'listPrintOverride';
-  st.textContent = '@page{ size: A4 ' + secs[0].orient + '; margin:8mm; } @page lp-port{ size: A4 portrait; margin:8mm; } @page lp-land{ size: A4 landscape; margin:8mm; }';
+  st.textContent = '@page{ size: A4 ' + secs[0].orient + '; margin:4mm; } @page lp-port{ size: A4 portrait; margin:4mm; } @page lp-land{ size: A4 landscape; margin:4mm; }';
   document.head.appendChild(st);
   const restore = ()=>{
     const e = document.getElementById('listPrintOverride'); if(e) e.remove();
@@ -20718,10 +20741,10 @@ function printPortrait(opts){
 
   const st = document.createElement('style');
   st.id = 'portraitPrintOverride';
-  st.textContent = '@page{ size: A4 ' + (opts.landscape?'landscape':'portrait') + '; margin:8mm; }'
+  st.textContent = '@page{ size: A4 ' + (opts.landscape?'landscape':'portrait') + '; margin:4mm; }'
     + '@media print{'
     + ' .ms-print-page{break-after:page;page-break-after:always;} .ms-print-page:last-child{break-after:auto;page-break-after:auto;}'
-    + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:262mm;height:min(262mm, calc(100vh - 18mm));max-height:262mm;overflow:hidden;box-sizing:border-box;}'
+    + ' .ms-print-page.ms-fill{display:flex;flex-direction:column;height:276mm;height:min(276mm, calc(100vh - 10mm));max-height:276mm;overflow:hidden;box-sizing:border-box;}'
     + ' .ms-print-page.ms-pgfoot{display:flex;flex-direction:column;box-sizing:border-box;}'
     + ' .ms-print-page.ms-fill .ms-tbl.ms-full{flex:1 1 auto;min-height:0;} .ms-print-page.ms-fill .ms-tbl.ms-full table{height:100%;}'
     + ' .ms-print-page.ms-print-page tr.ms-filler{visibility:hidden;}'
