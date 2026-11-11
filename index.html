@@ -7632,10 +7632,10 @@ function renderCreateSchoolForm(){
       <label>Motto (optional)</label><input name="motto">
       <label>Headteacher's full name</label><input name="headteacher" required>
       <hr style="margin:14px 0;border:none;border-top:1px solid #e2e8f0;">
-      <label>Owner (admin) username</label><input name="username" required minlength="4" maxlength="6" pattern="\S{4,6}" title="4 to 6 characters, no spaces" autocapitalize="off" autocomplete="off">
+      <label>Owner (admin) username</label><input name="username" required minlength="4" maxlength="6" pattern="\\S{4,6}" title="4 to 6 characters, no spaces" autocapitalize="off" autocomplete="off">
       <p class="small">4 to 6 characters, no spaces.</p>
       <label>Owner (admin) password</label><input name="password" type="password" required minlength="4">
-      <label>Private owner code</label><input name="ownerCode" required minlength="4" maxlength="6" pattern="\S{4,6}" title="4 to 6 characters, no spaces" autocomplete="off">
+      <label>Private owner code</label><input name="ownerCode" required minlength="4" maxlength="6" pattern="\\S{4,6}" title="4 to 6 characters, no spaces" autocomplete="off">
       <p class="small">4 to 6 characters, no spaces.</p>
       <label>Recovery code (optional)</label><input name="recovery">
       <p class="small">Set this if you want a self-service way to reset your password/owner code later without contacting CT-E SOLUTIONS. You can also add or change it anytime from Change Password once signed in.</p>
@@ -9088,8 +9088,8 @@ function financeSecurityFormsHTML(){
       <button class="btn" style="margin-top:10px;">Save Finance Password</button></form>
     <hr style="margin:20px 0;border:none;border-top:1px solid #cfd9e3;">
     <form data-form="setOwnerCode"><h3>Owner Code</h3>
-      <label>${DB.info.ownerCode?'New Owner Code':'Owner Code'}</label><input name="ownerCode" minlength="4" required autocomplete="off" placeholder="At least 4 characters">
-      <label>Confirm Owner Code</label><input name="confirmCode" minlength="4" required autocomplete="off">
+      <label>${DB.info.ownerCode?'New Owner Code':'Owner Code'}</label><input name="ownerCode" minlength="4" maxlength="6" pattern="\\S{4,6}" required autocomplete="off" placeholder="4 to 6 characters, no spaces">
+      <label>Confirm Owner Code</label><input name="confirmCode" minlength="4" maxlength="6" pattern="\\S{4,6}" required autocomplete="off">
       <button class="btn" style="margin-top:10px;">Save Owner Code</button></form>
     ${FIN_SUBS.map(([k,,label])=>`<hr style="margin:20px 0;border:none;border-top:1px solid #cfd9e3;">
     <form data-form="setFinSubPassword" data-sub="${k}"><h3>${esc(label)} Section Password</h3>
@@ -14358,6 +14358,16 @@ function otherSettingsView(){
       <button class="btn" style="margin-top:14px;">Update username &amp; password</button>
     </form>
   </div>
+  ${(CUR && CUR.role==='admin' && !FINANCE_ONLY && !FOUNDER_IMPERSONATING_SCHOOL) ? `<div class="card" style="max-width:760px;">
+    <h3 style="margin-top:0;">🔐 Private Owner Code</h3>
+    <p class="small">${DB.info && DB.info.ownerCode ? 'Change the private owner code used to approve staff accounts and confirm deletions.' : 'No owner code is set yet. Set one below.'} It must be 4 to 6 characters with no spaces. Confirm with your admin password.</p>
+    <form data-form="changeOwnerCode">
+      <label>Your admin password</label><input name="adminPassword" type="password" required autocomplete="current-password">
+      <label>New owner code</label><input name="ownerCode" required minlength="4" maxlength="6" pattern="\\S{4,6}" title="4 to 6 characters, no spaces" autocomplete="off">
+      <label>Confirm new owner code</label><input name="confirmCode" required minlength="4" maxlength="6" pattern="\\S{4,6}" title="4 to 6 characters, no spaces" autocomplete="off">
+      <button class="btn" style="margin-top:12px;">Save owner code</button>
+    </form>
+  </div>` : ''}
   ${(CUR && (CUR.role==='admin' || CUR.role==='teacher')) ? `<div class="card" style="max-width:760px;">
     <h3 style="margin-top:0;">🗑 Recycle Bin</h3>
     <p class="small">Anything ${CUR.role==='admin'?'deleted or removed':'you delete or remove'} lands here first and is kept for <b>15 days</b>. Records from the <b>Account Section</b> (and the earlier version of any Account Section record that is corrected) are kept for <b>5 years</b>. Tap <b>↷ Redo</b> on an item to fetch its data back. After that time it is erased for good.</p>
@@ -17666,10 +17676,10 @@ Continue?`);
       if(!FOUNDER_LOGINS || FOUNDER_LOGINS.schoolId!==arg){ break; }
       const info = FOUNDER_LOGINS.info || {};
       const current = info.ownerCode || '';
-      const newCode = prompt(`Enter the new private owner code for ${info.schoolName||'this school'} (at least 4 characters):`, current);
+      const newCode = prompt(`Enter the new private owner code for ${info.schoolName||'this school'} (4 to 6 characters, no spaces):`, current);
       if(newCode===null) break;
       const trimmed = newCode.trim();
-      if(trimmed.length<4){ alert('Owner code must be at least 4 characters.'); break; }
+      if(!/^\S{4,6}$/.test(trimmed)){ alert('Owner code must be 4 to 6 characters with no spaces.'); break; }
       if(trimmed===current){ alert('The new owner code is the same as the current code. No change was made.'); break; }
       if(!confirm(`Replace the current owner code for ${info.schoolName||'this school'}?
 
@@ -18217,11 +18227,21 @@ document.addEventListener('submit', async (e)=>{
       FINANCE_FORGOT=false; FINANCE_UNLOCKED=true;
       alert('Finance password reset. You are now in Account Section.'); render(); return;
     }
+    else if(type==='changeOwnerCode'){
+      if(!CUR || CUR.role!=='admin' || FINANCE_ONLY || FOUNDER_IMPERSONATING_SCHOOL){ alert('Only the school Admin can change the owner code here.'); return; }
+      if(CUR.password!==fd.get('adminPassword')){ alert('Your admin password is incorrect. The owner code was not changed.'); return; }
+      const nc=(fd.get('ownerCode')||'').trim();
+      if(!/^\S{4,6}$/.test(nc)){ alert('Owner code must be 4 to 6 characters with no spaces.'); return; }
+      if(nc!==(fd.get('confirmCode')||'').trim()){ alert('The two owner codes do not match.'); return; }
+      if(nc===DB.info.ownerCode){ alert('That is already your current owner code. No change was made.'); return; }
+      if(financePwMatchesAdminOrOwner && DB.info.financePassword===nc){ alert('The owner code must be different from the Account Section password.'); return; }
+      DB.info.ownerCode=nc; await saveInfo(); alert('Owner code saved.'); render(); return;
+    }
     else if(type==='setOwnerCode'){
       if(!finCanReset()){ alert('The Owner Code can only be changed from the Admin sign-in, inside the Account Section.'); return; }
       const nc=(fd.get('ownerCode')||'').trim();
       if(fd.has('confirmCode') && (fd.get('confirmCode')||'').trim()!==nc){ alert('The two owner codes do not match.'); return; }
-      if(nc.length<4){ alert('Owner code must be at least 4 characters.'); return; }
+      if(!/^\S{4,6}$/.test(nc)){ alert('Owner code must be 4 to 6 characters with no spaces.'); return; }
       DB.info.ownerCode=nc; await saveInfo(); alert('Owner code saved.'); render(); return;
     }
     else if(type==='setFinancePassword'){ if(!finCanReset() && DB.info.financePassword){ alert('The Account Section password can only be changed from the Admin sign-in, inside the Account Section.'); return; } const pw=fd.get('password'); if(fd.has('confirmPassword') && fd.get('confirmPassword')!==pw){ alert('The two Finance passwords do not match.'); return; } if(CUR && CUR.password && pw===CUR.password){ alert('For security, the Finance password must be different from your login password. Please choose a different one.'); return; } if(!DB.info.ownerCode && fd.has('ownerCode')){ const oc=(fd.get('ownerCode')||'').trim(); if(oc.length<4){ alert('Owner code must be at least 4 characters.'); return; } DB.info.ownerCode=oc; } DB.info.financePassword=pw; await saveInfo(); alert('Finance password saved.'); render(); return; }
