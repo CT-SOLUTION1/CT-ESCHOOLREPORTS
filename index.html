@@ -2676,6 +2676,10 @@ function schoolGradeLocked(){ return !!schoolGrade() && !FOUNDER_IMPERSONATING_S
 function keepLockedGrade(prev){ if(prev && !FOUNDER_IMPERSONATING_SCHOOL && DB.info) DB.info.schoolGrade = prev; }
 function isPrimarySchool(){ return schoolGrade()==='primary'; }
 function isSecondarySchool(){ return schoolGrade()==='secondary'; }
+// Secondary schools pick the Form from one list, S.1 - S.6; the Level (O / A) follows from it (S.1-S.4 = O-Level, S.5-S.6 = A-Level).
+const SECONDARY_FORMS = ['S.1','S.2','S.3','S.4','S.5','S.6'];
+function formsForLevel(level){ return (isSecondarySchool() && level!=='P') ? SECONDARY_FORMS : (FORM_SEQUENCE_BY_LEVEL[level] || ['S.1','S.2','S.3','S.4']); }
+function levelForForm(form){ return ['S.5','S.6'].includes(form) ? 'A' : 'O'; }
 // Which class levels ('P','O','A') the admin is currently allowed to create/keep —
 // null (grade not yet chosen) means no restriction, matching legacy behaviour.
 function allowedClassLevels(){
@@ -7628,9 +7632,11 @@ function renderCreateSchoolForm(){
       <label>Motto (optional)</label><input name="motto">
       <label>Headteacher's full name</label><input name="headteacher" required>
       <hr style="margin:14px 0;border:none;border-top:1px solid #e2e8f0;">
-      <label>Owner (admin) username</label><input name="username" required>
+      <label>Owner (admin) username</label><input name="username" required minlength="4" maxlength="6" pattern="\S{4,6}" title="4 to 6 characters, no spaces" autocapitalize="off" autocomplete="off">
+      <p class="small">4 to 6 characters, no spaces.</p>
       <label>Owner (admin) password</label><input name="password" type="password" required minlength="4">
-      <label>Private owner code</label><input name="ownerCode" required minlength="4">
+      <label>Private owner code</label><input name="ownerCode" required minlength="4" maxlength="6" pattern="\S{4,6}" title="4 to 6 characters, no spaces" autocomplete="off">
+      <p class="small">4 to 6 characters, no spaces.</p>
       <label>Recovery code (optional)</label><input name="recovery">
       <p class="small">Set this if you want a self-service way to reset your password/owner code later without contacting CT-E SOLUTIONS. You can also add or change it anytime from Change Password once signed in.</p>
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit school for approval</button>
@@ -10897,9 +10903,9 @@ function classesView(){
   <div class="card">
     <form data-form="addClass">
       <div class="grid3">
-        <div><label>Class name</label><input name="name" placeholder="e.g. S.3" required></div>
+        <div><label>Class name</label><input name="name" placeholder="${isPrimarySchool()?'e.g. Primary One':isSecondarySchool()?'e.g. Senior One':'e.g. S.3'}" ${(isPrimarySchool()||isSecondarySchool())?`pattern="[A-Za-z]+( [A-Za-z]+)*" title="Words only (letters and spaces), e.g. ${isPrimarySchool()?'Primary One':'Senior One'}"`:''} required></div>
         <div><label>Level</label><select name="level" id="clsLevel">${['O','A','P'].filter(l=>allowedClassLevels().includes(l)).map(l=>`<option value="${l}">${l==='O'?'O-Level':l==='A'?'A-Level':'Primary'}</option>`).join('')}</select></div>
-        <div id="formWrap"><label>Form</label><select name="form" id="clsForm"><option>S.1</option><option>S.2</option><option>S.3</option><option>S.4</option></select></div>
+        <div id="formWrap"><label>Form</label><select name="form" id="clsForm">${formsForLevel(['O','A','P'].filter(l=>allowedClassLevels().includes(l))[0]).map(f=>`<option>${f}</option>`).join('')}</select></div>
       </div>
       <div style="margin-top:6px;max-width:320px;">
         <label>Streams — how many streams does this class have?</label>
@@ -10922,7 +10928,7 @@ function classesView(){
 function classEditView(classId){
   const cls = DB.classes.find(c=>c.id===classId);
   if(!cls) return `<h2>Edit Class</h2><div class="card"><p>Class not found.</p><button class="btn-outline" data-action="nav:classes">Back to Classes</button></div>`;
-  const forms = FORM_SEQUENCE_BY_LEVEL[cls.level] || ['S.1','S.2','S.3','S.4'];
+  const forms = formsForLevel(cls.level);
   const count = DB.students.filter(s=>s.classId===cls.id).length;
   return `
   <h2>Edit Class</h2>
@@ -14933,25 +14939,14 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // history", so a gap (e.g. no Term 2 scores on file) doesn't accidentally pull in
   // the wrong term. It only shows a value if this student actually has scores on
   // file for that specific prior term.
-  let prevPeriod = null, prevPosition = null;
-  if(isP){
-    function prevTermYearFor(t, y){
-      if(t==='Term 1') return {term:'Term 3', year:Number(y)-1};
-      if(t==='Term 2') return {term:'Term 1', year:Number(y)};
-      if(t==='Term 3') return {term:'Term 2', year:Number(y)};
-      return null;
-    }
-    const prevTY = prevTermYearFor(term, year);
-    prevPeriod = prevTY ? (periods.find(p=>p.term===prevTY.term && Number(p.year)===Number(prevTY.year)) || null) : null;
-    prevPosition = prevPeriod ? classPosition(s, cls, prevPeriod.term, prevPeriod.year) : null;
-  }
+  let prevPeriod = null, prevPosition = null; // Primary no longer shows Previous Position (replaced by Weak Subject)
   // Weak Subject(s) (O-Level and A-Level only): whichever subject(s) this learner
   // scored lowest in this term — their own lowest Final Average among subjects
   // that actually have a mark on file. Ties (more than one subject sharing the
   // exact lowest average) are all listed, since picking just one arbitrarily
   // would be misleading.
   let weakSubjects = null;
-  if(!isP){
+  {
     const graded = rows.filter(r=>r.avg!=null);
     if(graded.length){
       const minAvg = Math.min(...graded.map(r=>r.avg));
@@ -15336,9 +15331,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <tr>
         <td class="lbl">${isP?'Division':'Level'}</td><td class="val">${isP?(pDivision||'—'):(overallDesc||'—')}</td>
         <td class="lbl">${termLbl} Position</td><td class="val">${position} / ${size}</td>
-        ${isP
-          ? `<td class="lbl">Previous Position</td><td class="val">${prevPosition?`${prevPosition.position} / ${prevPosition.size} (${esc(prevPeriod.term)}, ${esc(String(prevPeriod.year))})`:'—'}</td>`
-          : `<td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'}</td>`}
+        <td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'}</td>
       </tr>
     </table>
 
@@ -15449,22 +15442,10 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   // Project Work: see the identical note in reportCardHTML() above.
   const projectRows = projectData().scores.filter(x=>x.studentId===s.id && x.classId===cls.id && x.term===term && Number(x.year)===Number(year) && x.score!=null);
 
-  let prevPeriod = null, prevPosition = null;
-  if(isP){
-    function prevTermYearFor(t, y){
-      if(t==='Term 1') return {term:'Term 3', year:Number(y)-1};
-      if(t==='Term 2') return {term:'Term 1', year:Number(y)};
-      if(t==='Term 3') return {term:'Term 2', year:Number(y)};
-      return null;
-    }
-    const periods = availableTermYears(studentId);
-    const prevTY = prevTermYearFor(term, year);
-    prevPeriod = prevTY ? (periods.find(p=>p.term===prevTY.term && Number(p.year)===Number(prevTY.year)) || null) : null;
-    prevPosition = prevPeriod ? classPosition(s, cls, prevPeriod.term, prevPeriod.year) : null;
-  }
+  let prevPeriod = null, prevPosition = null; // Primary no longer shows Previous Position (replaced by Weak Subject)
 
   let weakSubjects = null;
-  if(!isP){
+  {
     const graded = rows.filter(r=>r.avg!=null);
     if(graded.length){
       const minAvg = Math.min(...graded.map(r=>r.avg));
@@ -15992,9 +15973,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
      data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')],
     [data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—'),
      `${data.term} Position`, `${sm.position} / ${sm.size}`,
-     data.isP?'Previous Position':`Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`,
-     data.isP ? (sm.prevPosition?`${sm.prevPosition.position} / ${sm.prevPosition.size} (${sm.prevPeriod.term}, ${sm.prevPeriod.year})`:'—')
-              : (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]
+     `Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`,
+     (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]
   ];
   setDrawC([29,78,137]);
   summaryRows.forEach((row,ri)=>{
@@ -17954,9 +17934,21 @@ document.addEventListener('change', (e)=>{
     const val = e.target.value;
     const wrap = document.getElementById('formWrap');
     const sel = document.getElementById('clsForm');
-    const forms = FORM_SEQUENCE_BY_LEVEL[val] || ['S.1','S.2','S.3','S.4'];
+    const forms = formsForLevel(val);
+    const keep = sel ? sel.value : '';
     if(wrap) wrap.style.display = 'block';
-    if(sel) sel.innerHTML = forms.map(f=>`<option>${f}</option>`).join('');
+    if(sel){
+      sel.innerHTML = forms.map(f=>`<option>${f}</option>`).join('');
+      // Secondary: keep the chosen form if it belongs to the new level, otherwise jump to that level's first form.
+      if(isSecondarySchool() && val!=='P'){
+        const first = (FORM_SEQUENCE_BY_LEVEL[val]||[])[0];
+        sel.value = (keep && levelForForm(keep)===val) ? keep : (first || forms[0]);
+      }
+    }
+  }
+  if(e.target.id==='clsForm' && isSecondarySchool()){
+    const lv = document.getElementById('clsLevel');
+    if(lv && lv.value!=='P'){ lv.value = levelForForm(e.target.value); }
   }
   if(e.target.id==='assignClassSel'){
     // Primary has no concept of papers, so the Papers field is hidden entirely (and
@@ -18699,6 +18691,11 @@ document.addEventListener('submit', async (e)=>{
       const req = ['schoolName','headteacher','username','password','ownerCode','email'];
       const missing = req.filter(k=>!fd.get(k) || !fd.get(k).trim());
       if(missing.length){ showFatal('Please fill in: '+missing.join(', ')); return; }
+      // New registrations only: username and owner code must be 4-6 characters with no spaces.
+      // Existing schools are untouched (nothing here runs on sign-in or on stored data).
+      { const okLen = v => /^\S{4,6}$/.test(String(v||''));
+        if(!okLen(fd.get('username'))){ showFatal('Owner username must be 4 to 6 characters with no spaces.'); return; }
+        if(!okLen(fd.get('ownerCode'))){ showFatal('Private owner code must be 4 to 6 characters with no spaces.'); return; } }
       const email = normalizeSchoolEmail(fd.get('email'));
       if(!isValidEmailFormat(email)){ showFatal('Please enter a valid school email address.'); return; }
       if(isSchoolEmailTaken(email)){ showFatal('That email is already registered to another school. Each school needs its own email address.'); return; }
@@ -19137,6 +19134,8 @@ document.addEventListener('submit', async (e)=>{
       if(!allowedClassLevels().includes(fd.get('level'))){ alert('That class level is not available for your school\'s current grade setting.'); return; }
       const base = (fd.get('name')||'').trim();
       if(!base){ alert('Enter a class name.'); return; }
+      // New Primary classes: words only (e.g. "Primary One") - no digits or symbols. Existing classes are untouched.
+      if((fd.get('level')==='P' || isSecondarySchool()) && !/^[A-Za-z]+(\s+[A-Za-z]+)*$/.test(base)){ alert(`Class names must be words only, e.g. ${fd.get('level')==='P'?'Primary One':'Senior One'} (no numbers or symbols).`); return; }
       const names = fd.getAll('streamName').map(x=>(x||'').trim());
       const teachers = fd.getAll('streamTeacher').map(x=>x||null);
       const count = names.length || 1;
