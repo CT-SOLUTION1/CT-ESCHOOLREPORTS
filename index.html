@@ -1009,7 +1009,13 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
    here centers the two date lines vertically within that height instead of hugging the
    top, so the term-dates box always looks vertically "balanced" between Class Teacher
    and Head Teacher regardless of how tall their signature blocks are. */
-.rc-term-middle{justify-self:center;width:88%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;text-align:center;font-size:11px;font-weight:800;line-height:1.35;padding:4px 7px;background:var(--blue);color:#fff;border:1px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);overflow:hidden;}
+.rc-toggle-card{padding:10px;}
+.rc-toggle-row{display:flex;flex-wrap:nowrap;gap:8px;}
+.rc-tog{flex:1 1 0;min-width:0;border:none;border-radius:8px;padding:10px 4px;font-size:12px;font-weight:800;line-height:1.25;color:#fff;cursor:pointer;white-space:normal;transition:background .15s;}
+.rc-tog.on{background:#0f7a3a;} .rc-tog.off{background:var(--danger,#c0392b);}
+.rc-tog.rc-busy,.rc-tog.rc-busy.on,.rc-tog.rc-busy.off{background:#e0a800 !important;color:#1a1a1a !important;pointer-events:none;}
+.rc-term-middle{justify-self:center;width:88%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Arial Black','Segoe UI',Arial,Helvetica,sans-serif;font-size:11.5px;font-weight:900;letter-spacing:.01em;line-height:1.3;padding:3px 4px;background:var(--navy);color:#fff;border:1.5px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);text-shadow:0 0 1px #fff,0 0 1px #fff;overflow:hidden;}
+.rc-term-middle div{font-weight:900;-webkit-text-stroke:.3px #fff;}
 .rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
@@ -6808,16 +6814,32 @@ function computeSubjectRows(st, cls, term, year){
 // other levels have no RESULT so everyone counts as equal here); 2) NUMBER OF SUBJECTS SCORED — more subjects always beats
 // fewer, even when the total/average of the learner with fewer subjects is higher; 3) total marks (Points at A-Level);
 // 4) average. Only a complete tie on all four shares a position.
+// Admin switch (Report Cards screen): "Number of subjects counts in ranking and positions". ON (default) = the rules above.
+// OFF = the number of subjects scored is ignored: Primary / O-Level learners are ranked on their plain AVERAGE (so someone
+// with fewer subjects is not pushed down), A-Level keeps total Points then average. The RESULT 1 / 2 / 3 rule at O-Level still applies.
+function subjectCountRanks(){ return !(DB.info && DB.info.subjectCountInRanking===false); }
 function rankKeyOf(d, level, st, cls, term, year){
   let r = 0;
   if(st && cls && level==='O'){
     const res = reportResultFor(d.rows, null, cls, null, st, term, year);
     r = (res===3 || !d.countAvg) ? 2 : (res===2 ? 1 : 0);
   }
-  return { r, m: level==='A' ? d.totalPoints : d.sumAvg, n: d.countAvg, t: d.avgPct };
+  return { r, m: level==='A' ? d.totalPoints : d.sumAvg, n: d.countAvg, t: d.avgPct, sc: subjectCountRanks(), lv: level };
 }
-function rankCmp(a, b){ return ((a.r||0)-(b.r||0)) || (b.n-a.n) || (b.m-a.m) || (b.t-a.t); }
-function rankTie(a, b){ return (a.r||0)===(b.r||0) && a.m===b.m && a.n===b.n && a.t===b.t; }
+function rankCmp(a, b){
+  if(a.sc===false){
+    const aA = a.lv==='A';
+    return ((a.r||0)-(b.r||0)) || (aA ? ((b.m-a.m) || (b.t-a.t)) : ((b.t-a.t) || (b.m-a.m)));
+  }
+  return ((a.r||0)-(b.r||0)) || (b.n-a.n) || (b.m-a.m) || (b.t-a.t);
+}
+function rankTie(a, b){
+  if(a.sc===false){
+    const aA = a.lv==='A';
+    return (a.r||0)===(b.r||0) && a.t===b.t && (aA ? a.m===b.m : true);
+  }
+  return (a.r||0)===(b.r||0) && a.m===b.m && a.n===b.n && a.t===b.t;
+}
 function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, term, year); return rankKeyOf(d, cls.level, st, cls, term, year); }
 // classPosition() is called once PER STUDENT from every whole-class view (Master Mark
 // Sheet, Class Analysis, Report Cards) — so without caching, ranking a class of N
@@ -6829,7 +6851,7 @@ function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, t
 // it for every student, cutting a full render down to O(N) total.
 let _rankCache = {scoresRef:null, key:'', map:null};
 function computeClassRankings(cls, term, year){
-  const key = cls.id+'|'+term+'|'+year;
+  const key = cls.id+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
   if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
   const peers = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
   const scored = peers.map(s=>({id:s.id, k:metricFor(s, cls, term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
@@ -12622,19 +12644,14 @@ function reportsListView(){
   const classIds = [...new Set(myAssignments.map(a=>a.classId))];
   const visibleClasses = isTeacher ? DB.classes.filter(c=>classIds.includes(c.id)) : DB.classes;
   const tAllowed = teachersMayViewReports();
-  const teacherAccessCard = isAdmin ? `
-  <div class="card">
-    <h3>Teacher access to report cards</h3>
-    <p class="small">Teachers can currently <b>${tAllowed?'view':'not view'}</b> report cards${tAllowed?'':' — the "View Report Cards" option is hidden from every teacher'}. Printing and downloading is always Admin only.</p>
-    <button type="button" class="${tAllowed?'btn-danger':'btn'}" data-action="toggleTeacherReports">${tAllowed?'Switch OFF teacher access':'Switch ON teacher access'}</button>
-  </div>` : '';
+  const scOn = subjectCountRanks();
   const zOn = reportZeroOn();
-  const zeroCard = isAdmin ? `
-  <div class="card">
-    <h3>Leading zeros on report cards</h3>
-    <p class="small">Marks on report cards are currently shown <b>${zOn?'with a leading zero (e.g. 05, 07.5, 08%)':'without a leading zero (e.g. 5, 7.5, 8%)'}</b>. This only changes how report cards look (screen, print and PDF) — score entry and mark sheets are not affected.</p>
-    <button type="button" class="btn" data-action="toggleReportZero">${zOn?'Show marks without leading zero':'Show marks with leading zero'}</button>
-  </div>` : '';
+  const togglesCard = isAdmin ? `
+  <div class="card rc-toggle-card"><div class="rc-toggle-row">
+    <button type="button" class="rc-tog ${tAllowed?'on':'off'}" data-action="toggleTeacherReports">Teacher access<br>${tAllowed?'ON':'OFF'}</button>
+    <button type="button" class="rc-tog ${scOn?'on':'off'}" data-action="toggleSubjectCountRank">No. of subjects in ranking<br>${scOn?'ON':'OFF'}</button>
+    <button type="button" class="rc-tog ${zOn?'on':'off'}" data-action="toggleReportZero">Leading zero (05)<br>${zOn?'ON':'OFF'}</button>
+  </div></div>` : '';
   const rcIds = rcAppliedIds().filter(id=>visibleClasses.some(c=>c.id===id));
   const rcCollapsed = rcIds.length>0;
   const rcNames = rcIds.map(id=>(visibleClasses.find(c=>c.id===id)||{}).name||'').filter(Boolean).join(', ');
@@ -12654,8 +12671,7 @@ function reportsListView(){
     </div>
     ${isAdmin ? '' : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
   </div>
-  ${teacherAccessCard}
-  ${zeroCard}
+  ${togglesCard}
   ${isAdmin ? rcShadeCard() : ''}`}
   <div class="card">
     ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tap “Filter report cards by class(es)” above, tick one or more classes and submit, or search a student by name, to see the report card list.</p>` : (()=>{
@@ -14977,6 +14993,37 @@ function parentFinanceView(){
 /* ============================================================
    10. REPORT CARD (fits one page)
    ============================================================ */
+// TOTAL / OVERALL row of a report card: the Course Work columns (each test + the CW Avg column) and the End of Term column
+// show the SUM of that column down all the subjects (not the average). A subject with several papers counts once
+// (its papers are averaged first), so the sum is one figure per subject.
+function rcSumTotals(s, cls, term, year, rows, breakdowns, cwTests, useCwTestCols){
+  let cw=0, cwN=0, eot=0, eotN=0;
+  const tests = cwTests || [];
+  const tSum = tests.map(()=>0), tN = tests.map(()=>0);
+  rows.forEach((r,i)=>{
+    const bd = breakdowns[i] || {};
+    if(bd.aoiAvg!=null){ cw += bd.aoiAvg; cwN++; }
+    if(bd.eotAvg!=null){ eot += bd.eotAvg; eotN++; }
+    if(useCwTestCols && tests.length){
+      const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
+      const entered = pb ? pb.papers.filter(p=>p.hasAny) : [];
+      let papers;
+      if(entered.length>=2) papers = entered.map(p=>p.paper);
+      else {
+        const pl = reportPaperLabels(s.id, r.subject, cls, term, year);
+        const pls = subjectPapersFor(r.subject, cls);
+        papers = [ pl.entered.length===1 ? pl.entered[0] : (pls.length===1 ? pls[0] : null) ];
+      }
+      tests.forEach((t,ti)=>{
+        const vals = [];
+        papers.forEach(pp=>{ const row = cwTestScore(s.id, r.subject, t.name, pp, term, year); if(row) vals.push(scaleRow(row, t.max)); });
+        if(vals.length){ tSum[ti] += vals.reduce((a,b)=>a+b,0)/vals.length; tN[ti]++; }
+      });
+    }
+  });
+  const f = (v,n)=> n ? zr(v.toFixed(1)) : '\u00A0';
+  return { cwTotalTxt: f(cw,cwN), eotTotalTxt: f(eot,eotN), testTotals: tSum.map((v,i)=>f(v,tN[i])) };
+}
 function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const s = DB.students.find(x=>x.id===studentId);
   if(!s) return '<p>Student not found.</p>';
@@ -15243,8 +15290,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // so they're left blank in this row — only the overall Course Work average is shown.
   const cwVals = breakdowns.map(b=>b.aoiAvg).filter(v=>v!==null);
   const eotVals = breakdowns.map(b=>b.eotAvg).filter(v=>v!==null);
-  const cwTotalTxt = cwVals.length ? zr((cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1)) : '\u00A0';
-  const eotTotalTxt = eotVals.length ? zr((eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1)) : '\u00A0';
+  const _sumT = rcSumTotals(s, cls, term, year, rows, breakdowns, cwTests, useCwTestCols);
+  const cwTotalTxt = _sumT.cwTotalTxt;
+  const eotTotalTxt = _sumT.eotTotalTxt;
   // Paper Avg column, TOTAL row (O/A-Level only; Primary does not render this column): the average of every Paper Avg value shown above it
   // on the card — the same underlying figures that each subject's own Final Average
   // is built from — so this cell is a real, traceable number rather than a dash, and
@@ -15259,7 +15307,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // it's the true average, not points-in-disguise. O-Level/Primary formatting (with the
   // trailing %) is unchanged.
   const totalFinalTxt = isA ? zr(avgPct.toFixed(1)) : zrpct(avgPct,0);
-  const totalCwHtml = showCW ? (useCwTestCols ? cwTests.map(()=>'<td>&nbsp;</td>').join('') + `<td>${cwTotalTxt}</td>` : `<td>${cwTotalTxt}</td>`) : '';
+  const totalCwHtml = showCW ? (useCwTestCols ? _sumT.testTotals.map(t=>`<td>${t}</td>`).join('') + `<td>${cwTotalTxt}</td>` : `<td>${cwTotalTxt}</td>`) : '';
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
   const ctName = classTeacherAcc? classTeacherAcc.name : '';
@@ -15616,8 +15664,9 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 
   const cwVals = breakdowns.map(b=>b.aoiAvg).filter(v=>v!==null);
   const eotVals = breakdowns.map(b=>b.eotAvg).filter(v=>v!==null);
-  const cwTotalTxt = cwVals.length ? zr((cwVals.reduce((a,b)=>a+b,0)/cwVals.length).toFixed(1)) : '\u00A0';
-  const eotTotalTxt = eotVals.length ? zr((eotVals.reduce((a,b)=>a+b,0)/eotVals.length).toFixed(1)) : '\u00A0';
+  const _sumT = rcSumTotals(s, cls, term, year, rows, breakdowns, cwTests, useCwTestCols);
+  const cwTotalTxt = _sumT.cwTotalTxt;
+  const eotTotalTxt = _sumT.eotTotalTxt;
   const totalPaperAvgTxt = allPaperFinals.length ? zr((allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1)) : '\u00A0';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
   const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
@@ -15640,7 +15689,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     // Performance Summary. The descriptor sentence is fixed standard wording; the short
     // label ("Exceptional", etc.) still comes from the school's own gradeCommentsFor().
     gradingKey: isP ? null : gradeKeyRows(cls.level),
-    totals: { cwTotalTxt, eotTotalTxt, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
+    totals: { cwTotalTxt, eotTotalTxt, cwTestTotals: _sumT.testTotals, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
     result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year),
     summary: {
       maxP, avgPct, overallGrade, overallDesc, pAggregate, pDivision, position, size,
@@ -15978,7 +16027,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const labelW = labelSpanCols.reduce((a,k)=>a + (colX(k)?colX(k).width:0), 0);
   leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', shadeInk);
   if(data.showCW){
-    if(data.useCwTestCols){ data.cwTests.forEach(t=>{ const c=colX('cw_'+t.name); centerText('', c.x, c.width, cy+totRowH-5, bodySize); }); }
+    if(data.useCwTestCols){ data.cwTests.forEach((t,ti)=>{ const c=colX('cw_'+t.name); centerText((data.totals.cwTestTotals&&data.totals.cwTestTotals[ti])||'', c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }); }
     const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null);
   }
   if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
@@ -16191,8 +16240,17 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.rect(dateX, dateY, dateW, dateH, 'F');
     pdf.rect(dateX, dateY, dateW, dateH);
     const dateCenterY = dateY + dateH/2;
-    centerText(`${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`, dateX, dateW, dateCenterY-2, 6.8, 'bold', [255,255,255]);
-    centerText(`Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`, dateX, dateW, dateCenterY+8, 6.8, 'bold', [255,255,255]);
+    pdf.setFillColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH, 'F'); pdf.setDrawColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH);
+    const _tl1 = `${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`;
+    const _tl2 = `Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`;
+    let _tfs = 8.6; pdf.setFont('helvetica','bold');
+    while(_tfs>5.2){ pdf.setFontSize(_tfs); if(Math.max(pdf.getTextWidth(_tl1), pdf.getTextWidth(_tl2)) <= dateW-8) break; _tfs -= 0.2; }
+    pdf.setLineWidth(0.35);
+    [[_tl1, dateCenterY-2],[_tl2, dateCenterY+9]].forEach(([tx,ty])=>{
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(_tfs); pdf.setTextColor(255,255,255); pdf.setDrawColor(255,255,255);
+      pdf.text(tx, dateX+dateW/2, ty, {align:'center', renderingMode:'fillThenStroke'});
+    });
+    pdf.setLineWidth(0.6);
   }
 
   const rightX = contentX+thirdW*2;
@@ -16952,16 +17010,39 @@ Continue?`);
     case 'dlStaffTemplate': downloadStaffTemplate(); break;
     case 'toggleTeacherReports': {
       if(CUR.role!=='admin'){ alert('Only an Admin can do that.'); break; }
-      DB.info.teachersCanViewReports = !teachersMayViewReports();
-      await saveInfo();
-      showActionSuccess(DB.info.teachersCanViewReports ? 'Teachers can now view report cards' : 'Teachers can no longer view report cards', el, true);
+      if(el.classList.contains('rc-busy')) break;
+      el.classList.add('rc-busy');
+      const _old = teachersMayViewReports();
+      try{
+        DB.info.teachersCanViewReports = !_old;
+        await saveInfo();
+        showActionSuccess(DB.info.teachersCanViewReports ? 'Teachers can now view report cards' : 'Teachers can no longer view report cards', el, true);
+      }catch(err){ DB.info.teachersCanViewReports = _old; el.classList.remove('rc-busy'); showActionFailure('Could not save — try again', el); break; }
+      render(); break;
+    }
+    case 'toggleSubjectCountRank': {
+      if(CUR.role!=='admin'){ alert('Only an Admin can do that.'); break; }
+      if(el.classList.contains('rc-busy')) break;
+      el.classList.add('rc-busy');
+      const _old = subjectCountRanks();
+      try{
+        DB.info.subjectCountInRanking = !_old;
+        await saveInfo();
+        invalidateScoreLookupCache();
+        showActionSuccess(DB.info.subjectCountInRanking ? 'Number of subjects now counts in ranking and positions' : 'Number of subjects no longer counts in ranking and positions', el, true);
+      }catch(err){ DB.info.subjectCountInRanking = _old; el.classList.remove('rc-busy'); showActionFailure('Could not save — try again', el); break; }
       render(); break;
     }
     case 'toggleReportZero': {
       if(CUR.role!=='admin'){ alert('Only an Admin can do that.'); break; }
-      DB.info.reportLeadingZero = !reportZeroOn();
-      await saveInfo();
-      showActionSuccess(DB.info.reportLeadingZero ? 'Report cards now show leading zeros (05)' : 'Report cards now show marks without leading zeros (5)', el, true);
+      if(el.classList.contains('rc-busy')) break;
+      el.classList.add('rc-busy');
+      const _old = reportZeroOn();
+      try{
+        DB.info.reportLeadingZero = !_old;
+        await saveInfo();
+        showActionSuccess(DB.info.reportLeadingZero ? 'Report cards now show leading zeros (05)' : 'Report cards now show marks without leading zeros (5)', el, true);
+      }catch(err){ DB.info.reportLeadingZero = _old; el.classList.remove('rc-busy'); showActionFailure('Could not save — try again', el); break; }
       render(); break;
     }
     case 'dlFeesCodeList': downloadFeesCodeList(); break;
