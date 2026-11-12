@@ -821,7 +821,7 @@ table.rc-info-table td.photo-cell{padding:5px;text-align:center;vertical-align:m
 .rc-perf-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 
 table.rc-perf{width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:auto;}
-table.rc-perf th{text-transform:uppercase;background:var(--blue-light);color:var(--shade-ink,var(--navy));border:1.4px solid var(--shade-line,var(--blue));padding:6px 8px;font-size:10px;font-weight:900;-webkit-text-stroke:.18px currentColor;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
+table.rc-perf th{text-transform:uppercase;background:var(--blue-light);color:var(--shade-ink,var(--navy));border:2px solid var(--shade-line,var(--blue));padding:6px 8px;font-size:10.5px;font-weight:900 !important;-webkit-text-stroke:.55px currentColor;text-transform:uppercase;letter-spacing:.02em;white-space:normal;line-height:1.3;vertical-align:middle;}
 /* Fixed core columns (Subjects, Paper Avg, Final Average, Grade, Descriptor, Teacher
    Initials) always get a guaranteed minimum width so their headers stay on one or two
    clean lines and never get squeezed/overlapped when Course Work test columns are
@@ -1051,6 +1051,8 @@ table.mm-table thead th{background:var(--blue);color:#fff;font-weight:900;text-t
 table.mm-table tbody tr:nth-child(even){background:#F7FAFD;}
 table.mm-table tbody tr:hover{background:var(--blue-light);}
 table.mm-table td:nth-child(3){text-align:left;font-weight:700;white-space:normal;min-width:130px;}
+table.mm-table.mm-rank th{font-weight:900;line-height:1.15;}
+table.mm-table.mm-rank td:nth-child(3){white-space:nowrap;min-width:0;}
 .mm-footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;margin-top:14px;padding-top:10px;border-top:1px solid #cfd9e3;font-size:10.5px;color:var(--muted);}
 @media print{
   .mm-page{box-shadow:none;border:none;max-width:none;}
@@ -1490,11 +1492,12 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .td-fit .tile.tile-scores{background:#C8102E !important;}
 .td-fit .tile-grid-3 .tile.tile-scores .rc-word{font-size:19cqw !important;font-weight:900 !important;-webkit-text-stroke:1.2px #fff !important;paint-order:stroke fill;text-shadow:0 0 1px #fff,0 0 1px #fff;letter-spacing:.01em !important;}
 .td-fit .tile.tile-scores{position:relative;}
-/* Enter Scores tile blinks to grab attention: RED face (ENTER / SCORES) <-> BLUE face (TAP TO ENTER SCORES) */
-.td-fit .tile.tile-scores .ts-blue{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4%;background:#0057D9;border-radius:inherit;pointer-events:none;opacity:0;animation:tsBlink 4s ease-in-out infinite;}
+/* Enter Scores tile blinks to grab attention: RED face (ENTER / SCORES) <-> BLUE face (TAP TO ENTER SCORES).
+   Hard switch every 1.5 seconds, forever. Deliberately NOT disabled by prefers-reduced-motion so it is always visible. */
+.td-fit .tile.tile-scores .ts-blue{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4%;background:#0057D9;border-radius:inherit;pointer-events:none;opacity:0;animation:tsBlink 3s steps(1,end) infinite;}
 .td-fit .tile.tile-scores .ts-blue span{font-size:20cqw;font-weight:900;line-height:1.05;color:#fff;letter-spacing:.01em;-webkit-text-stroke:1.2px #fff;paint-order:stroke fill;text-shadow:0 0 1px #fff,0 0 1px #fff;}
-@keyframes tsBlink{0%,42%{opacity:0;}50%,92%{opacity:1;}100%{opacity:0;}}
-@media (prefers-reduced-motion:reduce){.td-fit .tile.tile-scores .ts-blue{animation:none;opacity:0;}}
+@keyframes tsBlink{0%{opacity:0;}50%{opacity:1;}100%{opacity:0;}}
+sup.ord-sup{font-size:.62em;line-height:0;vertical-align:baseline;position:relative;top:-.5em;font-weight:inherit;}
 .td-rest{overflow:hidden;}
 .td-assign{flex:1 1 auto;overflow:hidden;display:block;}
 .td-assign table{width:100%;font-size:var(--fs,calc(9*var(--uk))) !important;}
@@ -8452,6 +8455,20 @@ function yearAgreedBalance(student, year, d){
 // "1st", "2nd", "3rd", "4th"... used for the installment sub-column headers
 // and the installment number in the per-student follow-up list.
 function ordinal(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+// Report-card ordinals: 1 -> 1st, 2 -> 2nd, 3 -> 3rd, 11/12/13 and everything else -> th, suffix shown as a superscript.
+// mode 'pdf' returns plain text with a \u0001 marker before the suffix (drawn raised/smaller by the jsPDF helper supText()).
+function ordSuffix(n){ n=Math.abs(parseInt(n,10)||0); const v=n%100; if(v>=11&&v<=13) return 'th'; const l=n%10; return l===1?'st':l===2?'nd':l===3?'rd':'th'; }
+function ordSup(n, mode){ const num=parseInt(n,10); if(!isFinite(num)) return String(n); const sx=ordSuffix(num); return mode==='pdf' ? (num+'\u0001'+sx) : (num+'<sup class="ord-sup">'+sx+'</sup>'); }
+function fmtDateOrd(d, mode){
+  if(!d) return '—';
+  try{
+    let dt; const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(d));
+    dt = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(d);
+    if(isNaN(dt.getTime())) return String(d);
+    const mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+    return ordSup(dt.getDate(), mode)+' '+mon+' '+dt.getFullYear();
+  }catch(e){ return fmtDate(d); }
+}
 // The header block shared by every Demand Note — deliberately built to look like
 // the report card's own header (centered logo, bold uppercase school name, italic
 // address/contact line, badge-style document title) using the dedicated .dn-*
@@ -14382,17 +14399,28 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
       </table>
     </div>` : '';
   const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 25);
-  const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
+  const gradeTd = (g)=>`<td style="${rkTd}font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const isO = level==='O';
-  const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Subjects</th><th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':''}${isO?'<th>Overall Grade</th><th>Result</th>':''}<th>Overall Descriptor</th><th>Weak Subject</th>`;
+  // Combination (A-Level) / Optional Subjects (O-Level) column, same as the Students Performance Analysis.
+  const hasCombo = isA || isO;
+  // Tight columns: every column hugs its contents (no idle space at the sides, set inline so the PDF export keeps it);
+  // the Student Name column takes whatever width is left over. Headings of more than one word break onto a second line.
+  const rkTh = 'width:1%;white-space:nowrap;padding:4px 4px;line-height:1.15;';
+  const rkThName = 'width:auto;white-space:nowrap;padding:4px 4px;line-height:1.15;text-align:left;';
+  const rkTd = 'width:1%;white-space:nowrap;padding:4px 4px;';
+  const rkTdName = 'width:auto;white-space:nowrap;min-width:0;padding:4px 4px;text-align:left;line-height:1.2;';
+  // Names stay on ONE line; only a name of more than two words drops its extra name(s) onto a second line.
+  const rkName = (nm)=>{ const w = String(nm||'').trim().split(/\s+/).filter(Boolean); return w.length>2 ? esc(w.slice(0,2).join(' '))+'<br>'+esc(w.slice(2).join(' ')) : esc(w.join(' ')); };
+  const th2 = (a,b)=>`<th style="${rkTh}">${a}${b?`<br>${b}`:''}</th>`;
+  const head = `${th2('Rank')}${th2('Adm','No')}<th style="${rkThName}">Student<br>Name</th>${isLevel?th2('Class'):''}${hasCombo?th2(isA?'Combination':'Optional','Subjects'):''}${th2('Subjects')}${th2('Average')}${isA?th2('Points'):''}${isP?th2('Aggregate')+th2('Division'):''}${isO?th2('Overall','Grade')+th2('Result'):''}${th2('Overall','Descriptor')}${th2('Weak','Subject')}`;
   // Only what applies to the level: Primary = Aggregate + Division; O-Level = Overall Grade + Result; A-Level = Points (no separate grade / result).
-  const colCount = 7 + (isLevel?1:0) + (isA?1:0) + (isP?2:0) + (isO?2:0);
+  const colCount = 7 + (isLevel?1:0) + (hasCombo?1:0) + (isA?1:0) + (isP?2:0) + (isO?2:0);
   const body = pg.pageItems.map(r=>{
     const clsName = r.c ? esc(classFullName(r.c)) : '—';
     const tail = isP
-      ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
+      ? `<td style="${rkTd}font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="${rkTd}font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
       : (isO ? gradeTd(r.grade||'—') : '');
-    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isO?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
+    return `<tr><td style="${rkTd}font-weight:800;">${r.pos}</td><td style="${rkTd}">${esc(r.st.admNo||'—')}</td><td style="${rkTdName}">${rkName(r.st.name)}</td>${isLevel?`<td style="${rkTd}">${clsName}</td>`:''}${hasCombo?`<td style="${rkTd}">${esc(comboLabel(r.st, r.c))}</td>`:''}<td style="${rkTd}">${r.nSubj}</td><td style="${rkTd}">${zpct(r.avgPct,1)}</td>${isA?`<td style="${rkTd}">${r.pts}/${r.maxP}</td>`:''}${tail}${isO?`<td style="${rkTd}font-weight:800;">${r.resultTxt}</td>`:''}<td style="${rkTd}">${esc(r.desc)}</td><td style="${rkTd}text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
   const title = isLevel ? `General Rank List — ${mmLevelLabel(level)}` : 'Rank List';
   const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(classFullName(cls))}`;
@@ -14407,7 +14435,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
       <div class="mm-meta">${scope} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
     </div>
     <div class="mm-tablewrap">
-      <table class="mm-table">
+      <table class="mm-table mm-rank" style="width:100%;">
         <thead><tr>${head}</tr></thead>
         <tbody>${body || `<tr><td colspan="${colCount}">No students to rank yet.</td></tr>`}</tbody>
       </table>
@@ -15458,7 +15486,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${rcShadeStyle()}${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
     ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
-    <div class="rc-topline"><span>${s.feesCode?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDate(Date.now())}</span></div>
+    <div class="rc-topline"><span>${s.feesCode?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
 
     <div class="rc-title-block"${DB.info.logo?' data-has-logo="1"':''}>
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo" alt="School logo">`:''}
@@ -15541,7 +15569,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </tr>
       <tr>
         <td class="lbl">${isP?'Division':'Level'}</td><td class="val">${isP?(pDivision||'—'):(overallDesc||'—')}</td>
-        <td class="lbl">${termLbl} Position</td><td class="val">${position} / ${size}</td>
+        <td class="lbl">${termLbl} Position</td><td class="val">${ordSup(position)} / ${size}</td>
         <td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'}</td>
       </tr>
     </table>
@@ -15591,8 +15619,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </div>
 
       <div class="rc-term-middle"${showEOT?'':' style="visibility:hidden;"'}>
-        ${showEOT?`<div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDate(DB.info.termEndDate)}</div>
-        <div>Next term begins on ${fmtDate(DB.info.nextTermBeginDate)}</div>`:''}
+        ${showEOT?`<div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDateOrd(DB.info.termEndDate)}</div>
+        <div>Next term begins on ${fmtDateOrd(DB.info.nextTermBeginDate)}</div>`:''}
       </div>
 
       <div class="rc-sign-block">
@@ -15853,6 +15881,20 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.setFont('helvetica', style||'normal'); pdf.setFontSize(size); setC(rgb||ink);
     pdf.text(String(text), x, y);
   }
+  // Draws text that may contain ordinal markers (\u0001 + st/nd/rd/th) with the suffix as a small raised superscript.
+  // Uses the font/size/colour already set on pdf. align: 'left' | 'center' | 'right' relative to x.
+  function supText(text, x, y, align){
+    const str = String(text), re = /\u0001(st|nd|rd|th)/g, parts = []; let last = 0, m;
+    while((m = re.exec(str))){ parts.push({t:str.slice(last, m.index)}); parts.push({t:m[1], sup:true}); last = m.index + m[0].length; }
+    parts.push({t:str.slice(last)});
+    const fs = pdf.getFontSize(), sfs = fs*0.62;
+    parts.forEach(p=>{ pdf.setFontSize(p.sup?sfs:fs); p.w = pdf.getTextWidth(p.t); });
+    pdf.setFontSize(fs);
+    const total = parts.reduce((a,p)=>a+p.w,0);
+    let cx = align==='center' ? x-total/2 : align==='right' ? x-total : x;
+    parts.forEach(p=>{ if(!p.t) return; pdf.setFontSize(p.sup?sfs:fs); pdf.text(p.t, cx, p.sup ? y-fs*0.36 : y); cx += p.w; });
+    pdf.setFontSize(fs);
+  }
 
   // ---- 1. Faint background watermark of the school logo (behind everything) ----
   if(data.school.logo){
@@ -15884,7 +15926,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // ---- 3. Topline: fees code + printed date ----
   pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
   if(data.feesCode){ pdf.setFont('helvetica','bold'); pdf.setFontSize(10.5); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy+5); /* +4: nudged down off the card border, still clear of the logo below */ pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted); }
-  pdf.text(`Printed ${fmtDate(Date.now())}`, contentX+contentW, cy, {align:'right'});
+  supText(`Printed ${fmtDateOrd(Date.now(),'pdf')}`, contentX+contentW, cy, 'right');
   cy += 10;
 
   // ---- 4. Title block: the school name/meta are centered across the FULL header.
@@ -16184,7 +16226,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
      data.isA?'Total Points':'Total Final Average', data.isA?`${data.totals.totalPoints}/${sm.maxP}`:zrpct(sm.avgPct,0),
      data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')],
     [data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—'),
-     `${data.term} Position`, `${sm.position} / ${sm.size}`,
+     `${data.term} Position`, `${ordSup(sm.position,'pdf')} / ${sm.size}`,
      `Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`,
      (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]
   ];
@@ -16199,7 +16241,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       if(isLbl){ pdf.rect(rx, ry, sumColW, sumRowH, 'F'); pdf.rect(rx, ry, sumColW, sumRowH); }
       const val = row[ci];
       const lines = wrap(String(val), sumColW-6, isLbl?6.5:8, isLbl?'bold':'normal');
-      centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, isLbl?'bold':'normal', isLbl?shadeInk:ink);
+      if(!isLbl && /\u0001/.test(String(val))){ pdf.setFont('helvetica','normal'); pdf.setFontSize(8); setC(ink); supText(String(val), rx+sumColW/2, ry+sumRowH-5, 'center'); }
+      else centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, isLbl?'bold':'normal', isLbl?shadeInk:ink);
     }
   });
   cy += sumRowH*2 + 14 + gapBoost;
@@ -16338,14 +16381,14 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.rect(dateX, dateY, dateW, dateH);
     const dateCenterY = dateY + dateH/2;
     pdf.setFillColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH, 'F'); pdf.setDrawColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH);
-    const _tl1 = `${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`;
-    const _tl2 = `Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`;
+    const _tl1 = `${data.signOff.currentTerm||'Term'} ended on ${fmtDateOrd(data.signOff.termEndDate,'pdf')}`;
+    const _tl2 = `Next term begins on ${fmtDateOrd(data.signOff.nextTermBeginDate,'pdf')}`;
     let _tfs = 9.6; pdf.setFont('times','bold');
-    while(_tfs>5.2){ pdf.setFontSize(_tfs); if(Math.max(pdf.getTextWidth(_tl1), pdf.getTextWidth(_tl2)) <= dateW-8) break; _tfs -= 0.2; }
+    while(_tfs>5.2){ pdf.setFontSize(_tfs); if(Math.max(pdf.getTextWidth(_tl1.replace(/\u0001/g,'')), pdf.getTextWidth(_tl2.replace(/\u0001/g,''))) <= dateW-8) break; _tfs -= 0.2; }
     pdf.setLineWidth(0.35);
     [[_tl1, dateCenterY-2],[_tl2, dateCenterY+9]].forEach(([tx,ty])=>{
       pdf.setFont('times','bold'); pdf.setFontSize(_tfs); pdf.setTextColor(255,255,255);
-      pdf.text(tx, dateX+dateW/2, ty, {align:'center'});
+      supText(tx, dateX+dateW/2, ty, 'center');
     });
     pdf.setLineWidth(0.6);
   }
@@ -21016,6 +21059,7 @@ function printPortrait(opts){
     + ' #printArea table{width:100% !important;min-width:0 !important;table-layout:auto;border-collapse:collapse;}'
     + ' #printArea table.mm-table th, #printArea table.mm-table td{padding:2px 3px !important;font-size:7.5px !important;white-space:normal !important;word-break:break-word;}'
     + ' #printArea table.mm-table th{font-size:7px !important;}'
+    + ' #printArea table.mm-rank th, #printArea table.mm-rank td{white-space:nowrap !important;word-break:normal !important;padding:2px 3px !important;}'
     + ' #printArea table:not(.mm-table) th, #printArea table:not(.mm-table) td{padding:3px 5px !important;font-size:10px !important;height:6.4mm;}'
     + ' #printArea .ms-print-page.ms-fill table:not(.mm-table) th, #printArea .ms-print-page.ms-fill table:not(.mm-table) td{padding:1px 4px !important;height:5mm !important;line-height:1.15;}'
     + ' }';
