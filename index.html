@@ -736,8 +736,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    uses otherwise-free space on the left instead of stealing a table/header column.
    Its natural aspect ratio is preserved, so a wide uploaded logo stays wide rather
    than being squeezed into a reserved column. */
-.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;aspect-ratio:1/1;max-width:none;object-fit:contain;object-position:center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
-#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;aspect-ratio:1/1 !important;max-width:none !important;object-fit:contain !important;}
+.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;max-width:40%;object-fit:contain;object-position:left center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
+#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;max-width:40% !important;object-fit:contain !important;object-position:left center !important;}
 .rc-title-block .rc-header-text{width:100%;min-width:0;text-align:center;}
 /* Only when the logo would physically collide with a long school name do we reserve
    a small amount of left breathing room. The header remains centered within the full
@@ -7065,6 +7065,7 @@ function fitOnePage(root, settle=true){
 
   const title = inner.querySelector('.rc-title-block');
   const logo = title && title.querySelector('.rc-logo');
+  if(logo) logo.style.maxWidth = '';   // re-measure from the natural proportions each time
   const schoolName = title && title.querySelector('.school');
   if(schoolName){
     const nameLength = (schoolName.textContent || '').trim().length;
@@ -7084,9 +7085,16 @@ function fitOnePage(root, settle=true){
       if(rr.width>0) nameLeft = Math.min(nameLeft, rr.left - titleRect.left);
     });
     if(nameLeft === Infinity) nameLeft = schoolName.getBoundingClientRect().left - titleRect.left;
-    if(logoRight + 8 > nameLeft){
+    // The badge keeps its true proportions (height-driven, width auto). It may use the free space to the
+    // left of the header text, but is capped so it never enters it (letterboxed, never stretched).
+    const freeW = nameLeft - 8 - logo.offsetLeft;
+    if(freeW > 0 && logo.offsetWidth > freeW){
+      logo.style.maxWidth = freeW + 'px';
+    }
+    const logoRight2 = logo.offsetLeft + logo.offsetWidth;
+    if(logoRight2 + 8 > nameLeft && freeW < logo.offsetHeight*0.5){
       inner.classList.add('rc-logo-crowded');
-      inner.style.setProperty('--rc-logo-pad', (logoRight + 8) + 'px');
+      inner.style.setProperty('--rc-logo-pad', (logoRight2 + 8) + 'px');
     }
   }
 
@@ -15971,19 +15979,31 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // This mirrors the on-screen .rc-title-block layout. ----
   const titleTop = cy;
   const textX = contentX, textW = contentW;
+  const schoolNameText = String(data.school.name||'');
+  const schoolNameSize = schoolNameText.trim().length <= 22 ? 18 : (schoolNameText.trim().length <= 38 ? 16 : 14);
   if(data.school.logo){
     try{
       const props = pdf.getImageProperties(data.school.logo);
-      const FRAME = 54;   // square (invisible) frame = full header height
+      const FRAME = 54;   // header height: the badge never exceeds this
       const ratio = props.width/props.height;
-      let logoW = FRAME, logoH = FRAME;
-      if(ratio >= 1) logoH = FRAME/ratio; else logoW = FRAME*ratio;
-      // Fills the square frame at the header's left; centred inside it; never used to calculate textX/textW.
-      pdf.addImage(data.school.logo, 'PNG', contentX + (FRAME-logoW)/2, titleTop + (FRAME-logoH)/2, logoW, logoH);
+      // Free width to the left of the widest centred header line (school name, meta lines, form-title badge).
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(schoolNameSize);
+      let widest = pdf.getTextWidth(schoolNameText);
+      pdf.setFont('helvetica','italic'); pdf.setFontSize(8);
+      widest = Math.max(widest,
+        pdf.getTextWidth(`Academic Year: ${data.year}` + (data.school.address ? '   |   '+data.school.address : '')),
+        (data.school.phone || data.school.email) ? pdf.getTextWidth([data.school.phone?('Tel: '+data.school.phone):'', data.school.email?('Email: '+data.school.email):''].filter(Boolean).join('   |   ')) : 0);
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(9.5);
+      const _ft = data.isA?"A' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM":(data.isP?"STUDENT'S ACADEMIC REPORT CARD FORM":"O' LEVEL STUDENT'S ACADEMIC REPORT CARD FORM");
+      widest = Math.max(widest, pdf.getTextWidth(_ft) + 16);
+      const freeW = Math.max(0, (contentW - Math.min(widest, contentW))/2 - 6);
+      // True proportions: height-driven, widened for wide badges, but capped by the free width (never deformed, never entering the header text).
+      let logoH = FRAME, logoW = FRAME*ratio;
+      const maxW = Math.max(20, freeW);
+      if(logoW > maxW){ logoW = maxW; logoH = logoW/ratio; }
+      pdf.addImage(data.school.logo, 'PNG', contentX, titleTop + (FRAME-logoH)/2, logoW, logoH);
     }catch(e){ /* skip logo, keep going */ }
   }
-  const schoolNameText = String(data.school.name||'');
-  const schoolNameSize = schoolNameText.trim().length <= 22 ? 18 : (schoolNameText.trim().length <= 38 ? 16 : 14);
   centerText(schoolNameText, textX, textW, titleTop+13, schoolNameSize, 'bold', navy);
   let metaY = titleTop+24;
   let metaLine1 = `Academic Year: ${data.year}`;
@@ -21493,6 +21513,13 @@ async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
   const thead = table.querySelector('thead');
   const headRows = thead ? [...thead.querySelectorAll('tr')] : [table.querySelector('tr')].filter(Boolean);
   const bodyRows = [...table.querySelectorAll('tbody tr')];
+  // Rank List / General Rank List: the on-screen cells carry inline width:1% (tight columns). In the offscreen PDF
+  // capture that squeezes the cells, so strip it and style the table exactly like the Result Analysis
+  // Student Performance export (which downloads correctly).
+  const isRankTable = table.classList.contains('mm-rank');
+  if(isRankTable){
+    headRows.concat(bodyRows).forEach(r=>{ [...(r.cells||[])].forEach(c=>{ c.style.removeProperty('width'); c.style.removeProperty('min-width'); }); });
+  }
   const schoolEl = el.querySelector('.mm-school');
   const titleEl = el.querySelector('.mm-title');
   const metaEl = el.querySelector('.mm-meta');
@@ -21507,7 +21534,7 @@ async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
     school: (schoolEl&&schoolEl.textContent) || DB.info.schoolName || '',
     title: (titleEl&&titleEl.textContent) || '',
     subtitle: metaEl ? metaEl.textContent : '',
-    headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0,
+    headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0, isSp: isRankTable,
     emptyText: 'No students to show yet.'
   }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage: opts.rowsPerPage || 25});
 }
