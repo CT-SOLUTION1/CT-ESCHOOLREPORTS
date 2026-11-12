@@ -13624,7 +13624,7 @@ function classAnalysisViewCore(){
     <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
       <div style="flex:1 1 300px;min-width:0;"><label>1. Analysis form</label>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
-        ${ANALYSIS_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1])}</button>`).join('')}
+        ${ANALYSIS_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1].toUpperCase())}</button>`).join('')}
         </div></div>
       <div style="flex:1 1 220px;min-width:0;"><label>2. Assessment type</label>
         <select ${formKey?'':'disabled'} onchange="setAnalysisParam('assess', this.value)">
@@ -14012,13 +14012,14 @@ function masterMarkSheetViewCore(forExport){
   if(!ASSESS_TYPES.length) ASSESS_TYPES.push(['integrated','Score']);
   const assessKey = (formKey && ASSESS_TYPES.some(a=>a[0]===sel.mmAssess)) ? sel.mmAssess : '';
   const cls = assessKey ? _selCls : null;
+  const assessLabelMM = (ASSESS_TYPES.find(a=>a[0]===assessKey)||['',''])[1];
   const selectorsHtml = (buttonsHtml)=>`
   <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
   <div class="card">
     <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
       <div style="flex:1 1 300px;min-width:0;"><label>1. Sheet type</label>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
-        ${MM_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setMasterMarkSheetParam('mmMode','${f[0]}')">${esc(f[1])}</button>`).join('')}
+        ${MM_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setMasterMarkSheetParam('mmMode','${f[0]}')">${esc(f[1].toUpperCase())}</button>`).join('')}
         </div></div>
       <div style="flex:1 1 220px;min-width:0;"><label>2. Assessment type</label>
         <select ${formKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmAssess', this.value)">
@@ -14053,7 +14054,7 @@ function masterMarkSheetViewCore(forExport){
   // register; 'grades' shows only the letter/code each learner earned per subject, so it
   // reads like an official results sheet. Kept as one function (same underlying data,
   // same landscape layout) so the two never drift out of sync with each other.
-  if(sel.mmMode==='rank' || (sel.mmMode==='level' && isAdmin)) return masterRankView({isAdmin, visibleClasses, cls, term, year, mode:sel.mmMode, sel, forExport, selectorsHtml});
+  if(sel.mmMode==='rank' || (sel.mmMode==='level' && isAdmin)) return masterRankView({isAdmin, visibleClasses, cls, term, year, mode:sel.mmMode, sel, forExport, selectorsHtml, assessLabelMM});
   // Two extra admin-only sheets cover a WHOLE LEVEL at once (every class of that level together,
   // best performer first, with a Class column): 'lscores' (Real Scores) and 'lgrades' (Letter Grades).
   const isLevelSheet = isAdmin && (sel.mmMode==='lscores' || sel.mmMode==='lgrades');
@@ -14195,17 +14196,8 @@ function masterMarkSheetViewCore(forExport){
       </table>` : ''}
     </div>` : '';
 
-  const mmNote = `<div class="note" style="margin-top:12px;">${isLevelSheet ? 'This sheet puts every learner of the whole level together — all classes — arranged from the best performer downwards, with a Class column after each name. Position is the learner\'s position in the level.' : ''} ${mode==='scores'
-      ? 'This sheet lists every student\'s raw marks — no grading — with a sub-column per paper for subjects that have more than one.'
-      : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position.'
-    } It\'s wide — download it as a PDF or print it, and choose <b>PORTRAIT</b> paper (saves pages).</div>
-    <div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (landscape)</b></button>
-      <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (landscape)</button>
-      <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
-    </div>`;
   return `
-  ${selectorsHtml(mmNote)}
+  ${mmTopBar((isLevelSheet?mmLevelLabel(level):cls.name)+' — '+assessLabelMM, term, year, `${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}`)}
   <div id="printArea">
   <div class="mm-page">
     <div class="mm-header">
@@ -14241,7 +14233,7 @@ function mmLevelLabel(l){ return l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "
 // Rank List (one class) and General Rank List (every class of one level): students sorted
 // best-first by the same metric the report-card position uses (Average %, or Points at
 // A-Level), with ties sharing a rank. Reuses the .mm-* layout so PDF/print export is unchanged.
-function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport, selectorsHtml}){
+function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport, selectorsHtml, assessLabelMM}){
   const isLevel = mode==='level';
   const levels = ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l));
   const level = isLevel ? (levels.includes(sel.mmLevel) ? sel.mmLevel : levels[0]) : cls.level;
@@ -14275,11 +14267,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(classFullName(cls))}`;
   const arg = `${cls.id}:${encodeURIComponent(term)}:${year}:${mode}`;
   return `
-  ${selectorsHtml(`<div class="flex" style="margin-top:12px;">
-      <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (landscape)</b></button>
-      <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (landscape)</button>
-      <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
-    </div>`)}
+  ${mmTopBar((isLevel?mmLevelLabel(level):cls.name)+' — '+assessLabelMM, term, year, arg)}
   <div id="printArea">
   <div class="mm-page">
     <div class="mm-header">
@@ -14305,6 +14293,24 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
 // Changing class/term/year/mode always jumps back to page 1 (the old page number
 // likely no longer makes sense for a different roster) — except when the change
 // IS the page number itself.
+// After a sheet type / assessment type is chosen, the next dropdown opens by itself (same as Result Analysis).
+// Once a sheet is loaded, the pickers disappear and only this slim bar + the document remain (like Result Analysis).
+function mmTopBar(label, term, year, arg){
+  return `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="setMasterMarkSheetParam('mmMode','')">◀ Back</button><b>${esc(label)} — ${esc(term)}, ${esc(String(year))}</b><button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF</b></button><button class="btn" data-action="printMasterMarkSheet:${arg}">Print</button></div>`;
+}
+function mmOpenNextDropdown(key){
+  if(!VIEW || VIEW.name!=='mastermarksheet') return false;
+  const v = VIEW.params || {};
+  let sel = null;
+  if(key==='mmMode' && v.mmMode) sel = document.querySelector('.center-stage select[onchange*="\'mmAssess\'"]');
+  else if(key==='mmAssess' && v.mmAssess) sel = document.querySelector('.center-stage select[onchange*="\'mmClassId\'"], .center-stage select[onchange*="\'mmLevel\'"]');
+  if(!sel || sel.disabled) return false;
+  try{ sel.focus(); }catch(e){}
+  let opened = false;
+  try{ if(typeof sel.showPicker==='function'){ sel.showPicker(); opened = true; } }catch(e){}
+  if(!opened){ sel.size = Math.min(sel.options.length, 8); }
+  return true;
+}
 function setMasterMarkSheetParam(key, value){
   // Each step re-opens the ones after it (same as Result Analysis).
   const cascade = key==='mmMode' ? {mmAssess:'', mmClassId:'', mmLevel:''} : (key==='mmAssess' ? {mmClassId:'', mmLevel:''} : {});
@@ -14313,6 +14319,9 @@ function setMasterMarkSheetParam(key, value){
   VIEW.params = params;
   const myKey=VIEW.name+'|'+JSON.stringify(params);
   render();
+  if((key==='mmMode' || key==='mmAssess') && value){
+    if(!mmOpenNextDropdown(key)) setTimeout(()=>mmOpenNextDropdown(key), 60);
+  }
   if(key==='mmTerm' || key==='mmYear'){
     refreshScoresForPeriod(params.mmTerm||DB.info.currentTerm, params.mmYear||DB.info.currentYear)
       .then(()=>{ if(VIEW.name==='mastermarksheet' && (VIEW.params.mmTerm||DB.info.currentTerm)===(params.mmTerm||DB.info.currentTerm) && String(VIEW.params.mmYear||DB.info.currentYear)===String(params.mmYear||DB.info.currentYear)) render(); })
