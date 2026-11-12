@@ -736,13 +736,13 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    uses otherwise-free space on the left instead of stealing a table/header column.
    Its natural aspect ratio is preserved, so a wide uploaded logo stays wide rather
    than being squeezed into a reserved column. */
-.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:64px;width:auto;max-width:240px;object-fit:contain;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}
-#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:64px !important;width:auto !important;max-width:240px !important;object-fit:contain !important;}
+.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;aspect-ratio:1/1;max-width:none;object-fit:contain;object-position:center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
+#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;aspect-ratio:1/1 !important;max-width:none !important;object-fit:contain !important;}
 .rc-title-block .rc-header-text{width:100%;min-width:0;text-align:center;}
 /* Only when the logo would physically collide with a long school name do we reserve
    a small amount of left breathing room. The header remains centered within the full
    card whenever there is enough free space, which is the normal case. */
-.rc-title-block.rc-logo-crowded .rc-header-text{padding-left:170px;}
+.rc-title-block.rc-logo-crowded .rc-header-text{padding-left:var(--rc-logo-pad,170px);}
 /* School name is the single boldest text on the report card. CSS font-weight tops out
    at 900 (the same weight now used by subject names, table titles, and column titles
    below), so a hairline text-stroke is layered on top of font-weight:900 here to push
@@ -1025,7 +1025,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 .rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
-.rc-motto{text-align:center;font-style:italic;font-size:12.5px;color:var(--navy);margin-top:8px;}
+.rc-motto{text-align:center;font-style:normal;font-weight:900;font-size:17px;letter-spacing:.04em;line-height:1.3;color:#000;margin-top:10px;margin-bottom:4px;-webkit-text-stroke:.35px currentColor;}
 
 .legend-strip{display:flex;gap:9px;flex-wrap:wrap;font-size:9.5px;margin-top:10px;color:var(--muted);align-items:center;justify-content:center;}
 .legend-strip b{color:var(--ink);}
@@ -2031,7 +2031,6 @@ table.rc-list td.stu-name,table.sp-students td.stu-name{font-size:calc(var(--tf,
 table.rc-list td,table.sp-students td{padding:calc(var(--tf,12)*.12px) calc(var(--tf,12)*.35px) !important;line-height:1.2;}
 table.rc-list td:last-child .btn-outline{display:inline-block;width:auto;box-sizing:border-box;margin:0 calc(var(--tf,12)*.12px) !important;font-size:calc((var(--tf,12) - 1)*1px) !important;font-weight:700 !important;padding:calc(var(--tf,12)*.1px) calc(var(--tf,12)*.35px) !important;border-width:1px !important;white-space:nowrap;line-height:1.2;}
 table.sp-students td:not(:nth-child(3)){text-align:center;}
-table.sp-students td:nth-child(4){text-align:left;}
 .rc-topbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 6px;}
 /* Report Cards: tick-several-classes picker */
 .rc-pick-list{border:1px solid #cfd9e3;border-radius:8px;padding:2px 10px;margin:6px 0 0;max-height:46vh;overflow:auto;background:#fff;}
@@ -2129,6 +2128,12 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   table.rc-list th.rc-combo{white-space:normal !important;width:1%;line-height:1.1;}
   table.rc-list td.rc-combo{white-space:nowrap !important;width:1%;}
 .dl-loading{opacity:.85 !important;pointer-events:none !important;cursor:progress !important;}
+#mmLoadingOverlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(10,42,74,.55);}
+#mmLoadingOverlay .mm-load-box{background:#fff;color:#0A2A4A;border:4px solid #0A2A4A;border-radius:14px;padding:22px 34px;font-size:30px;font-weight:900;letter-spacing:.03em;box-shadow:0 8px 30px rgba(0,0,0,.35);display:flex;align-items:baseline;}
+#mmLoadingOverlay .mm-dot{display:inline-block;width:.6em;text-align:center;animation:mmDotJump 1s infinite ease-in-out;}
+#mmLoadingOverlay .mm-dot:nth-child(2){animation-delay:.18s;}
+#mmLoadingOverlay .mm-dot:nth-child(3){animation-delay:.36s;}
+@keyframes mmDotJump{0%,70%,100%{transform:translateY(0);opacity:.25;}35%{transform:translateY(-.35em);opacity:1;}}
   /* moving dots: opacity/transform only, so they keep moving on the compositor even while the form is being built */
   .ra-dots{display:inline-flex;gap:.22em;margin-left:.45em;vertical-align:middle;}
   .ra-dots i{display:inline-block;width:.34em;height:.34em;border-radius:50%;background:currentColor;opacity:.25;will-change:opacity,transform;animation:raDot .9s infinite ease-in-out;}
@@ -2238,7 +2243,8 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   #printArea .lp-page table{width:100% !important;min-width:0 !important;display:table !important;border-collapse:collapse !important;}
   #printArea .lp-page table th, #printArea .lp-page table td{padding:3px 5px !important;font-size:10px !important;height:6mm;white-space:normal !important;word-break:break-word;}
   #printArea .lp-page table th{font-size:9px !important;}
-  #printArea .lp-page table.sp-students th{font-size:10px !important;}   /* Student Performance: headings use the same size as the contents */
+  #printArea .lp-page table.sp-students th{font-size:10px !important;}
+  #printArea .lp-page table td.stu-name, #printArea .lp-page table.sp-students th.sp-nw{white-space:nowrap !important;word-break:normal !important;}   /* Student Performance: headings use the same size as the contents */
   #printArea .lp-page.lp-land table th, #printArea .lp-page.lp-land table td{font-size:9px !important;}
   #printArea .lp-page.lp-land table th{font-size:8px !important;}
 }
@@ -7055,6 +7061,7 @@ function fitOnePage(root, settle=true){
   content.style.width='';
   inner.classList.remove('rc-auto-spaced','rc-logo-crowded');
   inner.style.removeProperty('--rc-extra-gap');
+  inner.style.removeProperty('--rc-logo-pad');
 
   const title = inner.querySelector('.rc-title-block');
   const logo = title && title.querySelector('.rc-logo');
@@ -7068,10 +7075,19 @@ function fitOnePage(root, settle=true){
   }
   if(title && logo && schoolName){
     const logoRight = logo.offsetLeft + logo.offsetWidth;
-    const nameRect = schoolName.getBoundingClientRect();
     const titleRect = title.getBoundingClientRect();
-    const nameLeft = nameRect.left - titleRect.left;
-    if(logoRight + 8 > nameLeft) inner.classList.add('rc-logo-crowded');
+    // leftmost edge of ANY header line (school name, address line, form title) must clear the badge
+    let nameLeft = Infinity;
+    title.querySelectorAll('.school,.meta,.subtitle').forEach(function(el){
+      const r = document.createRange(); r.selectNodeContents(el);
+      const rr = r.getBoundingClientRect();
+      if(rr.width>0) nameLeft = Math.min(nameLeft, rr.left - titleRect.left);
+    });
+    if(nameLeft === Infinity) nameLeft = schoolName.getBoundingClientRect().left - titleRect.left;
+    if(logoRight + 8 > nameLeft){
+      inner.classList.add('rc-logo-crowded');
+      inner.style.setProperty('--rc-logo-pad', (logoRight + 8) + 'px');
+    }
   }
 
   // The visible frame is exactly the A4 printable proportion used by the PDF:
@@ -13881,9 +13897,12 @@ function classAnalysisViewCore(){
     const tail = isPL
       ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
       : (isOL ? spGradeTd(r.grade||'—') : '');
-    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td class="stu-name" style="text-align:left;">${esc(r.st.name)}</td>${hasCombo?`<td style="text-align:left;">${esc(comboLabel(r.st,cls))}</td>`:''}<td${isPL?' style="text-align:center;"':''}>${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isAL?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isOL?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
+    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td class="stu-name" style="text-align:left;white-space:nowrap;">${esc(String(r.st.name||'').trim().replace(/\s+/g,' '))}</td>${hasCombo?`<td>${esc(comboLabel(r.st,cls))}</td>`:''}<td${isPL?' style="text-align:center;"':''}>${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isAL?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isOL?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
-  const spHead = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${hasCombo?`<th>${isAL?'Combination':'Optional Subjects'}</th>`:''}<th>Subjects</th><th>Average</th>${isAL?'<th>Points</th>':''}${isPL?'<th>Aggregate</th><th>Division</th>':''}${isOL?'<th>Overall Grade</th><th>Result</th>':''}<th>Overall Descriptor</th><th>Weak Subject</th>`;
+  // Same column headings and writing format as the General Marksheets Rank List: Adm No and Student Name on ONE line; other two-word headings split over two lines.
+  const spThS = 'white-space:nowrap;line-height:1.15;';
+  const spTh2 = (a,b)=>`<th style="${spThS}">${a}${b?`<br>${b}`:''}</th>`;
+  const spHead = `${spTh2('Rank')}<th class="sp-nw" style="${spThS}">Adm No</th><th class="sp-nw" style="${spThS}text-align:left;">Student Name</th>${hasCombo?spTh2(isAL?'Combination':'Optional','Subjects'):''}${spTh2('Subjects')}${spTh2('Average')}${isAL?spTh2('Points'):''}${isPL?spTh2('Aggregate')+spTh2('Division'):''}${isOL?spTh2('Overall','Grade')+spTh2('Result'):''}${spTh2('Overall','Descriptor')}${spTh2('Weak','Subject')}`;
   const spCols = 7 + (hasCombo?1:0) + (isAL?1:0) + (isPL?2:0) + (isOL?2:0);   // columns that apply to this level
   // RESULT 2 caused by a missed subject: listed below the table (student + subject(s) missed), in rank order — as on the Rank List.
   const spMissed = spData.filter(r=> r.resultTxt==='2').map(r=>({r, subs: missedSubjectsFor(r.st, cls, term, year)})).filter(x=>x.subs.length);
@@ -14409,10 +14428,10 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const rkThName = 'width:auto;white-space:nowrap;padding:4px 4px;line-height:1.15;text-align:left;';
   const rkTd = 'width:1%;white-space:nowrap;padding:4px 4px;';
   const rkTdName = 'width:auto;white-space:nowrap;min-width:0;padding:4px 4px;text-align:left;line-height:1.2;';
-  // Names stay on ONE line; only a name of more than two words drops its extra name(s) onto a second line.
-  const rkName = (nm)=>{ const w = String(nm||'').trim().split(/\s+/).filter(Boolean); return w.length>2 ? esc(w.slice(0,2).join(' '))+'<br>'+esc(w.slice(2).join(' ')) : esc(w.join(' ')); };
+  // Names always stay on ONE line, however many words they have.
+  const rkName = (nm)=> esc(String(nm||'').trim().split(/\s+/).filter(Boolean).join(' '));
   const th2 = (a,b)=>`<th style="${rkTh}">${a}${b?`<br>${b}`:''}</th>`;
-  const head = `${th2('Rank')}${th2('Adm','No')}<th style="${rkThName}">Student<br>Name</th>${isLevel?th2('Class'):''}${hasCombo?th2(isA?'Combination':'Optional','Subjects'):''}${th2('Subjects')}${th2('Average')}${isA?th2('Points'):''}${isP?th2('Aggregate')+th2('Division'):''}${isO?th2('Overall','Grade')+th2('Result'):''}${th2('Overall','Descriptor')}${th2('Weak','Subject')}`;
+  const head = `${th2('Rank')}<th style="${rkTh}">Adm No</th><th style="${rkThName}">Student Name</th>${isLevel?th2('Class'):''}${hasCombo?th2(isA?'Combination':'Optional','Subjects'):''}${th2('Subjects')}${th2('Average')}${isA?th2('Points'):''}${isP?th2('Aggregate')+th2('Division'):''}${isO?th2('Overall','Grade')+th2('Result'):''}${th2('Overall','Descriptor')}${th2('Weak','Subject')}`;
   // Only what applies to the level: Primary = Aggregate + Division; O-Level = Overall Grade + Result; A-Level = Points (no separate grade / result).
   const colCount = 7 + (isLevel?1:0) + (hasCombo?1:0) + (isA?1:0) + (isP?2:0) + (isO?2:0);
   const body = pg.pageItems.map(r=>{
@@ -14471,6 +14490,19 @@ function mmOpenNextDropdown(key){
   if(!opened){ sel.size = Math.min(sel.options.length, 8); }
   return true;
 }
+// Big, clear "Loading..." box with moving dots, shown while a General Marksheet / Rank List is being built.
+let _mmLoadT0 = 0;
+function mmShowLoading(){
+  if(document.getElementById('mmLoadingOverlay')) return;
+  const d = document.createElement('div'); d.id = 'mmLoadingOverlay'; d.setAttribute('role','status'); d.setAttribute('aria-live','polite');
+  d.innerHTML = '<div class="mm-load-box">Loading<span class="mm-dot">.</span><span class="mm-dot">.</span><span class="mm-dot">.</span></div>';
+  document.body.appendChild(d); _mmLoadT0 = Date.now();
+}
+function mmHideLoading(){
+  const d = document.getElementById('mmLoadingOverlay'); if(!d) return;
+  const wait = Math.max(0, 450 - (Date.now()-_mmLoadT0));   // always visible long enough to be seen
+  setTimeout(()=>{ const x = document.getElementById('mmLoadingOverlay'); if(x) x.remove(); }, wait);
+}
 function setMasterMarkSheetParam(key, value){
   // Each step re-opens the ones after it (same as Result Analysis).
   const cascade = key==='mmMode' ? {mmAssess:'', mmClassId:'', mmLevel:''} : (key==='mmAssess' ? {mmClassId:'', mmLevel:''} : {});
@@ -14478,7 +14510,11 @@ function setMasterMarkSheetParam(key, value){
   if(key!=='mmPage') params.mmPage = 1;
   VIEW.params = params;
   const myKey=VIEW.name+'|'+JSON.stringify(params);
-  render();
+  if((key==='mmClassId' || key==='mmLevel') && value){
+    // Class / level just chosen: the sheet takes a few seconds to build, so paint the Loading box first, then build.
+    mmShowLoading();
+    setTimeout(()=>{ try{ render(); } finally { mmHideLoading(); } }, 60);
+  } else render();
   if((key==='mmMode' || key==='mmAssess') && value){
     if(!mmOpenNextDropdown(key)) setTimeout(()=>mmOpenNextDropdown(key), 60);
   }
@@ -15938,12 +15974,12 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   if(data.school.logo){
     try{
       const props = pdf.getImageProperties(data.school.logo);
-      const maxLogoH = 54, maxLogoW = Math.min(240, contentW*0.45);
+      const FRAME = 54;   // square (invisible) frame = full header height
       const ratio = props.width/props.height;
-      let logoH = maxLogoH, logoW = logoH*ratio;
-      if(logoW > maxLogoW){ logoW = maxLogoW; logoH = logoW/ratio; }
-      // Left-aligned in the header's free margin area; never used to calculate textX/textW.
-      pdf.addImage(data.school.logo, 'PNG', contentX, titleTop + (54-logoH)/2, logoW, logoH);
+      let logoW = FRAME, logoH = FRAME;
+      if(ratio >= 1) logoH = FRAME/ratio; else logoW = FRAME*ratio;
+      // Fills the square frame at the header's left; centred inside it; never used to calculate textX/textW.
+      pdf.addImage(data.school.logo, 'PNG', contentX + (FRAME-logoW)/2, titleTop + (FRAME-logoH)/2, logoW, logoH);
     }catch(e){ /* skip logo, keep going */ }
   }
   const schoolNameText = String(data.school.name||'');
@@ -16424,7 +16460,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // ---- 11. Fees legend, motto, scoring note ----
   const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?('UGX '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?('UGX '+Number(data.nextTermFees).toLocaleString()):'—'}`;
   centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
-  if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 8.5, 'italic', navy); cy += 12; }
+  if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
   centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
 
   // Fit the finished content exactly between the top and bottom insets of the
