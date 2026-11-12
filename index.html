@@ -5448,8 +5448,10 @@ function zpct(n, d){ const x = Number(n); return isFinite(x) ? zp(x.toFixed(d||0
 function reportZeroOn(){ return !(DB.info && DB.info.reportLeadingZero===false); }
 function zr(v){
   if(v===null || v===undefined) return v;
-  if(reportZeroOn()) return zp(v);
-  return String(v).replace(/^0+(?=\d)/,'');
+  // whole numbers never show a trailing ".0" on report cards (7.0 -> 7, 12.0 -> 12); 7.5 stays 7.5
+  const t = String(v).replace(/^(-?\d+)\.0+$/,'$1');
+  if(reportZeroOn()) return zp(t);
+  return t.replace(/^0+(?=\d)/,'');
 }
 function zrpct(n, d){ const x = Number(n); return isFinite(x) ? zr(x.toFixed(d||0)) + '%' : '—'; }
 // Pad one typed mark: 5 -> "05", 7.5 -> "07.5", "007" -> "07"; blanks / 10+ untouched.
