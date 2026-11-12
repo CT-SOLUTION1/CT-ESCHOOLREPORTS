@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-12-1920'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-12-2110'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -1489,6 +1489,12 @@ table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 .td-fit .tile-grid-3 .tile.tile-red .rc-word{font-size:21cqw !important;}
 .td-fit .tile.tile-scores{background:#C8102E !important;}
 .td-fit .tile-grid-3 .tile.tile-scores .rc-word{font-size:19cqw !important;font-weight:900 !important;-webkit-text-stroke:1.2px #fff !important;paint-order:stroke fill;text-shadow:0 0 1px #fff,0 0 1px #fff;letter-spacing:.01em !important;}
+.td-fit .tile.tile-scores{position:relative;}
+/* Enter Scores tile blinks to grab attention: RED face (ENTER / SCORES) <-> BLUE face (TAP TO ENTER SCORES) */
+.td-fit .tile.tile-scores .ts-blue{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4%;background:#0057D9;border-radius:inherit;pointer-events:none;opacity:0;animation:tsBlink 4s ease-in-out infinite;}
+.td-fit .tile.tile-scores .ts-blue span{font-size:20cqw;font-weight:900;line-height:1.05;color:#fff;letter-spacing:.01em;-webkit-text-stroke:1.2px #fff;paint-order:stroke fill;text-shadow:0 0 1px #fff,0 0 1px #fff;}
+@keyframes tsBlink{0%,42%{opacity:0;}50%,92%{opacity:1;}100%{opacity:0;}}
+@media (prefers-reduced-motion:reduce){.td-fit .tile.tile-scores .ts-blue{animation:none;opacity:0;}}
 .td-rest{overflow:hidden;}
 .td-assign{flex:1 1 auto;overflow:hidden;display:block;}
 .td-assign table{width:100%;font-size:var(--fs,calc(9*var(--uk))) !important;}
@@ -7811,6 +7817,7 @@ function featureTilesHTML(role, excludeKey){
       <span class="tile-label rc-word">ENTER</span>
       <span class="tile-icon">${icon}</span>
       <span class="tile-label rc-word">SCORES</span>
+      <span class="ts-blue" aria-hidden="true"><span>TAP TO</span><span>ENTER</span><span>SCORES</span></span>
     </button>` : WIDE_TILE_KEYS.includes(k) ? `<button type="button" class="tile tile-wide tile-red" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label rc-word">REPORT</span>
       <span class="tile-icon">${icon}</span>
@@ -13831,22 +13838,58 @@ function classAnalysisViewCore(){
   return `<div class="card" data-orient="landscape" style="overflow:auto;">${levelWiseHtml}</div>`;
   };
   const buildStudents = ()=>{
-  const studentStats = classStudentStats(cls, term, year);
-  const studentRowsHtml = studentStats.map(r=>{
-    const metricTxt = isA ? `${r.metric}/${r.maxP}` : zpct(r.metric,1);
-    const gradeTxt = r.overallGrade || '—';
-    return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td class="stu-name" style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td>${isA?'':`<td>${gradeTxt}</td>`}${cls.level==='O'?`<td style="font-weight:800;">${r.result}</td>`:''}</tr>`;
+  // Same table as the General MarkSheets "Rank List" (same columns, same ranking, same descriptors), plus a
+  // Combination (A-Level) / Optional Subjects (O-Level) column for the secondary levels.
+  const lvl = cls.level, isAL = lvl==='A', isPL = lvl==='P', isOL = lvl==='O', hasCombo = isAL || isOL;
+  const spData = DB.students.filter(st=>st.status!=='left' && st.classId===cls.id).map(st=>{
+    const d = computeSubjectRows(st, cls, term, year);
+    const subjSet = new Set(studentSubjects(st, cls));
+    classSubjectsFor(cls).forEach(sj=>{ if(subjectAverage(st.id, sj, term, year)!==null) subjSet.add(sj); });
+    const hasScores = d.countAvg>0;
+    const gradeAny = hasScores ? gradeFor('', d.avgPct, lvl) : null;
+    const weak = hasScores ? weakestSubjectNames(d.rows) : [];
+    return {st, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, lvl, st, cls, term, year),
+      maxP: isAL ? maxPointsFor(st, cls) : 100,
+      grade: isPL ? null : gradeFor('', d.avgPct, lvl),
+      agg: isPL ? primaryAggregate(st, cls, term, year) : null,
+      nSubj: subjSet.size,
+      desc: hasScores ? rankOverallDescriptor(lvl, d.avgPct, gradeAny) : '—',
+      resultTxt: isOL ? resultTextFor(st, cls, term, year) : '—',
+      weakTxt: weak.length ? weak.map(msAbbr).join(', ') : '—'};
+  }).sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
+  let spPos = 0;
+  spData.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, spData[i-1].k)) spPos = i+1; r.pos = spPos; });
+  const spGradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
+  const studentRowsHtml = spData.map(r=>{
+    const tail = isPL
+      ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
+      : (isOL ? spGradeTd(r.grade||'—') : '');
+    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td class="stu-name" style="text-align:left;">${esc(r.st.name)}</td>${hasCombo?`<td style="text-align:left;">${esc(comboLabel(r.st,cls))}</td>`:''}<td${isPL?' style="text-align:center;"':''}>${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isAL?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isOL?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
-  const spCols = 6 + (isA?0:1) + (cls.level==='O'?1:0);   // columns that apply to this level
+  const spHead = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${hasCombo?`<th>${isAL?'Combination':'Optional Subjects'}</th>`:''}<th>Subjects</th><th>Average</th>${isAL?'<th>Points</th>':''}${isPL?'<th>Aggregate</th><th>Division</th>':''}${isOL?'<th>Overall Grade</th><th>Result</th>':''}<th>Overall Descriptor</th><th>Weak Subject</th>`;
+  const spCols = 7 + (hasCombo?1:0) + (isAL?1:0) + (isPL?2:0) + (isOL?2:0);   // columns that apply to this level
+  // RESULT 2 caused by a missed subject: listed below the table (student + subject(s) missed), in rank order — as on the Rank List.
+  const spMissed = spData.filter(r=> r.resultTxt==='2').map(r=>({r, subs: missedSubjectsFor(r.st, cls, term, year)})).filter(x=>x.subs.length);
+  const spTh = 'border:1px solid #000;padding:3px 8px;background:#eef1f6;font-weight:800;text-align:left;';
+  const spTd = 'border:1px solid #000;padding:3px 8px;text-align:left;';
+  const spMissedHtml = spMissed.length ? `
+    <div class="mm-summary" style="margin-top:12px;">
+      <div style="font-weight:800;margin-bottom:4px;">RESULT 2 — MISSED SUBJECTS (${spMissed.length} student${spMissed.length===1?'':'s'})</div>
+      <table style="border-collapse:collapse;font-size:12px;">
+        <tr><th style="${spTh}">Student Name</th><th style="${spTh}">Subject(s) Missed</th></tr>
+        ${spMissed.map(x=>`<tr><td style="${spTd}">${esc(x.r.st.name)}</td><td style="${spTd}font-weight:700;">${esc(x.subs.map(msAbbr).join(', '))}</td></tr>`).join('')}
+      </table>
+    </div>` : '';
 
   const studentsCardHtml = `
   <div class="card" data-orient="portrait" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(assessLabel)} — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
-    <table class="data-table ra-table sp-students"><tr><th>RANK</th><th>Adm<br>No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects<br>Sat</th><th>${isA?'Points':'Average'}</th>${isA?'':'<th>Grade</th>'}${cls.level==='O'?'<th>RESULT</th>':''}</tr>
+    <table class="data-table ra-table sp-students"><tr>${spHead}</tr>
     ${studentRowsHtml || `<tr><td colspan="${spCols}">No students in this class yet.</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, spCols, cls.level) : ''}
     </table>
+    ${spMissedHtml}
   </div>`;
   return studentsCardHtml;
   };
@@ -21341,6 +21384,8 @@ async function downloadTablesAsPdf(elementId, filename, opts={}){
       subtitle: opts.forceSubtitle || [(descEl && descEl.textContent) || opts.subtitle || '', opts.subtitleSuffix || ''].filter(Boolean).join('  •  '),
       school: opts.school || (DB.info && DB.info.schoolName) || '',
       orientation: card.getAttribute('data-orient') || opts.orientation || '',
+      footerHtml: (()=>{ const m = card.querySelector('.mm-summary'); return m ? `<div style="margin:0 0 6px;color:#000;">${m.innerHTML}</div>` : ''; })(),   // RESULT 2 - MISSED SUBJECTS list goes under the table in the PDF too
+      footerExtraPx: (()=>{ const m = card.querySelector('.mm-summary'); return m ? 30 + 20*m.querySelectorAll('tr').length : 0; })(),
       isSp: table.classList.contains('sp-students'),
       fillPage: table.classList.contains('sp-students') && bodyRows.filter(r=>!(r.cells && r.cells.length===1 && r.cells[0].colSpan>1)).length>=1,   // Student Performance with 35+ students: pages are filled
       headRows, bodyRows
