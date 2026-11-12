@@ -414,6 +414,12 @@ button{font-family:inherit;cursor:pointer;}
 .btn:hover{background:var(--navy);}
 .btn-outline{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:9px 16px;border-radius:6px;font-weight:700;}
 .btn-danger{background:var(--danger);color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:600;}
+.pick-btn{display:block;width:100%;text-align:left;color:#fff;border:3px solid transparent;padding:11px 16px;border-radius:8px;font-weight:800;font-size:14px;letter-spacing:.02em;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;}
+.pick-btn:hover{filter:brightness(1.1);}
+.pick-btn.sel{border-color:#0A2A4A;box-shadow:0 0 0 3px #fff,0 0 0 6px currentColor,0 3px 8px rgba(0,0,0,.35);}
+.pick-btn.sel::after{content:" ✔";}
+.pick-c0{background:#C8102E;} .pick-c1{background:#1D4E89;} .pick-c2{background:#1E8E3E;}
+.pick-c3{background:#E8710A;} .pick-c4{background:#7B3FA0;} .pick-c5{background:#0F8B8D;}
 .btn-gold{background:var(--gold);color:#3a2c00;border:none;padding:10px 18px;border-radius:6px;font-weight:800;}
 /* Requirements: category-first picker (see reqSelectionFormHTML) */
 .req-cat-btn{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px;}
@@ -1398,6 +1404,7 @@ table.ims-table th:last-child, table.ims-table td:last-child{border-right:2px so
 table.mm-table, table.ims-table{border-right:2px solid var(--blue);}
 /* General Mark Sheets are shown as a landscape (A4) sheet on screen too. */
 .mm-page{aspect-ratio:297/210;}
+.mm-page.mm-portrait{aspect-ratio:210/297;}
 @media print{
   .mm-page{aspect-ratio:auto !important;}
   #printArea table.mm-table th:last-child, #printArea table.mm-table td:last-child,
@@ -6772,6 +6779,16 @@ function resultTextFor(st, cls, term, year){
   const d = computeSubjectRows(st, cls, term, year);
   const r = reportResultFor(d.rows, null, cls, null, st, term, year);
   return (r===null || r==='' || r===undefined) ? '—' : String(r);
+}
+// Subjects a learner MISSED: no score in a subject that classmates (who take it) already have scores in — the same rule
+// that gives RESULT 2 on the O-Level report card. Returns [] for Primary / A-Level, or when the learner has no score at all.
+function missedSubjectsFor(st, cls, term, year){
+  if(!cls || cls.level!=='O') return [];
+  const has = (v)=> v!==null && v!==undefined;
+  const rows = computeSubjectRows(st, cls, term, year).rows;
+  if(!rows.length || !rows.some(r=>has(r.avg))) return [];
+  const mates = DB.students.filter(x=>x.classId===cls.id && x.id!==st.id);
+  return rows.filter(r=> !has(r.avg) && mates.some(m=> studentSubjects(m, cls).includes(r.subject) && has(subjectAverage(m.id, r.subject, term, year))) ).map(r=>r.subject);
 }
 // A subject that has enrolled students but NO scores for any of them yet (term/year) is left out of a learner's
 // subjects — unless it is compulsory for the class, in which case it still counts.
@@ -13659,7 +13676,7 @@ function classAnalysisViewCore(){
     <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
       <div style="flex:1 1 300px;min-width:0;"><label>1. Analysis form</label>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
-        ${ANALYSIS_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1].toUpperCase())}</button>`).join('')}
+        ${ANALYSIS_FORMS.map((f,i)=>`<button type="button" class="pick-btn pick-c${i%6}${f[0]===formKey?' sel':''}" aria-pressed="${f[0]===formKey}" onclick="setAnalysisParam('form', '${f[0]}')">${esc(f[1].toUpperCase())}</button>`).join('')}
         </div></div>
       <div style="flex:1 1 220px;min-width:0;"><label>2. Assessment type</label>
         <select ${formKey?'':'disabled'} onchange="setAnalysisParam('assess', this.value)">
@@ -14054,7 +14071,7 @@ function masterMarkSheetViewCore(forExport){
     <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
       <div style="flex:1 1 300px;min-width:0;"><label>1. Sheet type</label>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
-        ${MM_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setMasterMarkSheetParam('mmMode','${f[0]}')">${esc(f[1].toUpperCase())}</button>`).join('')}
+        ${MM_FORMS.map((f,i)=>`<button type="button" class="pick-btn pick-c${i%6}${f[0]===formKey?' sel':''}" aria-pressed="${f[0]===formKey}" onclick="setMasterMarkSheetParam('mmMode','${f[0]}')">${esc(f[1].toUpperCase())}</button>`).join('')}
         </div></div>
       <div style="flex:1 1 220px;min-width:0;"><label>2. Assessment type</label>
         <select ${formKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmAssess', this.value)">
@@ -14306,10 +14323,21 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
       nSubj: subjSet.size,
       desc: hasScores ? rankOverallDescriptor(c.level, d.avgPct, gradeAny) : '—',
       resultTxt: (c.level==='O') ? resultTextFor(st, c, term, year) : '—',
-      weakTxt: weak.length ? weak.join(', ') : '—'};
+      weakTxt: weak.length ? weak.map(msAbbr).join(', ') : '—'};
   }).sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
   let pos = 0;
   data.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, data[i-1].k)) pos = i+1; r.pos = pos; });
+  // RESULT 2 caused by a missed subject: listed below the table (student + subject(s) missed), in rank order.
+  const missedList = data.filter(r=> r.resultTxt==='2').map(r=>({r, subs: missedSubjectsFor(r.st, r.c, term, year)})).filter(x=>x.subs.length);
+  window._mmRankMissedCount = missedList.length;
+  const missedHtml = missedList.length ? `
+    <div class="mm-summary" style="margin-top:12px;">
+      <div style="font-weight:800;margin-bottom:4px;">RESULT 2 — MISSED SUBJECTS (${missedList.length} student${missedList.length===1?'':'s'})</div>
+      <table style="border-collapse:collapse;font-size:12px;">
+        <tr><th style="border:1px solid #000;padding:3px 8px;background:#eef1f6;font-weight:800;text-align:left;">Student Name</th>${isLevel?'<th style="border:1px solid #000;padding:3px 8px;background:#eef1f6;font-weight:800;text-align:left;">Class</th>':''}<th style="border:1px solid #000;padding:3px 8px;background:#eef1f6;font-weight:800;text-align:left;">Subject(s) Missed</th></tr>
+        ${missedList.map(x=>`<tr><td style="border:1px solid #000;padding:3px 8px;text-align:left;">${esc(x.r.st.name)}</td>${isLevel?`<td style="border:1px solid #000;padding:3px 8px;text-align:left;">${x.r.c?esc(classFullName(x.r.c)):'—'}</td>`:''}<td style="border:1px solid #000;padding:3px 8px;text-align:left;font-weight:700;">${esc(x.subs.map(msAbbr).join(', '))}</td></tr>`).join('')}
+      </table>
+    </div>` : '';
   const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 25);
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const isO = level==='O';
@@ -14329,7 +14357,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   return `
   ${mmTopBar((isLevel?mmLevelLabel(level):cls.name)+' — '+assessLabelMM, term, year, arg)}
   <div id="printArea">
-  <div class="mm-page">
+  <div class="mm-page mm-portrait">
     <div class="mm-header">
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
       <div class="mm-title">${title}</div>
@@ -14341,6 +14369,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
         <tbody>${body || `<tr><td colspan="${colCount}">No students to rank yet.</td></tr>`}</tbody>
       </table>
     </div>
+    ${missedHtml}
     <p class="small" style="margin-top:10px;">Ranked best first by ${isA?'total Points':'Average %'}; students with equal results share the same rank.</p>
     <div class="mm-footer">
       <span>Generated ${esc(new Date().toLocaleDateString())}</span>
@@ -20539,7 +20568,7 @@ async function runMasterMarkSheetPdf(arg, el, forPrint){
   const modeLabel = ['grades','rank','level','lscores','lgrades'].includes(modeArg) ? modeArg : 'scores';
   document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
   try{
-    await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, {orientation:'landscape'});
+    await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, ['rank','level'].includes(modeArg) ? {orientation:'portrait', rowsPerPage:(window._mmRankMissedCount>0 ? 28 : 35)} : {orientation:'landscape'});
   } finally {
     render();
   }
@@ -21355,7 +21384,7 @@ async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
     subtitle: metaEl ? metaEl.textContent : '',
     headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0,
     emptyText: 'No students to show yet.'
-  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage:25});
+  }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage: opts.rowsPerPage || 25});
 }
 // Blank mark sheet, for printing/marking on paper (separate from the CSV version,
 // which is a data-interchange file meant to be filled in and re-uploaded).
