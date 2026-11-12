@@ -13554,10 +13554,10 @@ function classStudentStats(cls, term, year){
   }).sort((a,b)=>a.position-b.position);
 }
 // Counts of learners per RESULT (1 / 2) as shown on the report cards. RESULT only exists on
-// O-Level cards, so other levels get a note instead of numbers.
+// O-Level cards, so other levels get no row at all.
 function resultSummaryRow(studentClassPairs, colspan, level){
   const bg = 'font-weight:bold;background:#eef1f6;text-align:left;';
-  if(level!=='O') return `<tr><td colspan="${colspan}" style="${bg}">RESULT SUMMARY — RESULT (1 or 2) is shown on O-Level report cards only, so there is nothing to count for this level.</td></tr>`;
+  if(level!=='O') return ''; // RESULT exists on O-Level cards only: other levels simply show no summary row
   let r1=0, r2=0, r3=0, none=0;
   studentClassPairs.forEach(([st,c])=>{
     const r = resultTextFor(st, c, termForSummary, yearForSummary);
@@ -13782,17 +13782,18 @@ function classAnalysisViewCore(){
   const studentStats = classStudentStats(cls, term, year);
   const studentRowsHtml = studentStats.map(r=>{
     const metricTxt = isA ? `${r.metric}/${r.maxP}` : zpct(r.metric,1);
-    const gradeTxt = isA ? '—' : (r.overallGrade || '—');
-    return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td class="stu-name" style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td><td>${gradeTxt}</td><td style="font-weight:800;">${r.result}</td></tr>`;
+    const gradeTxt = r.overallGrade || '—';
+    return `<tr><td>${r.position}</td><td>${esc(r.student.admNo)}</td><td class="stu-name" style="text-align:left;">${esc(r.student.name)}</td><td>${esc(comboLabel(r.student,cls))}</td><td>${r.sat}/${r.total}</td><td>${metricTxt}</td>${isA?'':`<td>${gradeTxt}</td>`}${cls.level==='O'?`<td style="font-weight:800;">${r.result}</td>`:''}</tr>`;
   }).join('');
+  const spCols = 6 + (isA?0:1) + (cls.level==='O'?1:0);   // columns that apply to this level
 
   const studentsCardHtml = `
   <div class="card" data-orient="portrait" style="overflow:auto;">
     <h3>${esc(cls.name)} — Student Performance — ${esc(assessLabel)} — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
-    <table class="data-table ra-table sp-students"><tr><th>RANK</th><th>Adm<br>No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects<br>Sat</th><th>${isA?'Points':'Average'}</th><th>${isA?'—':'Grade'}</th><th>RESULT</th></tr>
-    ${studentRowsHtml || `<tr><td colspan="8">No students in this class yet.</td></tr>`}
-    ${classPairs.length ? resultSummaryRow(classPairs, 8, cls.level) : ''}
+    <table class="data-table ra-table sp-students"><tr><th>RANK</th><th>Adm<br>No</th><th>Name</th><th>${isA?'Combination':'Subjects'}</th><th>Subjects<br>Sat</th><th>${isA?'Points':'Average'}</th>${isA?'':'<th>Grade</th>'}${cls.level==='O'?'<th>RESULT</th>':''}</tr>
+    ${studentRowsHtml || `<tr><td colspan="${spCols}">No students in this class yet.</td></tr>`}
+    ${classPairs.length ? resultSummaryRow(classPairs, spCols, cls.level) : ''}
     </table>
   </div>`;
   return studentsCardHtml;
@@ -13982,21 +13983,77 @@ function toggleProjectSubject(su, on){
    downloaded or printed on LANDSCAPE paper (see printLandscape() and the PDF export
    below, which both force landscape regardless of what orientation the rest of the app
    prints in). */
+// General Marksheets follow the same selection order as Result Analysis:
+// 1) sheet type -> 2) assessment type -> 3) class (or level) -> term/year. Nothing is preselected.
 function masterMarkSheetView(forExport){
+  const a = VIEW && VIEW.params && VIEW.params.mmAssess;
+  return withAssessMode(a==='cw' ? 'cw' : (a==='eot' ? 'eot' : 'all'), ()=>masterMarkSheetViewCore(forExport));
+}
+function masterMarkSheetViewCore(forExport){
   const isAdmin = CUR.role==='admin';
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
   if(!visibleClasses.length) return `<h2>GENERAL MARKSHEETS AND RANK LISTS</h2><div class="card"><p>${isAdmin?'No classes yet — add a class first.':"You aren't currently set as the Class Teacher for any class."}</p></div>`;
   const sel = VIEW.params;
-  const classId = (sel.mmClassId && visibleClasses.some(c=>c.id===sel.mmClassId)) ? sel.mmClassId : visibleClasses[0].id;
-  const cls = visibleClasses.find(c=>c.id===classId) || visibleClasses[0];
   const term = sel.mmTerm || DB.info.currentTerm;
   const year = sel.mmYear || DB.info.currentYear;
+  const MM_FORMS = [['scores','1. Real Scores (marks per subject/paper)'],['grades','2. Letter Grades (per subject)'],['rank','3. Rank List (this class)']]
+    .concat(isAdmin ? [['lscores','4. General Real Scores (whole level)'],['lgrades','5. General Letter Grades (whole level)'],['level','6. General Rank List (by level)']] : []);
+  const formKey = MM_FORMS.some(f=>f[0]===sel.mmMode) ? sel.mmMode : '';
+  const isLevelForm = ['lscores','lgrades','level'].includes(formKey);
+  const mmLevelsAvail = ['P','O','A'].filter(l=>(isAdmin?DB.classes:visibleClasses).some(c=>c.level===l));
+  const selLevel = mmLevelsAvail.includes(sel.mmLevel) ? sel.mmLevel : '';
+  const _selCls = isLevelForm ? (selLevel ? DB.classes.find(c=>c.level===selLevel) : null)
+    : ((sel.mmClassId && visibleClasses.find(c=>c.id===sel.mmClassId)) || null);
+  const _acfg = examConfig(_selCls ? _selCls.id : undefined);
+  const ASSESS_TYPES = [];
+  if(_acfg.cwEnabled) ASSESS_TYPES.push(['cw', _acfg.cwLabel]);
+  if(_acfg.eotEnabled) ASSESS_TYPES.push(['eot', _acfg.eotLabel]);
+  if(_acfg.cwEnabled && _acfg.eotEnabled) ASSESS_TYPES.push(['integrated', _acfg.cwLabel+' + '+_acfg.eotLabel]);
+  if(!ASSESS_TYPES.length) ASSESS_TYPES.push(['integrated','Score']);
+  const assessKey = (formKey && ASSESS_TYPES.some(a=>a[0]===sel.mmAssess)) ? sel.mmAssess : '';
+  const cls = assessKey ? _selCls : null;
+  const selectorsHtml = (buttonsHtml)=>`
+  <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
+  <div class="card">
+    <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
+      <div style="flex:1 1 300px;min-width:0;"><label>1. Sheet type</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+        ${MM_FORMS.map(f=>`<button type="button" class="${f[0]===formKey?'btn':'btn-outline'}" style="text-align:left;width:100%;" aria-pressed="${f[0]===formKey}" onclick="setMasterMarkSheetParam('mmMode','${f[0]}')">${esc(f[1])}</button>`).join('')}
+        </div></div>
+      <div style="flex:1 1 220px;min-width:0;"><label>2. Assessment type</label>
+        <select ${formKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmAssess', this.value)">
+          <option value="" ${assessKey?'':'selected'}>— Select assessment type —</option>
+          ${ASSESS_TYPES.map(a=>`<option value="${a[0]}" ${a[0]===assessKey?'selected':''}>${esc(a[1])}</option>`).join('')}
+        </select></div>
+      <div style="flex:1 1 220px;min-width:0;">
+      ${isLevelForm
+        ? `<label>3. Level</label><select ${assessKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmLevel', this.value)">
+        <option value="" ${selLevel?'':'selected'}>— Select level —</option>
+        ${mmLevelsAvail.map(l=>`<option value="${l}" ${l===selLevel?'selected':''}>${mmLevelLabel(l)}</option>`).join('')}
+      </select>`
+        : `<label>3. Class</label><select ${assessKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmClassId', this.value)">
+        <option value="" ${cls?'':'selected'}>— Select class —</option>
+        ${visibleClasses.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select>`}
+      </div>
+    </div>
+    ${formKey?`<div class="grid3" style="margin-top:14px;">
+      <div><label>Term</label><select onchange="setMasterMarkSheetParam('mmTerm', this.value)">
+        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
+    </div>`:''}
+    ${buttonsHtml||''}
+  </div>`;
+  if(!formKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Start by choosing a sheet type on the left. Then pick the assessment type (Course Work, End of Term or Integrated), and finally the class (or the level, for the whole-level sheets).</p></div></div>`;
+  if(!assessKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Now choose the assessment type: Course Work only, End of Term only, or Integrated (both together).</p></div></div>`;
+  if(!cls) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Now select ${isLevelForm?'a level':'a class'} to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div></div>`;
   // Two flavors of the same sheet, picked with the tabs below: 'scores' shows the raw
   // marks (per paper, per subject) with nothing graded, so it reads like a scanned exam
   // register; 'grades' shows only the letter/code each learner earned per subject, so it
   // reads like an official results sheet. Kept as one function (same underlying data,
   // same landscape layout) so the two never drift out of sync with each other.
-  if(sel.mmMode==='rank' || (sel.mmMode==='level' && isAdmin)) return masterRankView({isAdmin, visibleClasses, cls, term, year, mode:sel.mmMode, sel, forExport});
+  if(sel.mmMode==='rank' || (sel.mmMode==='level' && isAdmin)) return masterRankView({isAdmin, visibleClasses, cls, term, year, mode:sel.mmMode, sel, forExport, selectorsHtml});
   // Two extra admin-only sheets cover a WHOLE LEVEL at once (every class of that level together,
   // best performer first, with a Class column): 'lscores' (Real Scores) and 'lgrades' (Letter Grades).
   const isLevelSheet = isAdmin && (sel.mmMode==='lscores' || sel.mmMode==='lgrades');
@@ -14078,31 +14135,31 @@ function masterMarkSheetView(forExport){
     // Aggregate are themselves grade-derived, so they belong on the Grades sheet, not here).
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>${isLevelSheet?'<th rowspan="2">Class</th>':''}` +
       subjectMeta.map(sm=>sm.colspan>1?`<th colspan="${sm.colspan}" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`:`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
-      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">GRADE</th><th rowspan="2">RESULT</th><th rowspan="2">Position</th>`;
+      `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">GRADE</th>${level==='O'?'<th rowspan="2">RESULT</th>':''}<th rowspan="2">Position</th>`;
     headerRow2 = subjectMeta.map(sm=> sm.multi ? sm.papers.map(p=>`<th>P${esc(String(p))}</th>`).join('') + `<th>Avg</th>` : '').join('');
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>{
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
         return `${paperTds}<td>${ps.avg}</td>`;
       }).join('');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${zpct(r.avgPct,1)}</td>${gradeTd(r.overallGradeTxt)}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${zpct(r.avgPct,1)}</td>${gradeTd(r.overallGradeTxt)}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 8 + (isLevelSheet?1:0) + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
+    colCount = 7 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
     // Letter/code grades only — one Grade column per subject, plus the official overall
     // Points/Average, Grade/Aggregate(+Division), and Position, exactly as they'd appear
     // on a results/release sheet.
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>${isLevelSheet?'<th rowspan="2">Class</th>':''}` +
       subjectMeta.map(sm=>`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
-      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th><th rowspan="2">${isP?'Aggregate':'Grade'}</th>${isP?'<th rowspan="2">Division</th>':''}<th rowspan="2">RESULT</th><th rowspan="2">Position</th>`;
+      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th><th rowspan="2">${isP?'Aggregate':'Grade'}</th>${isP?'<th rowspan="2">Division</th>':''}${level==='O'?'<th rowspan="2">RESULT</th>':''}<th rowspan="2">Position</th>`;
     headerRow2 = '';
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
       const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : zpct(r.avgPct,0);
       const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}<td style="font-weight:800;">${r.resultTxt}</td><td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 7 + (isLevelSheet?1:0) + subjectMeta.length + (isP?1:0);
+    colCount = 6 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.length + (isP?1:0);
   }
 
   // ---- Summary at the foot of the sheet: how many learners earned each overall Grade (or Primary
@@ -14135,33 +14192,20 @@ function masterMarkSheetView(forExport){
       ${level==='O' ? `<table style="border-collapse:collapse;font-size:12px;margin-top:8px;">
         <tr><th style="${sTh}text-align:left;">RESULT</th><th style="${sTh}">1</th><th style="${sTh}">2</th>${sumCounts.r3?`<th style="${sTh}">3</th>`:''}${sumCounts.noRes?`<th style="${sTh}">None yet</th>`:''}</tr>
         <tr><td style="${sTd}text-align:left;">No. of students</td><td style="${sTd}">${sumCounts.r1}</td><td style="${sTd}">${sumCounts.r2}</td>${sumCounts.r3?`<td style="${sTd}">${sumCounts.r3}</td>`:''}${sumCounts.noRes?`<td style="${sTd}">${sumCounts.noRes}</td>`:''}</tr>
-      </table>` : `<div style="font-size:11px;margin:6px 0 0;">RESULT (1 or 2) is shown on O-Level report cards only.</div>`}
+      </table>` : ''}
     </div>` : '';
 
-  return `
-  <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
-  <div class="card">
-    <div class="grid3">
-      <div>${isLevelSheet
-        ? `<label>Level</label><select onchange="setMasterMarkSheetParam('mmLevel', this.value)">${mmLevels.map(l=>`<option value="${l}" ${l===level?'selected':''}>${mmLevelLabel(l)}</option>`).join('')}</select>`
-        : `<label>Class</label><select onchange="setMasterMarkSheetParam('mmClassId', this.value)">${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`}</div>
-      <div><label>Term</label><select onchange="setMasterMarkSheetParam('mmTerm', this.value)">
-        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
-      </select></div>
-      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
-    </div>
-    <label style="margin-top:14px;">View</label>
-    <div class="flex">${mmTabsHtml(modeKey,isAdmin)}</div>
-    <div class="note" style="margin-top:12px;">${isLevelSheet ? 'This sheet puts every learner of the whole level together — all classes — arranged from the best performer downwards, with a Class column after each name. Position is the learner\'s position in the level.' : ''} ${mode==='scores'
-      ? 'This sheet lists every student\'s raw marks — no grading — with a sub-column per paper for subjects that have more than one. Switch to "Letter Grades" for the graded version.'
-      : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position. Switch to "Real Scores" to see the underlying marks.'
-    } Either way, it\'s wide — download it as a PDF or print it, and choose <b>PORTRAIT</b> paper (saves pages).</div>
+  const mmNote = `<div class="note" style="margin-top:12px;">${isLevelSheet ? 'This sheet puts every learner of the whole level together — all classes — arranged from the best performer downwards, with a Class column after each name. Position is the learner\'s position in the level.' : ''} ${mode==='scores'
+      ? 'This sheet lists every student\'s raw marks — no grading — with a sub-column per paper for subjects that have more than one.'
+      : 'This sheet lists the letter/code grade each student earned in every subject, plus their overall Points/Average, Grade/Aggregate and Position.'
+    } It\'s wide — download it as a PDF or print it, and choose <b>PORTRAIT</b> paper (saves pages).</div>
     <div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}"><b>Download as PDF (landscape)</b></button>
       <button class="btn" data-action="printMasterMarkSheet:${cls.id}:${encodeURIComponent(term)}:${year}:${modeKey}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
-    </div>
-  </div>
+    </div>`;
+  return `
+  ${selectorsHtml(mmNote)}
   <div id="printArea">
   <div class="mm-page">
     <div class="mm-header">
@@ -14194,14 +14238,10 @@ function masterMarkSheetView(forExport){
   ${!forExport ? marksheetPaginationBar(pg.page, pg.totalPages, pg.total, pg.size, pg.startIndex, `mmPage`) : ''}`;
 }
 function mmLevelLabel(l){ return l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "A'-Level"); }
-function mmTabsHtml(mode, isAdmin){
-  const b = (val,label)=>`<button class="${mode===val?'btn':'btn-outline'}" onclick="setMasterMarkSheetParam('mmMode','${val}')">${label}</button>`;
-  return b('scores','Real Scores (marks per subject/paper)') + b('grades','Letter Grades (per subject)') + b('rank','Rank List (this class)') + (isAdmin ? b('lscores','General Real Scores (whole level)') + b('lgrades','General Letter Grades (whole level)') + b('level','General Rank List (by level)') : '');
-}
 // Rank List (one class) and General Rank List (every class of one level): students sorted
 // best-first by the same metric the report-card position uses (Average %, or Points at
 // A-Level), with ties sharing a rank. Reuses the .mm-* layout so PDF/print export is unchanged.
-function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport}){
+function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport, selectorsHtml}){
   const isLevel = mode==='level';
   const levels = ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l));
   const level = isLevel ? (levels.includes(sel.mmLevel) ? sel.mmLevel : levels[0]) : cls.level;
@@ -14235,25 +14275,11 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(classFullName(cls))}`;
   const arg = `${cls.id}:${encodeURIComponent(term)}:${year}:${mode}`;
   return `
-  <h2>GENERAL MARKSHEETS AND RANK LISTS</h2>
-  <div class="card">
-    <div class="grid3">
-      <div>${isLevel
-        ? `<label>Level</label><select onchange="setMasterMarkSheetParam('mmLevel', this.value)">${levels.map(l=>`<option value="${l}" ${l===level?'selected':''}>${mmLevelLabel(l)}</option>`).join('')}</select>`
-        : `<label>Class</label><select onchange="setMasterMarkSheetParam('mmClassId', this.value)">${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`}</div>
-      <div><label>Term</label><select onchange="setMasterMarkSheetParam('mmTerm', this.value)">
-        ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
-      </select></div>
-      <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
-    </div>
-    <label style="margin-top:14px;">View</label>
-    <div class="flex">${mmTabsHtml(mode,isAdmin)}</div>
-    <div class="flex" style="margin-top:12px;">
+  ${selectorsHtml(`<div class="flex" style="margin-top:12px;">
       <button class="btn-gold" data-action="dlMasterMarkSheetPdf:${arg}"><b>Download as PDF (landscape)</b></button>
       <button class="btn" data-action="printMasterMarkSheet:${arg}">Print (landscape)</button>
       <button class="btn-outline" data-action="nav:reports">Back to Report Cards</button>
-    </div>
-  </div>
+    </div>`)}
   <div id="printArea">
   <div class="mm-page">
     <div class="mm-header">
@@ -14280,7 +14306,9 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
 // likely no longer makes sense for a different roster) — except when the change
 // IS the page number itself.
 function setMasterMarkSheetParam(key, value){
-  const params = {...VIEW.params, [key]: value};
+  // Each step re-opens the ones after it (same as Result Analysis).
+  const cascade = key==='mmMode' ? {mmAssess:'', mmClassId:'', mmLevel:''} : (key==='mmAssess' ? {mmClassId:'', mmLevel:''} : {});
+  const params = {...VIEW.params, ...cascade, [key]: value};
   if(key!=='mmPage') params.mmPage = 1;
   VIEW.params = params;
   const myKey=VIEW.name+'|'+JSON.stringify(params);
