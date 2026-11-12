@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-05-1500'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-12-1920'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -1014,8 +1014,8 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 .rc-tog{flex:1 1 0;min-width:0;border:none;border-radius:8px;padding:10px 4px;font-size:12px;font-weight:800;line-height:1.25;color:#fff;cursor:pointer;white-space:normal;transition:background .15s;}
 .rc-tog.on{background:#0f7a3a;} .rc-tog.off{background:var(--danger,#c0392b);}
 .rc-tog.rc-busy,.rc-tog.rc-busy.on,.rc-tog.rc-busy.off{background:#e0a800 !important;color:#1a1a1a !important;pointer-events:none;}
-.rc-term-middle{justify-self:center;width:88%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Arial Black','Segoe UI',Arial,Helvetica,sans-serif;font-size:11.5px;font-weight:900;letter-spacing:.01em;line-height:1.3;padding:3px 4px;background:var(--navy);color:#fff;border:1.5px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);text-shadow:0 0 1px #fff,0 0 1px #fff;overflow:hidden;}
-.rc-term-middle div{font-weight:900;-webkit-text-stroke:.3px #fff;}
+.rc-term-middle{justify-self:center;width:88%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Times New Roman',Times,'Liberation Serif',serif;font-size:12.5px;font-weight:700;letter-spacing:.01em;line-height:1.3;padding:3px 4px;background:var(--navy);color:#fff;border:1.5px solid var(--navy);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);text-shadow:none;overflow:hidden;-webkit-font-smoothing:antialiased;}
+.rc-term-middle div{font-family:'Times New Roman',Times,'Liberation Serif',serif;font-weight:700;-webkit-text-stroke:0;}
 .rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
@@ -14142,6 +14142,7 @@ function masterMarkSheetViewCore(forExport){
     const overallGrade = isP ? null : gradeFor('', avgPct, cls.level);
     const pAggregate = isP ? primaryAggregate(s, cls, term, year) : null;
     const pDivision = isP ? primaryDivisionFor(pAggregate) : null;
+    const _enrolled = new Set(studentSubjects(s, cls));
     const perSubject = subjectMeta.map(sm=>{
       const bd = subjectBreakdown(s.id, sm.subject, term, year);
       // 'x' only for a subject this learner is ENROLLED in, has no score for, while classmates already do.
@@ -14157,9 +14158,10 @@ function masterMarkSheetViewCore(forExport){
           return val===null ? gap : zp(val.toFixed(1));
         });
       }
-      return { paperCells, avg: bd.final===null?gap:zp(bd.final.toFixed(1)), grade };
+      return { paperCells, avg: bd.final===null?gap:zp(bd.final.toFixed(1)), grade, has: (_enrolled.has(sm.subject) || bd.final!==null) };
     });
-    return { student:s, clsName: classFullName(cls), perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
+    const subjCount = perSubject.filter(ps=>ps.has).length; // this learner's OWN subjects (enrolled, or already scored) — not the number of columns on the sheet
+    return { subjCount, student:s, clsName: classFullName(cls), perSubject, resultTxt, overallGradeTxt, position, size, totalPoints, avgPct, maxP, overallGrade, pAggregate, pDivision };
   });
 
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'&&g!=='x'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
@@ -14178,7 +14180,7 @@ function masterMarkSheetViewCore(forExport){
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
         return `${paperTds}<td>${ps.avg}</td>`;
       }).join('');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${zpct(r.avgPct,1)}</td>${gradeTd(r.overallGradeTxt)}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${r.subjCount}</td><td>${zpct(r.avgPct,1)}</td>${gradeTd(r.overallGradeTxt)}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
     colCount = 7 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
@@ -14193,7 +14195,7 @@ function masterMarkSheetViewCore(forExport){
       const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
       const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : zpct(r.avgPct,0);
       const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${subjectMeta.length}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${r.subjCount}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
     colCount = 6 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.length + (isP?1:0);
   }
@@ -14268,6 +14270,17 @@ function mmLevelLabel(l){ return l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "
 // Rank List (one class) and General Rank List (every class of one level): students sorted
 // best-first by the same metric the report-card position uses (Average %, or Points at
 // A-Level), with ties sharing a rank. Reuses the .mm-* layout so PDF/print export is unchanged.
+// Overall descriptor for the rank lists — same wording as the TOTAL row of the report card
+// (Primary: percentage-band remark; O/A-Level: the grade's descriptor from Grading Setup).
+function rankOverallDescriptor(level, avgPct, grade){
+  if(level==='P'){
+    if(avgPct==null || !Number.isFinite(Number(avgPct))) return '—';
+    const n = Number(Number(avgPct).toFixed(10));
+    return n<30?'Very weak':n<40?'Weak':n<50?'Improve':n<60?'Satisfactory':n<70?'Good':n<80?'Very good':n<90?'Excellent':'Outstanding';
+  }
+  const m = gradeCommentsFor(level) || {};
+  return m[grade] || '—';
+}
 function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport, selectorsHtml, assessLabelMM}){
   const isLevel = mode==='level';
   const levels = ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l));
@@ -14280,23 +14293,35 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const data = pool.map(st=>{
     const c = DB.classes.find(x=>x.id===st.classId);
     const d = computeSubjectRows(st, c, term, year);
+    // The learner's OWN number of subjects: enrolled subjects plus any subject they already have a score in.
+    const subjSet = new Set(studentSubjects(st, c));
+    classSubjectsFor(c).forEach(sj=>{ if(subjectAverage(st.id, sj, term, year)!==null) subjSet.add(sj); });
+    const hasScores = d.countAvg>0;
+    const gradeAny = hasScores ? gradeFor('', d.avgPct, c.level) : null;
+    const weak = hasScores ? weakestSubjectNames(d.rows) : [];
     return {st, c, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, c.level, st, c, term, year),
       maxP: isA ? maxPointsFor(st, c) : 100,
       grade: isP ? null : gradeFor('', d.avgPct, c.level),
-      agg: isP ? primaryAggregate(st, c, term, year) : null};
+      agg: isP ? primaryAggregate(st, c, term, year) : null,
+      nSubj: subjSet.size,
+      desc: hasScores ? rankOverallDescriptor(c.level, d.avgPct, gradeAny) : '—',
+      resultTxt: (c.level==='O') ? resultTextFor(st, c, term, year) : '—',
+      weakTxt: weak.length ? weak.join(', ') : '—'};
   }).sort((a,b)=> rankCmp(a.k,b.k) || (a.st.name||'').localeCompare(b.st.name||''));
   let pos = 0;
   data.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, data[i-1].k)) pos = i+1; r.pos = pos; });
   const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 25);
   const gradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
-  const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}`;
-  const colCount = 5 + (isLevel?1:0) + (isA?1:0) + (isP?1:0);
+  const isO = level==='O';
+  const head = `<th>Rank</th><th>Adm No</th><th>Student Name</th>${isLevel?'<th>Class</th>':''}<th>Subjects</th><th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':''}${isO?'<th>Overall Grade</th><th>Result</th>':''}<th>Overall Descriptor</th><th>Weak Subject</th>`;
+  // Only what applies to the level: Primary = Aggregate + Division; O-Level = Overall Grade + Result; A-Level = Points (no separate grade / result).
+  const colCount = 7 + (isLevel?1:0) + (isA?1:0) + (isP?2:0) + (isO?2:0);
   const body = pg.pageItems.map(r=>{
     const clsName = r.c ? esc(classFullName(r.c)) : '—';
     const tail = isP
-      ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${esc(String(primaryDivisionFor(r.agg)||'—'))}</td>`
-      : gradeTd(r.grade||'—');
-    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${zpct(r.avgPct,1)}</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}</tr>`;
+      ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
+      : (isO ? gradeTd(r.grade||'—') : '');
+    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td style="text-align:left;">${esc(r.st.name)}</td>${isLevel?`<td>${clsName}</td>`:''}<td>${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isA?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isO?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
   const title = isLevel ? `General Rank List — ${mmLevelLabel(level)}` : 'Rank List';
   const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(classFullName(cls))}`;
@@ -16243,12 +16268,12 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.setFillColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH, 'F'); pdf.setDrawColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH);
     const _tl1 = `${data.signOff.currentTerm||'Term'} ended on ${fmtDate(data.signOff.termEndDate)}`;
     const _tl2 = `Next term begins on ${fmtDate(data.signOff.nextTermBeginDate)}`;
-    let _tfs = 8.6; pdf.setFont('helvetica','bold');
+    let _tfs = 9.6; pdf.setFont('times','bold');
     while(_tfs>5.2){ pdf.setFontSize(_tfs); if(Math.max(pdf.getTextWidth(_tl1), pdf.getTextWidth(_tl2)) <= dateW-8) break; _tfs -= 0.2; }
     pdf.setLineWidth(0.35);
     [[_tl1, dateCenterY-2],[_tl2, dateCenterY+9]].forEach(([tx,ty])=>{
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(_tfs); pdf.setTextColor(255,255,255); pdf.setDrawColor(255,255,255);
-      pdf.text(tx, dateX+dateW/2, ty, {align:'center', renderingMode:'fillThenStroke'});
+      pdf.setFont('times','bold'); pdf.setFontSize(_tfs); pdf.setTextColor(255,255,255);
+      pdf.text(tx, dateX+dateW/2, ty, {align:'center'});
     });
     pdf.setLineWidth(0.6);
   }
