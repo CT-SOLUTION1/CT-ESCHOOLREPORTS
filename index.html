@@ -460,6 +460,10 @@ table.req-tbl tr{display:table-row !important;width:auto !important;}
 table.req-tbl th:first-child,table.req-tbl td:first-child{width:56%;text-align:left;}
 table.req-tbl th:last-child,table.req-tbl td.req-fee-cell{width:44%;text-align:center;}
 table.req-tbl th:first-child .small{display:block;margin-top:2px;}
+/* Individual (special) agreed fees: clear heading, instruction and submit button */
+.sp-fee-title{margin:0 0 8px;font-family:'Trebuchet MS','Segoe UI',Roboto,Arial,sans-serif;font-size:17px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:var(--blue);line-height:1.3;}
+.sp-fee-instr{margin:0 0 12px;padding:9px 11px;font-family:'Trebuchet MS','Segoe UI',Roboto,Arial,sans-serif;font-size:14px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;line-height:1.4;color:#8a1020;background:#fff4f5;border-left:5px solid #C8102E;border-radius:4px;}
+button.sp-fee-submit{display:block;width:100%;box-sizing:border-box;padding:16px 14px;font-size:16px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;line-height:1.3;text-align:center;white-space:normal;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,.3);}
 /* one-line summary shown above the list/record tables */
 .fin-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:2px solid var(--blue);border-radius:8px;padding:8px 12px;margin:0 0 12px;}
 .fin-summary .fin-sum-text{font-weight:800;color:var(--navy);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
@@ -9499,11 +9503,11 @@ function feesGateView(d){
             const own = studentAgreedRecord(st.id, term, year, d);
             return `<tr><td style="width:44px;"><input type="checkbox" name="studentIds" value="${esc(st.id)}" style="width:auto;"></td><td>${esc(st.admNo||'')}</td><td class="stu-name" style="text-align:left;">${esc(st.name)}</td><td>${money(studentAgreedAmount(st, term, year, d))}${own?' <span class="small">(special)</span>':''}</td></tr>`;
           }).join('');
-          out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">Individual agreed fees — ${esc(cls.name)} — ${esc(term)} ${esc(year)}</h3>
-            <p class="small" style="text-transform:none;font-weight:700;">Tick students with a similar School fees but different from the general agreed fees.</p>
+          out += `<div class="card" style="overflow-x:auto;"><h3 class="sp-fee-title">INDIVIDUAL AGREED FEES — ${esc(cls.name).toUpperCase()} — ${esc(term).toUpperCase()} ${esc(year)}</h3>
+            <p class="sp-fee-instr">TICK THE STUDENTS WHOSE SCHOOL FEES ARE DIFFERENT FROM THE GENERAL AGREED FEES, THEN PRESS THE GOLD BUTTON BELOW.</p>
             <form data-form="setFeeIndividualAgreed">${hidden}
               <table class="data-table"><tr><th><input type="checkbox" style="width:auto;" onchange="feeIndToggleAll(this)" title="Tick all"></th><th>Adm No.</th><th>Student</th><th>Current agreed fees</th></tr>${rows || '<tr><td colspan="4">No students in this class.</td></tr>'}</table>
-              <div style="margin-top:12px;"><button type="button" class="btn-gold" onclick="feeIndSubmit(this)" style="padding:12px 22px;font-weight:800;">SUBMIT</button></div>
+              <div style="margin-top:12px;"><button type="button" class="btn-gold sp-fee-submit" onclick="feeIndSubmit(this)">SUBMIT TO ENTER AND ASSIGN SPECIAL SCHOOL FEES</button></div>
               <div class="fee-ind-amount" style="display:none;margin-top:12px;border-top:1px dashed #cfd9e3;padding-top:12px;">
                 <span class="small fee-ind-count" style="font-weight:700;text-transform:none;"></span>
                 <label>Special agreed school fees for the ticked students (figures only)</label>
