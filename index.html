@@ -432,6 +432,17 @@ label.req-opt{display:flex;align-items:center;gap:6px;font-weight:normal;width:a
 label.req-opt input{width:auto;}
 label.req-opt .req-fee{display:none;width:120px;padding:4px 8px;font-size:13px;}
 label.req-opt input[type=checkbox]:checked ~ .req-fee{display:inline-block;}
+/* Requirements: big tappable heading that hides/shows the selections */
+button.req-hero{display:block;box-sizing:border-box;width:100%;margin:0 0 12px;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-family:inherit;font-size:calc(11*var(--uk));font-weight:800;line-height:inherit;letter-spacing:.03em;text-transform:uppercase;text-align:center;border:2px solid var(--navy);border-radius:8px;background:var(--navy);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
+button.req-hero:active{transform:translateY(1px);}
+/* Requirements picker laid out like Result Analysis: 1. Category | 2. Items needed | 3. Substitute fee */
+table.req-tbl{width:100%;border-collapse:collapse;margin:8px 0 12px;}
+table.req-tbl th{text-align:left;font-size:13px;padding:8px 10px;}
+table.req-tbl td{padding:6px 10px;vertical-align:middle;}
+table.req-tbl td.req-fee-cell{width:190px;}
+table.req-tbl td.req-fee-cell input.req-fee{display:none;width:100%;max-width:170px;padding:5px 8px;font-size:14px;}
+table.req-tbl tr:has(input[type=checkbox]:checked) input.req-fee{display:inline-block;}
+table.req-tbl label.req-opt{font-size:14px;font-weight:700;}
 .req-qbtn{padding:3px 8px;font-size:12px;margin:1px;}
 .req-add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px dashed #cfd9e3;padding-top:10px;}
 .req-add-row input.req-add-input{flex:1 1 220px;min-width:160px;width:auto;}
@@ -8981,14 +8992,8 @@ function financeRequirementsViewCore(){
     if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
     return lockHeader + backTabs + studentsSummaryView(d, term, year);
   }
-  if(finTab==='fees'){
-    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
-    return lockHeader + backTabs + feesClassTableView(d, term, year);
-  }
-  if(finTab==='requirements'){
-    if(!VIEW.params.finClassId) return lockHeader + backTabs + classPickerHTML();
-    return lockHeader + backTabs + requirementsClassView(d, term, year);
-  }
+  if(finTab==='fees') return lockHeader + backTabs + feesGateView(d);
+  if(finTab==='requirements') return lockHeader + backTabs + requirementsGateView(d);
   return lockHeader + finTabChooserHTML();
 }
 // ---------- Finance: Salaries (teaching staff + non teaching staff) ----------
@@ -9393,6 +9398,117 @@ function exemptionsView(d, term, year){
   <label>Search</label><input placeholder="Search by name or admission number…" oninput="filterFinanceRows(this.value)">
   <table class="data-table" id="financeStudentTable"><tr><th>Adm No.</th><th>Student</th>${isAll?'<th>Class</th>':''}<th>Fees</th><th>Requirements</th></tr>${rows || `<tr><td colspan="99">No students.</td></tr>`}</table></div>`;
 }
+
+// ---- Fees section: big tappable heading -> Category -> Class -> Term -> Year (shown step by step) -> content ----
+const FEE_SET_CATS = [['general','GENERAL AGREED FEES'],['individual','INDIVIDUAL AGREED FEES'],['other','ADD ANY OTHER FEES']];
+function setFeeParam(key, value){
+  const p = {...VIEW.params};
+  if(key==='cat'){ p.feeCat = value || undefined; p.finClassId = null; p.feeTerm = undefined; p.feeYear = undefined; }   // a new category asks for the class again
+  else if(key==='class') p.finClassId = value || null;
+  else if(key==='term') p.feeTerm = value || undefined;
+  else if(key==='year') p.feeYear = value || undefined;
+  VIEW.params = p; render();
+}
+function feeSelectorsHTML(classId, withAll, firstNo){
+  const p = VIEW.params, n0 = firstNo||1;
+  const term = p.feeTerm || DB.info.currentTerm, year = String(p.feeYear || DB.info.currentYear);
+  const cy = Number(DB.info.currentYear) || new Date().getFullYear();
+  const years = []; for(let y=cy-3; y<=cy+1; y++) years.push(String(y));
+  if(!years.includes(year)) years.push(year);
+  const clsOpts = `<option value="">— Select class —</option>` + DB.classes.map(c=>`<option value="${c.id}" ${c.id===classId?'selected':''}>${esc(c.name)}</option>`).join('') + (withAll?`<option value="all" ${classId==='all'?'selected':''}>All Students</option>`:'');
+  return `<div class="card"><div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
+    <div style="flex:1 1 220px;min-width:0;"><label>${n0}. Class</label><select onchange="setFeeParam('class', this.value)">${clsOpts}</select></div>
+    ${classId ? `<div style="flex:1 1 180px;min-width:0;"><label>${n0+1}. Term</label><select onchange="setFeeParam('term', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div style="flex:1 1 140px;min-width:0;"><label>${n0+2}. Year</label><select onchange="setFeeParam('year', this.value)">${years.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}</select></div>` : ''}
+  </div>${DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>'}</div>`;
+}
+// Individual agreed fees: "Submit" first checks that someone is ticked, then reveals the box for the special figure.
+function feeIndToggleAll(cb){
+  const form = cb.closest('form'); if(!form) return;
+  form.querySelectorAll('input[name=studentIds]').forEach(x=>{ x.checked = cb.checked; });
+}
+function feeIndSubmit(btn){
+  const form = btn.closest('form'); if(!form) return;
+  const n = form.querySelectorAll('input[name=studentIds]:checked').length;
+  if(!n){ alert('Tick at least one student first.'); return; }
+  const panel = form.querySelector('.fee-ind-amount'); if(!panel) return;
+  panel.style.display = 'block';
+  const c = panel.querySelector('.fee-ind-count'); if(c) c.textContent = n + ' student' + (n===1?'':'s') + ' ticked';
+  const inp = panel.querySelector('input[name=amount]'); if(inp) inp.focus();
+  try{ panel.scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){}
+}
+function feesGateView(d){
+  const p = VIEW.params;
+  const proceed = !!p.feeProceed, open = !!p.feeOpen;
+  const term = p.feeTerm || DB.info.currentTerm, year = String(p.feeYear || DB.info.currentYear);
+  const cat = FEE_SET_CATS.some(c=>c[0]===p.feeCat) ? p.feeCat : '';
+  const classId = ((proceed && p.finClassId==='all') || DB.classes.some(c=>c.id===p.finClassId)) ? p.finClassId : '';
+  const title = proceed ? 'LIST / RECORD FEES' : 'SETTING SCHOOL FEES';
+  const hero = `<button type="button" class="req-hero${open?' open':''}" data-action="feeToggleOpen" aria-expanded="${open}" title="Tap to ${open?'hide':'show'} the selections">${title} ${open?'▲':'▼'}</button>`;
+  if(proceed){
+    let out = hero + `<button type="button" class="btn-outline" data-action="feeBackToSettings" style="display:block;width:100%;padding:12px 16px;margin:0 0 12px;font-weight:800;">⬅ BACK TO SETTING SCHOOL FEES</button>`;
+    if(!open) return out;
+    out += feeSelectorsHTML(classId, true, 1);
+    if(!classId) return out;
+    return out + feesClassTableView(d, term, year);
+  }
+  let out = hero;
+  if(open){
+    out += `<div class="card"><label>1. Category</label><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+      ${FEE_SET_CATS.map((c,i)=>`<button type="button" class="pick-btn pick-c${i%6}${c[0]===cat?' sel':''}" aria-pressed="${c[0]===cat}" onclick="setFeeParam('cat','${c[0]}')">${c[1]}</button>`).join('')}</div></div>`;
+    if(cat){
+      out += feeSelectorsHTML(classId, false, 2);
+      if(classId){
+        const cls = DB.classes.find(c=>c.id===classId);
+        const hidden = `<input type="hidden" name="classId" value="${esc(classId)}"><input type="hidden" name="term" value="${esc(term)}"><input type="hidden" name="year" value="${esc(year)}">`;
+        if(cat==='general'){
+          const rec = classAgreedRecord(classId, term, year, d);
+          out += `<div class="card"><h3 style="margin-top:0;">General agreed fees — ${esc(cls.name)} — ${esc(term)} ${esc(year)}</h3>
+            <p class="small" style="text-transform:none;">${rec?`Currently ${money(rec.amount)} per student.`:'Not set yet.'} Type the agreed school fees every student in this class pays (figures only).</p>
+            <form data-form="setFeeClassAgreed">${hidden}
+              <label>General agreed school fees</label><input name="amount" type="number" inputmode="decimal" min="0" step="0.01" required value="${rec?esc(String(rec.amount)):''}">
+              <div class="flex" style="margin-top:10px;"><button class="btn">Save</button></div>
+            </form></div>`;
+        } else if(cat==='individual'){
+          const active = sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===classId));
+          const rows = active.map(st=>{
+            const own = studentAgreedRecord(st.id, term, year, d);
+            return `<tr><td style="width:44px;"><input type="checkbox" name="studentIds" value="${esc(st.id)}" style="width:auto;"></td><td>${esc(st.admNo||'')}</td><td class="stu-name" style="text-align:left;">${esc(st.name)}</td><td>${money(studentAgreedAmount(st, term, year, d))}${own?' <span class="small">(special)</span>':''}</td></tr>`;
+          }).join('');
+          out += `<div class="card" style="overflow-x:auto;"><h3 style="margin-top:0;">Individual agreed fees — ${esc(cls.name)} — ${esc(term)} ${esc(year)}</h3>
+            <p class="small" style="text-transform:none;font-weight:700;">Tick students with a similar School fees but different from the general agreed fees.</p>
+            <form data-form="setFeeIndividualAgreed">${hidden}
+              <table class="data-table"><tr><th><input type="checkbox" style="width:auto;" onchange="feeIndToggleAll(this)" title="Tick all"></th><th>Adm No.</th><th>Student</th><th>Current agreed fees</th></tr>${rows || '<tr><td colspan="4">No students in this class.</td></tr>'}</table>
+              <div style="margin-top:12px;"><button type="button" class="btn-gold" onclick="feeIndSubmit(this)" style="padding:12px 22px;font-weight:800;">SUBMIT</button></div>
+              <div class="fee-ind-amount" style="display:none;margin-top:12px;border-top:1px dashed #cfd9e3;padding-top:12px;">
+                <span class="small fee-ind-count" style="font-weight:700;text-transform:none;"></span>
+                <label>Special agreed school fees for the ticked students (figures only)</label>
+                <input name="amount" type="number" inputmode="decimal" min="0" step="0.01">
+                <div class="flex" style="margin-top:10px;"><button class="btn">Save special agreed fees</button></div>
+              </div>
+            </form></div>`;
+        } else {
+          const items = d.fees.filter(f=>f.term===term && Number(f.year)===Number(year) && (f.scope==='all' || f.scope===classId));
+          out += `<div class="card"><h3 style="margin-top:0;">Add other fees — ${esc(cls.name)} — ${esc(term)} ${esc(year)}</h3>
+            <form data-form="addFinanceFee">
+              <input type="hidden" name="term" value="${esc(term)}"><input type="hidden" name="year" value="${esc(year)}">
+              <label>Fee / Charge</label><input name="name" required placeholder="e.g. UNEB, Development, Trip">
+              <div class="grid2">
+                <div><label>Amount per student</label><input name="amount" type="number" inputmode="decimal" min="0" step="0.01" required></div>
+                <div><label>Category</label><select name="category">${['Tuition','Boarding','Meals','Examination','Development','Activity','Other'].map(c=>`<option ${c==='Other'?'selected':''}>${c}</option>`).join('')}</select></div>
+              </div>
+              <label>Applies to</label><select name="scope"><option value="${esc(classId)}">${esc(cls.name)} only</option><option value="all">All classes</option></select>
+              <div class="flex" style="margin-top:12px;"><button class="btn">Add Fee Item</button></div>
+            </form>
+            ${items.length?`<table class="data-table" style="margin-top:12px;"><tr><th>Charge</th><th>Category</th><th>Applies to</th><th>Amount</th></tr>${items.map(f=>`<tr><td>${esc(f.name)}</td><td>${esc(f.category||'')}</td><td>${f.scope==='all'?'All classes':esc(cls.name)}</td><td>${money(f.amount)}</td></tr>`).join('')}</table>`:''}
+          </div>`;
+        }
+      }
+    }
+  }
+  out += `<button type="button" class="btn-gold" data-action="feeProceed" style="display:block;width:100%;padding:14px 18px;margin:0 0 12px;font-size:15px;letter-spacing:.03em;">PROCEED TO LIST/RECORD FEES ➜</button>`;
+  return out;
+}
 // Fees tab, once a class (or "all") has been chosen. For a single class, this
 // first lets the admin set/edit the classwide Agreed Fees amount for the
 // current term; then shows every active student with their own agreed
@@ -9409,14 +9525,13 @@ function feesClassTableView(d, term, year){
 
   let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
     <h3 style="margin:0;">${isAll?'All Students':esc(cls.name)} — Fees (${esc(term)} ${esc(String(year))})</h3>
-    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
   </div>`;
 
   if(!isAll){
     const rec = classAgreedRecord(finClassId, term, year, d);
     const editing = VIEW.params.editClassAgreed;
     // Agreed fees can only be set or edited under GENERAL → AGREED FEES; here they are shown for reference.
-    out += `<div class="card"><span class="small">CLASSWIDE AGREED FEES</span>${rec?`<h2 style="margin:4px 0;">${money(rec.amount)}</h2>`:`<p class="small" style="margin:4px 0;">Not set yet.</p>`}<p class="small" style="margin:0;">Set or change agreed fees under GENERAL → AGREED FEES.</p></div>`;
+    out += `<div class="card"><span class="small">CLASSWIDE AGREED FEES</span>${rec?`<h2 style="margin:4px 0;">${money(rec.amount)}</h2>`:`<p class="small" style="margin:4px 0;">Not set yet.</p>`}<p class="small" style="margin:0;">Set or change agreed fees under SETTING SCHOOL FEES (or GENERAL → AGREED FEES).</p></div>`;
   }
 
   const summaries = active.map(s=>({s, sum: studentAgreedSummary(s, term, year, d)}));
@@ -10195,7 +10310,7 @@ function requirementTypesCatalogHTML(d, active){
 function reqPickCategory(btn){
   const form = btn.closest('form'); if(!form) return;
   const cat = btn.getAttribute('data-reqcat');
-  form.querySelectorAll('.req-cat-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  form.querySelectorAll('.req-cat-btn, .req-pick').forEach(b=>{ const on = (b===btn); b.classList.toggle('active', on); if(b.classList.contains('req-pick')){ b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on?'true':'false'); } });
   form.querySelectorAll('.req-cat-panel').forEach(p=>{ p.style.display = (p.getAttribute('data-reqcat')===cat) ? 'block' : 'none'; });
   const hint = form.querySelector('.req-cat-hint'); if(hint) hint.style.display = 'none';
 }
@@ -10206,7 +10321,7 @@ function reqRefreshCounts(form){
     const n = p.querySelectorAll('input[type=checkbox]:checked').length;
     total += n;
     const cat = p.getAttribute('data-reqcat');
-    form.querySelectorAll('.req-cat-btn').forEach(b=>{
+    form.querySelectorAll('.req-cat-btn, .req-pick').forEach(b=>{
       if(b.getAttribute('data-reqcat')===cat){ const c = b.querySelector('.req-cat-count'); if(c) c.textContent = n ? ' · '+n : ''; }
     });
   });
@@ -10230,18 +10345,21 @@ function reqAddCustom(btn){
     const cb = dup.closest('label').querySelector('input[type=checkbox]');
     if(cb) cb.checked = true;
   } else {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'), td2 = document.createElement('td'); td2.className = 'req-fee-cell';
     const label = document.createElement('label'); label.className = 'req-opt';
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'newReq'; cb.checked = true;
     cb.value = JSON.stringify({name:name, category:cat, scope:scope});
     const nm = document.createElement('span'); nm.className = 'req-opt-name'; nm.textContent = name;
     const tag = document.createElement('span'); tag.className = 'small'; tag.style.cssText = 'margin:0;text-transform:none;'; tag.textContent = '(new)';
     const fee = document.createElement('input'); fee.type = 'number'; fee.className = 'req-fee'; fee.min = '0'; fee.step = 'any';
-    fee.placeholder = 'Substitute fee'; fee.title = 'Cash fee that replaces this item';
+    fee.placeholder = 'Amount'; fee.title = 'Cash fee that replaces this item';
     fee.name = 'subFee|new:' + name.trim().toLowerCase();
-    label.appendChild(cb); label.appendChild(nm); label.appendChild(tag); label.appendChild(fee);
-    const list = panel.querySelector('.req-opt-list');
-    const empty = list.querySelector('.req-empty'); if(empty) empty.remove();
-    list.appendChild(label);
+    label.appendChild(cb); label.appendChild(nm); label.appendChild(tag); td1.appendChild(label); td2.appendChild(fee);
+    tr.appendChild(td1); tr.appendChild(td2);
+    const body = panel.querySelector('.req-opt-list');
+    const empty = body.querySelector('.req-empty'); if(empty) empty.remove();
+    body.appendChild(tr);
   }
   input.value = ''; input.focus();
   reqRefreshCounts(form);
@@ -10262,7 +10380,7 @@ function reqAddKey(ev, input){
 //   3. "Add more" lets the admin type in anything that isn't listed.
 // Suggestions and new items only become real catalog entries when
 // "Save Selection" is pressed, so browsing this screen never silently changes anything.
-function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured){
+function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured, ctx){
   const isAllView = finClassId==='all';
   const avail = classReqAvailable(finClassId, d);
   const saved = d.classReqSelections[finClassId];
@@ -10283,14 +10401,16 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured){
     const suggestions = DEFAULT_REQUIREMENTS.filter(x=>x.category===cat && !availNames.has(nameKey(x.name)));
     const tickedHere = have.filter(r=>checkedSet.has(r.id)).length;
     totalSelected += tickedHere;
-    chips.push(`<button type="button" class="req-cat-btn" data-reqcat="${esc(cat)}" onclick="reqPickCategory(this)">${iconFor(cat)} ${esc(cat)}<span class="req-cat-count">${tickedHere?' · '+tickedHere:''}</span></button>`);
-    const opts = have.map(r=>`<label class="req-opt"><input type="checkbox" name="reqIds" value="${esc(r.id)}" ${checkedSet.has(r.id)?'checked':''}><span class="req-opt-name">${esc(r.name)}</span><input type="number" class="req-fee" name="subFee|${esc(r.id)}" min="0" step="any" placeholder="Substitute fee" title="Cash fee that replaces this item" value="${r.subFee>0?esc(String(r.subFee)):''}"></label>`).join('')
-      + suggestions.map(x=>`<label class="req-opt"><input type="checkbox" name="newReq" value="${esc(JSON.stringify({name:x.name, category:cat, scope:'all'}))}"><span class="req-opt-name">${esc(x.name)}</span><input type="number" class="req-fee" name="subFee|new:${esc(nameKey(x.name))}" min="0" step="any" placeholder="Substitute fee" title="Cash fee that replaces this item"></label>`).join('');
+    chips.push(`<button type="button" class="pick-btn req-pick pick-c${chips.length%6}" data-reqcat="${esc(cat)}" aria-pressed="false" onclick="reqPickCategory(this)">${iconFor(cat)} ${esc(cat.toUpperCase())}<span class="req-cat-count">${tickedHere?' · '+tickedHere:''}</span></button>`);
+    const feeIn = (name, val) => `<input type="number" class="req-fee" name="${name}" min="0" step="any" inputmode="decimal" placeholder="Amount" title="Cash fee that replaces this item" value="${val}">`;
+    const opts = have.map(r=>`<tr><td><label class="req-opt"><input type="checkbox" name="reqIds" value="${esc(r.id)}" ${checkedSet.has(r.id)?'checked':''}><span class="req-opt-name">${esc(r.name)}</span></label></td><td class="req-fee-cell">${feeIn('subFee|'+esc(r.id), r.subFee>0?esc(String(r.subFee)):'')}</td></tr>`).join('')
+      + suggestions.map(x=>`<tr><td><label class="req-opt"><input type="checkbox" name="newReq" value="${esc(JSON.stringify({name:x.name, category:cat, scope:'all'}))}"><span class="req-opt-name">${esc(x.name)}</span></label></td><td class="req-fee-cell">${feeIn('subFee|new:'+esc(nameKey(x.name)), '')}</td></tr>`).join('');
     const scopeSelect = isAllView ? '' : `<select class="req-add-scope" title="Which classes this new requirement applies to"><option value="all">All classes</option><option value="${esc(finClassId)}">${esc(clsLabel)} only</option></select>`;
     panels.push(`<div class="req-cat-panel" data-reqcat="${esc(cat)}">
       <div style="font-weight:800;color:var(--navy);">${iconFor(cat)} ${esc(cat)}</div>
-      <div class="small" style="margin:2px 0 0;text-transform:none;">Tick the requirements the school demands for ${esc(clsLabel)}, and enter the <b>substitute fee</b> (the cash amount paid instead of bringing the item) for each ticked one.</div>
-      <div class="req-opt-list">${opts || '<span class="small req-empty" style="margin:0;text-transform:none;">Nothing listed for this category yet — add your own below.</span>'}</div>
+      <table class="data-table req-tbl"><thead><tr><th>2. ITEMS NEEDED <span class="small" style="text-transform:none;font-weight:600;">(tick those needed)</span></th><th>3. SUBSTITUTE FEE</th></tr></thead>
+        <tbody class="req-opt-list">${opts || '<tr class="req-empty"><td colspan="2"><span class="small" style="margin:0;text-transform:none;">Nothing listed for this category yet — add your own below.</span></td></tr>'}</tbody></table>
+      <div class="small" style="margin:0 0 8px;text-transform:none;">A box for the <b>substitute fee</b> (figures only — the cash paid instead of bringing the item) appears beside each ticked item.</div>
       <div class="req-add-row">
         <input type="text" class="req-add-input" maxlength="80" placeholder="Add more — type a requirement" onkeydown="reqAddKey(event,this)">
         ${scopeSelect}
@@ -10299,18 +10419,66 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured){
     </div>`);
   });
 
-  return `<div class="card"><h3>Select Requirements Demanded — ${esc(clsLabel)}</h3>
-    <p class="small" style="text-transform:none;"><b>1.</b> Choose a category. <b>2.</b> Tick the requirements the school demands for this class, or use <b>➕ Add</b> for anything that isn't listed. You can move between categories — nothing is saved until you press <b>Save Selection</b>. Only the ticked requirements appear as columns in the table.</p>
+  return `<div class="card"><h3 style="margin-top:0;">Requirements for ${esc(clsLabel)}${ctx?' — '+esc(ctx):''}</h3>
+    <p class="small" style="text-transform:none;"><b>1.</b> Choose a category. <b>2.</b> Tick the items needed. <b>3.</b> Type the substitute fee beside each ticked item. You can move between categories — nothing is saved until you press <b>Save Selection</b>. Only the ticked requirements appear as columns in the table.</p>
     <form data-form="saveClassReqSelection" data-classid="${esc(finClassId)}" onchange="reqRefreshCounts(this)">
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;">${chips.join('')}</div>
-      <p class="small req-cat-hint" style="margin:6px 0;text-transform:none;">👆 Choose a category above to see its requirements.</p>
-      ${panels.join('')}
+      <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
+        <div style="flex:1 1 230px;min-width:0;max-width:340px;"><label>1. CATEGORY</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">${chips.join('')}</div></div>
+        <div style="flex:3 1 340px;min-width:0;">
+          <p class="small req-cat-hint" style="margin:6px 0;text-transform:none;">👈 Choose a category to see its items.</p>
+          ${panels.join('')}
+        </div>
+      </div>
       <div class="flex" style="align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px;">
         <button class="btn">Save Selection</button>${alreadyConfigured?`<a href="#" class="btn-outline" data-action="reqCancelSelection" style="text-decoration:none;display:inline-flex;align-items:center;">Cancel</a>`:''}
         <span class="req-sel-total">${totalSelected} requirement${totalSelected===1?'':'s'} selected</span>
       </div>
     </form>
   </div>`;
+}
+
+// ---- Requirements section: big tappable heading -> Class / Term / Year (shown step by step) -> content ----
+function setReqParam(key, value){
+  const p = {...VIEW.params};
+  if(key==='class') p.finClassId = value || null;
+  else if(key==='term') p.reqTerm = value || undefined;
+  else if(key==='year') p.reqYear = value || undefined;
+  VIEW.params = p; render();
+}
+function reqSelectorsHTML(classId){
+  const p = VIEW.params;
+  const term = p.reqTerm || DB.info.currentTerm, year = String(p.reqYear || DB.info.currentYear);
+  const cy = Number(DB.info.currentYear) || new Date().getFullYear();
+  const years = []; for(let y=cy-3; y<=cy+1; y++) years.push(String(y));
+  if(!years.includes(year)) years.push(year);
+  const clsOpts = `<option value="">— Select class —</option>` + DB.classes.map(c=>`<option value="${c.id}" ${c.id===classId?'selected':''}>${esc(c.name)}</option>`).join('') + `<option value="all" ${classId==='all'?'selected':''}>All Students</option>`;
+  // Each choice reveals the next: Class -> Term (current term preselected) -> Year (current year preselected).
+  return `<div class="card"><div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
+    <div style="flex:1 1 220px;min-width:0;"><label>1. Class</label><select onchange="setReqParam('class', this.value)">${clsOpts}</select></div>
+    ${classId ? `<div style="flex:1 1 180px;min-width:0;"><label>2. Term</label><select onchange="setReqParam('term', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div style="flex:1 1 140px;min-width:0;"><label>3. Year</label><select onchange="setReqParam('year', this.value)">${years.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}</select></div>` : ''}
+  </div>${DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>'}</div>`;
+}
+function requirementsGateView(d){
+  const p = VIEW.params;
+  const proceed = !!p.reqProceed, open = !!p.reqOpen;
+  const classId = (p.finClassId==='all' || DB.classes.some(c=>c.id===p.finClassId)) ? p.finClassId : '';
+  const term = p.reqTerm || DB.info.currentTerm, year = String(p.reqYear || DB.info.currentYear);
+  const title = proceed ? 'LIST / RECORD REQUIREMENT ITEMS' : 'SETTING SCHOOL REQUIREMENTS';
+  const hero = `<button type="button" class="req-hero${open?' open':''}" data-action="reqToggleOpen" aria-expanded="${open}" title="Tap to ${open?'hide':'show'} the selections">${title} ${open?'▲':'▼'}</button>`;
+  const proceedBar = proceed
+    ? `<button type="button" class="btn-outline" data-action="reqBackToSettings" style="display:block;width:100%;padding:12px 16px;margin:0 0 12px;font-weight:800;">⬅ BACK TO SETTING SCHOOL REQUIREMENTS</button>`
+    : `<button type="button" class="btn-gold" data-action="reqProceed" style="display:block;width:100%;padding:14px 18px;margin:0 0 12px;font-size:15px;letter-spacing:.03em;">PROCEED TO LIST / RECORD ITEMS ➜</button>`;
+  let out = hero + proceedBar;
+  if(!open) return out;
+  out += reqSelectorsHTML(classId);
+  if(!classId) return out;
+  if(proceed) return out + requirementsClassView(d, term, year);
+  const cls = classId==='all' ? null : DB.classes.find(c=>c.id===classId);
+  const clsLabel = cls ? cls.name : 'All Students';
+  const active = sortByName(DB.students.filter(s=>s.status!=='left' && (classId==='all' || s.classId===classId)));
+  return out + reqSelectionFormHTML(classId, d, clsLabel, false, term+' '+year) + requirementTypesCatalogHTML(d, active);
 }
 // Requirements tab, once a class (or "all") has been chosen. Flow: pick which
 // requirement types are demanded for this class (reqSelectionFormHTML, only
@@ -10328,13 +10496,13 @@ function requirementsClassView(d, term, year){
   const clsLabel = isAll ? 'All Students' : cls.name;
 
   let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
-    <h3 style="margin:0;">${esc(clsLabel)} — Requirements</h3>
-    <a href="#" class="btn-outline" data-action="finBackToClass" style="text-decoration:none;display:inline-flex;align-items:center;">← Change class</a>
+    <h3 style="margin:0;">${esc(clsLabel)} — Requirements — ${esc(term)} ${esc(String(year))}</h3>
   </div>`;
 
   const already = d.classReqSelections[finClassId];
   const alreadyConfigured = already!==undefined;
-  const selecting = VIEW.params.reqSelecting || !alreadyConfigured;
+  // Opening Requirements always lands on the SETTING SCHOOL REQUIREMENTS page first; the PROCEED button leads to the list / record view.
+  const selecting = !VIEW.params.reqProceed;
 
   if(selecting){
     out += reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured);
@@ -13577,6 +13745,23 @@ function subjectClassStats(cls, subject, term, year){
   return {enrolled: students.length, sat: scored.length, avg, max, min, grades};
 }
 function levelClasses(level){ return DB.classes.filter(c=>c.level===level); }
+// Subject Performance tables: every subject the class's students take PLUS every subject that has a teacher
+// assigned to this class, even if no student is ticked into it yet or no scores are in. Such a subject
+// still gets its row (Sat/Enrolled 0/n, dashes for the figures) and fills in as soon as scores arrive.
+function analysisSubjectsFor(cls){
+  const set = new Set(classSubjectsFor(cls));
+  DB.assignments.forEach(a=>{
+    if(a.classId!==cls.id || !a.subject) return;
+    if(!DB.accounts.some(x=>x.username===a.teacherUsername)) return;
+    set.add(a.subject);
+  });
+  return [...set];
+}
+function analysisLevelSubjectsFor(level){
+  const set = new Set();
+  levelClasses(level).forEach(c=> analysisSubjectsFor(c).forEach(su=>set.add(su)));
+  return [...set];
+}
 function levelSubjectsFor(level){
   const set = new Set();
   levelClasses(level).forEach(c=> classSubjectsFor(c).forEach(su=>set.add(su)));
@@ -13849,7 +14034,7 @@ function classAnalysisViewCore(){
     return statRow(t, cols, withTeacher).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
   };
   const buildClassWise = ()=>{
-  const classRowData = classSubjectsFor(cls).map(subj=>{ const pi = paperInfoFor([cls], subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:[cls], ...subjectClassStats(cls, subj, term, year), paperRows:pi.rows}; })
+  const classRowData = analysisSubjectsFor(cls).map(subj=>{ const pi = paperInfoFor([cls], subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:[cls], ...subjectClassStats(cls, subj, term, year), paperRows:pi.rows}; })
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const classRows = classRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols, true) : '');
   const classWiseHtml = `
@@ -13865,7 +14050,7 @@ function classAnalysisViewCore(){
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
   const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
-  const levelRowData = levelSubjectsFor(spLevel).map(subj=>{ const pi = paperInfoFor(levelClasses(spLevel), subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:levelClasses(spLevel), ...subjectLevelStats(spLevel, subj, term, year), paperRows:pi.rows}; })
+  const levelRowData = analysisLevelSubjectsFor(spLevel).map(subj=>{ const pi = paperInfoFor(levelClasses(spLevel), subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:levelClasses(spLevel), ...subjectLevelStats(spLevel, subj, term, year), paperRows:pi.rows}; })
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const levelRows = levelRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (levelRowData.length ? totalsRow(levelRowData, classGradeCols, true) : '');
   const levelWiseHtml = `
@@ -14425,7 +14610,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
         ${missedList.map(x=>`<tr><td style="border:1px solid #000;padding:3px 8px;text-align:left;">${esc(x.r.st.name)}</td>${isLevel?`<td style="border:1px solid #000;padding:3px 8px;text-align:left;">${x.r.c?esc(classFullName(x.r.c)):'—'}</td>`:''}<td style="border:1px solid #000;padding:3px 8px;text-align:left;font-weight:700;">${esc(x.subs.map(msAbbr).join(', '))}</td></tr>`).join('')}
       </table>
     </div>` : '';
-  const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 25);
+  const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 35);   // same 35 students per page as Result Analysis > Student Performance
   const gradeTd = (g)=>`<td style="${rkTd}font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const isO = level==='O';
   // Combination (A-Level) / Optional Subjects (O-Level) column, same as the Students Performance Analysis.
@@ -17371,16 +17556,23 @@ Continue?`);
       render();
       break;
     }
-    case 'financeStudent': VIEW = {name:'financestudent', params:{studentId:arg, finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId}}; render(); break;
-    case 'finBackToStudentTable': VIEW = {name:'finance', params:{finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId}}; render(); break;
+    case 'financeStudent': VIEW = {name:'financestudent', params:{studentId:arg, finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId, reqProceed:VIEW.params.reqProceed, reqOpen:VIEW.params.reqOpen, reqTerm:VIEW.params.reqTerm, reqYear:VIEW.params.reqYear, feeProceed:VIEW.params.feeProceed, feeOpen:VIEW.params.feeOpen, feeTerm:VIEW.params.feeTerm, feeYear:VIEW.params.feeYear, feeCat:VIEW.params.feeCat}}; render(); break;
+    case 'finBackToStudentTable': VIEW = {name:'finance', params:{finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId, reqProceed:VIEW.params.reqProceed, reqOpen:VIEW.params.reqOpen, reqTerm:VIEW.params.reqTerm, reqYear:VIEW.params.reqYear, feeProceed:VIEW.params.feeProceed, feeOpen:VIEW.params.feeOpen, feeTerm:VIEW.params.feeTerm, feeYear:VIEW.params.feeYear, feeCat:VIEW.params.feeCat}}; render(); break;
     case 'printDemandNote': printDemandNoteFor(arg); break;
     case 'downloadDemandNote': await downloadDemandNoteFor(arg); break;
     case 'finTab': if(FINANCE_UNLOCKED && FIN_SUB && !FIN_SUB_OPEN[FIN_SUB]) break; if(FIN_SUB && !finTabAllowed(FIN_SUB, arg)) break; FIN_EMBED = !!FIN_EMBED_TABS[arg]; VIEW.params = {finTab: arg}; render(); break;
     case 'finBackToTabs': FIN_EMBED = false; VIEW = {name:'finance', params:{}}; render(); break;
-    case 'finClass': VIEW.params = {...VIEW.params, finClassId: arg, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false}; render(); break;
-    case 'finBackToClass': VIEW.params = {...VIEW.params, finClassId: null, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false}; render(); break;
-    case 'reqChangeSelection': VIEW.params = {...VIEW.params, reqSelecting: true}; render(); break;
-    case 'reqCancelSelection': VIEW.params = {...VIEW.params, reqSelecting: false}; render(); break;
+    case 'finClass': VIEW.params = {...VIEW.params, finClassId: arg, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false, reqProceed:false}; render(); break;
+    case 'finBackToClass': VIEW.params = {...VIEW.params, finClassId: null, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false, reqProceed:false}; render(); break;
+    case 'reqChangeSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:true}; render(); break;
+    case 'feeToggleOpen': VIEW.params = {...VIEW.params, feeOpen: !VIEW.params.feeOpen}; render(); break;
+    // PROCEED asks for class, term and year again (nothing carried over, selections shown straight away).
+    case 'feeProceed': VIEW.params = {...VIEW.params, feeProceed:true, feeOpen:true, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
+    case 'feeBackToSettings': VIEW.params = {...VIEW.params, feeProceed:false, feeOpen:false, feeCat:undefined, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
+    case 'reqToggleOpen': VIEW.params = {...VIEW.params, reqOpen: !VIEW.params.reqOpen}; render(); break;
+    // PROCEED asks for class, term and year again (nothing carried over, selections shown straight away).
+    case 'reqProceed': VIEW.params = {...VIEW.params, reqProceed:true, reqOpen:true, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
+    case 'reqBackToSettings': case 'reqCancelSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:false, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
     case 'printReqDemandNote': printDemandNoteFor(arg); break;
     case 'editClassAgreedFee': VIEW.params = {...VIEW.params, editClassAgreed: true}; render(); break;
     case 'cancelEditClassAgreed': VIEW.params = {...VIEW.params, editClassAgreed: false}; render(); break;
@@ -18505,7 +18697,7 @@ document.addEventListener('submit', async (e)=>{
     'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
-    'setClassAgreedFee','setStudentAgreedFee','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
+    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
@@ -18827,6 +19019,43 @@ document.addEventListener('submit', async (e)=>{
       VIEW.params = {...VIEW.params, editAgreedStudentId:null};
       render(); return;
     }
+    else if(type==='setFeeClassAgreed'){
+      if(FIN_SUB!=='fees' && FIN_SUB!=='general'){ alert('Agreed fees can only be set under FEES or GENERAL.'); return; }
+      const d = financeData();
+      const classId = fd.get('classId'), term = fd.get('term'), year = Number(fd.get('year'));
+      const cls = DB.classes.find(c=>c.id===classId);
+      if(!cls){ alert('Class not found.'); return; }
+      const amount = Number(fd.get('amount')||0);
+      if(!(amount>=0)){ alert('Please enter a valid amount.'); return; }
+      let rec = classAgreedRecord(classId, term, year, d);
+      if(rec && Number(rec.amount)!==amount && !(await binFinCorrect('classAgreed','Classwise agreed fee',rec))) return;
+      if(rec) rec.amount = amount;
+      else d.classAgreed.push({id:uid('cagree'), classId, term, year, amount});
+      DB.students.filter(s=>s.classId===classId).forEach(s=>syncStudentFinance(s.id,d));
+      await saveInfo();
+      try{ showActionSuccess('General agreed fees saved', form); }catch(e){}
+      render(); return;
+    }
+    else if(type==='setFeeIndividualAgreed'){
+      if(FIN_SUB!=='fees' && FIN_SUB!=='general'){ alert('Agreed fees can only be set under FEES or GENERAL.'); return; }
+      const d = financeData();
+      const term = fd.get('term'), year = Number(fd.get('year'));
+      const ids = fd.getAll('studentIds').filter(Boolean);
+      if(!ids.length){ alert('Tick at least one student first.'); return; }
+      const amount = Number(fd.get('amount'));
+      if(fd.get('amount')==='' || !(amount>=0)){ alert('Please enter the special agreed fees (figures only).'); return; }
+      for(const studentId of ids){
+        const stu = DB.students.find(s=>s.id===studentId); if(!stu) continue;
+        let rec = studentAgreedRecord(studentId, term, year, d);
+        if(rec && Number(rec.amount)!==amount && !(await binFinCorrect('studentAgreed','Student agreed fee',rec))) return;
+        if(rec) rec.amount = amount;
+        else d.studentAgreed.push({id:uid('sagree'), studentId, term, year, amount});
+        syncStudentFinance(studentId, d);
+      }
+      await saveInfo();
+      try{ showActionSuccess('Special agreed fees saved for '+ids.length+' student'+(ids.length===1?'':'s'), form); }catch(e){}
+      render(); return;
+    }
     else if(type==='addInstallment'){
       const d = financeData();
       const studentId = form.dataset.studentid;
@@ -18888,7 +19117,8 @@ document.addEventListener('submit', async (e)=>{
       });
       d.classReqSelections[classId] = Array.from(ids);
       await saveInfo();
-      VIEW.params = {...VIEW.params, reqSelecting:false};
+      VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:true};
+      try{ showActionSuccess('Requirements saved', form); }catch(e){}
       render(); return;
     }
     else if(type==='saveAllProjectScores'){
@@ -20710,7 +20940,7 @@ async function runMasterMarkSheetPdf(arg, el, forPrint){
   const modeLabel = ['grades','rank','level','lscores','lgrades'].includes(modeArg) ? modeArg : 'scores';
   document.getElementById('app').innerHTML = renderShellWithContent(masterMarkSheetView(true));
   try{
-    await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, ['rank','level'].includes(modeArg) ? {orientation:'portrait', rowsPerPage:(window._mmRankMissedCount>0 ? 28 : 35)} : {orientation:'landscape'});
+    await downloadMasterMarkSheetPdf('printArea', `${(['level','lscores','lgrades'].includes(modeArg) ? mmLevelLabel(window._mmLevelUsed) : (cls?cls.name:'class')).replace(/[\s']+/g,'_')}_master_marksheet_${modeLabel}_${String(term).replace(/\s+/g,'_')}_${year}.pdf`, ['rank','level'].includes(modeArg) ? {orientation:'portrait', rowsPerPage:35} : {orientation:'landscape'});
   } finally {
     render();
   }
