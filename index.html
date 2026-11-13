@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-12-2110'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-13-1100'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -734,6 +734,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 .rc-actionbar>button.rc-sel-dl:not(.dl-ready-btn):not(.host-busy){background:#7B3FA0;border-color:#7B3FA0;}
 .rc-actionbar>button.rc-sel-clear:not(.dl-ready-btn):not(.host-busy){background:#B23A3A;border-color:#B23A3A;}
 .rc-topbar-names{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 6px;}
+.dl-uniform{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding:16px 12px;font-size:16px;line-height:1.2;font-weight:700;border-radius:8px;text-align:center;min-width:140px;}
+.dl-uniform.host-busy{opacity:.85;cursor:progress;}
 .dl-ready-btn{background:var(--good) !important;color:#fff !important;border-color:var(--good) !important;}
 .dl-ready-in{display:flex;align-items:stretch;justify-content:center;gap:10px;width:100%;}
 .dl-ready-open{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;font-weight:900;}
@@ -8741,9 +8743,7 @@ async function downloadSelectedDemandNotesPdf(selectedSet){
 }
 async function runDownloadSelectedDemandNotesPdf(btn, selectedSet){
   if(btn.disabled) return;
-  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{ await downloadSelectedDemandNotesPdf(selectedSet); }
-  finally{ btn.disabled = false; btn.innerHTML = orig; }
+  await runWithHostButton(btn, ()=>downloadSelectedDemandNotesPdf(selectedSet));
 }
 // Tick-to-select state for the Fees and Requirements tables — kept as two separate
 // sets (mirroring SELECTED_REPORTS for report cards) so ticking students in one
@@ -8794,9 +8794,7 @@ async function downloadFinanceTablePdf(exportElId, filename){
 }
 async function runDownloadFinanceTablePdf(btn, exportElId, filename){
   if(btn.disabled) return;
-  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{ await downloadFinanceTablePdf(exportElId, filename); }
-  finally{ btn.disabled = false; btn.innerHTML = orig; }
+  await runWithHostButton(btn, ()=>downloadFinanceTablePdf(exportElId, filename));
 }
 // Whether a school has actually started using Account Section at all —
 // i.e. has it recorded even one fee item or one payment, anywhere. Schools that
@@ -10172,9 +10170,7 @@ async function downloadAccountStatementsPdf(){
 }
 async function runDownloadAccountStatementsPdf(btn){
   if(btn.disabled) return;
-  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{ await downloadAccountStatementsPdf(); }
-  finally{ btn.disabled = false; btn.innerHTML = orig; }
+  await runWithHostButton(btn, ()=>downloadAccountStatementsPdf());
 }
 
 // School Fees Analysis — a bird's-eye view separate from the per-class working
@@ -12104,9 +12100,7 @@ function printStudentsList(){
   }));
 }
 async function runDownloadStudentsListPdf(btn){
-  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{ await withStudentsListExport(async done=>{ try{ await downloadFinanceTablePdf('stuListExport', `${STU_LIST_LABEL.replace(/[^\w]+/g,'_')}_students.pdf`); } finally{ done(); } }); }
-  finally{ btn.disabled = false; btn.innerHTML = orig; }
+  await runWithHostButton(btn, ()=>withStudentsListExport(async done=>{ try{ await downloadFinanceTablePdf('stuListExport', `${STU_LIST_LABEL.replace(/[^\w]+/g,'_')}_students.pdf`); } finally{ done(); } }));
 }
 function downloadStudentsListCsv(){
   if(!STU_LIST_VIEW.length){ alert('List some students first (pick a class or search).'); return; }
@@ -13080,7 +13074,7 @@ async function rcPickDownload(btn){
   if(!ids.length){ alert('Tick at least one class first.'); return; }
   await runWithHostButton(btn, ()=>bulkPdf(ids));
 }
-function rcBack(){ RC_QUERY=''; RC_PICK.clear(); VIEW.params = {...VIEW.params, classIds:null, classId:null}; render(); }
+function rcBack(){ RC_QUERY=''; RC_PICK.clear(); SELECTED_REPORTS.clear(); VIEW.params = {...VIEW.params, classIds:null, classId:null}; render(); }
 function filterClass(v){ VIEW.params = {...VIEW.params, classIds: v?[v]:null, classId:null}; render(); }
 // Search-by-name box on the Report Cards page. The text is kept here so it survives re-renders
 // (ticking a student, changing class…); typing re-renders the list after a short pause and puts
@@ -13156,7 +13150,9 @@ function clearReportSelection(){
 }
 async function downloadSelectedReportsPdf(onProgress){
   if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); return; }
-  const students = rcByClassOrder(sortByName(DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && s.status!=='left')));
+  // ONLY the students ticked in the list on screen (ticks left over from another class/search are ignored).
+  const tickedOnScreen = new Set([...document.querySelectorAll('input.rc-row-cb:checked')].map(cb=>cb.getAttribute('data-id')));
+  const students = rcByClassOrder(sortByName(DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && tickedOnScreen.has(s.id) && s.status!=='left')));
   if(!students.length){ alert('Tick at least one student first.'); return; }
   try{ await refreshScores(); }
   catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
@@ -13165,7 +13161,12 @@ async function downloadSelectedReportsPdf(onProgress){
 }
 async function runDownloadSelectedReportsPdf(btn){
   if(btn.disabled) return;
-  await runWithHostButton(btn, ()=>downloadSelectedReportsPdf());
+  await runWithHostButton(btn, ()=>downloadSelectedReportsPdf(), rcClearAfterOpen);
+}
+// After a downloaded file has been opened: remove all ticks (and the saved copy used when the app reloads).
+function rcClearAfterOpen(){
+  clearReportSelection();
+  try{ const r = JSON.parse(localStorage.getItem(RETURN_KEY)||'null'); if(r){ r.sel = []; localStorage.setItem(RETURN_KEY, JSON.stringify(r)); } }catch(e){}
 }
 // Downloads a single student's report card for whatever term/year is currently
 // selected on the report card screen — including past terms/years, not just the
@@ -13730,11 +13731,19 @@ function parseCsvLine(line){
 // A short delay gives the browser time to actually start reading the blob first.
 function triggerBlobDownload(blob, filename){
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url; link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const save = ()=>{
+    const link = document.createElement('a');
+    link.href = url; link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  save();
+  // Same behaviour as the PDF buttons: the tapped button turns into "Open download ×".
+  if(PDF_HOST && PDF_HOST.btn && document.body.contains(PDF_HOST.btn)){
+    showPdfReadyOnButton(PDF_HOST, url, save);   // "Open download" saves/opens the file again
+    return;
+  }
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
 function downloadCsv(filename, rows){
@@ -17598,7 +17607,7 @@ Continue?`);
       if(el.disabled) break;
       {
         const _bulkIds = arg ? arg.split(',').map(x=>{ try{ return decodeURIComponent(x); }catch(e){ return x; } }).filter(Boolean) : [];
-        await runWithHostButton(el, ()=>bulkPdf(_bulkIds.length ? _bulkIds : null));
+        await runWithHostButton(el, ()=>bulkPdf(_bulkIds.length ? _bulkIds : null), rcClearAfterOpen);
       }
       break;
     }
@@ -21165,16 +21174,22 @@ function printPdfDocument(pdf, filename){
 // into a green "Open download  ×" button in the same place — no bottom pop-up. It goes back to the
 // original button only when the person taps × or opens the file.
 let PDF_HOST = null;
-async function runWithHostButton(btn, fn){
+let AUTO_HOST = null;   // host created automatically for any other Download button (see the end-of-file script)
+async function runWithHostButton(btn, fn, onOpened){
+  if(btn.classList.contains('dl-ready-btn')) return;   // already showing Open download: never capture that state as the "normal" look
   const orig = btn.innerHTML;
-  btn.disabled = true; btn.classList.add('host-busy'); btn.innerHTML = '<b>Preparing report cards…</b>';
-  const host = PDF_HOST = {btn, orig, used:false};
+  btn.disabled = true; btn.classList.add('host-busy');
+  btn.innerHTML = (btn.classList.contains('rc-sel-dl')||btn.classList.contains('rc-btn-all')) ? '<b>Preparing report cards…</b>' : '<b>Preparing…</b>';
+  const host = PDF_HOST = {btn, orig, used:false, onOpened};
   try{ await fn(); }
   finally{ PDF_HOST = null; btn.classList.remove('host-busy'); if(!host.used){ btn.disabled = false; btn.innerHTML = orig; } }
 }
-function showPdfReadyOnButton(host, url){
+function showPdfReadyOnButton(host, url, openFn){
   const btn = host.btn;
   host.used = true; host.ready = false; host.restored = false;
+  clearTimeout(host.maxTimer);
+  if(host.auto && PDF_HOST===host) PDF_HOST = null;
+  if(host.auto && typeof AUTO_HOST!=='undefined' && AUTO_HOST===host) AUTO_HOST = null;
   btn.classList.remove('host-busy');
   btn.disabled = false;
   btn.classList.add('dl-ready-btn');
@@ -21184,6 +21199,7 @@ function showPdfReadyOnButton(host, url){
     if(host.restored) return;
     host.restored = true;
     clearTimeout(host.timer);
+    document.removeEventListener('visibilitychange', onVis);
     btn.removeEventListener('click', onClick, true);
     btn.classList.remove('dl-ready-btn');
     btn.innerHTML = host.orig;
@@ -21192,10 +21208,21 @@ function showPdfReadyOnButton(host, url){
   function onClick(e){
     e.preventDefault(); e.stopImmediatePropagation();
     if(!host.ready) return;                       // still showing "Download complete"
-    if(e.target.closest && e.target.closest('.dl-ready-x')){ restore(); return; }
+    if(e.target.closest && e.target.closest('.dl-ready-x')){ restore(); try{ if(host.onOpened) host.onOpened(); }catch(err){} return; }   // × also clears the ticks
     restore();                                    // back to the normal button BEFORE leaving, so returning shows it normal
+    try{ if(host.onOpened) host.onOpened(); }catch(err){}   // e.g. un-tick the selected students
+    if(openFn){ try{ openFn(); }catch(err){} return; }
     try{ window.open(url, '_blank', 'noopener'); }catch(err){ window.location.href = url; }
   }
+  // If the person leaves the app to open the file some other way (download notification, file manager)
+  // and comes back, the button is already back to normal and the ticks are cleared.
+  let wasHidden = false;
+  function onVis(){
+    if(host.restored) return;
+    if(document.hidden){ wasHidden = true; return; }
+    if(wasHidden && host.ready){ restore(); try{ if(host.onOpened) host.onOpened(); }catch(err){} }
+  }
+  document.addEventListener('visibilitychange', onVis);
   btn.addEventListener('click', onClick, true);
   // Step 2: after a moment, turn into the green Open download button (with ×).
   host.timer = setTimeout(()=>{
@@ -22856,8 +22883,68 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   var RX=/(download|print|pdf|csv|export)/i, ACT=/^(dl|download|print|bulkpdf|singlepdf|export)/i, MIN=700, MAX=20000;
   var cur=null;
   function label(b){ return (b.textContent||b.value||'').replace(/\s+/g,' ').trim(); }
+  var SKIP=/(install-app-btn|pdf-open-btn|pdf-close-btn|dl-ready-btn|host-busy|rc-sel-dl|rc-btn-all)/;
+  var SELF=/(runWithHostButton|rcPickDownload|runDownload[A-Za-z]*Pdf\()/;
+  // A "Download" button (not Print): gets the shared Preparing → Open download behaviour.
+  function looksDl(b, forAuto){
+    if(!b || b.tagName!=='BUTTON' || /(install-app-btn|pdf-open-btn|pdf-close-btn)/.test(b.className||'')) return false;
+    if(forAuto && (b.disabled || b.dataset.noLoading || SKIP.test(b.className||''))) return false;
+    var a=b.getAttribute('data-action')||'', o=b.getAttribute('onclick')||'', t=label(b);
+    if(/print/i.test(a+' '+o+' '+t)) return false;
+    if(forAuto && SELF.test(o)) return false;
+    if(/^(dl|download|bulkpdf|singlepdf|export|found(Backup|Download))/i.test(a) || /(Pdf|PDF|Csv|CSV)$/.test(a)) return true;
+    if(/(download|pdf|csv)/i.test(o)) return true;
+    return t.length<70 && /(^|[\s⬇])(download|pdf|excel|csv)/i.test(t);
+  }
+  function isDl(b){ return looksDl(b, true); }
+  window.__isDlBtn = isDl;
+  function autoEnd(h){
+    if(!h || AUTO_HOST!==h) return;
+    AUTO_HOST = null; if(PDF_HOST===h) PDF_HOST = null;
+    clearTimeout(h.maxTimer);
+    if(h.used) return;                                        // file delivered: the button runs its own Open download state
+    h.btn.classList.remove('host-busy'); h.btn.removeAttribute('aria-busy');
+    h.btn.innerHTML = h.orig; h.btn.disabled = false;
+  }
+  function autoBegin(b){
+    if(AUTO_HOST) autoEnd(AUTO_HOST);
+    var h = AUTO_HOST = PDF_HOST = {btn:b, orig:b.innerHTML, used:false, auto:true, onOpened:null};
+    h.maxTimer = setTimeout(function(){ autoEnd(h); }, 90000);
+    // wait one tick: a sync file (CSV/JSON) is already delivered by then and shows its own state
+    setTimeout(function(){
+      if(AUTO_HOST!==h || h.used) return;
+      b.classList.add('host-busy'); b.setAttribute('aria-busy','true'); b.innerHTML='<b>Preparing…</b>';
+    },0);
+  }
+  var _alert=window.alert;
+  window.alert=function(){ try{ autoEnd(AUTO_HOST); }catch(e){} return _alert.apply(window, arguments); };   // a message instead of a file: button goes back to normal
+  window.addEventListener('unhandledrejection', function(){ try{ autoEnd(AUTO_HOST); }catch(e){} });
+  window.addEventListener('error', function(){ try{ autoEnd(AUTO_HOST); }catch(e){} });
+  document.addEventListener('click', function(e){
+    var b=e.target.closest && e.target.closest('button');
+    if(!b) return;
+    if(AUTO_HOST && AUTO_HOST.btn===b && !AUTO_HOST.used){ e.preventDefault(); e.stopImmediatePropagation(); return; }   // second tap while preparing
+    if(isDl(b)) autoBegin(b);
+  }, true);
+  // One shared size for every Download button.
+  var uTimer=0;
+  function sizeAll(){
+    uTimer=0;
+    var list=document.querySelectorAll('button[data-action],button[onclick],button.dl-ready-btn');
+    for(var i=0;i<list.length;i++){
+      var b=list[i];
+      if(b.closest('.rc-actionbar')) continue;
+      var on = b.classList.contains('dl-ready-btn') || b.classList.contains('host-busy') || looksDl(b, false);
+      if(on !== b.classList.contains('dl-uniform')) b.classList.toggle('dl-uniform', on);
+    }
+  }
+  function schedSize(){ if(!uTimer) uTimer=setTimeout(sizeAll,60); }
+  try{ new MutationObserver(schedSize).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  schedSize();
   function isTarget(b){
+    if(isDl(b)) return false;
     if(b.disabled || b.dataset.noLoading) return false;
+    if(b.classList.contains('dl-ready-btn') || b.classList.contains('host-busy') || b.classList.contains('rc-sel-dl') || b.classList.contains('rc-btn-all')) return false;   // these buttons run their own progress / Open download / restore
     var a=b.getAttribute('data-action')||'', o=b.getAttribute('onclick')||'', t=label(b);
     if(ACT.test(a) || /(Pdf|PDF|Csv|CSV)$/.test(a)) return true;
     if(/(print|download|pdf|csv)/i.test(o)) return true;
@@ -22869,7 +22956,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
     setTimeout(function(){
       if(cur!==c) return; cur=null; clearTimeout(c.timer);
       var b=c.b; b.classList.remove('dl-loading'); b.removeAttribute('aria-busy');
-      if(c.marker && b.innerHTML===c.marker) b.innerHTML=c.orig;   // only undo our own text; a button that restored itself is left alone
+      if(c.marker && b.innerHTML===c.marker && !b.classList.contains('dl-ready-btn')) b.innerHTML=c.orig;   // only undo our own text; a button that restored itself is left alone
     }, wait);
   }
   document.addEventListener('click', function(e){
