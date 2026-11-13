@@ -721,6 +721,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 #deliveredToast.pdf-ready{padding:9px 12px 9px 16px;border-radius:10px;gap:10px;pointer-events:auto;}
 #deliveredToast .pdf-open-btn{border:0;background:#fff;color:var(--navy);font-weight:900;border-radius:6px;padding:7px 11px;cursor:pointer;}
 /* "Open download" state that replaces a Download button right where it was tapped */
+.rc-topbar .btn-gold,.rc-topbar .btn-outline,.rc-sel-print,.rc-sel-dl,.rc-sel-clear{min-height:calc(46*var(--uk,1px));padding-top:calc(8*var(--uk,1px));padding-bottom:calc(8*var(--uk,1px));font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1.2;}
+.rc-topbar .btn-gold,.rc-sel-dl{min-height:calc(52*var(--uk,1px));}
 .dl-ready-btn{background:var(--good) !important;color:#fff !important;border-color:var(--good) !important;}
 .dl-ready-in{display:flex;align-items:stretch;justify-content:center;gap:10px;width:100%;}
 .dl-ready-open{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;font-weight:900;}
@@ -16131,11 +16133,36 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 // Step 2: draw one full report card page onto an already-created jsPDF document.
 // Line-weight multiplier for every table border / rule drawn into downloaded report-card PDFs.
 const PDF_LINE_BOLD = 2.4;
+// Extra weight for the text that is ALREADY bold on the card (headings, labels, names, marks, totals).
+// Each bold string is drawn fill + a hairline outline in its own colour; the outline is a fixed fraction of
+// the font size, so every bold size gets the same proportional boost. Regular text, layout, sizes and
+// colours are untouched (an outline does not change text width). Set to 0 to switch it off.
+const PDF_BOLD_BOOST = 0.03;
 function drawReportCardPage(pdf, data, gapBoost){
   const _origSetLineWidth = pdf.setLineWidth;
   pdf.setLineWidth = function(w){ return _origSetLineWidth.call(pdf, (w||0.5) * PDF_LINE_BOLD); };
+  const _origText = pdf.text, _origSDC = pdf.setDrawColor;
+  const canBoost = PDF_BOLD_BOOST>0 && !pdf._rcMeasure && typeof pdf.getDrawColor==='function'
+    && typeof pdf.getTextColor==='function' && typeof pdf.getLineWidth==='function';
+  if(canBoost){
+    pdf.text = function(t, x, y, o){
+      let bold = false;
+      try{ bold = /bold/i.test(pdf.getFont().fontStyle); }catch(e){}
+      if(!bold) return _origText.apply(pdf, arguments);
+      let dc, lw, tc;
+      try{ dc = pdf.getDrawColor(); lw = pdf.getLineWidth(); tc = pdf.getTextColor(); }catch(e){ return _origText.apply(pdf, arguments); }
+      try{
+        _origSDC.call(pdf, tc);
+        _origSetLineWidth.call(pdf, pdf.getFontSize() * PDF_BOLD_BOOST);
+        const opts = Object.assign({}, (o && typeof o==='object') ? o : {}, {renderingMode:'fillThenStroke'});
+        return _origText.call(pdf, t, x, y, opts);
+      } finally {
+        try{ _origSDC.call(pdf, dc); _origSetLineWidth.call(pdf, lw); }catch(e){}
+      }
+    };
+  }
   try{ return _drawReportCardPageCore(pdf, data, gapBoost); }
-  finally{ pdf.setLineWidth = _origSetLineWidth; }
+  finally{ pdf.setLineWidth = _origSetLineWidth; if(canBoost) pdf.text = _origText; }
 }
 function _drawReportCardPageCore(pdf, data, gapBoost){
   // gapBoost (points): extra breathing room inserted ONLY between the card's
@@ -16806,6 +16833,7 @@ function _rcGetScratch(pdf, fresh){
     // the layout. Everything that merely PAINTS is switched off in this throw-away copy.
     ['addImage','rect','roundedRect','line','text','setFillColor','setDrawColor','setTextColor',
      'setGState','saveGraphicsState','restoreGraphicsState'].forEach(m=>{ sc[m] = function(){ return sc; }; });
+    sc._rcMeasure = true;
     sc.getImageProperties = function(d){ return pdf.getImageProperties(d); };
     _rcCacheSplit(sc, pdf);
     _rcScratchMap.set(pdf, sc);
@@ -21137,11 +21165,15 @@ async function runWithHostButton(btn, fn){
 }
 function showPdfReadyOnButton(host, url){
   const btn = host.btn;
-  host.used = true;
+  host.used = true; host.ready = false; host.restored = false;
   btn.disabled = false;
   btn.classList.add('dl-ready-btn');
-  btn.innerHTML = '<span class="dl-ready-in"><span class="dl-ready-open"><span class="tick">✓</span>Open download</span><span class="dl-ready-x" role="button" aria-label="Close">×</span></span>';
+  // Step 1: tell the person the download is complete (the short wait before the Open button appears).
+  btn.innerHTML = '<span class="dl-ready-in"><span class="dl-ready-open"><span class="tick">✓</span>Download complete</span></span>';
   const restore = ()=>{
+    if(host.restored) return;
+    host.restored = true;
+    clearTimeout(host.timer);
     btn.removeEventListener('click', onClick, true);
     btn.classList.remove('dl-ready-btn');
     btn.innerHTML = host.orig;
@@ -21149,11 +21181,18 @@ function showPdfReadyOnButton(host, url){
   };
   function onClick(e){
     e.preventDefault(); e.stopImmediatePropagation();
+    if(!host.ready) return;                       // still showing "Download complete"
     if(e.target.closest && e.target.closest('.dl-ready-x')){ restore(); return; }
+    restore();                                    // back to the normal button BEFORE leaving, so returning shows it normal
     try{ window.open(url, '_blank', 'noopener'); }catch(err){ window.location.href = url; }
-    restore();
   }
   btn.addEventListener('click', onClick, true);
+  // Step 2: after a moment, turn into the green Open download button (with ×).
+  host.timer = setTimeout(()=>{
+    if(host.restored) return;
+    host.ready = true;
+    btn.innerHTML = '<span class="dl-ready-in"><span class="dl-ready-open"><span class="tick">✓</span>Open download</span><span class="dl-ready-x" role="button" aria-label="Close">×</span></span>';
+  }, 1500);
   setTimeout(()=>URL.revokeObjectURL(url), 1800000);
 }
 function openOrSavePdf(pdf, filename, opts={} ){
@@ -21987,6 +22026,9 @@ async function pdfForStudents(students, filename, opts={}){
       _lastYield = Date.now();
     }
   }
+  try{
+    if(PDF_HOST && PDF_HOST.btn){ PDF_HOST.btn.innerHTML = '<b>Saving file…</b>'; await new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0))); }
+  }catch(e){}
   // openPreviewTab:false — report cards should download and leave the person right
   // where they were in the app, not pop the PDF open in a separate browser tab.
   openOrSavePdf(pdf, filename, {openPreviewTab:false});
