@@ -2088,24 +2088,24 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-filter-card .rc-dd-btn{min-height:calc(40*var(--uk));padding:calc(9*var(--uk)) calc(10*var(--uk));font-size:calc(14*var(--uk));box-sizing:border-box;}
 .rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:calc(24*var(--uk));line-height:1;color:var(--navy,#0A2A4A);font-weight:900;}
 .rc-filter-card .rc-gap{margin-top:calc(40*var(--uk));}
-.rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:calc(44px + env(safe-area-inset-top,0px)) 18px calc(56px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
-.rc-modal-card{width:420px;max-width:100%;max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:14px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
-.rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 18px 10px 24px;}
-.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:22px;font-weight:800;color:var(--navy,#0A2A4A);}
-.rc-modal-head p{margin:4px 0 0;font-size:14px;line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
-.rc-modal-x{flex:0 0 auto;width:36px;height:36px;padding:0;border:none;border-radius:50%;background:#eef3f8;color:var(--navy,#0A2A4A);font-size:22px;line-height:1;}
-.rc-modal-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 24px;border-top:1px solid #e6edf4;border-bottom:1px solid #e6edf4;}
-.rc-modal label.rc-opt{display:flex;align-items:center;gap:10px;margin:0;padding:12px 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:17px;font-weight:600;color:var(--ink,#1c2b3a);}
+.rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:max(30px,calc(36*var(--u,1px))) calc(16*var(--u,1px));box-sizing:border-box;background:linear-gradient(160deg,var(--navy),var(--blue));overflow-y:auto;-webkit-tap-highlight-color:transparent;}
+.rc-modal-card{width:min(100%,calc(580*var(--u,1px)));max-width:calc(580*var(--u,1px));max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:calc(16*var(--u,1px));border-top:calc(6*var(--u,1px)) solid var(--gold,#C9A227);box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+.rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:calc(12*var(--u,1px));padding:calc(26*var(--u,1px)) calc(20*var(--u,1px)) calc(12*var(--u,1px)) calc(26*var(--u,1px));}
+.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:calc(30*var(--u,1px));font-weight:800;color:var(--navy,#0A2A4A);}
+.rc-modal-head p{margin:calc(6*var(--u,1px)) 0 0;font-size:calc(17*var(--u,1px));line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
+.rc-modal-x{flex:0 0 auto;width:calc(42*var(--u,1px));height:calc(42*var(--u,1px));padding:0;border:none;border-radius:50%;background:#eef3f8;color:var(--navy,#0A2A4A);font-size:calc(26*var(--u,1px));line-height:1;}
+.rc-modal-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(4*var(--u,1px)) calc(26*var(--u,1px));border-top:1px solid #e6edf4;border-bottom:1px solid #e6edf4;}
+.rc-modal label.rc-opt{display:flex;align-items:center;gap:calc(12*var(--u,1px));margin:0;padding:calc(18*var(--u,1px)) 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:calc(22*var(--u,1px));font-weight:600;color:var(--ink,#1c2b3a);}
 .rc-modal label.rc-opt:last-child{border-bottom:none;}
 .rc-modal label.rc-opt-all{font-weight:800;color:var(--navy,#0A2A4A);}
 .rc-modal .rc-opt-name{flex:1;min-width:0;}
-.rc-modal .rc-opt-n{flex:0 0 auto;font-size:14px;font-weight:600;color:#7a8a9a;}
-.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:26px !important;height:26px;min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
+.rc-modal .rc-opt-n{flex:0 0 auto;font-size:calc(17*var(--u,1px));font-weight:600;color:#7a8a9a;}
+.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:calc(34*var(--u,1px)) !important;height:calc(34*var(--u,1px));min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
 .rc-modal .rc-tick:checked{background:var(--blue,#1D4E89);border-color:var(--blue,#1D4E89);}
-.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:7px;top:2px;width:6px;height:12px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
-.rc-modal-foot{padding:14px 24px 22px;display:flex;flex-direction:column;gap:10px;}
-.rc-modal-foot .rc-splash-count{text-align:center;font-size:16px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
-.rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:48px;font-size:15px;font-weight:800;border-radius:10px;}
+.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:calc(10*var(--u,1px));top:calc(3*var(--u,1px));width:calc(8*var(--u,1px));height:calc(16*var(--u,1px));border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg);}
+.rc-modal-foot{padding:calc(16*var(--u,1px)) calc(26*var(--u,1px)) calc(26*var(--u,1px));display:flex;flex-direction:column;gap:calc(12*var(--u,1px));}
+.rc-modal-foot .rc-splash-count{text-align:center;font-size:calc(18*var(--u,1px));font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
+.rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:calc(60*var(--u,1px));font-size:calc(19*var(--u,1px));font-weight:800;border-radius:calc(12*var(--u,1px));}
 .rc-modal-foot .btn[disabled],.rc-modal-foot .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
 /* Enter Scores: the "marked out of" (maximum score) box is bold and thick so it can't be missed */
 #maxScoreInput{border:3px solid var(--navy,#0A2A4A) !important;border-radius:10px !important;font-size:20px !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;background:#fff !important;padding:12px 14px !important;min-height:52px;box-sizing:border-box;}
@@ -16766,14 +16766,29 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
 //     now close 100% of the shortfall, that final scale ends up at (or a hair
 //     from) 1 and never fires — the card fills A4 purely through extra
 //     spacing between tables, never through resizing their contents.
+const _rcScratchMap = new WeakMap();
+function _rcGetScratch(pdf, fresh){
+  let sc = fresh ? null : _rcScratchMap.get(pdf);
+  if(sc){ try{ sc.addPage(); sc.deletePage(1); sc.setPage(1); }catch(e){ sc = null; } }
+  if(!sc){
+    sc = new pdf.constructor({orientation:'p', unit:'pt', format:'a4', compress:false});
+    // Measuring only needs the layout, never the pixels: painting images here just re-decoded the logo,
+    // stamp, photo and signature a second time for every student.
+    sc.addImage = function(){ return sc; };
+    sc.getImageProperties = function(d){ return pdf.getImageProperties(d); };
+    _rcScratchMap.set(pdf, sc);
+  }
+  return sc;
+}
 function renderReportCardPageFitted(pdf, data){
   let gapBoost = 0;
   try{
     // Measurement pass: draw the exact same content onto a throwaway scratch
     // page (same page size as the real one) purely to learn its natural,
     // unstretched height. Nothing from this pass is ever shown to the user.
-    const scratch = new pdf.constructor({orientation:'p', unit:'pt', format:'a4', compress:false});
-    const measured = drawReportCardPage(scratch, data, 0);
+    let measured;
+    try{ measured = drawReportCardPage(_rcGetScratch(pdf), data, 0); }
+    catch(e1){ measured = drawReportCardPage(_rcGetScratch(pdf, true), data, 0); }
     if(measured && measured.naturalHeight < measured.availableHeight){
       const shortfall = measured.availableHeight - measured.naturalHeight;
       const numGaps = data.isP ? 5 : 4;
@@ -21876,6 +21891,23 @@ async function pdfForStudents(students, filename, opts={}){
   // which is a big part of why these files are now much smaller than the old
   // screenshot-based ones, on top of no longer paying for a JPEG at all.
   const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+  {
+    const _gipCache = new Map(), _origGIP = pdf.getImageProperties.bind(pdf);
+    pdf.getImageProperties = function(d){
+      if(typeof d!=='string') return _origGIP.apply(null, arguments);
+      let r = _gipCache.get(d);
+      if(r===undefined){ r = _origGIP(d); _gipCache.set(d, r); }
+      return r;
+    };
+  }
+  // Decode every photo (and the school logo/stamp) at the same time before drawing starts, instead of
+  // waiting for each one in turn inside the loop.
+  try{
+    const _warm = [];
+    students.forEach(st=>{ if(st && st.photo) _warm.push(toPngDataUrl(st.photo)); });
+    if(DB.info){ if(DB.info.logo) _warm.push(toPngDataUrl(DB.info.logo)); if(DB.info.stamp) _warm.push(toPngDataUrl(DB.info.stamp)); }
+    await Promise.all(_warm);
+  }catch(e){}
   let _lastYield = Date.now();
   for(let i=0;i<students.length;i++){
     const data = buildReportCardData(students[i].id);
