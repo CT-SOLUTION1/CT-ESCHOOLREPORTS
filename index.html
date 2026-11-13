@@ -435,13 +435,22 @@ label.req-opt input[type=checkbox]:checked ~ .req-fee{display:inline-block;}
 /* Requirements: big tappable heading that hides/shows the selections */
 button.req-hero{display:block;box-sizing:border-box;width:100%;margin:0 0 12px;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-family:inherit;font-size:calc(11*var(--uk));font-weight:800;line-height:inherit;letter-spacing:.03em;text-transform:uppercase;text-align:center;border:2px solid var(--navy);border-radius:8px;background:var(--navy);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
 button.req-hero:active{transform:translateY(1px);}
+button.req-hero.req-gold{background:var(--gold);border-color:var(--gold);color:#2f2600;}
+button.req-hero.req-back{background:#fff;border-color:var(--navy);color:var(--navy);}
+/* Fees / Requirements selections: tap-through COLUMNS (each tap opens the next column) */
+.fin-cols{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;}
+.fin-col{flex:1 1 200px;min-width:0;}
+.fin-col>label{margin-top:0;}
+.fin-opt{display:block;width:100%;text-align:left;padding:10px 12px;margin:0 0 6px;border:2px solid var(--blue);background:#fff;color:var(--blue);border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;}
+.fin-opt:hover{background:var(--blue-light);}
+.fin-opt.sel{background:var(--blue);color:#fff;}
+.fin-opt.sel::after{content:" ✔";}
 /* Requirements picker laid out like Result Analysis: 1. Category | 2. Items needed | 3. Substitute fee */
 table.req-tbl{width:100%;border-collapse:collapse;margin:8px 0 12px;}
 table.req-tbl th{text-align:left;font-size:13px;padding:8px 10px;}
 table.req-tbl td{padding:6px 10px;vertical-align:middle;}
 table.req-tbl td.req-fee-cell{width:190px;}
 table.req-tbl td.req-fee-cell input.req-fee{display:none;width:100%;max-width:170px;padding:5px 8px;font-size:14px;}
-table.req-tbl tr:has(input[type=checkbox]:checked) input.req-fee{display:inline-block;}
 table.req-tbl label.req-opt{font-size:14px;font-weight:700;}
 .req-qbtn{padding:3px 8px;font-size:12px;margin:1px;}
 .req-add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px dashed #cfd9e3;padding-top:10px;}
@@ -9409,18 +9418,14 @@ function setFeeParam(key, value){
   else if(key==='year') p.feeYear = value || undefined;
   VIEW.params = p; render();
 }
-function feeSelectorsHTML(classId, withAll, firstNo){
+function feeSelectorsHTML(classId, withAll, firstNo, catCol){
   const p = VIEW.params, n0 = firstNo||1;
   const term = p.feeTerm || DB.info.currentTerm, year = String(p.feeYear || DB.info.currentYear);
-  const cy = Number(DB.info.currentYear) || new Date().getFullYear();
-  const years = []; for(let y=cy-3; y<=cy+1; y++) years.push(String(y));
-  if(!years.includes(year)) years.push(year);
-  const clsOpts = `<option value="">— Select class —</option>` + DB.classes.map(c=>`<option value="${c.id}" ${c.id===classId?'selected':''}>${esc(c.name)}</option>`).join('') + (withAll?`<option value="all" ${classId==='all'?'selected':''}>All Students</option>`:'');
-  return `<div class="card"><div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
-    <div style="flex:1 1 220px;min-width:0;"><label>${n0}. Class</label><select onchange="setFeeParam('class', this.value)">${clsOpts}</select></div>
-    ${classId ? `<div style="flex:1 1 180px;min-width:0;"><label>${n0+1}. Term</label><select onchange="setFeeParam('term', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}</select></div>
-    <div style="flex:1 1 140px;min-width:0;"><label>${n0+2}. Year</label><select onchange="setFeeParam('year', this.value)">${years.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}</select></div>` : ''}
-  </div>${DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>'}</div>`;
+  const cols = catCol ? [catCol] : [];
+  cols.push({label:n0+'. CLASS', key:'class', fn:'setFeeParam',
+    items: DB.classes.map(c=>({v:c.id,t:c.name,sel:c.id===classId})).concat(withAll?[{v:'all',t:'All Students',sel:classId==='all'}]:[])});
+  if(classId) cols.push(...finTermYearCols(term, year, 'setFeeParam', n0+1));
+  return finColsHTML(cols) + (DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>');
 }
 // Individual agreed fees: "Submit" first checks that someone is ticked, then reveals the box for the special figure.
 function feeIndToggleAll(cb){
@@ -9446,18 +9451,18 @@ function feesGateView(d){
   const title = proceed ? 'LIST / RECORD FEES' : 'SETTING SCHOOL FEES';
   const hero = `<button type="button" class="req-hero${open?' open':''}" data-action="feeToggleOpen" aria-expanded="${open}" title="Tap to ${open?'hide':'show'} the selections">${title} ${open?'▲':'▼'}</button>`;
   if(proceed){
-    let out = hero + `<button type="button" class="btn-outline" data-action="feeBackToSettings" style="display:block;width:100%;padding:12px 16px;margin:0 0 12px;font-weight:800;">⬅ BACK TO SETTING SCHOOL FEES</button>`;
+    let out = hero + `<button type="button" class="req-hero req-back" data-action="feeBackToSettings">⬅ BACK TO SETTING SCHOOL FEES</button>`;
     if(!open) return out;
-    out += feeSelectorsHTML(classId, true, 1);
+    out += feeSelectorsHTML(classId, true, 1, null);
     if(!classId) return out;
     return out + feesClassTableView(d, term, year);
   }
   let out = hero;
   if(open){
-    out += `<div class="card"><label>1. Category</label><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
-      ${FEE_SET_CATS.map((c,i)=>`<button type="button" class="pick-btn pick-c${i%6}${c[0]===cat?' sel':''}" aria-pressed="${c[0]===cat}" onclick="setFeeParam('cat','${c[0]}')">${c[1]}</button>`).join('')}</div></div>`;
+    const catCol = {label:'1. CATEGORY', key:'cat', fn:'setFeeParam', items:FEE_SET_CATS.map(c=>({v:c[0],t:c[1],sel:c[0]===cat}))};
+    if(!cat) out += finColsHTML([catCol]);
     if(cat){
-      out += feeSelectorsHTML(classId, false, 2);
+      out += feeSelectorsHTML(classId, false, 2, catCol);
       if(classId){
         const cls = DB.classes.find(c=>c.id===classId);
         const hidden = `<input type="hidden" name="classId" value="${esc(classId)}"><input type="hidden" name="term" value="${esc(term)}"><input type="hidden" name="year" value="${esc(year)}">`;
@@ -9506,7 +9511,7 @@ function feesGateView(d){
       }
     }
   }
-  out += `<button type="button" class="btn-gold" data-action="feeProceed" style="display:block;width:100%;padding:14px 18px;margin:0 0 12px;font-size:15px;letter-spacing:.03em;">PROCEED TO LIST/RECORD FEES ➜</button>`;
+  out += `<button type="button" class="req-hero req-gold" data-action="feeProceed">PROCEED TO LIST/RECORD FEES ➜</button>`;
   return out;
 }
 // Fees tab, once a class (or "all") has been chosen. For a single class, this
@@ -10316,6 +10321,11 @@ function reqPickCategory(btn){
 }
 function reqRefreshCounts(form){
   if(!form) return;
+  // A ticked item shows its substitute-fee box in the next column; unticking hides it again.
+  form.querySelectorAll('table.req-tbl tr').forEach(tr=>{
+    const cb = tr.querySelector('input[type=checkbox]'), fee = tr.querySelector('input.req-fee');
+    if(cb && fee) fee.style.display = cb.checked ? 'inline-block' : 'none';
+  });
   let total = 0;
   form.querySelectorAll('.req-cat-panel').forEach(p=>{
     const n = p.querySelectorAll('input[type=checkbox]:checked').length;
@@ -10351,11 +10361,10 @@ function reqAddCustom(btn){
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'newReq'; cb.checked = true;
     cb.value = JSON.stringify({name:name, category:cat, scope:scope});
     const nm = document.createElement('span'); nm.className = 'req-opt-name'; nm.textContent = name;
-    const tag = document.createElement('span'); tag.className = 'small'; tag.style.cssText = 'margin:0;text-transform:none;'; tag.textContent = '(new)';
     const fee = document.createElement('input'); fee.type = 'number'; fee.className = 'req-fee'; fee.min = '0'; fee.step = 'any';
-    fee.placeholder = 'Amount'; fee.title = 'Cash fee that replaces this item';
+    fee.placeholder = 'Amount'; fee.title = 'Cash fee that replaces this item'; fee.style.display = 'inline-block';
     fee.name = 'subFee|new:' + name.trim().toLowerCase();
-    label.appendChild(cb); label.appendChild(nm); label.appendChild(tag); td1.appendChild(label); td2.appendChild(fee);
+    label.appendChild(cb); label.appendChild(nm); td1.appendChild(label); td2.appendChild(fee);
     tr.appendChild(td1); tr.appendChild(td2);
     const body = panel.querySelector('.req-opt-list');
     const empty = body.querySelector('.req-empty'); if(empty) empty.remove();
@@ -10402,8 +10411,8 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured, ctx){
     const tickedHere = have.filter(r=>checkedSet.has(r.id)).length;
     totalSelected += tickedHere;
     chips.push(`<button type="button" class="pick-btn req-pick pick-c${chips.length%6}" data-reqcat="${esc(cat)}" aria-pressed="false" onclick="reqPickCategory(this)">${iconFor(cat)} ${esc(cat.toUpperCase())}<span class="req-cat-count">${tickedHere?' · '+tickedHere:''}</span></button>`);
-    const feeIn = (name, val) => `<input type="number" class="req-fee" name="${name}" min="0" step="any" inputmode="decimal" placeholder="Amount" title="Cash fee that replaces this item" value="${val}">`;
-    const opts = have.map(r=>`<tr><td><label class="req-opt"><input type="checkbox" name="reqIds" value="${esc(r.id)}" ${checkedSet.has(r.id)?'checked':''}><span class="req-opt-name">${esc(r.name)}</span></label></td><td class="req-fee-cell">${feeIn('subFee|'+esc(r.id), r.subFee>0?esc(String(r.subFee)):'')}</td></tr>`).join('')
+    const feeIn = (name, val, on) => `<input type="number" class="req-fee" style="display:${on?'inline-block':'none'};" name="${name}" min="0" step="any" inputmode="decimal" placeholder="Amount" title="Cash fee that replaces this item" value="${val}">`;
+    const opts = have.map(r=>`<tr><td><label class="req-opt"><input type="checkbox" name="reqIds" value="${esc(r.id)}" ${checkedSet.has(r.id)?'checked':''}><span class="req-opt-name">${esc(r.name)}</span></label></td><td class="req-fee-cell">${feeIn('subFee|'+esc(r.id), r.subFee>0?esc(String(r.subFee)):'', checkedSet.has(r.id))}</td></tr>`).join('')
       + suggestions.map(x=>`<tr><td><label class="req-opt"><input type="checkbox" name="newReq" value="${esc(JSON.stringify({name:x.name, category:cat, scope:'all'}))}"><span class="req-opt-name">${esc(x.name)}</span></label></td><td class="req-fee-cell">${feeIn('subFee|new:'+esc(nameKey(x.name)), '')}</td></tr>`).join('');
     const scopeSelect = isAllView ? '' : `<select class="req-add-scope" title="Which classes this new requirement applies to"><option value="all">All classes</option><option value="${esc(finClassId)}">${esc(clsLabel)} only</option></select>`;
     panels.push(`<div class="req-cat-panel" data-reqcat="${esc(cat)}">
@@ -10438,6 +10447,20 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured, ctx){
   </div>`;
 }
 
+// Cascading selection columns used by FEES and REQUIREMENTS: each column is a stack of buttons; tapping one
+// immediately opens the next column (the caller only adds a column once the one before it has a choice).
+function finColsHTML(cols){
+  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="fin-opt${it.sel?' sel':''}" data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>`).join('')}</div>`).join('')}</div></div>`;
+}
+function finTermYearCols(term, year, fn, n0){
+  const cy = Number(DB.info.currentYear) || new Date().getFullYear();
+  const years = []; for(let y=cy-3; y<=cy+1; y++) years.push(String(y));
+  if(!years.includes(String(year))) years.push(String(year));
+  return [
+    {label:n0+'. TERM', key:'term', fn, items:['Term 1','Term 2','Term 3'].map(t=>({v:t,t,sel:t===term}))},
+    {label:(n0+1)+'. YEAR', key:'year', fn, items:years.map(y=>({v:y,t:y,sel:y===String(year)}))}
+  ];
+}
 // ---- Requirements section: big tappable heading -> Class / Term / Year (shown step by step) -> content ----
 function setReqParam(key, value){
   const p = {...VIEW.params};
@@ -10449,16 +10472,10 @@ function setReqParam(key, value){
 function reqSelectorsHTML(classId){
   const p = VIEW.params;
   const term = p.reqTerm || DB.info.currentTerm, year = String(p.reqYear || DB.info.currentYear);
-  const cy = Number(DB.info.currentYear) || new Date().getFullYear();
-  const years = []; for(let y=cy-3; y<=cy+1; y++) years.push(String(y));
-  if(!years.includes(year)) years.push(year);
-  const clsOpts = `<option value="">— Select class —</option>` + DB.classes.map(c=>`<option value="${c.id}" ${c.id===classId?'selected':''}>${esc(c.name)}</option>`).join('') + `<option value="all" ${classId==='all'?'selected':''}>All Students</option>`;
-  // Each choice reveals the next: Class -> Term (current term preselected) -> Year (current year preselected).
-  return `<div class="card"><div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
-    <div style="flex:1 1 220px;min-width:0;"><label>1. Class</label><select onchange="setReqParam('class', this.value)">${clsOpts}</select></div>
-    ${classId ? `<div style="flex:1 1 180px;min-width:0;"><label>2. Term</label><select onchange="setReqParam('term', this.value)">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}</select></div>
-    <div style="flex:1 1 140px;min-width:0;"><label>3. Year</label><select onchange="setReqParam('year', this.value)">${years.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}</select></div>` : ''}
-  </div>${DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>'}</div>`;
+  const cols = [{label:'1. CLASS', key:'class', fn:'setReqParam',
+    items: DB.classes.map(c=>({v:c.id,t:c.name,sel:c.id===classId})).concat([{v:'all',t:'All Students',sel:classId==='all'}])}];
+  if(classId) cols.push(...finTermYearCols(term, year, 'setReqParam', 2));
+  return finColsHTML(cols) + (DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>');
 }
 function requirementsGateView(d){
   const p = VIEW.params;
@@ -10468,8 +10485,8 @@ function requirementsGateView(d){
   const title = proceed ? 'LIST / RECORD REQUIREMENT ITEMS' : 'SETTING SCHOOL REQUIREMENTS';
   const hero = `<button type="button" class="req-hero${open?' open':''}" data-action="reqToggleOpen" aria-expanded="${open}" title="Tap to ${open?'hide':'show'} the selections">${title} ${open?'▲':'▼'}</button>`;
   const proceedBar = proceed
-    ? `<button type="button" class="btn-outline" data-action="reqBackToSettings" style="display:block;width:100%;padding:12px 16px;margin:0 0 12px;font-weight:800;">⬅ BACK TO SETTING SCHOOL REQUIREMENTS</button>`
-    : `<button type="button" class="btn-gold" data-action="reqProceed" style="display:block;width:100%;padding:14px 18px;margin:0 0 12px;font-size:15px;letter-spacing:.03em;">PROCEED TO LIST / RECORD ITEMS ➜</button>`;
+    ? `<button type="button" class="req-hero req-back" data-action="reqBackToSettings">⬅ BACK TO SETTING SCHOOL REQUIREMENTS</button>`
+    : `<button type="button" class="req-hero req-gold" data-action="reqProceed">PROCEED TO LIST / RECORD ITEMS ➜</button>`;
   let out = hero + proceedBar;
   if(!open) return out;
   out += reqSelectorsHTML(classId);
