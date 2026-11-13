@@ -2089,23 +2089,23 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 .rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:calc(24*var(--uk));line-height:1;color:var(--navy,#0A2A4A);font-weight:900;}
 .rc-filter-card .rc-gap{margin-top:calc(40*var(--uk));}
 .rc-modal{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding:calc(44px + env(safe-area-inset-top,0px)) 18px calc(56px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:rgba(10,42,74,.55);-webkit-tap-highlight-color:transparent;}
-.rc-modal-card{width:100%;max-width:560px;max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:20px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 22px 60px rgba(10,42,74,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
-.rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 18px 10px 22px;}
-.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:27px;font-weight:800;color:var(--navy,#0A2A4A);}
-.rc-modal-head p{margin:4px 0 0;font-size:15.5px;line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
+.rc-modal-card{width:420px;max-width:100%;max-height:100%;display:flex;flex-direction:column;background:#fff;border-radius:14px;border-top:6px solid var(--gold,#C9A227);box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+.rc-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 18px 10px 24px;}
+.rc-modal-head h3{margin:0;font-family:Georgia,'Playfair Display',serif;font-size:22px;font-weight:800;color:var(--navy,#0A2A4A);}
+.rc-modal-head p{margin:4px 0 0;font-size:14px;line-height:1.4;color:#5b6b7c;font-weight:500;text-transform:none;letter-spacing:0;}
 .rc-modal-x{flex:0 0 auto;width:36px;height:36px;padding:0;border:none;border-radius:50%;background:#eef3f8;color:var(--navy,#0A2A4A);font-size:22px;line-height:1;}
-.rc-modal-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 22px;border-top:1px solid #e6edf4;border-bottom:1px solid #e6edf4;}
-.rc-modal label.rc-opt{display:flex;align-items:center;gap:10px;margin:0;padding:16px 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:20px;font-weight:600;color:var(--ink,#1c2b3a);}
+.rc-modal-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 24px;border-top:1px solid #e6edf4;border-bottom:1px solid #e6edf4;}
+.rc-modal label.rc-opt{display:flex;align-items:center;gap:10px;margin:0;padding:12px 0;border-bottom:1px solid #eef2f6;cursor:pointer;text-transform:none;letter-spacing:0;font-size:17px;font-weight:600;color:var(--ink,#1c2b3a);}
 .rc-modal label.rc-opt:last-child{border-bottom:none;}
 .rc-modal label.rc-opt-all{font-weight:800;color:var(--navy,#0A2A4A);}
 .rc-modal .rc-opt-name{flex:1;min-width:0;}
-.rc-modal .rc-opt-n{flex:0 0 auto;font-size:16px;font-weight:600;color:#7a8a9a;}
-.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:30px !important;height:30px;min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
+.rc-modal .rc-opt-n{flex:0 0 auto;font-size:14px;font-weight:600;color:#7a8a9a;}
+.rc-modal .rc-tick{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:26px !important;height:26px;min-height:0;margin:0;padding:0;border:2px solid #b9c9da;border-radius:50%;background:#fff;position:relative;cursor:pointer;box-shadow:none;transition:background .12s,border-color .12s;}
 .rc-modal .rc-tick:checked{background:var(--blue,#1D4E89);border-color:var(--blue,#1D4E89);}
-.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:9px;top:3px;width:7px;height:14px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
-.rc-modal-foot{padding:14px 22px 20px;display:flex;flex-direction:column;gap:10px;}
+.rc-modal .rc-tick:checked::after{content:"";position:absolute;left:7px;top:2px;width:6px;height:12px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
+.rc-modal-foot{padding:14px 24px 22px;display:flex;flex-direction:column;gap:10px;}
 .rc-modal-foot .rc-splash-count{text-align:center;font-size:16px;font-weight:700;color:#5b6b7c;text-transform:none;letter-spacing:0;margin:0;}
-.rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:52px;font-size:17px;font-weight:800;border-radius:12px;}
+.rc-modal-foot .btn,.rc-modal-foot .btn-gold{width:100%;box-sizing:border-box;min-height:48px;font-size:15px;font-weight:800;border-radius:10px;}
 .rc-modal-foot .btn[disabled],.rc-modal-foot .btn-gold[disabled]{opacity:.45;cursor:not-allowed;}
 /* Enter Scores: the "marked out of" (maximum score) box is bold and thick so it can't be missed */
 #maxScoreInput{border:3px solid var(--navy,#0A2A4A) !important;border-radius:10px !important;font-size:20px !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;background:#fff !important;padding:12px 14px !important;min-height:52px;box-sizing:border-box;}
@@ -12952,15 +12952,15 @@ function reportsListView(){
       return `
     ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the "Download all" button above still exports every ticked class in full.</p>
     <div class="flex" style="margin-bottom:10px;align-items:center;flex-wrap:wrap;gap:10px;">
-      <span class="small" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span>
-      <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button>
-      <button class="btn-outline" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
-      ${selectedCount ? `<button class="btn-outline" onclick="clearReportSelection()">Clear selection</button>` : ''}
+      <span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span>
+      <button class="btn-outline rc-sel-print" ${selectedCount? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button>
+      <button class="btn-outline rc-sel-dl" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
+      <button class="btn-outline rc-sel-clear" style="${selectedCount?'':'display:none;'}" onclick="clearReportSelection()">Clear selection</button>
     </div>` : ''}
-    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
+    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" class="rc-all-cb" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
     ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
+      return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${isAdmin?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
@@ -13098,31 +13098,49 @@ function rcByClassOrder(list){
    Kept separate from the "Download class as PDF (bulk)" button above, which always exports
    every current student in the selected class regardless of any ticks here. */
 const SELECTED_REPORTS = new Set();
+// Ticking only updates the tick, the counter and the buttons in place — it no longer re-draws the
+// whole report-card list (which made every tick slow on big classes).
+function rcSelRefresh(){
+  const rows = document.querySelectorAll('input.rc-row-cb');
+  let n = 0; rows.forEach(cb=>{ if(cb.checked) n++; });
+  const ct = document.querySelector('.rc-sel-count'); if(ct) ct.textContent = n+' selected';
+  document.querySelectorAll('.rc-sel-print,.rc-sel-dl').forEach(b=>{ b.disabled = !n; });
+  const clr = document.querySelector('.rc-sel-clear'); if(clr) clr.style.display = n ? '' : 'none';
+  const all = document.querySelector('input.rc-all-cb'); if(all) all.checked = rows.length>0 && n===rows.length;
+}
 function toggleReportSelect(studentId){
   if(SELECTED_REPORTS.has(studentId)) SELECTED_REPORTS.delete(studentId);
   else SELECTED_REPORTS.add(studentId);
-  render();
+  rcSelRefresh();
 }
 function toggleReportSelectAll(classId, checked){
-  rcListedStudents(rcAppliedIds()).forEach(s=>{
-    if(checked) SELECTED_REPORTS.add(s.id); else SELECTED_REPORTS.delete(s.id);
+  document.querySelectorAll('input.rc-row-cb').forEach(cb=>{
+    cb.checked = checked;
+    const id = cb.getAttribute('data-id');
+    if(checked) SELECTED_REPORTS.add(id); else SELECTED_REPORTS.delete(id);
   });
-  render();
+  rcSelRefresh();
 }
-function clearReportSelection(){ SELECTED_REPORTS.clear(); render(); }
-async function downloadSelectedReportsPdf(){
+function clearReportSelection(){
+  SELECTED_REPORTS.clear();
+  document.querySelectorAll('input.rc-row-cb').forEach(cb=>{ cb.checked = false; });
+  rcSelRefresh();
+}
+async function downloadSelectedReportsPdf(onProgress){
   if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); return; }
-  const students = DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && s.status!=='left');
+  const students = rcByClassOrder(sortByName(DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && s.status!=='left')));
   if(!students.length){ alert('Tick at least one student first.'); return; }
   try{ await refreshScores(); }
   catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
   const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_selected_reports`;
-  await pdfForStudents(students, `${baseName}.pdf`);
+  await pdfBatched(students, baseName, onProgress);
 }
 async function runDownloadSelectedReportsPdf(btn){
   if(btn.disabled) return;
   const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{ await downloadSelectedReportsPdf(); }
+  try{ await downloadSelectedReportsPdf((done,total,part,parts)=>{
+    btn.innerHTML = parts && parts>1 ? `<b>Preparing part ${part}/${parts} (${done}/${total})…</b>` : `<b>Preparing ${done}/${total}…</b>`;
+  }); }
   finally{ btn.disabled = false; btn.innerHTML = orig; }
 }
 // Downloads a single student's report card for whatever term/year is currently
@@ -16170,7 +16188,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       const wmW = cardW*0.55, wmH = wmW*(props.height/props.width);
       pdf.saveGraphicsState();
       pdf.setGState(new pdf.GState({opacity:0.06}));
-      pdf.addImage(data.school.logo, 'PNG', cardX+(cardW-wmW)/2, cardY+(cardH-wmH)/2, wmW, wmH);
+      pdf.addImage(data.school.logo, 'PNG', cardX+(cardW-wmW)/2, cardY+(cardH-wmH)/2, wmW, wmH, 'rcLogo');
       pdf.restoreGraphicsState();
     }catch(e){ /* unreadable/unsupported image — skip watermark, never block the PDF */ }
   }
@@ -16224,7 +16242,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       let logoH = FRAME, logoW = FRAME*ratio;
       const maxW = Math.max(20, freeW);
       if(logoW > maxW){ logoW = maxW; logoH = logoW/ratio; }
-      pdf.addImage(data.school.logo, 'PNG', contentX, titleTop + (FRAME-logoH)/2, logoW, logoH);
+      pdf.addImage(data.school.logo, 'PNG', contentX, titleTop + (FRAME-logoH)/2, logoW, logoH, 'rcLogo');
     }catch(e){ /* skip logo, keep going */ }
   }
   centerText(schoolNameText, textX, textW, titleTop+13, schoolNameSize, 'bold', navy);
@@ -16694,7 +16712,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       // jsPDF rotates an image about its own (x,y) insertion corner, not its center,
       // so x/y are offset by half the image's own footprint to keep the ROTATED
       // image visually centered on the same point a non-rotated one would be.
-      pdf.addImage(data.school.stamp, 'PNG', stampCx-stampW/2, stampCy-stampH/2, stampW, stampH, undefined, undefined, -18);
+      pdf.addImage(data.school.stamp, 'PNG', stampCx-stampW/2, stampCy-stampH/2, stampW, stampH, 'rcStamp', undefined, -18);
       pdf.restoreGraphicsState();
     }catch(e){ /* unreadable/unsupported stamp image — skip it, never block the PDF */ }
   }
@@ -21858,6 +21876,7 @@ async function pdfForStudents(students, filename, opts={}){
   // which is a big part of why these files are now much smaller than the old
   // screenshot-based ones, on top of no longer paying for a JPEG at all.
   const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
+  let _lastYield = Date.now();
   for(let i=0;i<students.length;i++){
     const data = buildReportCardData(students[i].id);
     if(i>0) pdf.addPage();
@@ -21872,10 +21891,13 @@ async function pdfForStudents(students, filename, opts={}){
       if(data.photo) data.photo = await toPngDataUrl(data.photo);
       renderReportCardPageFitted(pdf, data);
     }
-    if(opts.onProgress) opts.onProgress(i+1, students.length);
-    // Yield a tick between students so a long bulk run doesn't visibly stall
-    // the tab and stays responsive to the progress UI.
-    await new Promise(r=>setTimeout(r, 0));
+    // Yield to the browser only about every 80ms (not after every student): a timer tick per
+    // student wastes time on big classes, while this still lets the progress text repaint.
+    if(Date.now()-_lastYield > 80 || i===students.length-1){
+      if(opts.onProgress) opts.onProgress(i+1, students.length);
+      await new Promise(r=>setTimeout(r, 0));
+      _lastYield = Date.now();
+    }
   }
   // openPreviewTab:false — report cards should download and leave the person right
   // where they were in the app, not pop the PDF open in a separate browser tab.
@@ -21894,13 +21916,17 @@ async function pdfForStudents(students, filename, opts={}){
 // of scale 2, which is ~2.25x the raster memory per page. The batch size is
 // trimmed accordingly so peak memory per batch stays roughly where it was
 // before, even though each page is now sharper.
-const BULK_BATCH_SIZE = 25;
+const BULK_BATCH_SIZE = 60;
 async function bulkPdf(classId, onProgress){
   await refreshScores(); // make sure every teacher's latest marks are in this export
   const ids = Array.isArray(classId) ? classId : (classId ? [classId] : []);
   let students = DB.students.filter(s=>s.status!=='left' && (!ids.length || ids.includes(s.classId)));
   if(ids.length>1) students = rcByClassOrder(sortByName(students));
   const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_reports`;
+  await pdfBatched(students, baseName, onProgress);
+}
+// Exports any list of students: one PDF when small, several "part N of M" PDFs when big.
+async function pdfBatched(students, baseName, onProgress){
   if(students.length <= BULK_BATCH_SIZE){
     await pdfForStudents(students, `${baseName}.pdf`, {onProgress});
     return;
