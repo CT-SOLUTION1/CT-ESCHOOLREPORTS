@@ -720,6 +720,12 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 #deliveredToast .tick{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.25);font-size:12px;line-height:1;}
 #deliveredToast.pdf-ready{padding:9px 12px 9px 16px;border-radius:10px;gap:10px;pointer-events:auto;}
 #deliveredToast .pdf-open-btn{border:0;background:#fff;color:var(--navy);font-weight:900;border-radius:6px;padding:7px 11px;cursor:pointer;}
+/* "Open download" state that replaces a Download button right where it was tapped */
+.dl-ready-btn{background:var(--good) !important;color:#fff !important;border-color:var(--good) !important;}
+.dl-ready-in{display:flex;align-items:stretch;justify-content:center;gap:10px;width:100%;}
+.dl-ready-open{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;font-weight:900;}
+.dl-ready-open .tick{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.25);font-size:12px;line-height:1;}
+.dl-ready-x{display:inline-flex;align-items:center;justify-content:center;padding:0 4px 0 12px;border-left:1px solid rgba(255,255,255,.55);font-size:1.5em;line-height:1;font-weight:700;}
 #deliveredToast .pdf-close-btn{border:0;background:transparent;color:#fff;font-size:18px;line-height:1;padding:4px;cursor:pointer;}
 
 /* ---- Universal action banner: shown close to the button the user pressed ---- */
@@ -13061,12 +13067,7 @@ async function rcPickDownload(btn){
   if(btn.disabled) return;
   const ids = rcPickedIds();
   if(!ids.length){ alert('Tick at least one class first.'); return; }
-  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{
-    await bulkPdf(ids, (done,total,part,parts)=>{
-      btn.innerHTML = parts && parts>1 ? `<b>Preparing part ${part}/${parts} (${done}/${total})…</b>` : `<b>Preparing ${done}/${total}…</b>`;
-    });
-  } finally { btn.disabled = false; btn.innerHTML = orig; }
+  await runWithHostButton(btn, ()=>bulkPdf(ids));
 }
 function rcBack(){ RC_QUERY=''; RC_PICK.clear(); VIEW.params = {...VIEW.params, classIds:null, classId:null}; render(); }
 function filterClass(v){ VIEW.params = {...VIEW.params, classIds: v?[v]:null, classId:null}; render(); }
@@ -13153,11 +13154,7 @@ async function downloadSelectedReportsPdf(onProgress){
 }
 async function runDownloadSelectedReportsPdf(btn){
   if(btn.disabled) return;
-  const orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<b>Preparing…</b>';
-  try{ await downloadSelectedReportsPdf((done,total,part,parts)=>{
-    btn.innerHTML = parts && parts>1 ? `<b>Preparing part ${part}/${parts} (${done}/${total})…</b>` : `<b>Preparing ${done}/${total}…</b>`;
-  }); }
-  finally{ btn.disabled = false; btn.innerHTML = orig; }
+  await runWithHostButton(btn, ()=>downloadSelectedReportsPdf());
 }
 // Downloads a single student's report card for whatever term/year is currently
 // selected on the report card screen — including past terms/years, not just the
@@ -17066,7 +17063,7 @@ document.addEventListener('click', async (e)=>{
       }
       const wasFounder = CUR && CUR.role==='founder';
       playUISound('close');
-      CUR=null; SCHOOL_ID=null; FINANCE_UNLOCKED=false; finSubReset(); FINANCE_RESET_SKIPPED=false; FINANCE_ONLY=false; await setPersonal('session', null);
+      clearReturnState(); CUR=null; SCHOOL_ID=null; FINANCE_UNLOCKED=false; finSubReset(); FINANCE_RESET_SKIPPED=false; FINANCE_ONLY=false; await setPersonal('session', null);
       // Burn the token so any other device/browser holding the old founder
       // session (or someone who copied it out of localStorage) is kicked out too.
       if(wasFounder && SYSTEM_OWNER){ SYSTEM_OWNER.sessionToken = genSessionToken(); await saveSystemOwner(); }
@@ -17562,19 +17559,10 @@ Continue?`);
       // student), during which an impatient second tap would otherwise kick off a
       // second full render on top of the first.
       if(el.disabled) break;
-      const _origLbl2 = el.innerHTML; el.disabled = true; el.innerHTML = '<b>Preparing…</b>';
-      // Live "n / total" progress in the button itself — a long bulk export with
-      // a static "Preparing…" label looked indistinguishable from a frozen tab;
-      // a moving count makes it visibly obvious that it's still working.
-      try{
+      {
         const _bulkIds = arg ? arg.split(',').map(x=>{ try{ return decodeURIComponent(x); }catch(e){ return x; } }).filter(Boolean) : [];
-        await bulkPdf(_bulkIds.length ? _bulkIds : null, (done,total,part,parts)=>{
-          el.innerHTML = parts && parts>1
-            ? `<b>Preparing part ${part}/${parts} (${done}/${total})…</b>`
-            : `<b>Preparing ${done}/${total}…</b>`;
-        });
+        await runWithHostButton(el, ()=>bulkPdf(_bulkIds.length ? _bulkIds : null));
       }
-      finally{ el.disabled = false; el.innerHTML = _origLbl2; }
       break;
     }
     case 'editRoster': {
@@ -21136,6 +21124,38 @@ function printPdfDocument(pdf, filename){
   setTimeout(fallback, 20000);   // viewer never loaded: hand the PDF over instead of leaving the user waiting
   setTimeout(()=>{ try{ fr.remove(); }catch(e){} URL.revokeObjectURL(url); }, 1800000);
 }
+// Report-card downloads: the button that was tapped shows the progress and, when the file is ready, turns
+// into a green "Open download  ×" button in the same place — no bottom pop-up. It goes back to the
+// original button only when the person taps × or opens the file.
+let PDF_HOST = null;
+async function runWithHostButton(btn, fn){
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<b>Preparing report cards…</b>';
+  const host = PDF_HOST = {btn, orig, used:false};
+  try{ await fn(); }
+  finally{ PDF_HOST = null; if(!host.used){ btn.disabled = false; btn.innerHTML = orig; } }
+}
+function showPdfReadyOnButton(host, url){
+  const btn = host.btn;
+  host.used = true;
+  btn.disabled = false;
+  btn.classList.add('dl-ready-btn');
+  btn.innerHTML = '<span class="dl-ready-in"><span class="dl-ready-open"><span class="tick">✓</span>Open download</span><span class="dl-ready-x" role="button" aria-label="Close">×</span></span>';
+  const restore = ()=>{
+    btn.removeEventListener('click', onClick, true);
+    btn.classList.remove('dl-ready-btn');
+    btn.innerHTML = host.orig;
+    btn.disabled = false;
+  };
+  function onClick(e){
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(e.target.closest && e.target.closest('.dl-ready-x')){ restore(); return; }
+    try{ window.open(url, '_blank', 'noopener'); }catch(err){ window.location.href = url; }
+    restore();
+  }
+  btn.addEventListener('click', onClick, true);
+  setTimeout(()=>URL.revokeObjectURL(url), 1800000);
+}
 function openOrSavePdf(pdf, filename, opts={} ){
   try{ pdf.setProperties({title:String(filename||'Document').replace(/\.pdf$/i,''), subject:'', author:'', creator:' ', keywords:''}); }catch(e){}
   if(__PDF_PRINT_DEPTH>0){ printPdfDocument(pdf, filename); return; }
@@ -21153,6 +21173,7 @@ function openOrSavePdf(pdf, filename, opts={} ){
     a.click();
     a.remove();
 
+    if(PDF_HOST && PDF_HOST.btn && document.body.contains(PDF_HOST.btn)){ showPdfReadyOnButton(PDF_HOST, url); return; }
     // Keep an explicit Open PDF action visible. Some installed Android PWAs report
     // "downloaded" but do not expose the browser's normal download/open prompt.
     // The button opens the exact Blob URL generated above, so the user never has to
@@ -22201,6 +22222,60 @@ window.addEventListener('unhandledrejection', (e)=>{ showFatal(e.reason && e.rea
 let APP_BUSY = 0;
 function setAppBusy(isBusy){ APP_BUSY = Math.max(0, APP_BUSY + (isBusy?1:-1)); }
 
+/* ---- Opening a file (PDF, download, another tab) must never make the app "load again" on return ----
+   1. While the person is away viewing a file (and for 15 minutes after) no update check or auto-update reload runs.
+   2. The exact screen, its settings and the scroll position are remembered, so even if the phone throws the page
+      out of memory while the file viewer is open, coming back puts the person exactly where they were. */
+let FILE_GRACE_UNTIL = 0;
+const RETURN_KEY = 'cte_return_state';
+function saveReturnState(force){
+  try{
+    if(typeof CUR==='undefined' || !CUR || !SCHOOL_ID || !VIEW || !VIEW.name || VIEW.name==='boot') return;
+    const file = !!force || Date.now() < FILE_GRACE_UNTIL;
+    if(!file) return;
+    localStorage.setItem(RETURN_KEY, JSON.stringify({
+      t: Date.now(), u: String(CUR.username||CUR.id||CUR.name||''), s: String(SCHOOL_ID),
+      view: {name: VIEW.name, params: VIEW.params||{}},
+      y: window.scrollY || (document.documentElement && document.documentElement.scrollTop) || 0,
+      sel: (typeof SELECTED_REPORTS!=='undefined') ? Array.from(SELECTED_REPORTS) : []
+    }));
+  }catch(e){}
+}
+function noteFileOpened(){ FILE_GRACE_UNTIL = Date.now() + 15*60*1000; saveReturnState(true); }
+function clearReturnState(){ try{ localStorage.removeItem(RETURN_KEY); }catch(e){} }
+(function(){
+  const _open = window.open;
+  window.open = function(){ try{ noteFileOpened(); }catch(e){} return _open.apply(window, arguments); };
+  document.addEventListener('click', function(e){
+    try{ const a = e.target && e.target.closest && e.target.closest('a[download],a[target="_blank"]'); if(a) noteFileOpened(); }catch(_){}
+  }, true);
+  document.addEventListener('visibilitychange', function(){ if(document.hidden) saveReturnState(); });
+  window.addEventListener('pagehide', function(){ saveReturnState(); });
+})();
+// Called once at start-up: if the page had to be reloaded while a file was open, go back to that exact screen.
+function restoreReturnState(){
+  let r = null;
+  try{ r = JSON.parse(localStorage.getItem(RETURN_KEY)||'null'); }catch(e){}
+  if(!r || !r.view || !r.view.name || Date.now()-r.t > 30*60*1000) return false;
+  clearReturnState();
+  if(!CUR || !SCHOOL_ID || CUR.role==='founder') return false;
+  if(r.s !== String(SCHOOL_ID) || r.u !== String(CUR.username||CUR.id||CUR.name||'')) return false;
+  if(typeof schoolGradeGateActive==='function' && schoolGradeGateActive() && r.view.name!=='schoolinfo') return false;
+  VIEW = {name:r.view.name, params:r.view.params||{}};
+  try{ if(typeof SELECTED_REPORTS!=='undefined') (r.sel||[]).forEach(id=>SELECTED_REPORTS.add(id)); }catch(e){}
+  render();
+  const y = Number(r.y)||0;
+  [0,150,500,1200].forEach(ms=>setTimeout(()=>{ try{ window.scrollTo(0, y); }catch(e){} }, ms));
+  try{
+    if(RESUME_SCORE_VIEWS.includes(r.view.name)){
+      const tok = NAV_TOKEN;
+      const p = (r.view.name==='mastermarksheet'||r.view.name==='classanalysis') ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
+      Promise.resolve(p).then(()=>{ if(NAV_TOKEN===tok){ render(); [0,150,500].forEach(ms=>setTimeout(()=>{ try{ window.scrollTo(0, y); }catch(e){} }, ms)); } }).catch(e=>console.error(e));
+    }
+  }catch(e){}
+  return true;
+}
+
 // Tracks whether any on-screen form (e.g. a scores mark sheet) has been typed into
 // since it was last rendered fresh or successfully submitted. isEditingNow() alone
 // only protects the single field currently focused — it says nothing about the 30
@@ -22228,7 +22303,7 @@ function isEditingNow(){
 function hasUnsavedWork(){
   // Only a save in flight (APP_BUSY) or typed-but-not-yet-submitted form data (FORM_DIRTY)
   // holds an update back. A merely focused box or a search field no longer does.
-  return FORM_DIRTY || APP_BUSY>0;
+  return FORM_DIRTY || APP_BUSY>0 || Date.now() < FILE_GRACE_UNTIL;
 }
 function showUpdateToast(msg){
   let t = document.getElementById('updateToast');
@@ -22240,6 +22315,7 @@ function showUpdateToast(msg){
   t.textContent = msg;
 }
 function reloadForUpdate(){
+  saveReturnState(true);   // if the page must reload, it comes back to this exact screen
   try{ if(typeof VIEW!=='undefined' && VIEW && VIEW.name && !(VIEW.params && Object.keys(VIEW.params).length)) saveResumeView(VIEW.name); }catch(e){}
   showUpdateToast('A newer version is available — reloading…');
   setTimeout(()=>location.reload(), 400);
@@ -22418,6 +22494,7 @@ function updateOnNavigate(targetView){
 }
 // After an update-reload, put the user back on the page they were opening.
 function resumeAfterUpdate(){
+  if(restoreReturnState()){ try{ sessionStorage.removeItem(RESUME_KEY); }catch(e){} return; }
   let r = null;
   try{ r = JSON.parse(sessionStorage.getItem(RESUME_KEY)||'null'); sessionStorage.removeItem(RESUME_KEY); }catch(e){}
   if(!r || !r.v || Date.now()-r.t > 60000) return;
@@ -22438,6 +22515,7 @@ function resumeAfterUpdate(){
 let _checking = false, _lastCheck = 0;
 async function checkForNewBuild(force){
   if(updatePending || _checking) return;
+  if(Date.now() < FILE_GRACE_UNTIL) return;   // coming back from viewing a file: never reload the app
   const now = Date.now();
   if(now - _lastCheck < (force===true ? 4000 : 15000)) return;
   _lastCheck = now; _checking = true;
