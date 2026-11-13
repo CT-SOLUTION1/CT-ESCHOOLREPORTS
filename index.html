@@ -721,8 +721,19 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 #deliveredToast.pdf-ready{padding:9px 12px 9px 16px;border-radius:10px;gap:10px;pointer-events:auto;}
 #deliveredToast .pdf-open-btn{border:0;background:#fff;color:var(--navy);font-weight:900;border-radius:6px;padding:7px 11px;cursor:pointer;}
 /* "Open download" state that replaces a Download button right where it was tapped */
-.rc-topbar .btn-gold,.rc-topbar .btn-outline,.rc-sel-print,.rc-sel-dl,.rc-sel-clear{min-height:calc(46*var(--uk,1px));padding-top:calc(8*var(--uk,1px));padding-bottom:calc(8*var(--uk,1px));font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1.2;}
-.rc-topbar .btn-gold,.rc-sel-dl{min-height:calc(52*var(--uk,1px));}
+.rc-actionbar{container-type:inline-size;display:flex;flex-wrap:nowrap;align-items:stretch;gap:8px;margin:6px 0 12px;width:100%;box-sizing:border-box;}
+.rc-actionbar>button{flex:0 1 auto;min-width:0;white-space:nowrap;font-size:16px;font-size:min(20px, calc((100cqw - 175px) / 47));padding:16px 12px;border-radius:8px;font-weight:700;letter-spacing:0;display:inline-flex;align-items:center;justify-content:center;line-height:1.2;text-align:center;}
+.rc-actionbar>button.rc-sel-clear[style*="display:none"]{display:none !important;}
+/* Original (untapped) colours for the five report-card action buttons. Excluded while a button is preparing
+   (.host-busy) or showing the green Open-download state (.dl-ready-btn), so those tapped looks are unchanged. */
+.rc-actionbar>button:not(.dl-ready-btn):not(.host-busy){color:#fff;border:2px solid transparent;}
+.rc-actionbar>button:not(.dl-ready-btn):not(.host-busy):disabled{opacity:.45;cursor:not-allowed;}
+.rc-actionbar>button.rc-btn-back:not(.dl-ready-btn):not(.host-busy){background:#5A7189;border-color:#5A7189;}
+.rc-actionbar>button.rc-btn-all:not(.dl-ready-btn):not(.host-busy){background:#C9A227;border-color:#C9A227;color:#3a2c00;}
+.rc-actionbar>button.rc-sel-print:not(.dl-ready-btn):not(.host-busy){background:#1D4E89;border-color:#1D4E89;}
+.rc-actionbar>button.rc-sel-dl:not(.dl-ready-btn):not(.host-busy){background:#7B3FA0;border-color:#7B3FA0;}
+.rc-actionbar>button.rc-sel-clear:not(.dl-ready-btn):not(.host-busy){background:#B23A3A;border-color:#B23A3A;}
+.rc-topbar-names{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 6px;}
 .dl-ready-btn{background:var(--good) !important;color:#fff !important;border-color:var(--good) !important;}
 .dl-ready-in{display:flex;align-items:stretch;justify-content:center;gap:10px;width:100%;}
 .dl-ready-open{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;font-weight:900;}
@@ -2069,7 +2080,7 @@ table.data-table.rc-list,table.data-table.sp-students{max-width:100%;}
 /* these two pages use the full screen width: no side margins, cards flush to the edges */
 .main:has(table.rc-list),.main:has(table.sp-students){padding-left:0 !important;padding-right:0 !important;}
 .main:has(table.rc-list) .card:has(> table.rc-list),.main:has(table.sp-students) .card:has(> table.sp-students){margin-left:0 !important;margin-right:0 !important;padding-left:0 !important;padding-right:0 !important;border-radius:0 !important;border-left:0 !important;border-right:0 !important;}
-.main:has(table.rc-list) .rc-topbar,.main:has(table.sp-students) .rc-topbar{padding:0 calc(6*var(--uk));}
+.main:has(table.rc-list) .rc-topbar,.main:has(table.sp-students) .rc-topbar,.main:has(table.rc-list) .rc-topbar-names,.main:has(table.rc-list) .rc-actionbar{padding-left:calc(6*var(--uk));padding-right:calc(6*var(--uk));}
 table.rc-list td,table.sp-students td{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;white-space:nowrap !important;text-align:left;border-width:0.5px !important;}
 table.rc-list th,table.sp-students th{border-width:0.5px !important;white-space:normal;text-align:left;}
 table.rc-list td.stu-name,table.sp-students td.stu-name{font-size:calc(var(--tf,12)*1px) !important;font-weight:700 !important;}
@@ -12937,7 +12948,10 @@ function reportsListView(){
   const rcCollapsed = rcIds.length>0;
   const rcNames = rcIds.map(id=>(visibleClasses.find(c=>c.id===id)||{}).name||'').filter(Boolean).join(', ');
   const rcIdsArg = rcIds.map(encodeURIComponent).join(',');
-  const rcTopBar = `<div class="rc-topbar"><button type="button" class="btn-outline" onclick="rcBack()">◀ Back</button><b>${esc(rcNames)}</b>${isAdmin?`<button class="btn-gold" data-action="bulkPdf:${rcIdsArg}"><b>Download all as PDF</b></button>`:''}</div>`;
+  const _selN = (isAdmin && rcCollapsed) ? rcListedStudents(rcIds).filter(s=>SELECTED_REPORTS.has(s.id)).length : 0;
+  // ONE row holding all five buttons: Back, Download all, Print selected, Download selected, Clear selection.
+  const rcActionBar = (withBack, n) => `<div class="rc-actionbar">${withBack?`<button type="button" class="btn-outline rc-btn-back" onclick="rcBack()">◀ Back</button>`:''}${isAdmin?`${withBack?`<button type="button" class="btn-gold rc-btn-all" data-action="bulkPdf:${rcIdsArg}"><b>Download all as PDF</b></button>`:''}<button type="button" class="btn-outline rc-sel-print" ${n? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button><button type="button" class="btn-outline rc-sel-dl" ${n? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button><button type="button" class="btn-outline rc-sel-clear" style="${n?'':'display:none;'}" onclick="clearReportSelection()">Clear selection</button>`:''}</div>`;
+  const rcTopBar = `<div class="rc-topbar-names"><b>${esc(rcNames)}</b>${isAdmin?`<span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${_selN} selected</span>`:''}</div>${rcActionBar(true, _selN)}`;
   const pickedNow = visibleClasses.filter(c=>RC_PICK.has(c.id)).length;
   const stuCount = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
   return `
@@ -12961,12 +12975,7 @@ function reportsListView(){
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
       return `
     ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the "Download all" button above still exports every ticked class in full.</p>
-    <div class="flex" style="margin-bottom:10px;align-items:center;flex-wrap:wrap;gap:10px;">
-      <span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span>
-      <button class="btn-outline rc-sel-print" ${selectedCount? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button>
-      <button class="btn-outline rc-sel-dl" ${selectedCount? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button>
-      <button class="btn-outline rc-sel-clear" style="${selectedCount?'':'display:none;'}" onclick="clearReportSelection()">Clear selection</button>
-    </div>` : ''}
+    ${rcCollapsed ? '' : `<div style="margin:0 0 6px;"><span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span></div>${rcActionBar(false, selectedCount)}`}` : ''}
     <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" class="rc-all-cb" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
     ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
@@ -21158,14 +21167,15 @@ function printPdfDocument(pdf, filename){
 let PDF_HOST = null;
 async function runWithHostButton(btn, fn){
   const orig = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = '<b>Preparing report cards…</b>';
+  btn.disabled = true; btn.classList.add('host-busy'); btn.innerHTML = '<b>Preparing report cards…</b>';
   const host = PDF_HOST = {btn, orig, used:false};
   try{ await fn(); }
-  finally{ PDF_HOST = null; if(!host.used){ btn.disabled = false; btn.innerHTML = orig; } }
+  finally{ PDF_HOST = null; btn.classList.remove('host-busy'); if(!host.used){ btn.disabled = false; btn.innerHTML = orig; } }
 }
 function showPdfReadyOnButton(host, url){
   const btn = host.btn;
   host.used = true; host.ready = false; host.restored = false;
+  btn.classList.remove('host-busy');
   btn.disabled = false;
   btn.classList.add('dl-ready-btn');
   // Step 1: tell the person the download is complete (the short wait before the Open button appears).
