@@ -449,8 +449,21 @@ button.req-hero.req-back{background:#fff;border-color:var(--navy);color:var(--na
 table.req-tbl{width:100%;border-collapse:collapse;margin:8px 0 12px;}
 table.req-tbl th{text-align:left;font-size:13px;padding:8px 10px;}
 table.req-tbl td{padding:6px 10px;vertical-align:middle;}
-table.req-tbl td.req-fee-cell{width:190px;}
-table.req-tbl td.req-fee-cell input.req-fee{display:none;width:100%;max-width:170px;padding:5px 8px;font-size:14px;}
+table.req-tbl td.req-fee-cell{width:auto;}
+table.req-tbl td.req-fee-cell input.req-fee{display:none;width:100%;max-width:none;box-sizing:border-box;padding:6px 8px;font-size:14px;text-align:center;}
+/* Keep the picker a REAL two-column table on phones (the generic mobile rule turns every row into its own
+   auto-sized table, which glued the fee box to the item name and pushed the header to the far right). */
+table.req-tbl{display:table !important;table-layout:fixed;width:100%;overflow:visible !important;white-space:normal !important;}
+table.req-tbl thead{display:table-header-group !important;width:auto !important;}
+table.req-tbl tbody{display:table-row-group !important;width:auto !important;}
+table.req-tbl tr{display:table-row !important;width:auto !important;}
+table.req-tbl th:first-child,table.req-tbl td:first-child{width:56%;text-align:left;}
+table.req-tbl th:last-child,table.req-tbl td.req-fee-cell{width:44%;text-align:center;}
+table.req-tbl th:first-child .small{display:block;margin-top:2px;}
+/* one-line summary shown above the list/record tables */
+.fin-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:2px solid var(--blue);border-radius:8px;padding:8px 12px;margin:0 0 12px;}
+.fin-summary .fin-sum-text{font-weight:800;color:var(--navy);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.fin-summary .btn-outline{flex:none;padding:5px 10px;font-size:12px;white-space:nowrap;}
 table.req-tbl label.req-opt{font-size:14px;font-weight:700;}
 .req-qbtn{padding:3px 8px;font-size:12px;margin:1px;}
 .req-add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px dashed #cfd9e3;padding-top:10px;}
@@ -9410,10 +9423,13 @@ function exemptionsView(d, term, year){
 
 // ---- Fees section: big tappable heading -> Category -> Class -> Term -> Year (shown step by step) -> content ----
 const FEE_SET_CATS = [['general','GENERAL AGREED FEES'],['individual','INDIVIDUAL AGREED FEES'],['other','ADD ANY OTHER FEES']];
+function finSummaryHTML(label, changeAction){
+  return `<div class="fin-summary"><span class="fin-sum-text">${esc(label)}</span><button type="button" class="btn-outline" data-action="${changeAction}">✎ Change</button></div>`;
+}
 function setFeeParam(key, value){
   const p = {...VIEW.params};
   if(key==='cat'){ p.feeCat = value || undefined; p.finClassId = null; p.feeTerm = undefined; p.feeYear = undefined; }   // a new category asks for the class again
-  else if(key==='class') p.finClassId = value || null;
+  else if(key==='class'){ p.finClassId = value || null; p.feeChange = false; }
   else if(key==='term') p.feeTerm = value || undefined;
   else if(key==='year') p.feeYear = value || undefined;
   VIEW.params = p; render();
@@ -9451,15 +9467,18 @@ function feesGateView(d){
   const title = proceed ? 'LIST / RECORD FEES' : 'SETTING SCHOOL FEES';
   const hero = `<button type="button" class="req-hero${open?' open':''}" data-action="feeToggleOpen" aria-expanded="${open}" title="Tap to ${open?'hide':'show'} the selections">${title} ${open?'▲':'▼'}</button>`;
   if(proceed){
-    let out = hero + `<button type="button" class="req-hero req-back" data-action="feeBackToSettings">⬅ BACK TO SETTING SCHOOL FEES</button>`;
+    const backBtn = `<button type="button" class="req-hero req-back" data-action="feeBackToSettings">⬅ BACK TO SETTING SCHOOL FEES</button>`;
+    // Class chosen: hide everything else and show just a one-line summary + the full table.
+    if(classId && !p.feeChange) return backBtn + feesClassTableView(d, term, year);
+    let out = hero + backBtn;
     if(!open) return out;
     out += feeSelectorsHTML(classId, true, 1, null);
-    if(!classId) return out;
-    return out + feesClassTableView(d, term, year);
+    if(classId) out += `<button type="button" class="req-hero req-gold" data-action="feeShowTable">SHOW TABLE ➜</button>`;
+    return out;
   }
   let out = hero;
   if(open){
-    const catCol = {label:'1. CATEGORY', key:'cat', fn:'setFeeParam', items:FEE_SET_CATS.map(c=>({v:c[0],t:c[1],sel:c[0]===cat}))};
+    const catCol = {label:'1. CATEGORY', key:'cat', fn:'setFeeParam', items:FEE_SET_CATS.map((c,i)=>({v:c[0],t:c[1],sel:c[0]===cat,cls:'pick-c'+[1,2,3][i%3]}))};
     if(!cat) out += finColsHTML([catCol]);
     if(cat){
       out += feeSelectorsHTML(classId, false, 2, catCol);
@@ -9528,9 +9547,7 @@ function feesClassTableView(d, term, year){
   if(!isAll && !cls) return classPickerHTML();
   const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
 
-  let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
-    <h3 style="margin:0;">${isAll?'All Students':esc(cls.name)} — Fees (${esc(term)} ${esc(String(year))})</h3>
-  </div>`;
+  let out = finSummaryHTML((isAll?'All Students':cls.name)+' · '+term+' · '+year, 'feeChange');
 
   if(!isAll){
     const rec = classAgreedRecord(finClassId, term, year, d);
@@ -10450,7 +10467,7 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured, ctx){
 // Cascading selection columns used by FEES and REQUIREMENTS: each column is a stack of buttons; tapping one
 // immediately opens the next column (the caller only adds a column once the one before it has a choice).
 function finColsHTML(cols){
-  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="fin-opt${it.sel?' sel':''}" data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>`).join('')}</div>`).join('')}</div></div>`;
+  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="${it.cls?'pick-btn '+it.cls:'fin-opt'}${it.sel?' sel':''}" ${it.cls?'style="margin:0 0 8px;" ':''}data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>`).join('')}</div>`).join('')}</div></div>`;
 }
 function finTermYearCols(term, year, fn, n0){
   const cy = Number(DB.info.currentYear) || new Date().getFullYear();
@@ -10464,7 +10481,7 @@ function finTermYearCols(term, year, fn, n0){
 // ---- Requirements section: big tappable heading -> Class / Term / Year (shown step by step) -> content ----
 function setReqParam(key, value){
   const p = {...VIEW.params};
-  if(key==='class') p.finClassId = value || null;
+  if(key==='class'){ p.finClassId = value || null; p.reqChange = false; }
   else if(key==='term') p.reqTerm = value || undefined;
   else if(key==='year') p.reqYear = value || undefined;
   VIEW.params = p; render();
@@ -10487,11 +10504,13 @@ function requirementsGateView(d){
   const proceedBar = proceed
     ? `<button type="button" class="req-hero req-back" data-action="reqBackToSettings">⬅ BACK TO SETTING SCHOOL REQUIREMENTS</button>`
     : `<button type="button" class="req-hero req-gold" data-action="reqProceed">PROCEED TO LIST / RECORD ITEMS ➜</button>`;
+  // List/record mode, class chosen: hide everything else, show a one-line summary + the full table.
+  if(proceed && classId && !p.reqChange) return proceedBar + requirementsClassView(d, term, year);
   let out = hero + proceedBar;
   if(!open) return out;
   out += reqSelectorsHTML(classId);
   if(!classId) return out;
-  if(proceed) return out + requirementsClassView(d, term, year);
+  if(proceed) return out + `<button type="button" class="req-hero req-gold" data-action="reqShowTable">SHOW TABLE ➜</button>`;
   const cls = classId==='all' ? null : DB.classes.find(c=>c.id===classId);
   const clsLabel = cls ? cls.name : 'All Students';
   const active = sortByName(DB.students.filter(s=>s.status!=='left' && (classId==='all' || s.classId===classId)));
@@ -10512,9 +10531,7 @@ function requirementsClassView(d, term, year){
   const active = sortByName(DB.students.filter(s=>s.status!=='left' && (isAll || s.classId===finClassId)));
   const clsLabel = isAll ? 'All Students' : cls.name;
 
-  let out = `<div class="flex" style="justify-content:space-between;align-items:center;">
-    <h3 style="margin:0;">${esc(clsLabel)} — Requirements — ${esc(term)} ${esc(String(year))}</h3>
-  </div>`;
+  let out = finSummaryHTML(clsLabel+' · '+term+' · '+year, 'reqChange');
 
   const already = d.classReqSelections[finClassId];
   const alreadyConfigured = already!==undefined;
@@ -17584,11 +17601,15 @@ Continue?`);
     case 'reqChangeSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:true}; render(); break;
     case 'feeToggleOpen': VIEW.params = {...VIEW.params, feeOpen: !VIEW.params.feeOpen}; render(); break;
     // PROCEED asks for class, term and year again (nothing carried over, selections shown straight away).
-    case 'feeProceed': VIEW.params = {...VIEW.params, feeProceed:true, feeOpen:true, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
+    case 'feeChange': VIEW.params = {...VIEW.params, feeChange:true, feeOpen:true}; render(); break;
+    case 'feeShowTable': VIEW.params = {...VIEW.params, feeChange:false}; render(); break;
+    case 'reqChange': VIEW.params = {...VIEW.params, reqChange:true, reqOpen:true}; render(); break;
+    case 'reqShowTable': VIEW.params = {...VIEW.params, reqChange:false}; render(); break;
+    case 'feeProceed': VIEW.params = {...VIEW.params, feeChange:false, feeProceed:true, feeOpen:true, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
     case 'feeBackToSettings': VIEW.params = {...VIEW.params, feeProceed:false, feeOpen:false, feeCat:undefined, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
     case 'reqToggleOpen': VIEW.params = {...VIEW.params, reqOpen: !VIEW.params.reqOpen}; render(); break;
     // PROCEED asks for class, term and year again (nothing carried over, selections shown straight away).
-    case 'reqProceed': VIEW.params = {...VIEW.params, reqProceed:true, reqOpen:true, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
+    case 'reqProceed': VIEW.params = {...VIEW.params, reqChange:false, reqProceed:true, reqOpen:true, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
     case 'reqBackToSettings': case 'reqCancelSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:false, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
     case 'printReqDemandNote': printDemandNoteFor(arg); break;
     case 'editClassAgreedFee': VIEW.params = {...VIEW.params, editClassAgreed: true}; render(); break;
