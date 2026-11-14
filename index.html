@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-13-1100'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-13-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -14160,6 +14160,7 @@ function classAnalysisViewCore(){
     const d = computeSubjectRows(st, cls, term, year);
     const subjSet = new Set(studentSubjects(st, cls));
     classSubjectsFor(cls).forEach(sj=>{ if(subjectAverage(st.id, sj, term, year)!==null) subjSet.add(sj); });
+    const nSat = [...subjSet].filter(sj=>subjectAverage(st.id, sj, term, year)!==null).length;   // subjects SAT (has a score)
     const hasScores = d.countAvg>0;
     const gradeAny = hasScores ? gradeFor('', d.avgPct, lvl) : null;
     const weak = hasScores ? weakestSubjectNames(d.rows) : [];
@@ -14167,7 +14168,7 @@ function classAnalysisViewCore(){
       maxP: isAL ? maxPointsFor(st, cls) : 100,
       grade: isPL ? null : gradeFor('', d.avgPct, lvl),
       agg: isPL ? primaryAggregate(st, cls, term, year) : null,
-      nSubj: subjSet.size,
+      nSubj: subjSet.size, nSat,
       desc: hasScores ? rankOverallDescriptor(lvl, d.avgPct, gradeAny) : '—',
       resultTxt: isOL ? resultTextFor(st, cls, term, year) : '—',
       weakTxt: weak.length ? weak.map(msAbbr).join(', ') : '—'};
@@ -14179,7 +14180,7 @@ function classAnalysisViewCore(){
     const tail = isPL
       ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
       : (isOL ? spGradeTd(r.grade||'—') : '');
-    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td class="stu-name" style="text-align:left;white-space:nowrap;">${esc(String(r.st.name||'').trim().replace(/\s+/g,' '))}</td>${hasCombo?`<td>${esc(comboLabel(r.st,cls))}</td>`:''}<td${isPL?' style="text-align:center;"':''}>${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isAL?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isOL?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
+    return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td class="stu-name" style="text-align:left;white-space:nowrap;">${esc(String(r.st.name||'').trim().replace(/\s+/g,' '))}</td>${hasCombo?`<td>${esc(comboLabel(r.st,cls))}</td>`:''}<td${isPL?' style="text-align:center;"':''}>${r.nSat}/${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isAL?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isOL?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
   // Same column headings and writing format as the General Marksheets Rank List: Adm No and Student Name on ONE line; other two-word headings split over two lines.
   const spThS = 'white-space:nowrap;line-height:1.15;';
@@ -14674,6 +14675,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     // The learner's OWN number of subjects: enrolled subjects plus any subject they already have a score in.
     const subjSet = new Set(studentSubjects(st, c));
     classSubjectsFor(c).forEach(sj=>{ if(subjectAverage(st.id, sj, term, year)!==null) subjSet.add(sj); });
+    const nSat = [...subjSet].filter(sj=>subjectAverage(st.id, sj, term, year)!==null).length;   // subjects SAT (has a score)
     const hasScores = d.countAvg>0;
     const gradeAny = hasScores ? gradeFor('', d.avgPct, c.level) : null;
     const weak = hasScores ? weakestSubjectNames(d.rows) : [];
@@ -14681,7 +14683,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
       maxP: isA ? maxPointsFor(st, c) : 100,
       grade: isP ? null : gradeFor('', d.avgPct, c.level),
       agg: isP ? primaryAggregate(st, c, term, year) : null,
-      nSubj: subjSet.size,
+      nSubj: subjSet.size, nSat,
       desc: hasScores ? rankOverallDescriptor(c.level, d.avgPct, gradeAny) : '—',
       resultTxt: (c.level==='O') ? resultTextFor(st, c, term, year) : '—',
       weakTxt: weak.length ? weak.map(msAbbr).join(', ') : '—'};
@@ -14721,7 +14723,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     const tail = isP
       ? `<td style="${rkTd}font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="${rkTd}font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
       : (isO ? gradeTd(r.grade||'—') : '');
-    return `<tr><td style="${rkTd}font-weight:800;">${r.pos}</td><td style="${rkTd}">${esc(r.st.admNo||'—')}</td><td style="${rkTdName}">${rkName(r.st.name)}</td>${isLevel?`<td style="${rkTd}">${clsName}</td>`:''}${hasCombo?`<td style="${rkTd}">${esc(comboLabel(r.st, r.c))}</td>`:''}<td style="${rkTd}">${r.nSubj}</td><td style="${rkTd}">${zpct(r.avgPct,1)}</td>${isA?`<td style="${rkTd}">${r.pts}/${r.maxP}</td>`:''}${tail}${isO?`<td style="${rkTd}font-weight:800;">${r.resultTxt}</td>`:''}<td style="${rkTd}">${esc(r.desc)}</td><td style="${rkTd}text-align:left;">${esc(r.weakTxt)}</td></tr>`;
+    return `<tr><td style="${rkTd}font-weight:800;">${r.pos}</td><td style="${rkTd}">${esc(r.st.admNo||'—')}</td><td style="${rkTdName}">${rkName(r.st.name)}</td>${isLevel?`<td style="${rkTd}">${clsName}</td>`:''}${hasCombo?`<td style="${rkTd}">${esc(comboLabel(r.st, r.c))}</td>`:''}<td style="${rkTd}">${r.nSat}/${r.nSubj}</td><td style="${rkTd}">${zpct(r.avgPct,1)}</td>${isA?`<td style="${rkTd}">${r.pts}/${r.maxP}</td>`:''}${tail}${isO?`<td style="${rkTd}font-weight:800;">${r.resultTxt}</td>`:''}<td style="${rkTd}">${esc(r.desc)}</td><td style="${rkTd}text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
   const title = isLevel ? `General Rank List — ${mmLevelLabel(level)}` : 'Rank List';
   const scope = isLevel ? `${mmLevelLabel(level)} — all classes` : `${esc(classFullName(cls))}`;
