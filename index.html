@@ -1720,17 +1720,49 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
 .acct-card .fin-sub-circles .tile{width:min(26vw,calc(128*var(--u)));}
 </style>
 <style id="cte-fin-btn-size">
-/* Fees / Requirements: the CATEGORY buttons and the CLASS selection buttons use the same height, text size,
-   padding and minimum width as the "Teacher sign-up" button on the main sign-in page. */
-html .fin-col[data-key="cat"] .pick-btn,
-html .fin-col[data-key="class"] .fin-opt,
-html button.req-pick{
-  display:inline-block;width:auto;min-width:calc(150*var(--u));max-width:100%;box-sizing:border-box;
-  padding:calc(10*var(--u)) calc(14*var(--u));font-size:calc(15*var(--u));font-weight:700;letter-spacing:0;line-height:inherit;
-  border-width:calc(2*var(--u));border-style:solid;border-radius:calc(9*var(--u));text-align:center;vertical-align:top;
-  margin-right:calc(8*var(--u)) !important;
-}
+/* Fees / Requirements selections: Category, Class, Term and Year sit side by side as clear numbered columns that
+   always fit the screen width (no sideways scrolling), with the same button size as the Result Analysis selections. */
+.fin-cols{flex-wrap:nowrap;gap:12px;align-items:flex-start;}
+.fin-col{flex:1 1 0;min-width:0;}
+.fin-col>label{grid-column:1/-1;}
+.fin-col .pick-btn,.fin-col .fin-opt{display:block;width:100%;box-sizing:border-box;padding:calc(11px*var(--finscale,1)) calc(16px*var(--finscale,1));border-width:3px;border-style:solid;border-radius:8px;font-size:calc(14px*var(--finscale,1));font-weight:800;text-align:left;margin:0 0 calc(8px*var(--finscale,1)) !important;white-space:normal;overflow-wrap:anywhere;}
+.fin-col .fin-opt:not(.sel){border-color:var(--blue);}
+form[data-form="saveClassReqSelection"] .ra-steps{flex-wrap:nowrap !important;gap:12px !important;}
+form[data-form="saveClassReqSelection"] .pick-btn.req-pick{white-space:normal;overflow-wrap:anywhere;}
 </style>
+<script id="cte-fin-cols-fit">
+/* Fees / Requirements selections: when there are many classes, split the long column into several sub-columns
+   (and, if still needed, shrink the buttons a little) so everything fits the screen height with no scrolling down. */
+(function(){
+  var raf=0;
+  function fit(){
+    try{
+      var all=document.querySelectorAll('.fin-cols');
+      for(var k=0;k<all.length;k++){
+        var cols=all[k], list=[].slice.call(cols.querySelectorAll('.fin-col')), n=list.map(function(){return 1;});
+        cols.style.setProperty('--finscale','1');
+        list.forEach(function(c){ c.style.display=''; c.style.gridTemplateColumns=''; c.style.columnGap=''; c.style.flex=''; });
+        var avail=Math.max(180,(window.innerHeight||0)-(cols.getBoundingClientRect().top+(window.pageYOffset||0))-110);
+        var guard=0;
+        while(cols.getBoundingClientRect().height>avail && guard++<20){
+          var ti=0, th=0;
+          list.forEach(function(c,i){ var h=c.getBoundingClientRect().height; if(h>th){ th=h; ti=i; } });
+          var c=list[ti], w=c.getBoundingClientRect().width/n[ti];
+          if(n[ti]>=6 || w/(n[ti]+1)<78) break;
+          n[ti]++; c.style.display='grid'; c.style.gridTemplateColumns='repeat('+n[ti]+',minmax(0,1fr))'; c.style.columnGap='8px'; c.style.alignContent='start'; c.style.flex=n[ti]+' 1 0';
+        }
+        var sc=1;
+        while(cols.getBoundingClientRect().height>avail && sc>0.6){ sc=Math.round((sc-0.1)*10)/10; cols.style.setProperty('--finscale',String(sc)); }
+      }
+    }catch(e){}
+  }
+  function schedule(){ if(raf) return; raf=requestAnimationFrame(function(){ raf=0; fit(); }); }
+  function start(){ try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){} schedule(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+  window.addEventListener('resize',schedule);
+  window.addEventListener('orientationchange',function(){ setTimeout(schedule,300); });
+})();
+</script>
 <script id="cte-login-fit">
 /* Login screen: shrink the card's text/spacing (--fit, 0.3–1) until the whole card fits the
    visible screen height, so nothing is pushed below the fold. Re-runs on every re-render
