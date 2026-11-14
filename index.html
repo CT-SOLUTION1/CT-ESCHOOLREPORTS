@@ -1703,6 +1703,34 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
 .score-pick .pick-term.pick-sec{padding-top:calc(2*var(--uk));padding-bottom:calc(4*var(--uk));}
 .score-pick select{text-overflow:clip;}
 </style>
+<style id="cte-acct-cards">
+/* Account Section sign-in cards: same width, padding, radius and text scale (--u, --fit) as the main sign-in card */
+.acct-card-wrap{min-height:calc(100vh - 140px);min-height:calc(100dvh - 140px);display:flex;align-items:center;justify-content:center;padding:calc(16*var(--u)) calc(14*var(--u));margin:8px 0;border-radius:16px;background:linear-gradient(160deg,var(--navy),var(--blue));box-sizing:border-box;}
+.acct-card{background:#fff;width:min(100%,calc(580*var(--u)));max-width:calc(580*var(--u));border-radius:calc(16*var(--u));box-shadow:0 20px 60px rgba(0,0,0,.35);padding:calc(34*var(--u)) calc(24*var(--u));box-sizing:border-box;}
+.acct-card-head{text-align:center;margin-bottom:calc(14*var(--u));}
+.acct-card-icon{display:inline-flex;width:calc(54*var(--u));height:calc(54*var(--u));border-radius:50%;background:var(--blue);color:#fff;font-size:calc(26*var(--u));align-items:center;justify-content:center;margin-bottom:calc(8*var(--u));}
+.acct-card-title{font-size:calc(34*var(--u)) !important;line-height:1.15;text-align:center;}
+.acct-card-head .small,.acct-card p.small{font-size:calc(16*var(--u));line-height:1.4;text-align:center;}
+.acct-card .note{font-size:calc(16*var(--u));padding:calc(14*var(--u)) calc(16*var(--u));border-radius:calc(9*var(--u));}
+.acct-card form label{display:block;text-align:left;margin:calc(14*var(--u)) 0 calc(6*var(--u));font-weight:600;font-size:calc(15*var(--u));}
+.acct-card input{width:100%;box-sizing:border-box;min-height:calc(50*var(--u));font-size:calc(18*var(--u));}
+.acct-card .btn{width:100%;font-size:calc(20*var(--u)) !important;padding:calc(15*var(--u)) calc(20*var(--u)) !important;border-radius:calc(9*var(--u));}
+.acct-card .btn-outline{width:100%;margin-top:calc(10*var(--u));font-size:calc(15*var(--u)) !important;padding:calc(10*var(--u)) calc(14*var(--u)) !important;}
+.acct-card .fin-sub-circles{gap:calc(12*var(--u));margin:calc(14*var(--u)) auto calc(10*var(--u));}
+.acct-card .fin-sub-circles .tile{width:min(26vw,calc(128*var(--u)));}
+</style>
+<style id="cte-fin-btn-size">
+/* Fees / Requirements: the CATEGORY buttons and the CLASS selection buttons use the same height, text size,
+   padding and minimum width as the "Teacher sign-up" button on the main sign-in page. */
+html .fin-col[data-key="cat"] .pick-btn,
+html .fin-col[data-key="class"] .fin-opt,
+html button.req-pick{
+  display:inline-block;width:auto;min-width:calc(150*var(--u));max-width:100%;box-sizing:border-box;
+  padding:calc(10*var(--u)) calc(14*var(--u));font-size:calc(15*var(--u));font-weight:700;letter-spacing:0;line-height:inherit;
+  border-width:calc(2*var(--u));border-style:solid;border-radius:calc(9*var(--u));text-align:center;vertical-align:top;
+  margin-right:calc(8*var(--u)) !important;
+}
+</style>
 <script id="cte-login-fit">
 /* Login screen: shrink the card's text/spacing (--fit, 0.3–1) until the whole card fits the
    visible screen height, so nothing is pushed below the fold. Re-runs on every re-render
@@ -1712,14 +1740,14 @@ select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !importa
   function fit(){
     try{
       var root = document.documentElement;
-      var box = document.querySelector('.platform-login-box');
+      var box = document.querySelector('.platform-login-box') || document.querySelector('.acct-card');
       if(!box){ if(root.style.getPropertyValue('--fit')) root.style.removeProperty('--fit'); return; }
       var wrap = box.closest('.auth-wrap') || box.parentElement;
       var avail = window.innerHeight || root.clientHeight || 0;
       if(!avail) return;
       var need = function(){
         var cs = getComputedStyle(wrap);
-        return box.getBoundingClientRect().height + (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+        return box.getBoundingClientRect().height + (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0) + (box.classList.contains('acct-card') ? 140 : 0);
       };
       var f = 1;
       root.style.setProperty('--fit', '1');
@@ -8067,29 +8095,27 @@ function finSubCheckNew(k, pw, cpw){
 // What shows after the main Account Section is unlocked: pick FEES or REQUIREMENTS, then (if needed) set or enter that
 // sub-section's own password. Only once it is open does the usual tile dashboard appear (identical for both).
 function finSubGateHTML(){
-  const head = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>ACCOUNT SECTION</h2><p class="small">${FIN_SUB?esc(finSubName(FIN_SUB)):'Choose a section to open.'}</p></div><div class="flex" style="gap:8px;"><button class="btn-outline" data-action="financeLock">🔒 Lock</button></div></div>`;
+  const lockBtn = `<button type="button" class="btn-outline" data-action="financeLock">🔒 Lock</button>`;
   if(!FIN_SUB){
-    return head + `<div class="fin-sub-circles">${FIN_SUBS.map(([k,icon,label])=>`
+    return acctCardHTML('💰','ACCOUNT SECTION','Choose a section to open.', `<div class="fin-sub-circles">${FIN_SUBS.map(([k,icon,label])=>`
       <button type="button" class="tile" data-action="finSubOpen:${k}" aria-label="${esc(label)}"><span class="tile-icon">${icon}</span><span class="tile-label">${esc(label)}</span></button>`).join('')}</div>
-      <p class="small" style="margin-top:4px;">Each section has its own password. You will be asked for it again every time you leave a section and come back.</p>`;
+      <p class="small" style="margin-top:4px;">Each section has its own password. You will be asked for it again every time you leave a section and come back.</p>${lockBtn}`);
   }
   const k = FIN_SUB, name = finSubName(k), first = !finSubPasswords()[k];
+  const icon = (FIN_SUBS.find(x=>x[0]===k)||[])[1] || '💰';
   if(first || (FIN_SUB_FORGOT && finCanReset())){
-    return head + `<div class="card" style="max-width:520px;"><h3 style="margin-top:0;">${first?`Create the ${esc(name)} password`:`Reset the ${esc(name)} password`}</h3>
-      <p class="note">${first?`This is the first time ${esc(name)} is being opened. Confirm the main Account Section password, then choose a separate password for ${esc(name)}.`:`Confirm the main Account Section password to choose a new ${esc(name)} password.`}</p>
+    return acctCardHTML(icon, name, first?`Create the ${name} password`:`Reset the ${name} password`, `<p class="note">${first?`This is the first time ${esc(name)} is being opened. Confirm the main Account Section password, then choose a separate password for ${esc(name)}.`:`Confirm the main Account Section password to choose a new ${esc(name)} password.`}</p>
       <form data-form="finSubSetPassword" data-sub="${k}">
         <label>Main Account Section password</label><input name="mainPassword" type="password" required autocomplete="off" autofocus>
         <label>New ${esc(name)} password</label><input name="password" type="password" minlength="4" required autocomplete="new-password">
         <label>Confirm ${esc(name)} password</label><input name="confirmPassword" type="password" minlength="4" required autocomplete="new-password">
         <button class="btn" style="margin-top:14px;">${first?'Create password &amp; open':'Reset password &amp; open'}</button></form>
-      <button type="button" class="btn-outline" data-action="${first?'finSubBack':'finSubForgotBack'}" style="margin-top:10px;">← Back</button></div>`;
+      <button type="button" class="btn-outline" data-action="${first?'finSubBack':'finSubForgotBack'}">← Back</button>`);
   }
-  return head + `<div class="card" style="max-width:520px;"><h3 style="margin-top:0;">${esc(name)}</h3>
-    <p class="note">Enter the ${esc(name)} password.</p>
-    <form data-form="finSubUnlock" data-sub="${k}"><label>${esc(name)} password</label><input name="password" type="password" required autocomplete="off" autofocus>
+  return acctCardHTML(icon, name, `Enter the ${name} password`, `<form data-form="finSubUnlock" data-sub="${k}"><label>${esc(name)} password</label><input name="password" type="password" required autocomplete="off" autofocus>
       <button class="btn" style="margin-top:14px;">Open ${esc(name)}</button></form>
     ${finCanReset()?`<p class="small" style="margin-top:12px;"><a href="#" data-action="finSubForgot">Forgot password?</a></p>`:`<p class="small" style="margin-top:12px;">Forgotten password? Ask the Admin to reset it from the Admin Dashboard.</p>`}
-    <button type="button" class="btn-outline" data-action="finSubBack" style="margin-top:6px;">← Back</button></div>`;
+    <button type="button" class="btn-outline" data-action="finSubBack">← Back</button>`);
 }
 // True while the Students / Teaching Staff / Parents & Non teaching staff pages are opened from inside the
 // Account Section (same pages and actions as on the Admin Dashboard, but behind the Account Section password).
@@ -8990,6 +9016,29 @@ function financeForceResetHTML(){
       <button type="button" class="btn-outline" data-action="finResetLater" style="margin-top:10px;width:100%;">Later</button>
     </div></div>`;
 }
+function acctCardHTML(icon, title, sub, body){
+  const sn = (DB && DB.info && DB.info.schoolName) || '';
+  return `<div class="acct-card-wrap"><div class="acct-card">
+    <div class="acct-card-head"><span class="acct-card-icon">${icon}</span>
+      <div class="school-name-big acct-card-title">${esc(title)}</div>
+      ${sn?`<div class="small">${esc(sn)}</div>`:''}
+      ${sub?`<div class="small">${esc(sub)}</div>`:''}
+    </div>${body}</div></div>`;
+}
+// Clearing fees / requirements writes balances off, so it needs the MAIN Account Section password first.
+const MAIN_PW_CLEAR_ACTIONS = {
+  feeClear:'clear this fees balance', feeClearAll:'clear all of this student\'s outstanding fees',
+  reqClearAll:'clear this student\'s outstanding requirements', reqClearAllTime:'clear this student from all requirements for all time'
+};
+async function requireMainFinancePassword(what){
+  hideActionBanner();
+  if(!DB.info || !DB.info.financePassword){ alert('No main Account Section password has been set yet, so this cannot be done. Please create it first.'); return false; }
+  const pw = await askSecret('Account Section password required', `Enter the main Account Section password to ${what}.`, 'Confirm');
+  if(pw===null) return false;
+  const g = await schoolGateTry('fin:main', pw===DB.info.financePassword);
+  if(!g.ok){ gateAlert(g, 'Incorrect main Account Section password. Nothing was changed.'); return false; }
+  return true;
+}
 function financeRequirementsView(){
   const html = financeRequirementsViewCore();
   if(FINANCE_UNLOCKED && !FINANCE_RESET_SKIPPED && !FOUNDER_IMPERSONATING_SCHOOL && finCanReset() && financePwNeedsReset()) return html + financeForceResetHTML();
@@ -8998,12 +9047,12 @@ function financeRequirementsView(){
 function financeRequirementsViewCore(){
   if(!FINANCE_UNLOCKED){
     const first=!DB.info.financePassword;
-    const founderBtn = FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock" style="margin-top:14px;">🛟 Founder Emergency Access</button>`:'';
+    const founderBtn = FOUNDER_IMPERSONATING_SCHOOL?`<button type="button" class="btn-outline" data-action="founderFinanceUnlock">🛟 Founder Emergency Access</button>`:'';
     if(!first && FINANCE_FORGOT){
-      if(!DB.info.ownerCode) return `<h2>ACCOUNT SECTION</h2><div class="card"><p class="note">No owner code has been set for this school, so the Finance password can't be recovered here. Please contact ${esc(FOUNDER_CONTACT)}.</p><button type="button" class="btn-outline" data-action="finForgotBack">← Back</button>${founderBtn}</div>`;
-      return `<h2>ACCOUNT SECTION</h2><div class="card"><h3>Forgot Finance Password</h3><form data-form="finRecoverPassword"><label>Owner Code</label><input name="ownerCode" type="password" required autofocus autocomplete="off"><label>New Finance Password</label><input name="password" type="password" minlength="4" required autocomplete="new-password"><p class="small">Must be different from your own login password.</p><button class="btn" style="margin-top:14px;">Reset Finance Password</button></form><button type="button" class="btn-outline" data-action="finForgotBack" style="margin-top:10px;">← Back</button>${founderBtn}</div>`;
+      if(!DB.info.ownerCode) return acctCardHTML('💰','ACCOUNT SECTION','Forgot Finance Password', `<p class="note">No owner code has been set for this school, so the Finance password can't be recovered here. Please contact ${esc(FOUNDER_CONTACT)}.</p><button type="button" class="btn-outline" data-action="finForgotBack">← Back</button>${founderBtn}`);
+      return acctCardHTML('💰','ACCOUNT SECTION','Forgot Finance Password', `<form data-form="finRecoverPassword"><label>Owner Code</label><input name="ownerCode" type="password" required autofocus autocomplete="off"><label>New Finance Password</label><input name="password" type="password" minlength="4" required autocomplete="new-password"><p class="small">Must be different from your own login password.</p><button class="btn" style="margin-top:14px;">Reset Finance Password</button></form><button type="button" class="btn-outline" data-action="finForgotBack">← Back</button>${founderBtn}`);
     }
-    return `<h2>ACCOUNT SECTION</h2><div class="card"><p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Account Section password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}">${first?'':`<label>Username</label><input name="username" required autocomplete="username" autofocus><p class="small">Enter the school's Admin username.</p>`}<label>Finance Password</label><input name="password" type="password" minlength="4" required ${first?'autofocus':''}>${first?'<p class="small">Must be different from your own login password.</p>':''}${first && !DB.info.ownerCode ? '<label>Owner Code</label><input name="ownerCode" minlength="4" required autocomplete="off"><p class="small">Used to recover the Finance password if it is forgotten.</p>' : ''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Account Section'}</button></form>${(!first && finCanReset())?`<p class="small" style="margin-top:12px;"><a href="#" data-action="finForgotPw">Forgot password?</a></p>`:''}${founderBtn}</div>`;
+    return acctCardHTML('💰','ACCOUNT SECTION', first?'Create the main password':'Main Account Section sign-in', `<p class="note">${first?'Create the separate password for this protected section.':'This is a protected administrative section. Enter the separate Account Section password.'}</p><form data-form="${first?'setFinancePassword':'financeUnlock'}">${first?'':`<label>Username</label><input name="username" required autocomplete="username" autofocus><p class="small">Enter the school's Admin username.</p>`}<label>Finance Password</label><input name="password" type="password" minlength="4" required ${first?'autofocus':''}>${first?'<p class="small">Must be different from your own login password.</p>':''}${first && !DB.info.ownerCode ? '<label>Owner Code</label><input name="ownerCode" minlength="4" required autocomplete="off"><p class="small">Used to recover the Finance password if it is forgotten.</p>' : ''}<button class="btn" style="margin-top:14px;">${first?'Create Finance Password':'Unlock Account Section'}</button></form>${(!first && finCanReset())?`<p class="small" style="margin-top:12px;"><a href="#" data-action="finForgotPw">Forgot password?</a></p>`:''}${founderBtn}`);
   }
   if(!FIN_SUB || !FIN_SUB_OPEN[FIN_SUB]) return finSubGateHTML();
   const lockHeader = `<div class="flex" style="justify-content:space-between;align-items:center;"><div><h2>ACCOUNT SECTION — ${esc(finSubName(FIN_SUB))}</h2><p class="small">Choose a tile to get started.</p></div><div class="flex" style="gap:8px;"><button class="btn-outline" data-action="finSubBack">⇦ Sections</button>${FINANCE_ONLY?'':'<button class="btn-outline" data-action="finTab:security">🔑 Passwords</button>'}<button class="btn-outline" data-action="financeLock">🔒 Lock</button></div></div>`;
@@ -10488,7 +10537,7 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured, ctx){
 // Cascading selection columns used by FEES and REQUIREMENTS: each column is a stack of buttons; tapping one
 // immediately opens the next column (the caller only adds a column once the one before it has a choice).
 function finColsHTML(cols){
-  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="${it.cls?'pick-btn '+it.cls:'fin-opt'}${it.sel?' sel':''}" ${it.cls?'style="margin:0 0 8px;" ':''}data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>`).join('')}</div>`).join('')}</div></div>`;
+  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col" data-key="${esc(c.key)}"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="${it.cls?'pick-btn '+it.cls:'fin-opt'}${it.sel?' sel':''}" ${it.cls?'style="margin:0 0 8px;" ':''}data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>`).join('')}</div>`).join('')}</div></div>`;
 }
 function finTermYearCols(term, year, fn, n0){
   const cy = Number(DB.info.currentYear) || new Date().getFullYear();
@@ -17025,6 +17074,9 @@ document.addEventListener('click', async (e)=>{
   }
   if(OWNER_CODE_ACTIONS[action]){
     if(!(await requireOwnerGate(OWNER_CODE_ACTIONS[action], 'Confirm', OWNER_CODE_TEACHER_OK.has(action)))) return;
+  }
+  if(MAIN_PW_CLEAR_ACTIONS[action]){
+    if(!(await requireMainFinancePassword(MAIN_PW_CLEAR_ACTIONS[action]))) return;
   }
   if(MUTATING_ACTIONS.has(action)) showActionProgress('Processing…', el);
   try{
