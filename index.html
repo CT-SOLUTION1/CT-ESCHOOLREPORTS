@@ -2395,22 +2395,6 @@ table.pg-compact th, table.pg-compact td{padding-left:4px !important;padding-rig
 table.pg-compact th{font-size:9px !important;}
 table.pg-compact.pg-sp th, table.pg-compact.pg-sp td{font-size:11px !important;}
 </style>
-
-<style id="cte-round2">
-/* Report cards list: the Action cell wraps so OPEN REPORT / Print / PDF all stay on screen and fit */
-table.data-table.rc-list th,table.data-table.rc-list td,table.data-table.rc-list th.rc-combo,table.data-table.rc-list td.rc-combo,table.data-table.rc-list td:last-child .btn-outline{white-space:nowrap !important;}
-table.data-table.rc-list th.rc-combo,table.data-table.rc-list td.rc-combo{width:1% !important;word-break:normal;}
-table.data-table.rc-list th,table.data-table.rc-list td{padding-left:calc(var(--tf,12)*.15px) !important;padding-right:calc(var(--tf,12)*.15px) !important;}
-table.data-table.rc-list td:last-child .btn-outline{margin:0 calc(var(--tf,12)*.04px) !important;padding-left:calc(var(--tf,12)*.2px) !important;padding-right:calc(var(--tf,12)*.2px) !important;}
-.layout .main:has(table.rc-list) .card:has(> table.rc-list){padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
-/* Text boxes: thick, clear boundaries */
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"]),select,textarea{border:2px solid var(--navy,#0A2A4A) !important;}
-
-/* Section and sub-section headings: always UPPER CASE (report cards, mark sheets and other printable sheets are left alone) */
-@media screen{
-.main :is(h2,h3,h4):not(.rc-card *):not([class*="rc-"] *):not([class*="mm-"] *){text-transform:uppercase !important;font-weight:800 !important;}
-}
-</style>
 </head>
 <body>
 <!-- Boot splash: shown the instant the page loads, before any JS/data has run.
@@ -7890,7 +7874,7 @@ function renderTeacherSignupSlot(){
     <form data-form="signupTeacher" novalidate style="margin-top:12px;">
       <label>School</label><select name="schoolId" required><option value="">-- select --</option>${activeSchools.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
       <label>Full name</label><input name="name" required>
-      <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces" autocapitalize="off">
+      <label>Username</label><input name="username" required maxlength="10" placeholder="Max 10 characters, no spaces">
       <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" placeholder="4-6 letters and/or figures">
       <label>Recovery code (optional)</label><input name="recovery">
       <p class="small">Set this so you can reset your own password later if you forget it, without waiting on your school owner.</p>
@@ -7911,7 +7895,7 @@ function renderParentSignupSlot(){
       <label>Full name</label><input name="name" required>
       <label>Child's admission number(s)</label><input name="childAdmNo" required placeholder="e.g. STU/2024/001, STU/2024/014">
       <p class="small" style="margin:2px 0 12px;">Have more than one child at this school? Separate each admission number with a comma — they'll all be linked to this one account once approved.</p>
-      <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" autocapitalize="off">
+      <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces">
       <label>Password</label><input name="password" type="password" required minlength="4">
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
     </form>
@@ -11684,11 +11668,11 @@ function rcShadeCard(){
     </div>
   </div>`;
 }
-function plainUserOk(u){ return /^\S{1,10}$/.test(u||''); }
-const PLAIN_USER_MSG='Username must be a maximum of 10 characters with no spaces.';
-function teacherUserOk(u){ return plainUserOk(u); }
+function teacherUserOk(u){ return /^\S{1,10}$/.test(u||''); }
+function userNameOk(u){ return /^\S{1,10}$/.test(u||''); }
+const USER_MSG='Username must be a maximum of 10 characters with no spaces.';
 function teacherPwOk(p){ return /^[A-Za-z0-9]{4,6}$/.test(p||''); }
-const TEACHER_USER_MSG=PLAIN_USER_MSG;
+const TEACHER_USER_MSG='Teacher username must be a maximum of 10 characters with no spaces.';
 const TEACHER_PW_MSG='Teacher password must be 4 to 6 characters: letters only, figures only, or letters and figures together (no spaces or symbols).';
 function openStaffList(open){ VIEW.params.staffListOpen = !!open; render(); try{ window.scrollTo(0,0); }catch(e){} }
 function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
@@ -11746,7 +11730,7 @@ function parentAccountsView(){
       <input type="hidden" name="role" value="parent">
       <div class="grid2">
         <div><label>Full name</label><input name="name" required></div>
-        <div><label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" autocapitalize="off"></div>
+        <div><label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces"></div>
       </div>
       <div class="grid2">
         <div><label>Save as</label><select name="category"><option value="parent">Parent</option><option value="nonteaching">Non teaching staff</option></select></div>
@@ -12629,7 +12613,7 @@ function teacherProfileView(username){
     <form data-form="updateTeacherProfile" data-username="${esc(username)}">
       <div class="grid2">
         <div><label>Full name</label><input name="name" value="${esc(t.name)}" required></div>
-        <div><label>Username</label><input name="username" value="${esc(t.username)}" required></div>
+        <div><label>Username</label><input name="username" value="${esc(t.username)}" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces"></div>
       </div>
       <div class="flex" style="margin-top:6px;">
         ${t.signature?`<img loading="lazy" decoding="async" src="${t.signature}" class="photo-thumb" style="width:130px;height:60px;object-fit:contain;background:#f4f8fc;">`:''}
@@ -13111,7 +13095,7 @@ function reportsListView(){
     ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
       return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
-      <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?` <button class="btn-outline" data-action="printReport:${s.id}">Print</button> <button class="btn-outline" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
+      <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?`<button class="btn-outline" data-action="printReport:${s.id}">Print</button><button class="btn-outline rc-pdf-btn" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${isAdmin?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
     })()}
@@ -15005,7 +14989,7 @@ function otherSettingsView(){
       : '<div class="note">No recovery code set yet. Add one below so you can reset your own password later.</div>') : ''}
     <form data-form="changePassword">
       <label>Current username</label><input name="oldUsername" value="${esc(CUR&&CUR.username||'')}" readonly required autocomplete="username">
-      <label>New username (leave blank to keep current)</label><input name="newUsername" value="" placeholder="Enter a new username" autocomplete="username">
+      <label>New username (leave blank to keep current)</label><input name="newUsername" value="" maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces" autocomplete="username">
       <label>Current password</label><input name="old" type="password" required autocomplete="current-password">
       <label>New password</label><input name="new" type="password" required minlength="4" autocomplete="new-password">
       ${showRecovery ? `<label>${acc && acc.recovery ? 'New recovery code (leave blank to keep)' : 'Set a recovery code (optional)'}</label><input name="recovery">` : ''}
@@ -19570,8 +19554,8 @@ document.addEventListener('submit', async (e)=>{
       if(missing.length){ showFatal('Please fill in: '+missing.join(', ')); return; }
       // New registrations only: username and owner code must be 4-6 characters with no spaces.
       // Existing schools are untouched (nothing here runs on sign-in or on stored data).
-      { const okLen = v => /^\S{4,6}$/.test(String(v||''));
-        if(!/^\S{1,10}$/.test(String(fd.get('username')||''))){ showFatal('Owner username must be a maximum of 10 characters with no spaces.'); return; }
+      { const okLen = v => /^\S{4,6}$/.test(String(v||'')), okUser = v => /^\S{1,10}$/.test(String(v||''));
+        if(!okUser(fd.get('username'))){ showFatal('Owner username must be a maximum of 10 characters with no spaces.'); return; }
         if(!okLen(fd.get('ownerCode'))){ showFatal('Private owner code must be 4 to 6 characters with no spaces.'); return; } }
       const email = normalizeSchoolEmail(fd.get('email'));
       if(!isValidEmailFormat(email)){ showFatal('Please enter a valid school email address.'); return; }
@@ -19601,11 +19585,10 @@ document.addEventListener('submit', async (e)=>{
       const switchPromise = switchToSchoolAuthIdentity(schoolId, (REGISTRY.find(r=>r.id===schoolId)||{}).email); // runs in parallel below, no extra fetch needed
       const uname = (fd.get('username')||'').trim();
       if(!fd.get('name') || !uname || (fd.get('password')||'').length<4){ showFatal('Please fill in all fields (password at least 4 characters).'); return; }
-      if(type==='signupParent' && !plainUserOk(uname)){ showFatal(PLAIN_USER_MSG); return; }
       if(type==='signupTeacher'){
         if(!teacherUserOk(uname)){ showFatal(TEACHER_USER_MSG); return; }
         if(!teacherPwOk(fd.get('password'))){ showFatal(TEACHER_PW_MSG); return; }
-      }
+      } else if(!userNameOk(uname)){ showFatal(USER_MSG); return; }
       const accounts = await getShared(`sch_${schoolId}_accounts`, []);
       if(isUsernameTakenInSchool(uname, accounts)){ showFatal('That username is already used by another account at this school. Please choose a different username.'); return; }
       { const conflict = await checkCredentialUniqueness(uname, fd.get('password'));
@@ -20054,11 +20037,10 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='createAccount'){
       const role = fd.get('role');
       const uname = (fd.get('username')||'').trim();
-      if(role==='parent' && !plainUserOk(uname)){ alert(PLAIN_USER_MSG); return; }
       if(role==='teacher'){
         if(!teacherUserOk(uname)){ alert(TEACHER_USER_MSG); return; }
         if(!teacherPwOk(fd.get('password'))){ alert(TEACHER_PW_MSG); return; }
-      }
+      } else if(!userNameOk(uname)){ alert(USER_MSG); return; }
       if(isUsernameTakenInSchool(uname, DB.accounts)){ alert('That username is already used by another account at this school. Please choose a different username.'); return; }
       { const conflict = await checkCredentialUniqueness(uname, fd.get('password'));
         if(conflict.exactMatch){ alert('That exact username and password combination is already used by another account (at this or another school). Please change the username or the password.'); return; } }
@@ -20201,7 +20183,7 @@ document.addEventListener('submit', async (e)=>{
         `Subject assignments added: ${assignsAdded}${assignsMerged?`, updated with extra papers: ${assignsMerged}`:''}\n`+
         (noAssignRows?`Rows registered without class/subject (assign later from Edit profile): ${noAssignRows}\n`:'')+
         (skippedRows?`Rows skipped (missing Name/Username/Password, or only one of Class/Subject filled): ${skippedRows}\n`:'')+
-        (badCred?`Rows skipped (username maximum 10 characters with no spaces; password 4-6 letters/figures): ${badCred}\n`:'')+
+        (badCred?`Rows skipped (username must be a maximum of 10 characters with no spaces; password 4-6 letters/figures): ${badCred}\n`:'')+
         (badClass?`Rows skipped (class name not found): ${badClass}\n`:'')+
         (badSubject?`Rows skipped (subject not recognized): ${badSubject}\n`:''));
       render();
@@ -20450,6 +20432,7 @@ document.addEventListener('submit', async (e)=>{
       if(!newName){ alert('Please enter a name.'); return; }
       const newUsername = (fd.get('username')||'').trim();
       if(!newUsername){ alert('Please enter a username.'); return; }
+      if(newUsername.toLowerCase()!==oldUsername.toLowerCase() && !userNameOk(newUsername)){ alert(USER_MSG); return; }
       const newPassword = (fd.get('password')||'').trim();
       const usernameChanged = newUsername.toLowerCase()!==oldUsername.toLowerCase();
       const passwordChanged = !!newPassword && newPassword!==t.password;
@@ -20765,7 +20748,7 @@ document.addEventListener('submit', async (e)=>{
       const newUsername=requestedUsername || oldUsername;
       const usernameChanged=newUsername.toLowerCase()!==oldUsername.toLowerCase();
       if(!newUsername){ alert('Username cannot be blank.'); return; }
-      if(usernameChanged && !/^[A-Za-z0-9._-]{3,50}$/.test(newUsername)){ alert('Username must be 3–50 characters and may contain letters, numbers, dots, underscores or hyphens.'); return; }
+      if(usernameChanged && !userNameOk(newUsername)){ alert(USER_MSG); return; }
       if(usernameChanged && isUsernameTakenInSchool(newUsername, DB.accounts, oldUsername)){ alert('That username is already used by another account at this school. Pick a different username.'); return; }
       { const conflict = await checkCredentialUniqueness(newUsername, fd.get('new'), {excludeSchoolId:SCHOOL_ID, excludeUsername:oldUsername});
         if(conflict.exactMatch){ alert('Another account already uses that username with the same password. Please choose a different username or password.'); return; } }
@@ -23167,5 +23150,23 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   later();
 })();
 </script>
+<style id="ctUiOverrides">
+/* Report cards list: the Action cell hugs its buttons and the PDF button has no spare space inside it */
+table.rc-list td:last-child,table.rc-list th:last-child{width:1%;white-space:nowrap !important;}
+table.rc-list td:last-child .btn-outline.rc-pdf-btn{padding:0 !important;margin:0 !important;min-width:0 !important;width:auto !important;line-height:1.1 !important;border-width:1px !important;letter-spacing:0;}
+/* Every typing box (text, password, number, date, email, search, textarea, dropdown) has a thick boundary */
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=button]):not([type=submit]):not([type=hidden]),
+select,textarea{border:3px solid #1f3a5f !important;}
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=button]):not([type=submit]):not([type=hidden]):focus,
+select:focus,textarea:focus{border-color:#0a2a4a !important;outline:none;box-shadow:0 0 0 2px rgba(29,78,137,.25);}
+/* Section and subsection headings: bold upper case (printed documents and report cards are left as they are) */
+h1:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
+h2:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
+h3:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
+h4:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
+h5:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
+h6:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
+.mm-title,.stu-page-title,.stu-find-title,.sp-fee-title,.se-ph-title,.acct-card-title,.acct-card-head,.login-panel-title,.bulk-title,.bin-head,.as-head,.pw-title{text-transform:uppercase !important;font-weight:800 !important;}
+</style>
 </body>
 </html>
