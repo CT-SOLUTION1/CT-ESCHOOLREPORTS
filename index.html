@@ -679,7 +679,15 @@ h3.stu-find-title{font-size:32px;font-weight:900;letter-spacing:.6px;text-transf
 .main:has(#stuPage.stu-results-mode){max-width:none;}
 @media (max-width:700px){h3.stu-find-title{font-size:26px;}}
 /* Bulk upload: Class, Upload and Paste list sit on one line at every screen width */
-.bulk-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);gap:10px;align-items:start;}
+.bulk-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:10px;align-items:start;}
+.bulk-row2{display:flex;gap:10px;align-items:flex-end;margin-top:10px;}
+.bulk-row2 .bulk-dl{flex:0 0 auto;}
+.bulk-row2 .bulk-dl .btn-outline{height:52px;white-space:normal;max-width:140px;padding:6px 10px;}
+.bulk-row2 .bulk-paste{flex:1;min-width:0;}
+.bulk-row2 label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;}
+.bulk-row2 textarea{width:100%;box-sizing:border-box;min-width:0;font-size:13px;min-height:52px;height:70px;padding:8px;resize:vertical;}
+.bulk-row input.bulk-file{background:#efe6ff;border:2px solid #6f42c1;border-radius:8px;color:#3b1d78;font-weight:700;}
+.bulk-row input.bulk-file::file-selector-button{background:#6f42c1;color:#fff;border:0;border-radius:6px;padding:8px 14px;margin-right:10px;font-weight:800;cursor:pointer;}
 .bulk-row label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;}
 .bulk-row select,.bulk-row input[type=file],.bulk-row textarea{width:100%;box-sizing:border-box;min-width:0;font-size:13px;}
 .bulk-row select,.bulk-row input[type=file]{min-height:52px;height:52px;padding:8px;}
@@ -1631,9 +1639,8 @@ sup.ord-sup{font-size:.62em;line-height:0;vertical-align:baseline;position:relat
 .ad-dates input{min-height:calc(26*var(--uk)) !important;padding:calc(6*var(--uk)) calc(6*var(--uk)) !important;font-size:calc(12*var(--uk)) !important;}
 .ad-dates label{font-size:calc(12*var(--uk)) !important;}
 .td-dates>div{padding:calc(4*var(--uk)) 0;font-size:calc(12*var(--uk));}
-form[data-form="setTerm"] input,form[data-form="setTerm"] select{min-height:calc(34*var(--uk)) !important;padding-top:calc(8*var(--uk)) !important;padding-bottom:calc(8*var(--uk)) !important;box-sizing:border-box;}
+form[data-form="setTerm"] input,form[data-form="setTerm"] select{min-height:0 !important;height:52px !important;padding:10px 12px !important;font-size:16px !important;font-weight:600;box-sizing:border-box;}
 /* Year, Term & Promotion: Term, Year, Term ends and Next term begins boxes are 3px shorter */
-form[data-form="setTerm"] [name="term"],form[data-form="setTerm"] [name="year"],form[data-form="setTerm"] [name="termEndDate"],form[data-form="setTerm"] [name="nextTermBeginDate"]{min-height:calc(31*var(--uk)) !important;padding-top:calc(6.5*var(--uk)) !important;padding-bottom:calc(6.5*var(--uk)) !important;}
 select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !important;padding:calc(9*var(--uk)) calc(10*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .score-pick select,.score-pick input:not([type="checkbox"]):not([type="hidden"]){min-height:calc(42*var(--uk)) !important;padding-top:calc(9*var(--uk)) !important;padding-bottom:calc(9*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .ad-enrol table tr{height:calc(24*var(--uk)*var(--es,1)) !important;}
@@ -7857,8 +7864,8 @@ function renderTeacherSignupSlot(){
     <form data-form="signupTeacher" novalidate style="margin-top:12px;">
       <label>School</label><select name="schoolId" required><option value="">-- select --</option>${activeSchools.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
       <label>Full name</label><input name="name" required>
-      <label>Username</label><input name="username" required>
-      <label>Password</label><input name="password" type="password" required minlength="4">
+      <label>Username</label><input name="username" required maxlength="6" placeholder="4-6 letters or 4-6 figures">
+      <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" placeholder="4-6 letters and/or figures">
       <label>Recovery code (optional)</label><input name="recovery">
       <p class="small">Set this so you can reset your own password later if you forget it, without waiting on your school owner.</p>
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
@@ -11304,8 +11311,10 @@ function classesView(){
   </div>
   <div class="card">
     <form data-form="addClass">
-      <div class="grid3">
+      <div style="max-width:420px;">
         <div><label>Class name</label><input name="name" placeholder="${isPrimarySchool()?'e.g. Primary One':isSecondarySchool()?'e.g. Senior One':'e.g. S.3'}" ${(isPrimarySchool()||isSecondarySchool())?`pattern="[A-Za-z]+( [A-Za-z]+)*" title="Words only (letters and spaces), e.g. ${isPrimarySchool()?'Primary One':'Senior One'}"`:''} required></div>
+      </div>
+      <div style="max-width:420px;margin-top:6px;">
         <div><label>Level</label><select name="level" id="clsLevel">${['O','A','P'].filter(l=>allowedClassLevels().includes(l)).map(l=>`<option value="${l}">${l==='O'?'O-Level':l==='A'?'A-Level':'Primary'}</option>`).join('')}</select></div>
         <div id="formWrap"><label>Form</label><select name="form" id="clsForm">${formsForLevel(['O','A','P'].filter(l=>allowedClassLevels().includes(l))[0]).map(f=>`<option>${f}</option>`).join('')}</select></div>
       </div>
@@ -11362,18 +11371,17 @@ function classEditView(classId){
 function staffAccountsView(){
   const pending = DB.accounts.filter(a=>a.role==='teacher' && a.status==='pending');
   const others = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending');
-  return `
+  const staffOpen = !!VIEW.params.staffListOpen;
+  const topHtml = `
   <h2>Teaching Staff</h2>
   <div class="note">Self sign-ups land here as <b>pending</b> until you approve them with your private owner code. You can also close any account at any time.</div>
   <div class="card" style="margin-top:14px;">
     <h3>Create staff account directly (auto-active)</h3>
     <form data-form="createAccount">
       <input type="hidden" name="role" value="teacher">
-      <div class="grid2">
-        <div><label>Full name</label><input name="name" required></div>
-        <div><label>Username</label><input name="username" required></div>
-      </div>
-      <label>Password</label><input name="password" type="password" required minlength="4">
+      <label>Full name</label><input name="name" required>
+      <label>Username</label><input name="username" required minlength="4" maxlength="6" pattern="[A-Za-z]{4,6}|[0-9]{4,6}" title="4 to 6 characters: letters only or figures only" placeholder="4-6 letters only or 4-6 figures only">
+      <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" pattern="[A-Za-z0-9]{4,6}" title="4 to 6 letters and/or figures" placeholder="4-6 letters and/or figures">
       <div id="teacherRecoveryWrap"><label>Recovery code (optional)</label><input name="recovery">
         <p class="small">Lets this teacher reset their own password later without going through you.</p>
       </div>
@@ -11382,17 +11390,18 @@ function staffAccountsView(){
   </div>
   <div class="card">
     <h3>Bulk register staff from a template</h3>
-    <p class="small">Download a CSV template, send it to staff (or fill it in yourself) offline, then upload it back here. Only <b>Full Name, Username and Password</b> are required — you can capture just those and add the recovery code, classes and subjects later from <b>Edit profile</b>. To assign subjects during upload, add one row per <b>class + subject</b> and repeat the same Username/Password on every row for that teacher.</p>
-    <div class="flex">
-      <button type="button" class="btn-outline" data-action="dlStaffTemplate">Download staff template (CSV)</button>
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      <div style="flex:0 0 42%;max-width:260px;display:flex;flex-direction:column;gap:6px;">
+        <button type="button" class="btn-outline" data-action="dlStaffTemplate" style="width:100%;">Download template (CSV)</button>
+        <form data-form="uploadStaffTemplate" style="margin:0;display:flex;flex-direction:column;gap:6px;">
+          <input type="file" name="staffFile" accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required style="width:100%;margin:0;">
+          <button class="btn" style="width:100%;">Submit — register staff</button>
+        </form>
+      </div>
+      <div class="small" style="flex:1;min-width:0;margin:0;line-height:1.35;">
+        Download the CSV template, fill it in offline, then choose the file and submit. Only <b>Full Name, Username and Password</b> are required (add the recovery code, classes and subjects later from <b>Edit profile</b>). <b>Username:</b> 4-6 letters only or 4-6 figures only. <b>Password:</b> 4-6 letters and/or figures. To assign subjects, add one row per <b>class + subject</b>, repeating the same Username/Password. <b>Class Name</b> must match a class on your <a href="#" data-action="nav:classes">Classes</a> page; <b>Subject</b> must match a subject name (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a>), not case-sensitive. <b>Papers</b> is comma-separated, e.g. <code>1,2</code>. A Word .docx table with the same columns also works.
+      </div>
     </div>
-    <p class="small" style="margin-top:10px;">If you fill them in, <b>Class Name</b> must exactly match a class already on your <a href="#" data-action="nav:classes">Classes</a> page. <b>Subject</b> must exactly match one of your subject names (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a> for the full list) — subject names are not case-sensitive, they'll be upper-cased automatically. <b>Papers</b> is a comma-separated list, e.g. <code>1,2</code>.</p>
-    <form data-form="uploadStaffTemplate" style="margin-top:10px;">
-      <label>Upload filled staff template (CSV or Word .docx)</label>
-      <input type="file" name="staffFile" accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
-      <p class="small" style="margin-top:4px;">A Word file works too: put the staff in a <b>table</b> with the same columns as the template (Full Name, Username, Password, and optionally Recovery Code, Class Name, Subject, Papers), with or without a header row. If there is no table, use one line per row with the values separated by commas.</p>
-      <button class="btn" style="margin-top:10px;">Submit — register staff from this file</button>
-    </form>
   </div>
   <div class="card"><h3>Pending approval (${pending.length})</h3>
     <table class="data-table"><tr><th>Name</th><th>Username</th><th>Action</th></tr>
@@ -11400,6 +11409,8 @@ function staffAccountsView(){
       <td class="flex"><button class="btn" data-action="approveAcc:${esc(a.username)}">Approve</button><button class="btn-danger" data-action="rejectAcc:${esc(a.username)}">Reject</button></td></tr>`).join('') || '<tr><td colspan="3">No pending requests.</td></tr>'}
     </table>
   </div>
+  `;
+  const listHtml = `
   <div class="card"><h3>All Staff List</h3>
     <div style="margin:0 0 10px;"><button type="button" class="btn-outline" onclick="downloadAccountsPdf('teacher')">⬇ Download login details (PDF)</button></div>
     <label>Showing staff — filter by class if needed</label>
@@ -11450,7 +11461,13 @@ function staffAccountsView(){
         <td class="flex"><button class="btn-outline" data-action="editTeacherProfile:${esc(a.username)}"><b>Edit profile</b></button> ${a.status==='closed'?`<button class="btn-outline" data-action="reopenAcc:${esc(a.username)}">Reopen</button>`:`<button class="btn-danger" data-action="closeAcc:${esc(a.username)}">Close</button>`} <button class="btn-outline" data-action="resetAccPw:${esc(a.username)}">Reset password</button> <button class="btn-danger" data-action="delTeacherAny:${DB.accounts.indexOf(a)}" style="background:#5a1414;">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No teachers to show here yet.</td></tr>'}
       </table>`;
     })()}
-  </div>
+  </div>`;
+  if(staffOpen) return `<div id="staffListOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:9000;background:#fff;overflow:auto;padding:14px;box-sizing:border-box;">
+    <button type="button" class="btn" onclick="openStaffList(false)" style="margin-bottom:12px;">← Back to Teaching Staff</button>
+    ${listHtml}
+  </div>`;
+  return topHtml + `
+  <div class="card"><button type="button" class="btn" onclick="openStaffList(true)" style="width:100%;padding:14px;font-size:16px;font-weight:800;letter-spacing:.03em;">ALL STAFF LIST (${others.length})</button></div>
   ${corruptedTeachersCard()}
   ${unrecognisedTeachersCard()}`;
 }
@@ -11641,6 +11658,11 @@ function rcShadeCard(){
     </div>
   </div>`;
 }
+function teacherUserOk(u){ return /^([A-Za-z]{4,6}|[0-9]{4,6})$/.test(u||''); }
+function teacherPwOk(p){ return /^[A-Za-z0-9]{4,6}$/.test(p||''); }
+const TEACHER_USER_MSG='Teacher username must be 4 to 6 characters: letters only or figures only (no mixing, no spaces or symbols).';
+const TEACHER_PW_MSG='Teacher password must be 4 to 6 characters: letters only, figures only, or letters and figures together (no spaces or symbols).';
+function openStaffList(open){ VIEW.params.staffListOpen = !!open; render(); try{ window.scrollTo(0,0); }catch(e){} }
 function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
 
 // One of the two lists on the PARENTS AND NON TEACHING STAFF page. Every row has: who they are, which list
@@ -12009,12 +12031,14 @@ function studentsView(){
           ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
           </select></div>
         <div><label>Upload (.docx / CSV)</label>
-          <input type="file" name="wordFile" id="bulkWordFile" accept=".docx,.csv,text/csv"></div>
-        <div><label>Paste list</label>
+          <input type="file" name="wordFile" id="bulkWordFile" class="bulk-file" accept=".docx,.csv,text/csv"></div>
+      </div>
+      <div class="bulk-row2">
+        <div class="bulk-dl"><button type="button" class="btn-outline" data-action="dlBulkStudentTemplate">Download template (CSV)</button></div>
+        <div class="bulk-paste"><label>Paste list</label>
           <textarea name="bulkList" id="bulkListArea" rows="3" placeholder="" required></textarea></div>
       </div>
       <p class="small" id="bulkWordStatus"></p>
-      <button type="button" class="btn-outline" style="margin-top:8px;" data-action="dlBulkStudentTemplate">Download template (CSV)</button>
       <button class="btn" style="margin-top:10px;">Submit — add all students</button>
     </form>
   </div>
@@ -18333,8 +18357,8 @@ Continue?`);
     case 'resetAccPw': { const code=prompt('Enter your private owner code to reset this teacher\'s password:'); if(code===null) break;
       if(!(await ownerCodeCheck(code,'Incorrect owner code.'))) { break; }
       const acc = DB.accounts.find(a=>a.username===arg); if(!acc) break;
-      const newPw = prompt(`New password for ${acc.name} (${acc.username}), at least 4 characters:`); if(newPw===null) break;
-      if(newPw.trim().length<4){ alert('Password must be at least 4 characters.'); break; }
+      const newPw = prompt(`New password for ${acc.name} (${acc.username}), 4 to 6 letters and/or figures:`); if(newPw===null) break;
+      if(!teacherPwOk(newPw.trim())){ alert(TEACHER_PW_MSG); break; }
       const conflict = await checkCredentialUniqueness(acc.username, newPw.trim(), {excludeSchoolId:SCHOOL_ID, excludeUsername:acc.username});
       if(conflict.exactMatch){ alert('That username and password combination is already used by another account. Please choose a different password.'); break; }
       acc.password = newPw.trim(); acc.pwPromptDone = false; await saveAccounts();
@@ -19545,6 +19569,10 @@ document.addEventListener('submit', async (e)=>{
       const switchPromise = switchToSchoolAuthIdentity(schoolId, (REGISTRY.find(r=>r.id===schoolId)||{}).email); // runs in parallel below, no extra fetch needed
       const uname = (fd.get('username')||'').trim();
       if(!fd.get('name') || !uname || (fd.get('password')||'').length<4){ showFatal('Please fill in all fields (password at least 4 characters).'); return; }
+      if(type==='signupTeacher'){
+        if(!teacherUserOk(uname)){ showFatal(TEACHER_USER_MSG); return; }
+        if(!teacherPwOk(fd.get('password'))){ showFatal(TEACHER_PW_MSG); return; }
+      }
       const accounts = await getShared(`sch_${schoolId}_accounts`, []);
       if(isUsernameTakenInSchool(uname, accounts)){ showFatal('That username is already used by another account at this school. Please choose a different username.'); return; }
       { const conflict = await checkCredentialUniqueness(uname, fd.get('password'));
@@ -19993,6 +20021,10 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='createAccount'){
       const role = fd.get('role');
       const uname = (fd.get('username')||'').trim();
+      if(role==='teacher'){
+        if(!teacherUserOk(uname)){ alert(TEACHER_USER_MSG); return; }
+        if(!teacherPwOk(fd.get('password'))){ alert(TEACHER_PW_MSG); return; }
+      }
       if(isUsernameTakenInSchool(uname, DB.accounts)){ alert('That username is already used by another account at this school. Please choose a different username.'); return; }
       { const conflict = await checkCredentialUniqueness(uname, fd.get('password'));
         if(conflict.exactMatch){ alert('That exact username and password combination is already used by another account (at this or another school). Please change the username or the password.'); return; } }
@@ -20055,7 +20087,7 @@ document.addEventListener('submit', async (e)=>{
       const classByName = new Map(DB.classes.map(c=>[c.name.trim().toLowerCase(), c]));
       const rowsByUser = new Map(); // username(lower) -> {name, username, password, recovery}
       const pendingAssignments = []; // {teacherUsername, classId, subject, papers}
-      let skippedRows=0, badClass=0, badSubject=0, noAssignRows=0;
+      let skippedRows=0, badClass=0, badSubject=0, noAssignRows=0, badCred=0;
       // Column positions. Default = template order; if the file has a header row we
       // map columns by their names instead, so a simple Name/Username/Password file works too.
       let col = {name:0, username:1, password:2, recovery:3, className:4, subject:5, papers:6};
@@ -20081,6 +20113,7 @@ document.addEventListener('submit', async (e)=>{
         const recovery = get(col.recovery), className = get(col.className), subjectRaw = get(col.subject), papersRaw = get(col.papers);
         // Only Name, Username and Password are required.
         if(!name || !username || !password){ skippedRows++; continue; }
+        if(!teacherUserOk(username.trim()) || !teacherPwOk(password.trim())){ badCred++; continue; }
         const uname = username.trim();
         const uLower = uname.toLowerCase();
         if(!rowsByUser.has(uLower)) rowsByUser.set(uLower, {name:name.trim(), username:uname, password:password.trim(), recovery:recovery||null});
@@ -20095,7 +20128,7 @@ document.addEventListener('submit', async (e)=>{
         const papers = (papersRaw||'1').split(/[,\s]+/).map(p=>p.trim()).filter(Boolean);
         pendingAssignments.push({teacherUsername:uname, classId:cls.id, subject, papers});
       }
-      if(!rowsByUser.size){ alert('No valid staff rows found in that file. Each row needs a Name, Username and Password.'); return; }
+      if(!rowsByUser.size){ alert('No valid staff rows found in that file. Each row needs a Name, a Username (4-6 letters only or figures only) and a Password (4-6 letters and/or figures).'); return; }
 
       let created=0, existingAcc=0, conflicts=0;
       for(const u of rowsByUser.values()){
@@ -20134,6 +20167,7 @@ document.addEventListener('submit', async (e)=>{
         `Subject assignments added: ${assignsAdded}${assignsMerged?`, updated with extra papers: ${assignsMerged}`:''}\n`+
         (noAssignRows?`Rows registered without class/subject (assign later from Edit profile): ${noAssignRows}\n`:'')+
         (skippedRows?`Rows skipped (missing Name/Username/Password, or only one of Class/Subject filled): ${skippedRows}\n`:'')+
+        (badCred?`Rows skipped (username must be 4-6 letters only or figures only; password 4-6 letters/figures): ${badCred}\n`:'')+
         (badClass?`Rows skipped (class name not found): ${badClass}\n`:'')+
         (badSubject?`Rows skipped (subject not recognized): ${badSubject}\n`:''));
       render();
