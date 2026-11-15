@@ -2395,6 +2395,22 @@ table.pg-compact th, table.pg-compact td{padding-left:4px !important;padding-rig
 table.pg-compact th{font-size:9px !important;}
 table.pg-compact.pg-sp th, table.pg-compact.pg-sp td{font-size:11px !important;}
 </style>
+
+<style id="cte-round2">
+/* Report cards list: the Action cell wraps so OPEN REPORT / Print / PDF all stay on screen and fit */
+table.data-table.rc-list th,table.data-table.rc-list td,table.data-table.rc-list th.rc-combo,table.data-table.rc-list td.rc-combo,table.data-table.rc-list td:last-child .btn-outline{white-space:nowrap !important;}
+table.data-table.rc-list th.rc-combo,table.data-table.rc-list td.rc-combo{width:1% !important;word-break:normal;}
+table.data-table.rc-list th,table.data-table.rc-list td{padding-left:calc(var(--tf,12)*.15px) !important;padding-right:calc(var(--tf,12)*.15px) !important;}
+table.data-table.rc-list td:last-child .btn-outline{margin:0 calc(var(--tf,12)*.04px) !important;padding-left:calc(var(--tf,12)*.2px) !important;padding-right:calc(var(--tf,12)*.2px) !important;}
+.layout .main:has(table.rc-list) .card:has(> table.rc-list){padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
+/* Text boxes: thick, clear boundaries */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"]),select,textarea{border:2px solid var(--navy,#0A2A4A) !important;}
+
+/* Section and sub-section headings: always UPPER CASE (report cards, mark sheets and other printable sheets are left alone) */
+@media screen{
+.main :is(h2,h3,h4):not(.rc-card *):not([class*="rc-"] *):not([class*="mm-"] *){text-transform:uppercase !important;font-weight:800 !important;}
+}
+</style>
 </head>
 <body>
 <!-- Boot splash: shown the instant the page loads, before any JS/data has run.
@@ -7852,8 +7868,8 @@ function renderCreateSchoolForm(){
       <label>Motto (optional)</label><input name="motto">
       <label>Headteacher's full name</label><input name="headteacher" required>
       <hr style="margin:14px 0;border:none;border-top:1px solid #e2e8f0;">
-      <label>Owner (admin) username</label><input name="username" required minlength="4" maxlength="6" pattern="\\S{4,6}" title="4 to 6 characters, no spaces" autocapitalize="off" autocomplete="off">
-      <p class="small">4 to 6 characters, no spaces.</p>
+      <label>Owner (admin) username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" autocapitalize="off" autocomplete="off">
+      <p class="small">Maximum 10 characters, no spaces.</p>
       <label>Owner (admin) password</label><input name="password" type="password" required minlength="4">
       <label>Private owner code</label><input name="ownerCode" required minlength="4" maxlength="6" pattern="\\S{4,6}" title="4 to 6 characters, no spaces" autocomplete="off">
       <p class="small">4 to 6 characters, no spaces.</p>
@@ -7874,7 +7890,7 @@ function renderTeacherSignupSlot(){
     <form data-form="signupTeacher" novalidate style="margin-top:12px;">
       <label>School</label><select name="schoolId" required><option value="">-- select --</option>${activeSchools.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
       <label>Full name</label><input name="name" required>
-      <label>Username</label><input name="username" required maxlength="6" placeholder="4-6 letters or 4-6 figures">
+      <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces" autocapitalize="off">
       <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" placeholder="4-6 letters and/or figures">
       <label>Recovery code (optional)</label><input name="recovery">
       <p class="small">Set this so you can reset your own password later if you forget it, without waiting on your school owner.</p>
@@ -7895,7 +7911,7 @@ function renderParentSignupSlot(){
       <label>Full name</label><input name="name" required>
       <label>Child's admission number(s)</label><input name="childAdmNo" required placeholder="e.g. STU/2024/001, STU/2024/014">
       <p class="small" style="margin:2px 0 12px;">Have more than one child at this school? Separate each admission number with a comma — they'll all be linked to this one account once approved.</p>
-      <label>Username</label><input name="username" required>
+      <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" autocapitalize="off">
       <label>Password</label><input name="password" type="password" required minlength="4">
       <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
     </form>
@@ -11390,7 +11406,7 @@ function staffAccountsView(){
     <form data-form="createAccount" class="staff-create">
       <input type="hidden" name="role" value="teacher">
       <label>Full name</label><input name="name" required>
-      <label>Username</label><input name="username" required minlength="4" maxlength="6" pattern="[A-Za-z]{4,6}|[0-9]{4,6}" title="4 to 6 characters: letters only or figures only" placeholder="4-6 letters only or 4-6 figures only">
+      <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces">
       <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" pattern="[A-Za-z0-9]{4,6}" title="4 to 6 letters and/or figures" placeholder="4-6 letters and/or figures">
       <div id="teacherRecoveryWrap"><label>Recovery code (optional)</label><input name="recovery">
         <p class="small">Lets this teacher reset their own password later without going through you.</p>
@@ -11409,7 +11425,7 @@ function staffAccountsView(){
         </form>
       </div>
       <div class="small" style="flex:1;min-width:0;margin:0;line-height:1.35;">
-        Download the CSV template, fill it in offline, then choose the file and submit. Only <b>Full Name, Username and Password</b> are required (add the recovery code, classes and subjects later from <b>Edit profile</b>). <b>Username:</b> 4-6 letters only or 4-6 figures only. <b>Password:</b> 4-6 letters and/or figures. To assign subjects, add one row per <b>class + subject</b>, repeating the same Username/Password. <b>Class Name</b> must match a class on your <a href="#" data-action="nav:classes">Classes</a> page; <b>Subject</b> must match a subject name (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a>), not case-sensitive. <b>Papers</b> is comma-separated, e.g. <code>1,2</code>. A Word .docx table with the same columns also works.
+        Download the CSV template, fill it in offline, then choose the file and submit. Only <b>Full Name, Username and Password</b> are required (add the recovery code, classes and subjects later from <b>Edit profile</b>). <b>Username:</b> maximum 10 characters, no spaces. <b>Password:</b> 4-6 letters and/or figures. To assign subjects, add one row per <b>class + subject</b>, repeating the same Username/Password. <b>Class Name</b> must match a class on your <a href="#" data-action="nav:classes">Classes</a> page; <b>Subject</b> must match a subject name (see <a href="#" data-action="nav:assignsubjects">Assign Subjects</a> or <a href="#" data-action="nav:olevel">${esc(extraSubjectsPageLabel())}</a>), not case-sensitive. <b>Papers</b> is comma-separated, e.g. <code>1,2</code>. A Word .docx table with the same columns also works.
       </div>
     </div>
   </div>
@@ -11668,9 +11684,11 @@ function rcShadeCard(){
     </div>
   </div>`;
 }
-function teacherUserOk(u){ return /^([A-Za-z]{4,6}|[0-9]{4,6})$/.test(u||''); }
+function plainUserOk(u){ return /^\S{1,10}$/.test(u||''); }
+const PLAIN_USER_MSG='Username must be a maximum of 10 characters with no spaces.';
+function teacherUserOk(u){ return plainUserOk(u); }
 function teacherPwOk(p){ return /^[A-Za-z0-9]{4,6}$/.test(p||''); }
-const TEACHER_USER_MSG='Teacher username must be 4 to 6 characters: letters only or figures only (no mixing, no spaces or symbols).';
+const TEACHER_USER_MSG=PLAIN_USER_MSG;
 const TEACHER_PW_MSG='Teacher password must be 4 to 6 characters: letters only, figures only, or letters and figures together (no spaces or symbols).';
 function openStaffList(open){ VIEW.params.staffListOpen = !!open; render(); try{ window.scrollTo(0,0); }catch(e){} }
 function filterStaffByClass(v){ VIEW.params.staffClassFilter = v||null; render(); }
@@ -11728,7 +11746,7 @@ function parentAccountsView(){
       <input type="hidden" name="role" value="parent">
       <div class="grid2">
         <div><label>Full name</label><input name="name" required></div>
-        <div><label>Username</label><input name="username" required></div>
+        <div><label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" autocapitalize="off"></div>
       </div>
       <div class="grid2">
         <div><label>Save as</label><select name="category"><option value="parent">Parent</option><option value="nonteaching">Non teaching staff</option></select></div>
@@ -19553,7 +19571,7 @@ document.addEventListener('submit', async (e)=>{
       // New registrations only: username and owner code must be 4-6 characters with no spaces.
       // Existing schools are untouched (nothing here runs on sign-in or on stored data).
       { const okLen = v => /^\S{4,6}$/.test(String(v||''));
-        if(!okLen(fd.get('username'))){ showFatal('Owner username must be 4 to 6 characters with no spaces.'); return; }
+        if(!/^\S{1,10}$/.test(String(fd.get('username')||''))){ showFatal('Owner username must be a maximum of 10 characters with no spaces.'); return; }
         if(!okLen(fd.get('ownerCode'))){ showFatal('Private owner code must be 4 to 6 characters with no spaces.'); return; } }
       const email = normalizeSchoolEmail(fd.get('email'));
       if(!isValidEmailFormat(email)){ showFatal('Please enter a valid school email address.'); return; }
@@ -19583,6 +19601,7 @@ document.addEventListener('submit', async (e)=>{
       const switchPromise = switchToSchoolAuthIdentity(schoolId, (REGISTRY.find(r=>r.id===schoolId)||{}).email); // runs in parallel below, no extra fetch needed
       const uname = (fd.get('username')||'').trim();
       if(!fd.get('name') || !uname || (fd.get('password')||'').length<4){ showFatal('Please fill in all fields (password at least 4 characters).'); return; }
+      if(type==='signupParent' && !plainUserOk(uname)){ showFatal(PLAIN_USER_MSG); return; }
       if(type==='signupTeacher'){
         if(!teacherUserOk(uname)){ showFatal(TEACHER_USER_MSG); return; }
         if(!teacherPwOk(fd.get('password'))){ showFatal(TEACHER_PW_MSG); return; }
@@ -20035,6 +20054,7 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='createAccount'){
       const role = fd.get('role');
       const uname = (fd.get('username')||'').trim();
+      if(role==='parent' && !plainUserOk(uname)){ alert(PLAIN_USER_MSG); return; }
       if(role==='teacher'){
         if(!teacherUserOk(uname)){ alert(TEACHER_USER_MSG); return; }
         if(!teacherPwOk(fd.get('password'))){ alert(TEACHER_PW_MSG); return; }
@@ -20142,7 +20162,7 @@ document.addEventListener('submit', async (e)=>{
         const papers = (papersRaw||'1').split(/[,\s]+/).map(p=>p.trim()).filter(Boolean);
         pendingAssignments.push({teacherUsername:uname, classId:cls.id, subject, papers});
       }
-      if(!rowsByUser.size){ alert('No valid staff rows found in that file. Each row needs a Name, a Username (4-6 letters only or figures only) and a Password (4-6 letters and/or figures).'); return; }
+      if(!rowsByUser.size){ alert('No valid staff rows found in that file. Each row needs a Name, a Username (maximum 10 characters, no spaces) and a Password (4-6 letters and/or figures).'); return; }
 
       let created=0, existingAcc=0, conflicts=0;
       for(const u of rowsByUser.values()){
@@ -20181,7 +20201,7 @@ document.addEventListener('submit', async (e)=>{
         `Subject assignments added: ${assignsAdded}${assignsMerged?`, updated with extra papers: ${assignsMerged}`:''}\n`+
         (noAssignRows?`Rows registered without class/subject (assign later from Edit profile): ${noAssignRows}\n`:'')+
         (skippedRows?`Rows skipped (missing Name/Username/Password, or only one of Class/Subject filled): ${skippedRows}\n`:'')+
-        (badCred?`Rows skipped (username must be 4-6 letters only or figures only; password 4-6 letters/figures): ${badCred}\n`:'')+
+        (badCred?`Rows skipped (username maximum 10 characters with no spaces; password 4-6 letters/figures): ${badCred}\n`:'')+
         (badClass?`Rows skipped (class name not found): ${badClass}\n`:'')+
         (badSubject?`Rows skipped (subject not recognized): ${badSubject}\n`:''));
       render();
