@@ -3325,12 +3325,12 @@ const NAV_HISTORY_MAX = 60;
 // Which params say "a different item" for the views that open a specific item.
 const NAV_ID_KEYS = {
   teacherprofile:['username'], studentprofile:['studentId'], classedit:['classId'],
-  integratedmarksheet:['classId','subject'], blankmarksheet:['classId','subject'], generalmarksheet:['mode','scope'], reportcard:['studentId'], financestudent:['studentId'],
+  integratedmarksheet:['classId','subject'], blankmarksheet:['classId','subject'], attendancemarksheet:['classId','subject'], generalmarksheet:['mode','scope'], reportcard:['studentId'], financestudent:['studentId'],
   ascores:['assignId','paper','kind','label'], tscores:['assignId','paper','kind','label']
 };
 const NAV_DETAIL_LABELS = {
   teacherprofile:'Teacher Profile', studentprofile:'Student Profile', classedit:'Class Details',
-  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', blankmarksheet:'Blank Mark Sheet', generalmarksheet:'General Score Sheet', reportcard:'Report Card',
+  restoreitems:'Restore Items', integratedmarksheet:'Mark Sheet', blankmarksheet:'Blank Mark Sheet', attendancemarksheet:'Attendance Sheet', generalmarksheet:'General Score Sheet', reportcard:'Report Card',
   financestudent:'Student Follow-up', fschoollogins:'School Logins', password:'Other Settings'
 };
 const NAV_FOUNDER_LABELS = {
@@ -7935,14 +7935,14 @@ function navByRoleRaw(role){
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','PARENTS AND NON TEACHING STAFF','👪'],['oldstudents','Old Students','🎒'],
-      ['marksheets','Mark Sheets','📋'],['classanalysis','RESULT ANALYSIS','📈'],
+      ['marksheets','SCORES SHEETS AND ATTENDANCES','📋'],['classanalysis','RESULT ANALYSIS','📈'],
       ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
   }
   if(role==='teacher'){
     return [
-      ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','Mark Sheets','📋'],
+      ['tdash','Dashboard','🏠'],['tscores','Enter Scores','✍️'],['marksheets','SCORES SHEETS AND ATTENDANCES','📋'],
       ['classanalysis','RESULT ANALYSIS','📈'],['projects','Project Assessment','🧪'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],
       ['treports','View Report Cards','📄'],['otherSettings','Other Settings','⚙️']
     ];
@@ -8029,7 +8029,7 @@ const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit'
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet','projects']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','generalmarksheet','reportcard','financestudent']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','attendancemarksheet','generalmarksheet','reportcard','financestudent']);
 function renderView(view){
   try{
     if(FINANCE_ONLY && view!=='finance' && view!=='financestudent' && view!=='admingate' && !(FIN_EMBED && (view==='studentprofile' || view==='teacherprofile'))){
@@ -8070,6 +8070,7 @@ function renderView(view){
       case 'marksheets': return marksheetsListView();
       case 'integratedmarksheet': return integratedMarksheetView(VIEW.params.classId, VIEW.params.subject, VIEW.params.imsPage||1, false);
       case 'blankmarksheet': return blankMarksheetView(VIEW.params.classId, VIEW.params.subject);
+      case 'attendancemarksheet': return attendanceMarksheetView(VIEW.params.classId, VIEW.params.subject);
       case 'generalmarksheet': return generalSheetView(VIEW.params.mode, VIEW.params.scope);
       case 'classanalysis': return classAnalysisView();
       case 'projects': return projectAssessmentView();
@@ -11912,7 +11913,7 @@ function stmNameProblem(g, names){
 function stmPanelHtml(){
   if(!STM.open){
     return `<button type="button" class="btn stm-open-btn" data-action="stmOpen">Stream students</button>
-      <p class="small" style="margin-top:6px;">Split a class into streams, choose each stream's class teacher and place every student in a stream. Students keep their records — admission number, marks and history — and the class's subject assignments carry over to each new stream.</p>`;
+      <p class="small" style="margin-top:6px;">Split a class into streams, choose each stream's class teacher and place every student in a stream. The original class itself becomes the first stream, so its students keep their records — admission number, marks and history — and its teacher assignments stay with them; extra streams get the same subject assignments.</p>`;
   }
   const groups = classGroups();
   const g = stmGroup();
@@ -11973,15 +11974,17 @@ function stmShowSummary(g){
   const names = STM.names.map(x=>(x||'').trim());
   const studs = stmStudents(g);
   const parentHasAsn = g.rows.some(c=>!(c.stream||'').trim() && DB.assignments.some(a=>a.classId===c.id));
-  let anyNew = false, tB = 0, tG = 0;
+  let anyNew = false, tB = 0, tG = 0, origTaken = false;
+  const parentRow = g.rows.find(c=>!(c.stream||'').trim()) || null;
   const rows = names.map((n,i)=>{
     const inS = studs.filter(x=>STM.assign[x.id]===i);
     const boys = inS.filter(x=>x.gender==='Male').length, girls = inS.filter(x=>x.gender==='Female').length;
     tB += boys; tG += girls;
     const t = DB.accounts.find(a=>a.username===STM.teachers[i]);
     const isNew = !g.rows.some(c=>(c.stream||'').trim().toLowerCase()===n.toLowerCase());
-    if(isNew) anyNew = true;
-    return `<tr><td style="text-align:left;font-weight:700;">${esc(g.base+' '+n)}${isNew?' <span class="small">(new)</span>':''}</td><td style="text-align:left;">${t?esc(t.name):'—'}</td><td>${boys}</td><td>${girls}</td><td style="font-weight:800;">${inS.length}</td></tr>`;
+    const isOrig = isNew && !!parentRow && !origTaken; if(isOrig) origTaken = true;
+    if(isNew && !isOrig) anyNew = true;
+    return `<tr><td style="text-align:left;font-weight:700;">${esc(g.base+' '+n)}${isOrig?' <span class="small">(original class)</span>':(isNew?' <span class="small">(new)</span>':'')}</td><td style="text-align:left;">${t?esc(t.name):'—'}</td><td>${boys}</td><td>${girls}</td><td style="font-weight:800;">${inS.length}</td></tr>`;
   }).join('');
   const old = document.getElementById('stmSummary'); if(old) old.remove();
   const ov = document.createElement('div');
@@ -13368,6 +13371,13 @@ function marksheetHeaderOpts(classId, subject, kind){
   const cls = DB.classes.find(c=>c.id===classId);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const cfg = examConfig(classId);
+  if(kind==='attendance'){
+    return {
+      forceTitle: `ATTENDANCE SHEET FOR ${[cls?cls.name:'', term||'', year||''].filter(Boolean).join(', ')}`,
+      forceSubtitle: `${subject} • Attendance sheet`,
+      pageNumberBottom: true, fillPage: true
+    };
+  }
   let types = [];
   if(kind==='blank'){
     if(cfg.cwEnabled){ if(cfg.cwTests.length) cfg.cwTests.forEach(t=>types.push(t.name)); else types.push(cfg.cwLabel); }
@@ -13413,11 +13423,16 @@ function marksheetsListView(){
     <div class="flex" style="margin-top:14px;gap:10px;flex-wrap:wrap;">
       <button class="${mode==='filled'?'btn':'btn-outline'}" data-action="msMode:filled"><b>FILLED MARKSHEETS</b></button>
       <button class="${mode==='empty'?'btn':'btn-outline'}" data-action="msMode:empty"><b>EMPTY MARKSHEETS</b></button>
+      <button class="${mode==='attendance'?'btn':'btn-outline'}" data-action="msMode:attendance"><b>ATTENDANCE SHEETS</b></button>
     </div>` : ''}`;
   }
   let panel = '';
   if(lvSel && mode==='filled'){
     panel = generalSheetsCard('filled', gsScopeId);
+  } else if(lvSel && mode==='attendance'){
+    panel = generalSheetsCard('attendance', gsScopeId);
+  } else if(cls && mode==='attendance'){
+    panel = (gsAllowed ? generalSheetsCard('attendance', gsScopeId) : '') + attendanceSheetsCard(pool, cls);
   } else if(lvSel && mode==='empty'){
     panel = generalSheetsCard('empty', gsScopeId);
   } else if(cls && mode==='filled'){
@@ -13433,7 +13448,7 @@ function marksheetsListView(){
     panel = (gsAllowed ? generalSheetsCard('empty', gsScopeId) : '') + blankMarksheetsCard(pool, cls);
   }
   const msInner = `
-  <h2>Mark Sheets</h2>
+  <h2>SCORES SHEETS AND ATTENDANCES</h2>
   <div class="card" style="margin-top:14px;">${body}</div>
   ${panel}`;
   return panel ? msInner : `<div class="center-stage">${msInner}</div>`;
@@ -13475,6 +13490,62 @@ function blankMarksheetsCard(pool, selCls){
     </table>
   </div>`;
 }
+function attendanceSheetsCard(pool, selCls){
+  const isAdmin = CUR.role==='admin';
+  const poolGroups = marksheetGroups(pool);
+  const cls = selCls;
+  if(!cls) return '';
+  const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject);
+  const subs = [...new Set(subjects)].sort((a,b)=>a.localeCompare(b));
+  const rows = subs.map(subj=>{
+    const n = blankSheetStudents(cls.id, subj).length;
+    return `<tr><td style="text-align:left;">${esc(subj)}</td><td>Enrolled students only</td><td>${n}</td><td><button class="btn-outline" data-action="openAttendanceSheet:${cls.id}:${encodeURIComponent(subj)}">Open attendance sheet</button></td></tr>`;
+  }).join('');
+  return `
+  <div class="note" style="margin-top:14px;">A subject attendance sheet is a printable sheet for one subject in this class. It lists only the students enrolled for that subject, with empty Signature and Remark columns to fill in by hand.</div>
+  <div class="card" style="margin-top:14px;">
+    <table class="data-table"><tr><th>Subject</th><th>Who is listed</th><th>Students</th><th>Action</th></tr>
+    ${rows || `<tr><td colspan="4">No subjects on record for this class yet.</td></tr>`}
+    </table>
+  </div>`;
+}
+function attendanceMarksheetView(classId, subject){
+  if(!classId || !subject) return '<p>Choose a class and subject from Scores Sheets and Attendances.</p>';
+  const cls = DB.classes.find(c=>c.id===classId);
+  if(!cls) return '<p>Class not found.</p>';
+  const students = blankSheetStudents(classId, subject);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const rowsHtml = students.map((s,i)=>`<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td><td style="height:30px;min-width:120px;">&nbsp;</td><td style="min-width:140px;">&nbsp;</td></tr>`).join('');
+  return `
+  <h2>Attendance Sheet</h2>
+  <div class="card">
+    <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <div><b>${esc(cls.name)}</b> — ${esc(subject)} — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
+      <div class="flex">
+        <button class="btn-outline" data-action="dlAttendancePdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
+        <button class="btn" data-action="printAttendance:${classId}:${encodeURIComponent(subject)}">Print / Save as PDF</button>
+        <button class="btn-outline" data-action="nav:marksheets">Back to Scores Sheets &amp; Attendances</button>
+      </div>
+    </div>
+  </div>
+  <div id="printArea">
+  <div class="card" style="overflow:auto;">
+    <h3>${esc(cls.name)} — ${esc(subject)} — Attendance Sheet</h3>
+    <p class="small">${esc(term||'')}, ${esc(String(year||''))}</p>
+    <table class="data-table"><tr><th>No.</th><th>Adm No</th><th>Student</th><th>Signature</th><th>Remark</th></tr>
+    ${rowsHtml || `<tr><td colspan="5">No students are enrolled for this subject yet.</td></tr>`}
+    </table>
+  </div>
+  </div>`;
+}
+async function runAttendanceMarksheetPdf(classId, subject){
+  const cls = DB.classes.find(c=>c.id===classId);
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  await downloadTablesAsPdf('printArea', `${(cls?cls.name:'class').replace(/\s+/g,'_')}_${subject.replace(/\s+/g,'_')}_attendance_sheet.pdf`, {
+    title: `${cls?cls.name:''} — ${subject}`, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
+    ...marksheetHeaderOpts(classId, subject, 'attendance')
+  });
+}
 function setBlankSheetClass(id){ VIEW.params = {...VIEW.params, blankClassId:id}; render(); }
 
 /* ---------- General (no-subject) Score Sheets: empty + filled, for every class and every level ----------
@@ -13510,15 +13581,17 @@ function generalSheetsCard(mode, scope){
   const g = gsScope(scope);
   if(!g.classes.length) return '';
   const n = gsStudents(g).length;
-  const note = mode==='empty'
+  const note = mode==='attendance'
+    ? 'A general attendance sheet is a printable sheet with no subject: every current student of '+(g.isLevel?'the level (all its classes)':'the class')+' with empty Signature and Remark columns to fill in by hand.'
+    : mode==='empty'
     ? 'A general empty score sheet is a blank, printable sheet with no subject: every current student of '+(g.isLevel?'the level (all its classes)':'the class')+' with empty columns to fill in by hand.'
     : 'A general filled score sheet has no subject: it shows every student\'s overall results (average course work, average end of term, average, grade and position) from all the subjects recorded this term.';
   return `
   <div class="note" style="margin-top:14px;">${note}</div>
   <div class="card" style="margin-top:14px;">
     <table class="data-table"><tr><th>Sheet</th><th>Who is listed</th><th>Students</th><th>Action</th></tr>
-    <tr><td style="text-align:left;"><b>GENERAL (all subjects)</b> — ${esc(g.label)}</td><td>${g.isLevel?'Every current student of every class in the level':'Every current student of the class'}</td><td>${n}</td>
-    <td><button class="btn-outline" data-action="openGeneralSheet:${mode}:${scope}">Open general ${mode==='empty'?'empty':'filled'} sheet</button></td></tr>
+    <tr><td style="text-align:left;"><b>GENERAL${mode==='attendance'?' ATTENDANCE':''} (all subjects)</b> — ${esc(g.label)}</td><td>${g.isLevel?'Every current student of every class in the level':'Every current student of the class'}</td><td>${n}</td>
+    <td><button class="btn-outline" data-action="openGeneralSheet:${mode}:${scope}">Open general ${mode==='attendance'?'attendance':(mode==='empty'?'empty':'filled')} sheet</button></td></tr>
     </table>
   </div>`;
 }
@@ -13526,20 +13599,31 @@ function generalSheetHeaderOpts(mode, scope){
   const g = gsScope(scope);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   return {
-    forceTitle: `${isSecondarySchool()?'SCORE SHEET':'MARKSHEET'} FOR ${[g.label, term||'', year||''].filter(Boolean).join(', ')}`,
-    forceSubtitle: mode==='empty' ? 'General • All subjects • Empty sheet' : 'General • All subjects • Overall results',
+    forceTitle: `${mode==='attendance' ? 'ATTENDANCE SHEET' : (isSecondarySchool()?'SCORE SHEET':'MARKSHEET')} FOR ${[g.label, term||'', year||''].filter(Boolean).join(', ')}`,
+    forceSubtitle: mode==='attendance' ? 'General • All subjects • Attendance sheet' : (mode==='empty' ? 'General • All subjects • Empty sheet' : 'General • All subjects • Overall results'),
     pageNumberBottom: true, fillPage: true
   };
 }
 function generalSheetView(mode, scope){
-  mode = mode==='filled' ? 'filled' : 'empty';
+  mode = mode==='filled' ? 'filled' : (mode==='attendance' ? 'attendance' : 'empty');
   const g = gsScope(scope);
-  if(!g.classes.length) return '<p>Choose a class or level from Mark Sheets.</p>';
+  if(!g.classes.length) return '<p>Choose a class or level from Scores Sheets and Attendances.</p>';
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const students = gsStudents(g);
   let head, rows, ncols, foot = '';
-  if(mode==='empty'){
-    const cols = gsAssessCols(g.classes).concat(['Total','Average','Position']);
+  if(mode==='attendance'){
+    const cols = ['Signature','Remark'];
+    head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:${l==='Signature'?'120':'140'}px;">${esc(l)}</th>`).join('')}`;
+    const blanks = cols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
+    rows = students.map((s,i)=>{
+      const c = DB.classes.find(x=>x.id===s.classId);
+      return `<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${g.isLevel?`<td>${esc(c?classFullName(c):'')}</td>`:''}${blanks}</tr>`;
+    }).join('');
+    ncols = 3 + (g.isLevel?1:0) + cols.length;
+  } else if(mode==='empty'){
+    // Only the assessments the admin has switched on; an Average/Total column is added only when there is more than one.
+    const _ac = gsAssessCols(g.classes);
+    const cols = (_ac.length>1 ? _ac.concat(['Average/Total']) : _ac).concat(['Position']);
     head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('')}`;
     const blanks = cols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
     rows = students.map((s,i)=>{
@@ -13587,23 +13671,24 @@ function generalSheetView(mode, scope){
     ncols = 3 + (g.isLevel?1:0) + 1 + (anyCw?1:0) + (anyEot?1:0) + 1 + (isA?1:0) + (isP?2:1) + (isO?1:0) + 1;
     foot = `<p class="small" style="margin-top:10px;">Overall results across every subject recorded for ${esc(term||'')}, ${esc(String(year||''))}. “—” means no scores are recorded yet.</p>`;
   }
-  const label = mode==='empty' ? 'Empty' : 'Filled';
+  const label = mode==='empty' ? 'Empty' : (mode==='attendance' ? 'Attendance' : 'Filled');
   const arg = `${mode}:${scope}`;
+  const _sheetWord = mode==='attendance' ? 'Sheet' : 'Score Sheet';
   return `
-  <h2>General ${label} Score Sheet</h2>
+  <h2>General ${label} ${_sheetWord}</h2>
   <div class="card">
     <div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
       <div><b>${esc(g.label)}</b> — General (all subjects) — ${esc(term||'')}, ${esc(String(year||''))} &nbsp;•&nbsp; ${students.length} student${students.length===1?'':'s'}</div>
       <div class="flex">
         <button class="btn-outline" data-action="dlGeneralPdf:${arg}"><b>Download as PDF</b></button>
         <button class="btn" data-action="printGeneral:${arg}">Print / Save as PDF</button>
-        <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
+        <button class="btn-outline" data-action="nav:marksheets">Back to Scores Sheets &amp; Attendances</button>
       </div>
     </div>
   </div>
   <div id="printArea">
   <div class="card" style="overflow:auto;">
-    <h3>${esc(g.label)} — General — ${label} Score Sheet</h3>
+    <h3>${esc(g.label)} — General — ${label} ${_sheetWord}</h3>
     <p class="small">${esc(term||'')}, ${esc(String(year||''))}</p>
     <table class="data-table"><tr>${head}</tr>
     ${rows || `<tr><td colspan="${ncols}">No students in this ${g.isLevel?'level':'class'} yet.</td></tr>`}
@@ -13613,14 +13698,14 @@ function generalSheetView(mode, scope){
   </div>`;
 }
 async function runGeneralSheetPdf(mode, scope){
-  mode = mode==='filled' ? 'filled' : 'empty';
+  mode = mode==='filled' ? 'filled' : (mode==='attendance' ? 'attendance' : 'empty');
   const g = gsScope(scope);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   if(mode==='filled'){ try{ await refreshScores(); }catch(e){ console.warn('Score refresh failed; using current local data.', e); } }
   // Built from the FULL student list (this view is never paginated), whichever page is showing.
   document.getElementById('app').innerHTML = renderShellWithContent(generalSheetView(mode, scope));
   try{
-    await downloadTablesAsPdf('printArea', `${String(g.fileLabel).replace(/[\s']+/g,'_')}_general_${mode==='empty'?'empty':'filled'}_scoresheet.pdf`, {
+    await downloadTablesAsPdf('printArea', `${String(g.fileLabel).replace(/[\s']+/g,'_')}_general_${mode==='attendance'?'attendance':(mode==='empty'?'empty':'filled')}_${mode==='attendance'?'sheet':'scoresheet'}.pdf`, {
       title: g.label, subtitle: `${term||''}, ${year||''}`, orientation:'portrait', rowsPerPage:35, school: DB.info.schoolName||'',
       ...generalSheetHeaderOpts(mode, scope)
     });
@@ -13629,7 +13714,7 @@ async function runGeneralSheetPdf(mode, scope){
   }
 }
 function blankMarksheetView(classId, subject){
-  if(!classId || !subject) return '<p>Choose a class and subject from Mark Sheets.</p>';
+  if(!classId || !subject) return '<p>Choose a class and subject from Scores Sheets and Attendances.</p>';
   const cls = DB.classes.find(c=>c.id===classId);
   if(!cls) return '<p>Class not found.</p>';
   const students = blankSheetStudents(classId, subject);
@@ -13655,7 +13740,7 @@ function blankMarksheetView(classId, subject){
       <div class="flex">
         <button class="btn-outline" data-action="dlBlankPdf:${classId}:${encodeURIComponent(subject)}"><b>Download as PDF</b></button>
         <button class="btn" data-action="printBlank:${classId}:${encodeURIComponent(subject)}">Print / Save as PDF</button>
-        <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
+        <button class="btn-outline" data-action="nav:marksheets">Back to Scores Sheets &amp; Attendances</button>
       </div>
     </div>
   </div>
@@ -13687,7 +13772,10 @@ function marksheetColumns(students, subject){
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const seen = new Map();
   students.forEach(s=>{
+    // Only assessment types the admin has switched on under Exam Set Up (for this student's class) get a column.
+    const _mcfg = examConfig(s.classId);
     DB.scores.filter(sc=>sc.studentId===s.id && sc.subject===subject && sc.term===term && sc.year===year).forEach(sc=>{
+      if((sc.kind==='AOI' && !_mcfg.cwEnabled) || (sc.kind==='EOT' && !_mcfg.eotEnabled)) return;
       const key = sc.paper+'||'+sc.kind+'||'+(sc.kind==='AOI'?sc.label:'');
       if(!seen.has(key)) seen.set(key, {paper:sc.paper, kind:sc.kind, label:sc.label||''});
     });
@@ -13753,7 +13841,7 @@ async function performBulkScoreDelete(classId, subject, studentIds, el){
   render();
 }
 function integratedMarksheetView(classId, subject, page, forExport){
-  if(!classId || !subject) return '<p>Choose a class and subject from Mark Sheets.</p>';
+  if(!classId || !subject) return '<p>Choose a class and subject from Scores Sheets and Attendances.</p>';
   const {cls, students:allStudents} = marksheetRoster(classId, subject);
   if(!cls) return '<p>Class not found.</p>';
   const pg = paginateMarksheet(allStudents, page, !!forExport);
@@ -13811,7 +13899,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
         ${canBulk ? `<span class="small" id="msSelCount">0 selected</span>
         <button class="btn-danger" data-action="delSelectedClassScores:${classId}:${encodeURIComponent(subject)}">Delete selected</button>
         <button class="btn-danger" data-action="delAllClassScores:${classId}:${encodeURIComponent(subject)}">Delete all scores</button>` : ''}
-        <button class="btn-outline" data-action="nav:marksheets">Back to Mark Sheets</button>
+        <button class="btn-outline" data-action="nav:marksheets">Back to Scores Sheets &amp; Attendances</button>
       </div>
     </div>
   </div>
@@ -17378,28 +17466,52 @@ document.addEventListener('click', async (e)=>{
       const problem = stmNameProblem(g, names);
       if(problem){ stmCloseSummary(); alert(problem); break; }
       const parent = g.rows.find(c=>!(c.stream||'').trim()) || null;
-      const recs = []; let created = 0;
+      const studs = stmStudents(g);
+      // Where each student currently sits, before anything moves.
+      const fromClass = {}; studs.forEach(x=>{ fromClass[x.id] = x.classId; });
+      // Assignments of the class being streamed (the original class, or the first stream if already streamed).
+      const source = parent || g.rows[0] || null;
+      const srcAsn = source ? DB.assignments.filter(a=>a.classId===source.id).map(a=>({...a, papers:Array.isArray(a.papers)?a.papers.slice():a.papers, studentIds:Array.isArray(a.studentIds)?a.studentIds.slice():a.studentIds})) : [];
+      const recs = []; let created = 0, converted = false, parentUsed = false;
       names.forEach((st,i)=>{
         let rec = g.rows.find(c=>(c.stream||'').trim().toLowerCase()===st.toLowerCase());
         if(rec){ rec.classTeacher = STM.teachers[i] || null; }
+        else if(parent && !parentUsed){
+          // The ORIGINAL class becomes the first new stream: same record, same id, so its subject
+          // assignments, class-level records and the scores of its students stay exactly as they are.
+          rec = parent; parentUsed = true; converted = true;
+          rec.name = g.base+' '+st; rec.stream = st; rec.classTeacher = STM.teachers[i] || null;
+        }
         else {
           rec = {id:uid('cls'), name:g.base+' '+st, level:g.level, form:g.form, stream:st, classTeacher:STM.teachers[i]||null, nextAdmSeq:0};
           DB.classes.push(rec); created++;
-          // The original class's subject assignments carry over unchanged to the new stream.
-          if(parent) DB.assignments.filter(a=>a.classId===parent.id).forEach(a=>{
-            DB.assignments.push({id:uid('asn'), teacherUsername:a.teacherUsername, classId:rec.id, subject:a.subject, papers:Array.isArray(a.papers)?a.papers.slice():a.papers});
+          // The streamed class's subject assignments (teachers, papers) carry over to the new stream.
+          srcAsn.forEach(a=>{
+            const copy = {id:uid('asn'), teacherUsername:a.teacherUsername, classId:rec.id, subject:a.subject, papers:a.papers};
+            if(Array.isArray(a.studentIds)) copy.studentIds = a.studentIds.filter(id=>STM.assign[id]===i);
+            DB.assignments.push(copy);
           });
         }
         recs.push(rec);
       });
-      let moved = 0;
-      stmStudents(g).forEach(stu=>{
+      let moved = 0, projMoved = false;
+      studs.forEach(stu=>{
         const target = recs[STM.assign[stu.id]].id;
         if(target===stu.classId) return;
         // The student record, admission number and marks stay as they are; only the class placement changes (with history).
         noteClassPlacement(stu, target, DB.info.currentTerm, DB.info.currentYear);
+        // Project-assessment scores are tagged with the class: move them with the student.
+        try{ projectData().scores.forEach(r=>{ if(r.studentId===stu.id && r.classId===fromClass[stu.id]){ r.classId = target; projMoved = true; } }); }catch(e){ console.error(e); }
         stu.classId = target; moved++;
       });
+      // Per-student subject ticks on the streamed class's assignments: drop students who left that class.
+      DB.assignments.forEach(a=>{
+        if(!Array.isArray(a.studentIds)) return;
+        const rc = recs.find(r=>r.id===a.classId); if(!rc) return;
+        const idx = recs.indexOf(rc);
+        a.studentIds = a.studentIds.filter(id=>STM.assign[id]===undefined || STM.assign[id]===idx);
+      });
+      if(projMoved) await saveInfo();
       await saveClasses(); await saveAssignments(); await saveStudents();
       stmCloseSummary();
       showDeliveredToast(`${names.length} stream${names.length===1?'':'s'} saved${moved?` — ${moved} student${moved===1?'':'s'} placed`:''}`);
@@ -18248,7 +18360,7 @@ Continue?`);
       break;
     }
     case 'msMode': {
-      VIEW.params = {...VIEW.params, msMode: arg==='empty'?'empty':'filled'};
+      VIEW.params = {...VIEW.params, msMode: arg==='empty'?'empty':(arg==='attendance'?'attendance':'filled')};
       render();
       break;
     }
@@ -18262,6 +18374,22 @@ Continue?`);
       const [classId, subjEnc] = (arg||'').split(':');
       VIEW = {name:'blankmarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):''}};
       render();
+      break;
+    }
+    case 'openAttendanceSheet': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      VIEW = {name:'attendancemarksheet', params:{classId, subject: subjEnc?decodeURIComponent(subjEnc):''}};
+      render();
+      break;
+    }
+    case 'dlAttendancePdf': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      await runAttendanceMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):'');
+      break;
+    }
+    case 'printAttendance': {
+      const [classId, subjEnc] = (arg||'').split(':');
+      await withPdfPrint(()=>runAttendanceMarksheetPdf(classId, subjEnc?decodeURIComponent(subjEnc):''));
       break;
     }
     case 'dlBlankPdf': {
@@ -18302,7 +18430,7 @@ Continue?`);
     case 'openGeneralSheet': {
       const _i = (arg||'').indexOf(':');
       const gm = _i===-1 ? 'empty' : arg.slice(0,_i), gscope = _i===-1 ? '' : arg.slice(_i+1);
-      VIEW = {name:'generalmarksheet', params:{mode: gm==='filled'?'filled':'empty', scope: gscope}};
+      VIEW = {name:'generalmarksheet', params:{mode: gm==='filled'?'filled':(gm==='attendance'?'attendance':'empty'), scope: gscope}};
       render();
       break;
     }
@@ -18673,10 +18801,12 @@ async function loadStudentListFromWord(input){
 // as value "AOI::<name>" (kind AOI + that test's label); the End-of-Term assessment keeps value "EOT".
 function kindOptionsHtml(cfg){
   const tests = (cfg && cfg.cwTests) || [];
-  const cw = tests.length
+  // Only assessment types the admin has switched on under Exam Set Up are offered for score entry.
+  const cw = cfg.cwEnabled===false ? '' : (tests.length
     ? tests.map(t=>`<option value="AOI::${esc(t.name)}">${esc(t.name)}</option>`).join('')
-    : `<option value="AOI">${esc(cfg.cwLabel)}</option>`;
-  return `<option value="">-- choose assessment type --</option>${cw}<option value="EOT">${esc(cfg.eotLabel)}</option>`;
+    : `<option value="AOI">${esc(cfg.cwLabel)}</option>`);
+  const eot = cfg.eotEnabled===false ? '' : `<option value="EOT">${esc(cfg.eotLabel)}</option>`;
+  return `<option value="">-- choose assessment type --</option>${cw}${eot}`;
 }
 function cwTestOptionsHtml(cfg){
   const tests = (cfg && cfg.cwTests) || [];
@@ -20780,6 +20910,9 @@ document.addEventListener('submit', async (e)=>{
       const _kindRaw = String(fd.get('kind'));
       const _pickKind = _kindRaw.split('::')[0];
       const _pickLabel = _kindRaw.indexOf('::')>=0 ? _kindRaw.slice(_kindRaw.indexOf('::')+2) : (fd.get('label')||'');
+      { const _pc = examConfig(_pickA ? _pickA.classId : null);
+        if((_pickKind==='AOI' && !_pc.cwEnabled) || (_pickKind==='EOT' && !_pc.eotEnabled)){
+          alert('That assessment type is not activated under Exam Set Up for this class. Please choose another one.'); return; } }
       const maxRaw = fd.get('maxScore');
       const maxScore = Number(maxRaw);
       if(!maxRaw || !Number.isFinite(maxScore) || maxScore<1){
