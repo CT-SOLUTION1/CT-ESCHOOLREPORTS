@@ -2630,6 +2630,18 @@ const A_OPTIONALS_BASE = ['BIOLOGY','CHEMISTRY','PHYSICS','MATHEMATICS','HISTORY
 // same pattern as O-Level/Primary's extra-subjects mechanism below.
 function aOptionalList(){ return [...A_OPTIONALS_BASE, ...((DB.info && DB.info.aExtraSubjects) || [])]; }
 const SCIENCE_GROUP = ['ECONOMICS','BIOLOGY','AGRICULTURE'];
+// A-Level subject categories: every principal subject is ARTS, SCIENCES or neither. General Paper and the
+// subsidiaries are ALWAYS neither. The admin ticks them under "A-Level, O-Level & Primary Extra Subjects"
+// (saved on DB.info.aSubjectCategory = {SUBJECT:'ARTS'|'SCIENCES'|''}); the obvious cases below are the
+// defaults until the admin saves; subjects added later default to ARTS.
+const A_DEFAULT_SCIENCES = ['BIOLOGY','CHEMISTRY','PHYSICS','MATHEMATICS','AGRICULTURE'];
+function aSubjectCategory(subject){
+  if(COMPULSORY.includes(subject) || SUBSIDIARIES.includes(subject)) return '';
+  const saved = DB.info && DB.info.aSubjectCategory;
+  if(saved && Object.prototype.hasOwnProperty.call(saved, subject)) return saved[subject] || '';
+  // Default: the five sciences above; every other principal subject (including ones added later) is ARTS.
+  return A_DEFAULT_SCIENCES.includes(subject) ? 'SCIENCES' : 'ARTS';
+}
 
 // O-Level
 const O_LOWER_COMPULSORY = ['BIOLOGY','CHEMISTRY','PHYSICS','MATHEMATICS','HISTORY','GEOGRAPHY','ENGLISH','ENTREPRENEURSHIP','PHYSICAL EDUCATION']; // S.1 & S.2
@@ -6464,10 +6476,8 @@ function assignPickedLabel(a, cls){
   if(!cls) return '';
   const grp = streamGroupClasses(cls);
   if(grp.length<2) return cls.name;
-  const p = STREAM_PICK[a.id] || '*';
-  if(p==='*') return classBaseName(cls)+' (all streams)';
-  const pc = DB.classes.find(c=>c.id===p);
-  return pc ? classFullName(pc) : classBaseName(cls)+' (all streams)';
+  // Every level: just the class name (e.g. "S.5") - the stream is shown on the card itself.
+  return classBaseName(cls);
 }
 // One shared assignment per teacher + subject (+ papers) for a whole class, however many streams it has:
 // duplicates created per stream are folded into the first one (student lists are merged) and every
@@ -6499,6 +6509,14 @@ function aGroupClasses(cls){
   return streamGroupClasses(cls);
 }
 function aGroupIds(cls){ return new Set(aGroupClasses(cls).map(c=>c.id)); }
+// Ranking / positions / class size, ALL levels: every stream of the class is one group, so streaming never
+// changes how many students are considered (the mark sheets themselves still list per class as before).
+function rankGroupIds(cls){ return streamGroupIds(cls); }
+function rankRosterStudents(cls){
+  if(!cls) return [];
+  const ids = streamGroupIds(cls);
+  return DB.students.filter(s=>s.status!=='left' && ids.has(s.classId));
+}
 // Current students of the class — for an A-Level class, of ALL its streams together.
 function classRosterStudents(cls){
   if(!cls) return [];
@@ -6508,9 +6526,9 @@ function classRosterStudents(cls){
 // For an A-Level student shown under another stream of the same class, use the student's OWN class
 // (that is where the subject ticks / teacher assignments live).
 function aOwnClass(st, cls){
-  if(cls && cls.level==='A' && st && st.classId && st.classId!==cls.id){
+  if(cls && st && st.classId && st.classId!==cls.id){
     const oc = DB.classes.find(c=>c.id===st.classId);
-    if(oc && oc.level==='A') return oc;
+    if(oc && oc.level===cls.level) return oc;
   }
   return cls;
 }
@@ -6595,7 +6613,7 @@ let _peerScoreCache = {version:-1, map:new Map()};
 function peersHaveScore(student, subject, term, year, kind, label, paper){
   if(_peerScoreCache.version!==SCORE_DATA_VERSION) _peerScoreCache = {version:SCORE_DATA_VERSION, map:new Map()};
   const _pcls = DB.classes.find(c=>c.id===student.classId);
-  const _pids = _pcls ? aGroupIds(_pcls) : new Set([student.classId]);
+  const _pids = _pcls ? rankGroupIds(_pcls) : new Set([student.classId]);
   const key = [[..._pids].sort().join(','), subject, term, year].join('||');
   let byStudent = _peerScoreCache.map.get(key);
   if(!byStudent){
@@ -7027,10 +7045,10 @@ function missedSubjectsFor(st, cls, term, year){
 // subjects — unless it is compulsory for the class, in which case it still counts.
 let _markedSubjCache = {ref:null, ver:-1, key:'', set:null};
 function markedSubjectsFor(cls, term, year){
-  const key = [...aGroupIds(cls)].sort().join(',')+'|'+term+'|'+year;
+  const key = [...rankGroupIds(cls)].sort().join(',')+'|'+term+'|'+year;
   if(_markedSubjCache.ref===DB.scores && _markedSubjCache.ver===SCORE_DATA_VERSION && _markedSubjCache.key===key) return _markedSubjCache.set;
   const set = new Set();
-  classRosterStudents(cls).forEach(x=>{
+  rankRosterStudents(cls).forEach(x=>{
     studentSubjects(x, cls).forEach(sj=>{ if(!set.has(sj) && subjectAverage(x.id, sj, term, year)!==null) set.add(sj); });
   });
   _markedSubjCache = {ref:DB.scores, ver:SCORE_DATA_VERSION, key, set};
@@ -7102,10 +7120,10 @@ function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, t
 // it for every student, cutting a full render down to O(N) total.
 let _rankCache = {scoresRef:null, key:'', map:null};
 function computeClassRankings(cls, term, year){
-  const key = [...aGroupIds(cls)].sort().join(',')+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
+  const key = [...rankGroupIds(cls)].sort().join(',')+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
   if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
-  // A-Level: every stream of the class is ranked together, so position and class size are the combined ones.
-  const peers = classRosterStudents(cls);
+  // Every level: every stream of the class is ranked together, so position and class size are the combined ones.
+  const peers = rankRosterStudents(cls);
   const scored = peers.map(s=>({id:s.id, k:metricFor(s, aOwnClass(s, cls), term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
   const map = new Map();
   let position = scored.length;
@@ -7118,7 +7136,7 @@ function computeClassRankings(cls, term, year){
 }
 function classPosition(student, cls, term, year){
   const map = computeClassRankings(cls, term, year);
-  const _gids = aGroupIds(cls), _n = DB.students.filter(s=>_gids.has(s.classId)).length;
+  const _gids = rankGroupIds(cls), _n = DB.students.filter(s=>_gids.has(s.classId)).length;
   return map.get(student.id) || {position: _n || 1, size: _n};
 }
 // showEOT true  -> the card has an End of Term column: comments look ahead to NEXT TERM.
@@ -12545,6 +12563,15 @@ function oLevelSubjectsView(){
     </form>
     <h3 style="margin-top:16px;">Subsidiaries (teacher-ticked, not auto-assigned)</h3><p>${SUBSIDIARIES.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <p class="small">Every A-Level student is expected to take one of these, but which one is entirely up to the Subsidiary Mathematics or Subsidiary Computer teacher ticking that student into their own roster — nothing is guessed or assigned automatically. A student ticked into neither simply has no subsidiary on their report card yet; a student ticked into both by mistake is flagged as a conflict and shows neither until it's fixed.</p>
+    <h3 style="margin-top:16px;">Arts or Sciences</h3>
+    <p class="small">Tick each A-Level principal subject as ARTS or SCIENCES (one or the other). General Paper and the subsidiaries are neither, so they have no tick. Agriculture and the core sciences are ticked SCIENCES; every other subject (including ones you add later) is ticked ARTS. Adjust any and save.</p>
+    <form data-form="saveASubjectCategories">
+      <div style="overflow:auto;"><table class="data-table"><tr><th style="text-align:left;">Subject</th><th>ARTS</th><th>SCIENCES</th></tr>
+      ${aOptionalList().map(s=>{ const c=aSubjectCategory(s); return `<tr><td style="text-align:left;">${esc(s)}</td><td><input type="checkbox" name="aCatArts" value="${esc(s)}" style="width:auto;" ${c==='ARTS'?'checked':''}></td><td><input type="checkbox" name="aCatSci" value="${esc(s)}" style="width:auto;" ${c==='SCIENCES'?'checked':''}></td></tr>`; }).join('')}
+      ${[...COMPULSORY, ...SUBSIDIARIES].map(s=>`<tr><td style="text-align:left;">${esc(s)}</td><td colspan="2" class="small">Neither</td></tr>`).join('')}
+      </table></div>
+      <div style="margin-top:10px;"><button class="btn">Submit — save Arts / Sciences</button></div>
+    </form>
     <h3>Base principal subjects</h3><p>${A_OPTIONALS_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Your added subjects</h3>
     <p>${aExtra.length? aExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delASubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
@@ -15287,7 +15314,10 @@ function scoresEntryView(mine){
     // A class with streams: the stream chosen on the picker (or all of them) decides who is listed.
     const _sgrp = streamGroupClasses(cls);
     const _spick = _sgrp.length>1 ? (STREAM_PICK[a.id] || '*') : '';
-    const scopeIds = _sgrp.length>1 ? (_spick==='*' ? new Set(_sgrp.map(c=>c.id)) : new Set([_spick])) : new Set([a.classId]);
+    // A-Level: whichever stream is picked, every student of every stream of the class is listed (Arts and Sciences
+    // subjects are taken across streams, and a teacher's first-time ticking list must offer everyone).
+    // Every other level: only the students of the stream that was picked.
+    const scopeIds = _sgrp.length>1 ? ((cls.level==='A' || _spick==='*') ? new Set(_sgrp.map(c=>c.id)) : new Set([_spick])) : new Set([a.classId]);
     const clsLabel = assignPickedLabel(a, cls);
     const eligible = sortByName(DB.students.filter(s=>s.status!=='left' && scopeIds.has(s.classId)));
     // Compulsory subjects: EVERY student in the class is listed automatically (new students included) and
@@ -19080,11 +19110,25 @@ document.addEventListener('change', (e)=>{
     if(_sw && _ss){
       const _grp = assignedCls ? streamGroupClasses(assignedCls) : [];
       if(_grp.length>1){
-        _ss.innerHTML = '<option value="">-- choose stream --</option>' + _grp.map(c=>`<option value="${c.id}">${esc(streamShortName(c))}</option>`).join('') + '<option value="*">All streams</option>';
+        if(assignedCls && assignedCls.level==='A'){
+          // A-Level: all students of the class appear whichever stream is chosen.
+          _ss.innerHTML = _grp.map(c=>`<option value="${c.id}">${esc(streamShortName(c))}</option>`).join('') + '<option value="*" selected>All streams</option>';
+        } else {
+          _ss.innerHTML = '<option value="">-- choose stream --</option>' + _grp.map(c=>`<option value="${c.id}">${esc(streamShortName(c))}</option>`).join('');
+        }
         _ss.required = true; _sw.style.display = 'block';
       } else {
         _ss.innerHTML = '<option value="">-- choose stream --</option>'; _ss.required = false; _sw.style.display = 'none';
       }
+    }
+  }
+  // A-Level subject categories: a subject is ARTS or SCIENCES, never both - ticking one clears the other.
+  if(e.target.name==='aCatArts' || e.target.name==='aCatSci'){
+    if(e.target.checked){
+      const other = e.target.name==='aCatArts' ? 'aCatSci' : 'aCatArts';
+      const row = e.target.closest('tr');
+      const o = row && row.querySelector('input[name="'+other+'"]');
+      if(o) o.checked = false;
     }
   }
   if(e.target.name==='role' && e.target.id==='roleSel'){
@@ -20487,6 +20531,13 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='savePCompulsory'){
       DB.info.pCompulsory = fd.getAll('coreSubjects');
       await saveInfo(); if(seedAllRostersFromScores()) await saveAssignments(); render();
+    }
+    else if(type==='saveASubjectCategories'){
+      const arts = new Set(fd.getAll('aCatArts')), sci = new Set(fd.getAll('aCatSci'));
+      const map = {};
+      aOptionalList().forEach(sj=>{ map[sj] = (arts.has(sj) && !sci.has(sj)) ? 'ARTS' : ((sci.has(sj) && !arts.has(sj)) ? 'SCIENCES' : ''); });
+      DB.info.aSubjectCategory = map;
+      await saveInfo(); render();
     }
     else if(type==='saveACompulsoryExtra'){
       DB.info.aCompulsoryExtra = fd.getAll('extraCompulsory');
