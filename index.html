@@ -11413,6 +11413,19 @@ function streamTeacherOptions(selected){
   return `<option value="">-- none yet --</option>` + DB.accounts.filter(a=>a.role==='teacher')
     .map(t=>`<option value="${esc(t.username)}" ${t.username===selected?'selected':''}>${esc(t.name)}</option>`).join('');
 }
+// Rows for "add more streams" on the Edit Class page.
+function moreStreamRowsHtml(count, keep){
+  keep = keep || [];
+  let h = '';
+  for(let i=0;i<count;i++){
+    const k = keep[i] || {name:'', teacher:''};
+    h += `<div class="grid2 stream-row">
+      <div><label>New stream ${i+1} name</label><input name="newStreamName" value="${esc(k.name)}" placeholder="e.g. ${['North','South','West','East','Red','Blue','Green','Yellow','A','B'][i%10]}" required></div>
+      <div><label>Class teacher — new stream ${i+1}</label><select name="newStreamTeacher">${streamTeacherOptions(k.teacher)}</select></div>
+    </div>`;
+  }
+  return h;
+}
 // Builds the stream rows (stream name + class teacher) for the Add Class form.
 function streamFieldsHtml(count, keep){
   keep = keep || [];
@@ -11506,6 +11519,12 @@ function classEditView(classId){
         </select></div>
       </div>
       <p class="small" style="margin-top:6px;">${count} student${count===1?'':'s'} currently in this class.</p>
+      <div style="margin-top:14px;padding-top:12px;border-top:2px solid var(--blue-light);">
+        <label>Add more streams to ${esc(classBaseName(cls))} — how many?</label>
+        <select id="moreStreamCount" style="max-width:220px;">${[0,1,2,3,4,5,6,7,8,9].map(n=>`<option value="${n}">${n===0?'None':n}</option>`).join('')}</select>
+        <p class="small" style="margin:6px 0 0;">Each new stream gets a name and its own class teacher and is listed under this same class. ${cls.stream?'':'<b>Give this class its own stream name above first</b> (e.g. East) so the new streams can sit beside it. '}Place students in the new streams afterwards with the <b>Stream students</b> button on the Classes page.</p>
+        <div id="moreStreamFields"></div>
+      </div>
       <button class="btn" style="margin-top:12px;">Submit — save class details</button>
     </form>
   </div>
@@ -19187,6 +19206,15 @@ document.addEventListener('change', (e)=>{
     stmUpdateProgress();
     return;
   }
+  if(e.target.id==='moreStreamCount'){
+    const box = document.getElementById('moreStreamFields');
+    if(box){
+      const keep = Array.from(box.querySelectorAll('.stream-row')).map(r=>({
+        name:(r.querySelector('input[name="newStreamName"]')||{}).value||'',
+        teacher:(r.querySelector('select[name="newStreamTeacher"]')||{}).value||'' }));
+      box.innerHTML = moreStreamRowsHtml(parseInt(e.target.value,10)||0, keep);
+    }
+  }
   if(e.target.id==='streamCount'){
     const box = document.getElementById('streamFields');
     if(box){
@@ -20506,12 +20534,30 @@ document.addEventListener('submit', async (e)=>{
       if(!name){ alert('Enter a class name.'); return; }
       const newLevel = fd.get('level');
       if(newLevel!==cls.level && !allowedClassLevels().includes(newLevel)){ alert('That class level is not available for your school\'s current grade setting.'); return; }
+      // Optional: more streams added to this class from the same page.
+      const addNames = fd.getAll('newStreamName').map(x=>(x||'').trim());
+      const addTeachers = fd.getAll('newStreamTeacher').map(x=>x||null);
+      const newStreamRecs = [];
+      if(addNames.length){
+        const ownStream = (fd.get('stream')||'').trim();
+        if(!ownStream){ alert('Give this class its own stream name first (e.g. East) in the Stream box, then the new streams can be added beside it.'); return; }
+        if(addNames.some(n=>!n)){ alert('Enter a name for every new stream.'); return; }
+        const base = classBaseName({name, stream:ownStream});
+        const lowerAll = [ownStream.toLowerCase(), ...addNames.map(n=>n.toLowerCase())];
+        if(new Set(lowerAll).size!==lowerAll.length){ alert('Two streams have the same name. Each stream of a class needs a different name.'); return; }
+        for(let i=0;i<addNames.length;i++){
+          const rec = {id:uid('cls'), name:base+' '+addNames[i], level:newLevel, form:fd.get('form')||null, stream:addNames[i], classTeacher:addTeachers[i]||null, nextAdmSeq:0};
+          if(DB.classes.some(c=>c.id!==cls.id && classFullName(c).toLowerCase()===classFullName(rec).toLowerCase() && c.level===rec.level)){ alert(`"${classFullName(rec)}" already exists. Use a different stream name.`); return; }
+          newStreamRecs.push(rec);
+        }
+      }
       cls.name = name;
       cls.level = newLevel;
       cls.form = fd.get('form')||null;
       cls.stream = fd.get('stream')||'';
       cls.classTeacher = fd.get('classTeacher')||null;
-      await saveClasses(); showDeliveredToast('Class details saved'); VIEW = {name:'classes', params:{}}; render();
+      newStreamRecs.forEach(r=>DB.classes.push(r));
+      await saveClasses(); showDeliveredToast(newStreamRecs.length ? `Class details saved — ${newStreamRecs.length} new stream${newStreamRecs.length===1?'':'s'} added` : 'Class details saved'); VIEW = {name:'classes', params:{}}; render();
     }
     else if(type==='createAccount'){
       const role = fd.get('role');
