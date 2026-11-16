@@ -6503,9 +6503,10 @@ function mergeStreamAssignments(){
   });
   return changed;
 }
+var FORCE_STREAM_GROUP = false;
 function aGroupClasses(cls){
   if(!cls) return [];
-  if(cls.level!=='A') return [cls];
+  if(cls.level!=='A' && !FORCE_STREAM_GROUP) return [cls];
   return streamGroupClasses(cls);
 }
 function aGroupIds(cls){ return new Set(aGroupClasses(cls).map(c=>c.id)); }
@@ -9564,12 +9565,22 @@ function downloadStudentsSummaryCsv(finClassId){
 }
 // Class chooser shown after picking Fees or Requirements: a named class, or
 // "Show All Students" across every class at once.
+function finClassGroups(){ return pickGroups(); }
+function finOpenGroup(classId){
+  const gs = finClassGroups();
+  return gs.find(g=>g.streams.some(c=>c.id===classId)) || gs.find(g=>g.id===(VIEW.params&&VIEW.params.finGroupId)) || null;
+}
 function classPickerHTML(){
+  const og = finOpenGroup(VIEW.params&&VIEW.params.finClassId);
+  const cnt = c=>DB.students.filter(s=>s.status!=='left' && s.classId===c.id).length;
   return `<div class="card"><h3>Choose a Class</h3>
     <div class="flex" style="flex-wrap:wrap;gap:10px;">
-      ${DB.classes.map(c=>`<button type="button" class="btn-outline" data-action="finClass:${c.id}">${esc(c.name)}</button>`).join('')}
+      ${finClassGroups().map(g=> g.streams.length>1
+        ? `<button type="button" class="btn-outline${og&&og.id===g.id?' sel':''}" data-action="finGroup:${esc(g.id)}">${esc(g.label)}</button>`
+        : `<button type="button" class="btn-outline" data-action="finClass:${esc(g.streams[0].id)}">${esc(g.label)}</button>`).join('')}
       <button type="button" class="btn" data-action="finClass:all">Show All Students</button>
     </div>
+    ${og&&og.streams.length>1 ? `<label style="margin-top:12px;">Tap the stream of ${esc(og.label)}</label><div class="sc-grid">${og.streams.map((c,i)=>`<button type="button" class="sc-card" style="--sc:${streamColor(i)}" data-action="finClass:${esc(c.id)}"><b>${esc(streamShortName(c))}</b><span>${cnt(c)} students</span></button>`).join('')}</div>` : ''}
     ${!DB.classes.length?'<p class="small">No classes set up yet — add one under "Classes" first.</p>':''}
   </div>`;
 }
@@ -9653,10 +9664,24 @@ const FEE_SET_CATS = [['general','GENERAL AGREED FEES'],['individual','INDIVIDUA
 function finSummaryHTML(label, changeAction){
   return `<div class="fin-summary"><span class="fin-sum-text">${esc(label)}</span><button type="button" class="btn-outline" data-action="${changeAction}">✎ Change</button></div>`;
 }
+// One entry per class; a class with streams shows its streams as cards under it.
+function finClassItems(classId){
+  const og = finOpenGroup(classId);
+  const cnt = c=>DB.students.filter(s=>s.status!=='left' && s.classId===c.id).length;
+  return finClassGroups().map(g=>{
+    if(g.streams.length<2) return {v:g.streams[0].id, t:g.label, sel:g.streams[0].id===classId};
+    return {v:'grp:'+g.id, t:g.label, sel:!!(og&&og.id===g.id),
+      sub: (og&&og.id===g.id) ? g.streams.map((c,i)=>({v:c.id,t:streamShortName(c),n:cnt(c)+' students',sel:c.id===classId,color:streamColor(i)})) : null};
+  });
+}
+function finClassValue(p, value){
+  if(typeof value==='string' && value.indexOf('grp:')===0){ p.finGroupId = value.slice(4); p.finClassId = null; }
+  else { p.finClassId = value || null; if(value && value!=='all') p.finGroupId = null; }
+}
 function setFeeParam(key, value){
   const p = {...VIEW.params};
-  if(key==='cat'){ p.feeCat = value || undefined; p.finClassId = null; p.feeTerm = undefined; p.feeYear = undefined; }   // a new category asks for the class again
-  else if(key==='class'){ p.finClassId = value || null; p.feeChange = false; }
+  if(key==='cat'){ p.feeCat = value || undefined; p.finClassId = null; p.finGroupId = null; p.feeTerm = undefined; p.feeYear = undefined; }   // a new category asks for the class again
+  else if(key==='class'){ finClassValue(p, value); p.feeChange = false; }
   else if(key==='term') p.feeTerm = value || undefined;
   else if(key==='year') p.feeYear = value || undefined;
   VIEW.params = p; render();
@@ -9666,7 +9691,7 @@ function feeSelectorsHTML(classId, withAll, firstNo, catCol){
   const term = p.feeTerm || DB.info.currentTerm, year = String(p.feeYear || DB.info.currentYear);
   const cols = catCol ? [catCol] : [];
   cols.push({label:n0+'. CLASS', key:'class', fn:'setFeeParam',
-    items: DB.classes.map(c=>({v:c.id,t:c.name,sel:c.id===classId})).concat(withAll?[{v:'all',t:'All Students',sel:classId==='all'}]:[])});
+    items: finClassItems(classId).concat(withAll?[{v:'all',t:'All Students',sel:classId==='all'}]:[])});
   if(classId) cols.push(...finTermYearCols(term, year, 'setFeeParam', n0+1));
   return finColsHTML(cols) + (DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>');
 }
@@ -10305,7 +10330,7 @@ function accountStatementsView(d){
         ? `<div><label>Staff member</label><select onchange="setAnalysisParam('stStaff', this.value)"><option value="" ${!p.stStaff?'selected':''}>All staff with pay records (${staffWith.length})</option><optgroup label="Teaching staff">${staffAll.filter(x=>x.personType!=='nonteaching').map(staffOpt).join('')}</optgroup><optgroup label="Non teaching staff">${staffAll.filter(x=>x.personType==='nonteaching').map(staffOpt).join('')}</optgroup></select></div>`
         : mode==='school'
         ? `<div><label>From date (optional)</label><input type="date" value="${esc(p.stFrom||'')}" max="${esc(asOf)}" onchange="setAnalysisParam('stFrom', this.value)"></div>`
-        : `<div><label>Class</label><select onchange="setStmtClass(this.value)"><option value="all" ${scope==='all'?'selected':''}>All classes</option>${DB.classes.map(c=>`<option value="${c.id}" ${scope===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>`}
+        : `<div><label>Class</label><select data-csp onchange="setStmtClass(this.value)"><option value="all" ${scope==='all'?'selected':''}>All classes</option>${DB.classes.map(c=>`<option value="${c.id}" ${scope===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>`}
     </div>
     ${mode==='staff' ? staffHint : mode==='school'
       ? (finContentMode()==='requirements' ? '' : `<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600;"><input type="checkbox" style="width:auto;" ${p.stSal!=='0'?'checked':''} onchange="setAnalysisParam('stSal', this.checked?'1':'0')"> Include salaries &amp; wages (accrued per term)</label>`)
@@ -10407,7 +10432,7 @@ function feesAnalysisView(d){
       <div><label>Year</label><input value="${esc(String(year))}" onchange="setAnalysisParam('anYear', this.value)"></div>
     </div>
     <label style="margin-top:10px;">Scope</label>
-    <select onchange="setAnalysisParam('anScope', this.value)">
+    <select data-csp onchange="setAnalysisParam('anScope', this.value)">
       <option value="all" ${isAll?'selected':''}>School-wide (all classes)</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${scope===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
     </select>
@@ -10472,7 +10497,7 @@ function requirementsAnalysisView(d){
       <div><label>Year</label><input value="${esc(String(year))}" onchange="setAnalysisParam('anYear', this.value)"></div>
     </div>
     <label style="margin-top:10px;">Scope</label>
-    <select onchange="setAnalysisParam('anScope', this.value)">
+    <select data-csp onchange="setAnalysisParam('anScope', this.value)">
       <option value="all" ${isAll?'selected':''}>School-wide (all classes)</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${scope===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
     </select>
@@ -10540,7 +10565,7 @@ function requirementTypesCatalogHTML(d, active){
       <label>Requirement Item</label><input name="name" required value="${editReq?esc(editReq.name):''}">
       <div class="grid2">
         <div><label>Category</label><select name="category">${['Admission Document','Uniform','Boarding','Academic','Medical','Identity','Other'].map(c=>`<option ${editReq&&editReq.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div><label>Applies to</label><select name="scope">${classOptions(editReq?editReq.scope:'all')}</select></div>
+        <div><label>Applies to</label><select data-csp name="scope">${classOptions(editReq?editReq.scope:'all')}</select></div>
       </div>
       <label>Substitute fee (cash paid instead of the item)</label><input name="subFee" type="number" min="0" step="any" value="${editReq&&editReq.subFee>0?editReq.subFee:''}">
       <div class="flex" style="margin-top:12px;"><button class="btn">${editReq?'Save changes':'Add Requirement'}</button>${editReq?cancelLink:''}</div>
@@ -10692,7 +10717,8 @@ function reqSelectionFormHTML(finClassId, d, clsLabel, alreadyConfigured, ctx){
 // Cascading selection columns used by FEES and REQUIREMENTS: each column is a stack of buttons; tapping one
 // immediately opens the next column (the caller only adds a column once the one before it has a choice).
 function finColsHTML(cols){
-  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col" data-key="${esc(c.key)}"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="${it.cls?'pick-btn '+it.cls:'fin-opt'}${it.sel?' sel':''}" ${it.cls?'style="margin:0 0 8px;" ':''}data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>`).join('')}</div>`).join('')}</div></div>`;
+  const subHTML = (c,it)=> it.sub ? `<div class="sc-grid" style="margin:0 0 8px;">${it.sub.map(x=>`<button type="button" class="sc-card${x.sel?' on':''}" style="--sc:${x.color}" data-v="${esc(x.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)"><b>${esc(x.t)}</b><span>${esc(x.n||'')}</span></button>`).join('')}</div>` : '';
+  return `<div class="card"><div class="fin-cols">${cols.map(c=>`<div class="fin-col" data-key="${esc(c.key)}"><label>${esc(c.label)}</label>${c.items.map(it=>`<button type="button" class="${it.cls?'pick-btn '+it.cls:'fin-opt'}${it.sel?' sel':''}" ${it.cls?'style="margin:0 0 8px;" ':''}data-v="${esc(it.v)}" onclick="${c.fn}('${c.key}', this.dataset.v)">${esc(it.t)}</button>${subHTML(c,it)}`).join('')}</div>`).join('')}</div></div>`;
 }
 function finTermYearCols(term, year, fn, n0){
   const cy = Number(DB.info.currentYear) || new Date().getFullYear();
@@ -10706,7 +10732,7 @@ function finTermYearCols(term, year, fn, n0){
 // ---- Requirements section: big tappable heading -> Class / Term / Year (shown step by step) -> content ----
 function setReqParam(key, value){
   const p = {...VIEW.params};
-  if(key==='class'){ p.finClassId = value || null; p.reqChange = false; }
+  if(key==='class'){ finClassValue(p, value); p.reqChange = false; }
   else if(key==='term') p.reqTerm = value || undefined;
   else if(key==='year') p.reqYear = value || undefined;
   VIEW.params = p; render();
@@ -10715,7 +10741,7 @@ function reqSelectorsHTML(classId){
   const p = VIEW.params;
   const term = p.reqTerm || DB.info.currentTerm, year = String(p.reqYear || DB.info.currentYear);
   const cols = [{label:'1. CLASS', key:'class', fn:'setReqParam',
-    items: DB.classes.map(c=>({v:c.id,t:c.name,sel:c.id===classId})).concat([{v:'all',t:'All Students',sel:classId==='all'}])}];
+    items: finClassItems(classId).concat([{v:'all',t:'All Students',sel:classId==='all'}])}];
   if(classId) cols.push(...finTermYearCols(term, year, 'setReqParam', 2));
   return finColsHTML(cols) + (DB.classes.length?'':'<p class="small">No classes set up yet — add one under "Classes" first.</p>');
 }
@@ -10884,7 +10910,7 @@ function financeAdvancedView(){
         <div><label>Term</label><select name="term">${termOptions(editFee?editFee.term:null)}</select></div>
         <div><label>Year</label><input name="year" type="number" required value="${editFee?editFee.year:DB.info.currentYear}"></div>
       </div>
-      <label>Applies to</label><select name="scope">${feeScopeOptions(editFee?editFee.scope:'all')}</select>
+      <label>Applies to</label><select data-csp name="scope">${feeScopeOptions(editFee?editFee.scope:'all')}</select>
       <p class="small" style="margin:6px 0 0;">Need a lower/higher amount for just one learner? Pick that student directly above under "Individual student", and add a separate item for them (instead of, or on top of, their class charge) — that's a fully independent fee structure for that one student.</p>
       <label>Exempt specific students from this charge (optional)</label>
       <select name="excludeIds" multiple size="4">${excludeStudentsOptions(editFee?editFee.excludeIds:[])}</select>
@@ -10977,7 +11003,7 @@ function financeAdvancedView(){
       <label>Requirement Item</label><input name="name" required value="${editReq?esc(editReq.name):''}">
       <div class="grid2">
         <div><label>Category</label><select name="category">${['Admission Document','Uniform','Boarding','Academic','Medical','Identity','Other'].map(c=>`<option ${editReq&&editReq.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div><label>Applies to</label><select name="scope">${classOptions(editReq?editReq.scope:'all')}</select></div>
+        <div><label>Applies to</label><select data-csp name="scope">${classOptions(editReq?editReq.scope:'all')}</select></div>
       </div>
       <div class="flex" style="margin-top:12px;"><button class="btn">${editReq?'Save changes':'Add Requirement'}</button>${editReq?cancelLink:''}</div>
     </form>
@@ -11021,7 +11047,7 @@ function feesRegisterSectionHTML(d, active){
   return `<div class="card"><h3>5b. Fees Register — by Class, Term &amp; Year</h3>
   <p class="small">A wider, per-student breakdown of Invoiced, Paid and Balance for one class, term and year at a time — handy for a printed register or a class-by-class review, using the same cumulative "to date" balance shown everywhere else in Finance.</p>
   <div class="grid3">
-    <div><label>Class</label><select onchange="setAnalysisParam('feesRegClass', this.value)">
+    <div><label>Class</label><select data-csp onchange="setAnalysisParam('feesRegClass', this.value)">
       <option value="all" ${regClass==='all'?'selected':''}>All classes</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${regClass===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
     </select></div>
@@ -11300,7 +11326,10 @@ function restoreItemsView(){
     </div>
     <div class="card">
       <h3>Classes (${d.classes.length})</h3>
-      ${d.classes.map(c=>`<label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="classes" value="${esc(c.id)}" style="width:auto;"><span>${esc(classFullName(c))} — ${esc(levelLabel(c))} ${flag(!curClassIds.has(c.id))}</span></label>`).join('') || '<p class="small">No classes in this backup.</p>'}
+      ${(()=>{ const gm = new Map(); d.classes.forEach(c=>{ const k = [c.level, c.form||'', classBaseName(c).toLowerCase()].join('|'); if(!gm.has(k)) gm.set(k, []); gm.get(k).push(c); });
+        return [...gm.values()].map(g=> g.length<2
+          ? `<label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="classes" value="${esc(g[0].id)}" style="width:auto;"><span>${esc(classFullName(g[0]))} — ${esc(levelLabel(g[0]))} ${flag(!curClassIds.has(g[0].id))}</span></label>`
+          : `<div style="margin:8px 0;"><b>${esc(classBaseName(g[0]))}</b> <span class="small">— ${esc(levelLabel(g[0]))} · tap the streams to restore</span><div class="sc-grid">${g.map((c,i)=>`<label class="sc-card" style="--sc:${streamColor(i)}"><input type="checkbox" name="classes" value="${esc(c.id)}" class="sc-cb"><b>${esc(streamShortName(c))}</b><span>${flag(!curClassIds.has(c.id))}</span></label>`).join('')}</div></div>`).join('') || '<p class="small">No classes in this backup.</p>'; })()}
     </div>
     <div class="card">
       <h3>Staff Accounts (${teacherAccounts.length})</h3>
@@ -11530,7 +11559,7 @@ function staffAccountsView(){
   <div class="card"><h3>All Staff List</h3>
     <div style="margin:0 0 10px;"><button type="button" class="btn-outline" onclick="downloadAccountsPdf('teacher')">⬇ Download login details (PDF)</button></div>
     <label>Showing staff — filter by class if needed</label>
-    <select onchange="filterStaffByClass(this.value)">
+    <select data-csp onchange="filterStaffByClass(this.value)">
       <option value="">All staff</option>
       <option value="__unassigned" ${VIEW.params.staffClassFilter==='__unassigned'?'selected':''}>Not yet assigned to any class/subject</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.staffClassFilter===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
@@ -12122,7 +12151,7 @@ function studentsView(){
       </div>
       <div class="grid2">
         <div><label>Class</label>
-      <select name="classId" id="stuClassSel" required onchange="updateAdmNoPreview(this.value)"><option value="">-- select --</option>
+      <select data-csp name="classId" id="stuClassSel" required onchange="updateAdmNoPreview(this.value)"><option value="">-- select --</option>
       ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
       </select></div>
         <div><label>Admission number (automatic)</label>
@@ -12147,7 +12176,7 @@ function studentsView(){
     <form data-form="bulkAddStudents" id="bulkStuForm" autocomplete="off">
       <div class="bulk-row">
         <div><label>Class</label>
-          <select name="classId" id="bulkClassSel" required><option value="">-- select --</option>
+          <select data-csp name="classId" id="bulkClassSel" required><option value="">-- select --</option>
           ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
           </select></div>
         <div><label>Upload (.docx / CSV)</label>
@@ -12171,7 +12200,7 @@ function studentsView(){
     <p class="small stu-hint">Pick a class, search by name, or both — the full school list isn't shown at once.</p>
     <div class="grid2">
       <div><label>Class</label>
-        <select onchange="filterStudentsByClass(this.value)">
+        <select data-csp onchange="filterStudentsByClass(this.value)">
           <option value="">-- select class --</option>
           ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
         </select>
@@ -12201,7 +12230,7 @@ function studentsView(){
     <div style="display:flex;gap:10px;align-items:flex-start;">
       <div style="flex:0 0 42%;max-width:260px;display:flex;flex-direction:column;gap:6px;">
         <label style="margin:0;">Class</label>
-        <select id="feesCodeClassSel">
+        <select data-csp id="feesCodeClassSel">
       <option value="">-- select class --</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${VIEW.params.stuClassFilter===c.id?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
     </select>
@@ -12817,7 +12846,7 @@ function studentProfileView(studentId){
       <p class="small" style="margin-top:4px;">Entirely optional — not every school uses one. Handy for a student uploaded in bulk that didn't get one at the time. When set, it shows right alongside the admission number wherever that's displayed (student list, report card, etc.); when left blank, nothing extra shows at all.</p>
       <p class="small" style="margin-top:-6px;">The admission number itself can't be edited — it's permanent for as long as this student is at the school, even across a class change below.</p>
       <label>Class</label>
-      <select name="classId" id="editStuClassSel" required>
+      <select data-csp name="classId" id="editStuClassSel" required>
       ${DB.classes.map(c=>`<option value="${c.id}" data-level="${c.level}" data-form="${c.form||''}" ${c.id===s.classId?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
       </select>
       <p class="small" style="margin-top:6px;">Moving a student to a different class does not carry subjects over — each subject teacher in the new class ticks them in separately.</p>
@@ -12985,7 +13014,7 @@ function examSetupView(gcClassId){
     <h3>Per-Class Assessment Type</h3>
     <p class="small">Every class follows the school-wide setup above by default. If one class needs a genuinely different assessment type — different components, labels, weighting, or its own named tests — turn on a custom setup for just that class here, so it's ready whenever that situation comes up (e.g. a class marked exams-only, or one with extra continuous assessment tests other classes don't have). Every other class keeps using the school-wide setup untouched.</p>
     <label>Class</label>
-    <select onchange="setAnalysisParam('gcClassId', this.value)">
+    <select data-csp onchange="setAnalysisParam('gcClassId', this.value)">
       <option value="">-- choose a class to view/set its assessment type --</option>
       ${DB.classes.map(c=>`<option value="${c.id}" ${c.id===gcClassId?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('') || ''}
     </select>
@@ -13153,11 +13182,13 @@ function pickGroups(list){
     out.push({id:h.id, label:g.length>1?classBaseName(h):classFullName(h), streams:g}); });
   return out;
 }
+var STREAM_COLORS = ['#1e6fd9','#c2410c','#7c3aed','#0f7a3a','#be185d','#0e7490','#a16207','#4d7c0f','#b91c1c','#475569'];
+function streamColor(i){ return STREAM_COLORS[i % STREAM_COLORS.length]; }
 function streamCardsHTML(streams, sel, onToggle, onAll){
   const allOn = streams.length>0 && streams.every(c=>sel.has(c.id));
   const cnt = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
-  return `<div class="sc-grid"><button type="button" class="sc-card sc-all${allOn?' on':''}" onclick="${onAll}(${!allOn})"><b>All streams</b><span>${streams.reduce((n,c)=>n+cnt(c.id),0)} students</span></button>`
-    + streams.map(c=>{ const on=sel.has(c.id); return `<button type="button" class="sc-card${on?' on':''}" onclick="${onToggle}('${esc(c.id)}',${!on})"><b>${esc(streamShortName(c))}</b><span>${cnt(c.id)} students</span></button>`; }).join('')+`</div>`;
+  return `<div class="sc-grid"><button type="button" class="sc-card sc-all${allOn?' on':''}" style="--sc:#1f3a5f" onclick="${onAll}(${!allOn})"><b>All streams</b><span>${streams.reduce((n,c)=>n+cnt(c.id),0)} students</span></button>`
+    + streams.map((c,i)=>{ const on=sel.has(c.id); return `<button type="button" class="sc-card${on?' on':''}" style="--sc:${streamColor(i)}" onclick="${onToggle}('${esc(c.id)}',${!on})"><b>${esc(streamShortName(c))}</b><span>${cnt(c.id)} students</span></button>`; }).join('')+`</div>`;
 }
 var PR = {from:'', to:'', sel:new Set(), mode:'keep'}, PR_CREATED = false;
 function prDestOf(src, dg){
@@ -13256,7 +13287,7 @@ function promoteView(){
       <table class="data-table" style="margin-top:8px;">
         <tr><th>Class</th><th>Promote to</th><th>Class teacher of next class</th></tr>
         ${DB.classes.map(c=>`<tr><td>${esc(classFullName(c))}</td><td>
-          <select name="to__${c.id}"><option value="">-- don't promote --</option>${DB.classes.filter(o=>o.id!==c.id).map(o=>`<option value="${o.id}">${esc(classFullName(o))}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
+          <select data-csp name="to__${c.id}"><option value="">-- don't promote --</option>${DB.classes.filter(o=>o.id!==c.id).map(o=>`<option value="${o.id}">${esc(classFullName(o))}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
         </td><td><select name="ct__${c.id}">${promoTeacherOptions()}</select></td></tr>`).join('') || `<tr><td colspan="3">No classes yet — add a class first.</td></tr>`}
       </table>
       <button class="btn" style="margin-top:10px;">Submit — promote all classes</button>
@@ -13638,10 +13669,16 @@ function marksheetsListView(){
   const selId = VIEW.params && VIEW.params.msClassId;
   const gsLevels = isAdmin ? ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l)) : [];
   const lvSel = (typeof selId==='string' && selId.indexOf('LEVEL_')===0 && gsLevels.includes(selId.slice(6))) ? selId.slice(6) : null;
-  const cls = lvSel ? null : (classes.find(c=>c.id===selId) || null);
-  const gsScopeId = cls ? cls.id : (lvSel ? 'LEVEL_'+lvSel : '');
-  const gsAllowed = !!gsScopeId && (isAdmin || (cls && ctClassIds.includes(cls.id)));
-  const mode = (cls||lvSel) && VIEW.params && VIEW.params.msMode ? VIEW.params.msMode : '';
+  const _c0 = lvSel ? null : (classes.find(c=>c.id===selId) || null);
+  const cls = _c0 ? streamGroupClasses(_c0)[0] : null;
+  const msGrp = cls ? streamGroupClasses(cls) : [], msMulti = msGrp.length>1;
+  const _ms = VIEW.params && VIEW.params.msStreams;
+  const msAll = msMulti && _ms==='ALL';
+  const msIds = msMulti ? (msAll ? msGrp.map(c=>c.id) : (Array.isArray(_ms) ? _ms.filter(id=>msGrp.some(c=>c.id===id)) : [])) : [];
+  const msReady = !msMulti || msIds.length>0;
+  const gsScopeId = cls ? (!msReady ? '' : (msMulti ? (msAll ? 'ALL|'+cls.id : 'S|'+msGrp.filter(c=>msIds.includes(c.id)).map(c=>c.id).join('|')) : cls.id)) : (lvSel ? 'LEVEL_'+lvSel : '');
+  const gsAllowed = !!gsScopeId && (isAdmin || (cls && ctClassIds.some(id=>id===cls.id || msGrp.some(c=>c.id===id))));
+  const mode = ((cls&&msReady)||lvSel) && VIEW.params && VIEW.params.msMode ? VIEW.params.msMode : '';
   let body = '';
   if(!classes.length){
     body = `<p class="small">${isAdmin?'No classes yet — add a class first.':"You haven't been assigned any subjects yet."}</p>`;
@@ -13650,10 +13687,11 @@ function marksheetsListView(){
     <label>Select class</label>
     <select onchange="setMarksheetClass(this.value)" style="max-width:320px;">
       <option value="" ${(cls||lvSel)?'':'selected'}>— Select class —</option>
-      ${classes.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      ${classes.filter(c=>streamGroupClasses(c)[0].id===c.id).map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(streamGroupClasses(c).length>1?classBaseName(c):c.name)}</option>`).join('')}
       ${gsLevels.length ? `<optgroup label="Whole level (all classes)">${gsLevels.map(l=>`<option value="LEVEL_${l}" ${lvSel===l?'selected':''}>${esc(mmLevelLabel(l))} — all classes</option>`).join('')}</optgroup>` : ''}
     </select>
-    ${(cls||lvSel) ? `
+    ${(cls&&msMulti) ? `<label style="margin-top:12px;">Streams</label>${streamCardsHTML(msGrp, new Set(msIds), 'msStreamToggle', 'msStreamAll')}<p class="small" style="margin-top:6px;">Tap one or more streams — each stream is listed one after another, starting on a new page — or “All streams” to treat the whole class as one.</p>` : ''}
+    ${((cls&&msReady)||lvSel) ? `
     <div class="flex" style="margin-top:14px;gap:10px;flex-wrap:wrap;">
       <button class="${mode==='filled'?'btn':'btn-outline'}" data-action="msMode:filled"><b>FILLED MARKSHEETS</b></button>
       <button class="${mode==='empty'?'btn':'btn-outline'}" data-action="msMode:empty"><b>EMPTY MARKSHEETS</b></button>
@@ -13687,6 +13725,8 @@ function marksheetsListView(){
   ${panel}`;
   return panel ? msInner : `<div class="center-stage">${msInner}</div>`;
 }
+function msStreamToggle(id,on){ const p=VIEW.params||{}; const all=streamGroupClasses(DB.classes.find(c=>c.id===p.msClassId)).map(c=>c.id); let cur = p.msStreams==='ALL' ? all : (Array.isArray(p.msStreams)?p.msStreams.slice():[]); cur = on ? [...new Set([...cur,id])] : cur.filter(x=>x!==id); VIEW.params = {...p, msStreams:cur}; render(); }
+function msStreamAll(on){ VIEW.params = {...VIEW.params, msStreams:on?'ALL':[]}; render(); }
 function setMarksheetClass(id){ VIEW.params = {msClassId:id, msMode:''}; render(); }
 // ---- Blank Mark Sheets: one printable empty sheet per class + subject, listing only the
 // students enrolled for that subject (studentSubjects already puts every student on a
@@ -13794,6 +13834,14 @@ function gsScope(scope){
     const level = scope.slice(6), classes = levelClasses(level);
     return {isLevel:true, level, classes, cls:classes[0]||null, label: mmLevelLabel(level)+' — all classes', fileLabel: mmLevelLabel(level)};
   }
+  if(scope.indexOf('ALL|')===0){
+    const c0 = DB.classes.find(c=>c.id===scope.slice(4)) || null, grp0 = c0 ? streamGroupClasses(c0) : [];
+    return {isLevel:false, multi:grp0.length>1, level:c0?c0.level:'', classes:grp0, cls:grp0[0]||c0, label:c0?(grp0.length>1?classBaseName(c0)+' — all streams':classFullName(c0)):'', fileLabel:c0?classBaseName(c0)+'_all_streams':'class'};
+  }
+  if(scope.indexOf('S|')===0){
+    const cl = scope.slice(2).split('|').map(id=>DB.classes.find(c=>c.id===id)).filter(Boolean);
+    return {isLevel:false, sections:true, level:cl[0]?cl[0].level:'', classes:cl, cls:cl[0]||null, label:cl.length?classBaseName(cl[0])+' — '+cl.map(streamShortName).join(', '):'', fileLabel:cl.length?classBaseName(cl[0])+'_'+cl.map(streamShortName).join('_'):'class'};
+  }
   const cls = DB.classes.find(c=>c.id===scope) || null;
   const grp = cls ? aGroupClasses(cls) : [];
   if(cls && grp.length>1){
@@ -13840,7 +13888,7 @@ function generalSheetHeaderOpts(mode, scope){
   const g = gsScope(scope);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   return {
-    forceTitle: `${mode==='attendance' ? 'ATTENDANCE SHEET' : (isSecondarySchool()?'SCORE SHEET':'MARKSHEET')} FOR ${[g.label, term||'', year||''].filter(Boolean).join(', ')}`,
+    forceTitle: g.sections ? undefined : `${mode==='attendance' ? 'ATTENDANCE SHEET' : (isSecondarySchool()?'SCORE SHEET':'MARKSHEET')} FOR ${[g.label, term||'', year||''].filter(Boolean).join(', ')}`,
     forceSubtitle: mode==='attendance' ? 'General • All subjects • Attendance sheet' : (mode==='empty' ? 'General • All subjects • Empty sheet' : 'General • All subjects • Overall results'),
     pageNumberBottom: true, fillPage: true
   };
@@ -13849,6 +13897,20 @@ function generalSheetView(mode, scope){
   mode = mode==='filled' ? 'filled' : (mode==='attendance' ? 'attendance' : 'empty');
   const g = gsScope(scope);
   if(!g.classes.length) return '<p>Choose a class or level from Scores Sheets and Attendances.</p>';
+  if(g.sections){
+    // One section per stream, all in one file: each stream starts on a fresh page, one below the other.
+    const term0 = DB.info.currentTerm, year0 = DB.info.currentYear, label0 = mode==='empty' ? 'Empty' : (mode==='attendance' ? 'Attendance' : 'Filled');
+    const cards = g.classes.map(c=>{ const h = generalSheetView(mode, c.id); const a = h.indexOf('<div class="card" style="overflow:auto;">'), b = h.lastIndexOf('\n  </div>\n  </div>');
+      return a<0 ? '' : h.slice(a, b) + '\n  </div>'; });
+    const total = g.classes.reduce((n,c)=>n+DB.students.filter(x=>x.status!=='left'&&x.classId===c.id).length,0), arg0 = `${mode}:${scope}`;
+    return `
+  <h2>General ${label0} ${mode==='attendance'?'Sheet':'Score Sheet'}</h2>
+  <div class="card"><div class="flex" style="justify-content:space-between;align-items:center;flex-wrap:wrap;">
+    <div><b>${esc(g.label)}</b> — ${g.classes.length} streams, each from a new page &nbsp;•&nbsp; ${total} student${total===1?'':'s'}</div>
+    <div class="flex"><button class="btn-outline" data-action="dlGeneralPdf:${arg0}"><b>Download as PDF</b></button><button class="btn" data-action="printGeneral:${arg0}">Print / Save as PDF</button><button class="btn-outline" data-action="nav:marksheets">Back to Scores Sheets &amp; Attendances</button></div>
+  </div></div>
+  <div id="printArea">${cards.join('')}</div>`;
+  }
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const students = gsStudents(g);
   const showCls = !!(g.isLevel || g.multi);
@@ -14407,8 +14469,13 @@ function withAssessMode(mode, fn){
 }
 function classAnalysisView(){
   const a = VIEW && VIEW.params && VIEW.params.assess;
-  return withAssessMode(a==='cw' ? 'cw' : (a==='eot' ? 'eot' : 'all'), classAnalysisViewCore);
+  FORCE_STREAM_GROUP = !!(VIEW && VIEW.params && VIEW.params.streamAll && VIEW.params.form!=='levelwise');   // "All streams": the whole class together
+  try{ return withAssessMode(a==='cw' ? 'cw' : (a==='eot' ? 'eot' : 'all'), classAnalysisViewCore); }
+  finally{ FORCE_STREAM_GROUP = false; }
 }
+function anStreamPickOn(id,on){ anStreamPick(id); }
+function anStreamPick(id){ VIEW.params = {...VIEW.params, streamId:id, streamAll:false}; render(); }
+function anStreamAll(on){ VIEW.params = {...VIEW.params, streamId:'', streamAll:!!on}; render(); }
 function classAnalysisViewCore(){
   const isAdmin = CUR.role==='admin';
   const visibleClasses = isAdmin ? DB.classes : classTeacherClasses();
@@ -14433,8 +14500,13 @@ function classAnalysisViewCore(){
   const isLevelForm = formKey==='levelwise';
   // Order of selection: 1) analysis form -> 2) assessment type -> 3) class (or level). Each step only
   // becomes available once the one before it has been chosen; the form loads after step 3.
+  const _gsel = pickGroups(visibleClasses).find(g=>g.streams.some(c=>c.id===sel.classId)) || null;
+  const _multi = !!(_gsel && _gsel.streams.length>1) && !isLevelForm;
+  const _allStr = _multi && sel.streamAll===true;
+  const _effId = !_multi ? sel.classId : (_allStr ? _gsel.id : ((sel.streamId && _gsel.streams.some(c=>c.id===sel.streamId)) ? sel.streamId : ''));
+  const _byId = id => id && (visibleClasses.find(c=>c.id===id) || (_multi && DB.classes.find(c=>c.id===id))) || null;
   const _selCls = isLevelForm ? (selLevel ? visibleClasses.find(c=>c.level===selLevel) : null)
-    : ((sel.classId && visibleClasses.find(c=>c.id===sel.classId)) || null);
+    : _byId(_effId);
   const _acfg = examConfig(_selCls ? _selCls.id : undefined);   // the admin's own assessment names
   const ASSESS_TYPES = [];
   if(_acfg.cwEnabled) ASSESS_TYPES.push(['cw', _acfg.cwLabel]);
@@ -14445,7 +14517,7 @@ function classAnalysisViewCore(){
   const assessLabel = (ASSESS_TYPES.find(a=>a[0]===assessKey)||['',''])[1];
   const cls = !assessKey ? null : (isLevelForm
     ? (selLevel ? visibleClasses.find(c=>c.level===selLevel) : null)
-    : ((sel.classId && visibleClasses.find(c=>c.id===sel.classId)) || null));
+    : _byId(_effId));
   const levelWord = l => l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "A'-Level");
   const selectorsHtml = (showButtons)=>`
   <h2>RESULT ANALYSIS</h2>
@@ -14466,12 +14538,13 @@ function classAnalysisViewCore(){
         <option value="" ${selLevel?'':'selected'}>— Select level —</option>
         ${levelsAvail.map(l=>`<option value="${l}" ${l===selLevel?'selected':''}>${esc(levelWord(l))}</option>`).join('')}
       </select>`
-        : `<label>3. Class</label><select ${assessKey?'':'disabled'} onchange="setAnalysisParam('classId', this.value)">
-        <option value="" ${cls?'':'selected'}>— Select class —</option>
-        ${visibleClasses.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+        : `<label>3. Class</label><select ${assessKey?'':'disabled'} onchange="VIEW.params.streamId='';VIEW.params.streamAll=false;setAnalysisParam('classId', this.value)">
+        <option value="" ${(cls||_gsel)?'':'selected'}>— Select class —</option>
+        ${pickGroups(visibleClasses).map(g=>`<option value="${esc(g.id)}" ${_gsel&&g.id===_gsel.id?'selected':''}>${esc(g.label)}</option>`).join('')}
       </select>`}
       </div>
     </div>
+    ${(_multi && assessKey) ? `<div style="margin-top:14px;"><label>Stream</label>${streamCardsHTML(_gsel.streams, _allStr ? new Set(_gsel.streams.map(c=>c.id)) : new Set(sel.streamId?[sel.streamId]:[]), 'anStreamPickOn', 'anStreamAll')}</div>` : ''}
     ${formKey?`<div class="grid3" style="margin-top:14px;">
       <div><label>Term</label><select onchange="setAnalysisParam('term', this.value)">
         ${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===term?'selected':''}>${t}</option>`).join('')}
@@ -14794,7 +14867,7 @@ function projectAssessmentView(){
   <h2>Project Assessment</h2>
   <div class="card">
     <div class="grid3">
-      <div><label>Class</label><select onchange="setProjectParam('pjClassId', this.value); setProjectParam('pjSubjects', [])">
+      <div><label>Class</label><select data-csp onchange="setProjectParam('pjClassId', this.value); setProjectParam('pjSubjects', [])">
         ${visibleClasses.map(c=>`<option value="${c.id}" ${c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
       </select></div>
       <div><label>Term</label><select onchange="setProjectParam('pjTerm', this.value)">
@@ -14901,7 +14974,7 @@ function masterMarkSheetViewCore(forExport){
         <option value="" ${selLevel?'':'selected'}>— Select level —</option>
         ${mmLevelsAvail.map(l=>`<option value="${l}" ${l===selLevel?'selected':''}>${mmLevelLabel(l)}</option>`).join('')}
       </select>`
-        : `<label>3. Class</label><select ${assessKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmClassId', this.value)">
+        : `<label>3. Class</label><select data-csp ${assessKey?'':'disabled'} onchange="setMasterMarkSheetParam('mmClassId', this.value)">
         <option value="" ${cls?'':'selected'}>— Select class —</option>
         ${visibleClasses.map(c=>`<option value="${c.id}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
       </select>`}
@@ -15222,6 +15295,8 @@ function mmOpenNextDropdown(key){
   let sel = null;
   if(key==='mmMode' && v.mmMode) sel = document.querySelector('.center-stage select[onchange*="\'mmAssess\'"]');
   else if(key==='mmAssess' && v.mmAssess) sel = document.querySelector('.center-stage select[onchange*="\'mmClassId\'"], .center-stage select[onchange*="\'mmLevel\'"]');
+  try{ if(window.cspScan) window.cspScan(); }catch(e){}
+  if(sel && sel.__cspUI) sel = sel.__cspUI;
   if(!sel || sel.disabled) return false;
   try{ sel.focus(); }catch(e){}
   let opened = false;
@@ -18189,8 +18264,9 @@ Continue?`);
     case 'downloadDemandNote': await downloadDemandNoteFor(arg); break;
     case 'finTab': if(FINANCE_UNLOCKED && FIN_SUB && !FIN_SUB_OPEN[FIN_SUB]) break; if(FIN_SUB && !finTabAllowed(FIN_SUB, arg)) break; FIN_EMBED = !!FIN_EMBED_TABS[arg]; VIEW.params = {finTab: arg}; render(); break;
     case 'finBackToTabs': FIN_EMBED = false; VIEW = {name:'finance', params:{}}; render(); break;
-    case 'finClass': VIEW.params = {...VIEW.params, finClassId: arg, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false, reqProceed:false}; render(); break;
-    case 'finBackToClass': VIEW.params = {...VIEW.params, finClassId: null, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false, reqProceed:false}; render(); break;
+    case 'finGroup': VIEW.params = {...VIEW.params, finGroupId: arg, finClassId: null}; render(); break;
+    case 'finClass': VIEW.params = {...VIEW.params, finGroupId: null, finClassId: arg, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false, reqProceed:false}; render(); break;
+    case 'finBackToClass': VIEW.params = {...VIEW.params, finGroupId: null, finClassId: null, editClassAgreed:false, editAgreedStudentId:null, reqSelecting:false, reqProceed:false}; render(); break;
     case 'reqChangeSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:true}; render(); break;
     case 'feeToggleOpen': VIEW.params = {...VIEW.params, feeOpen: !VIEW.params.feeOpen}; render(); break;
     // PROCEED asks for class, term and year again (nothing carried over, selections shown straight away).
@@ -18198,12 +18274,12 @@ Continue?`);
     case 'feeShowTable': VIEW.params = {...VIEW.params, feeChange:false}; render(); break;
     case 'reqChange': VIEW.params = {...VIEW.params, reqChange:true, reqOpen:true}; render(); break;
     case 'reqShowTable': VIEW.params = {...VIEW.params, reqChange:false}; render(); break;
-    case 'feeProceed': VIEW.params = {...VIEW.params, feeChange:false, feeProceed:true, feeOpen:true, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
-    case 'feeBackToSettings': VIEW.params = {...VIEW.params, feeProceed:false, feeOpen:false, feeCat:undefined, finClassId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
+    case 'feeProceed': VIEW.params = {...VIEW.params, feeChange:false, feeProceed:true, feeOpen:true, finClassId:null, finGroupId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
+    case 'feeBackToSettings': VIEW.params = {...VIEW.params, feeProceed:false, feeOpen:false, feeCat:undefined, finClassId:null, finGroupId:null, feeTerm:undefined, feeYear:undefined}; render(); break;
     case 'reqToggleOpen': VIEW.params = {...VIEW.params, reqOpen: !VIEW.params.reqOpen}; render(); break;
     // PROCEED asks for class, term and year again (nothing carried over, selections shown straight away).
-    case 'reqProceed': VIEW.params = {...VIEW.params, reqChange:false, reqProceed:true, reqOpen:true, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
-    case 'reqBackToSettings': case 'reqCancelSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:false, finClassId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
+    case 'reqProceed': VIEW.params = {...VIEW.params, reqChange:false, reqProceed:true, reqOpen:true, finClassId:null, finGroupId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
+    case 'reqBackToSettings': case 'reqCancelSelection': VIEW.params = {...VIEW.params, reqProceed:false, reqOpen:false, finClassId:null, finGroupId:null, reqTerm:undefined, reqYear:undefined}; render(); break;
     case 'printReqDemandNote': printDemandNoteFor(arg); break;
     case 'editClassAgreedFee': VIEW.params = {...VIEW.params, editClassAgreed: true}; render(); break;
     case 'cancelEditClassAgreed': VIEW.params = {...VIEW.params, editClassAgreed: false}; render(); break;
@@ -23588,9 +23664,9 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 .rc-mode-l,.rc-mode-r{position:relative;flex:1;padding:5px 2px;font-size:11px;font-weight:800;text-align:center;}
 
 .sc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:6px;}
-.sc-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:8px;border:3px solid #1f3a5f;border-radius:12px;background:#fff;color:#1f3a5f;font:inherit;cursor:pointer;text-align:center;}
+.sc-card{--sc:#1f3a5f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:8px;border:3px solid var(--sc);border-radius:12px;background:#fff;color:var(--sc);font:inherit;cursor:pointer;text-align:center;}
 .sc-card b{font-size:16px;} .sc-card span{font-size:12px;opacity:.8;}
-.sc-card.on{background:#0f7a3a;border-color:#0f7a3a;color:#fff;}
+.sc-card.on{background:var(--sc);color:#fff;}
 .sc-card.sc-all{grid-column:1/-1;}
 
 /* Report cards list: the Action cell hugs its buttons and the PDF button has no spare space inside it */
@@ -23609,6 +23685,97 @@ h4:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
 h5:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
 h6:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
 .mm-title,.stu-page-title,.stu-find-title,.sp-fee-title,.se-ph-title,.acct-card-title,.acct-card-head,.login-panel-title,.bulk-title,.bin-head,.as-head,.pw-title{text-transform:uppercase !important;font-weight:800 !important;}
+
+/* Stream-card class pickers: one entry per class, its streams appear as cards */
+.csp-wrap{position:relative;}
+.csp-native{position:absolute !important;left:0;bottom:0;width:1px !important;height:1px !important;opacity:0 !important;pointer-events:none !important;border:0 !important;padding:0 !important;margin:0 !important;}
+.csp-wrap .sc-grid{margin-top:8px;}
+.csp-hint{font-size:12px;margin:6px 0 0;opacity:.8;}
+.sc-card input.sc-cb{position:absolute;opacity:0;width:0;height:0;pointer-events:none;}
+.sc-card{position:relative;}
 </style>
+
+<script id="cte-stream-class-pickers">
+/* Every class dropdown marked data-csp lists each CLASS once. A class that has streams then shows its streams as cards
+   (same cards as Report Cards / Promotion). The original dropdown stays in the page, hidden, as the single source of
+   the chosen class id, so every existing handler, form and filter keeps working unchanged. */
+(function(){
+  var PENDING = {};
+  function cls(id){ try{ return DB.classes.find(function(c){ return c.id===id; }); }catch(e){ return null; } }
+  function cnt(id){ try{ return DB.students.filter(function(s){ return s.status!=='left' && s.classId===id; }).length; }catch(e){ return 0; } }
+  function E(t){ return String(t==null?'':t).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function build(sel){
+    if(sel.__cspUI || sel.getAttribute('data-csp-done')) return;
+    var opts = Array.prototype.slice.call(sel.options), entries = [], seen = {}, multiAny = false;
+    opts.forEach(function(o){
+      var c = cls(o.value);
+      if(!c){ entries.push({plain:true, v:o.value, t:o.textContent, dis:o.disabled}); return; }
+      var h = streamGroupClasses(c)[0], e = seen[h.id];
+      if(!e){ e = seen[h.id] = {plain:false, head:h, first:c, text:o.textContent, members:[]}; entries.push(e); }
+      e.members.push(c);
+    });
+    entries.forEach(function(e){ if(!e.plain && e.members.length>1) multiAny = true; });
+    if(!multiAny){ sel.setAttribute('data-csp-done','1'); return; }            // no streams here: leave the dropdown as it is
+    var key = sel.id || sel.name || sel.getAttribute('onchange') || 'csp';
+    var cur = sel.value, pend = PENDING[key];
+    var hasBlank = opts.some(function(o){ return o.value===''; });
+    var wrap = document.createElement('div'); wrap.className = 'csp-wrap';
+    var ui = document.createElement('select'); ui.className = 'csp-grp';
+    if(sel.disabled) ui.disabled = true;
+    var curEntry = null;
+    ui.innerHTML = entries.map(function(e,i){
+      var v, t, selected = false;
+      if(e.plain){ v = 'p:'+e.v; t = e.t; selected = (e.v===cur) && !(pend && !e.v); }
+      else if(e.members.length>1){
+        v = 'g:'+e.head.id; t = e.text.replace(e.first.name, classBaseName(e.first));
+        var inside = e.members.some(function(m){ return m.id===cur; });
+        selected = inside || (pend===e.head.id && !e.members.some(function(m){ return m.id===cur; }));
+      } else { v = 'c:'+e.members[0].id; t = e.text; selected = e.members[0].id===cur; }
+      if(selected) curEntry = e;
+      return '<option value="'+E(v)+'"'+(selected?' selected':'')+(e.dis?' disabled':'')+'>'+E(t)+'</option>';
+    }).join('');
+    var cards = document.createElement('div');
+    wrap.appendChild(ui); wrap.appendChild(cards);
+    sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel);
+    sel.classList.add('csp-native'); sel.tabIndex = -1; sel.setAttribute('aria-hidden','true');
+    sel.__cspUI = ui; sel.setAttribute('data-csp-done','1');
+    function fire(){ sel.dispatchEvent(new Event('change',{bubbles:true})); }
+    function drawCards(e){
+      if(!e || e.plain || e.members.length<2 || ui.disabled){ cards.innerHTML = ''; return; }
+      var now = sel.value;
+      cards.innerHTML = '<div class="sc-grid">'+e.members.map(function(m,i){
+        var on = m.id===now;
+        return '<button type="button" class="sc-card'+(on?' on':'')+'" style="--sc:'+streamColor(i)+'" data-cid="'+E(m.id)+'"><b>'+E(streamShortName(m))+'</b><span>'+cnt(m.id)+' students</span></button>';
+      }).join('')+'</div>'+(e.members.some(function(m){ return m.id===now; }) ? '' : '<p class="csp-hint">Tap the stream.</p>');
+    }
+    drawCards(curEntry);
+    cards.addEventListener('click', function(ev){
+      var b = ev.target.closest('.sc-card'); if(!b) return;
+      PENDING[key] = undefined;
+      sel.value = b.getAttribute('data-cid'); fire();
+      if(document.body.contains(cards)) drawCards(curEntry);
+    });
+    ui.addEventListener('change', function(){
+      var v = ui.value, e = entries.filter(function(x){ return (x.plain?'p:'+x.v: (x.members.length>1?'g:'+x.head.id:'c:'+x.members[0].id))===v; })[0];
+      curEntry = e || null; PENDING[key] = undefined;
+      if(!e) return;
+      if(e.plain){ sel.value = e.v; drawCards(null); fire(); }
+      else if(e.members.length===1){ sel.value = e.members[0].id; drawCards(null); fire(); }
+      else {
+        PENDING[key] = e.head.id;
+        // a class with streams needs a stream card; until one is tapped nothing is chosen (or the first stream if a choice is mandatory)
+        if(hasBlank){ sel.value = ''; } else { sel.value = e.members[0].id; PENDING[key] = undefined; }
+        drawCards(e); fire();
+        if(document.body.contains(cards)) drawCards(e);
+      }
+    });
+  }
+  function scan(){ var l = document.querySelectorAll('select[data-csp]:not([data-csp-done])'); for(var i=0;i<l.length;i++){ try{ build(l[i]); }catch(e){ console.error('stream picker', e); } } }
+  window.cspScan = scan;
+  function start(){ try{ new MutationObserver(scan).observe(document.body,{childList:true,subtree:true}); }catch(e){} scan(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+  document.addEventListener('change', function(e){ var t = e.target; if(t && t.classList && t.classList.contains('sc-cb')){ var c = t.closest('.sc-card'); if(c) c.classList.toggle('on', t.checked); } });
+})();
+</script>
 </body>
 </html>
