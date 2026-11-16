@@ -59,8 +59,8 @@
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
    (or the form submitted) while an earlier one is still empty. */
 (function(){
-  var STEPS=['#assignSel','#paperSelect','#kindSel','#cwTestSel','#teacherTermSel','#maxScoreInput'];
-  var NAMES={'#assignSel':'subject / class','#paperSelect':'paper','#kindSel':'assessment type','#cwTestSel':'test','#teacherTermSel':'term','#maxScoreInput':'maximum mark (marked out of)'};
+  var STEPS=['#assignSel','#streamSel','#paperSelect','#kindSel','#cwTestSel','#teacherTermSel','#maxScoreInput'];
+  var NAMES={'#assignSel':'subject / class','#streamSel':'stream','#paperSelect':'paper','#kindSel':'assessment type','#cwTestSel':'test','#teacherTermSel':'term','#maxScoreInput':'maximum mark (marked out of)'};
   var st=document.createElement('style');
   st.textContent='.pick-flash{outline:3px solid #0f7a3a !important;outline-offset:2px;box-shadow:0 0 0 5px rgba(15,122,58,.25) !important;transition:box-shadow .3s;}'+
     '#pickFlowHint{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:2147483000;background:#0f7a3a;color:#fff;font:700 16px/1.3 Arial,sans-serif;padding:10px 16px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:90vw;text-align:center;}';
@@ -140,7 +140,7 @@
     'form[data-form="pickPaper"].pick-maxonly .pick-back{display:inline-block;}';
   (document.head||document.documentElement).appendChild(st);
 
-  var STEPS=['#assignSel','#paperSelect','#kindSel','#cwTestSel','#teacherTermSel'];
+  var STEPS=['#assignSel','#streamSel','#paperSelect','#kindSel','#cwTestSel','#teacherTermSel'];
   function shown(el){ return !!el && !el.disabled && el.type!=='hidden' && el.offsetParent!==null; }
   function othersDone(f){
     for(var i=0;i<STEPS.length;i++){ var el=f.querySelector(STEPS[i]); if(shown(el) && String(el.value||'').trim()==='') return false; }
@@ -6429,7 +6429,8 @@ function combinationCode(principals){ return principals.map(p=>ABBR[p]||p.slice(
 function rosterSubjectsFor(st, cls){
   if(!cls) return [];
   const subs = new Set();
-  DB.assignments.filter(a=>a.classId===cls.id && Array.isArray(a.studentIds) && a.studentIds.includes(st.id))
+  const _sg = streamGroupIds(cls);
+  DB.assignments.filter(a=>_sg.has(a.classId) && Array.isArray(a.studentIds) && a.studentIds.includes(st.id))
     .forEach(a=>subs.add(a.subject));
   return [...subs];
 }
@@ -6441,7 +6442,80 @@ function principalsFor(st, cls){
   const opts = new Set(aOptionalList());
   return rosterSubjectsFor(st, cls).filter(s=>opts.has(s));
 }
+// ---- A-Level streams: every stream of the same A-Level class (e.g. S.5 East + S.5 West) is ONE group for
+// ranking, class size, mark sheets, attendance sheets and analyses. Other levels are unaffected.
+// Every stream of the same class (any level): same base name, level and form. The FIRST one in the class
+// list is the "home" class that carries the shared subject assignments.
+function streamGroupClasses(cls){
+  if(!cls) return [];
+  const base = classBaseName(cls).toLowerCase(), form = cls.form||'';
+  const g = DB.classes.filter(c=>c.level===cls.level && classBaseName(c).toLowerCase()===base && (c.form||'')===form);
+  return g.length ? g : [cls];
+}
+function streamGroupIds(cls){ return new Set(streamGroupClasses(cls).map(c=>c.id)); }
+function streamGroupIdsById(classId){ const c = DB.classes.find(x=>x.id===classId); return c ? streamGroupIds(c) : new Set([classId]); }
+// The stream chosen on the Enter Scores picker, per assignment ('*' = all streams, otherwise a class id).
+var STREAM_PICK = {};
+function streamShortName(c){ return (c && c.stream && String(c.stream).trim()) ? String(c.stream).trim() : classFullName(c); }
+// Class name shown for an assignment: "S.5 (all streams)" when the class has streams.
+function assignClassName(c){ return streamGroupClasses(c).length>1 ? classBaseName(c)+' (all streams)' : c.name; }
+// Class name for the stream picked for this assignment while entering scores.
+function assignPickedLabel(a, cls){
+  if(!cls) return '';
+  const grp = streamGroupClasses(cls);
+  if(grp.length<2) return cls.name;
+  const p = STREAM_PICK[a.id] || '*';
+  if(p==='*') return classBaseName(cls)+' (all streams)';
+  const pc = DB.classes.find(c=>c.id===p);
+  return pc ? classFullName(pc) : classBaseName(cls)+' (all streams)';
+}
+// One shared assignment per teacher + subject (+ papers) for a whole class, however many streams it has:
+// duplicates created per stream are folded into the first one (student lists are merged) and every
+// assignment of the class sits on its home class. Returns true when anything changed.
+function mergeStreamAssignments(){
+  let changed = false; const seen = new Set();
+  DB.classes.forEach(c=>{
+    if(seen.has(c.id)) return;
+    const grp = streamGroupClasses(c); grp.forEach(k=>seen.add(k.id));
+    if(grp.length<2) return;
+    const home = grp[0], ids = new Set(grp.map(k=>k.id));
+    const sig = a=>[a.teacherUsername, a.subject, Array.isArray(a.papers) ? a.papers.map(String).sort().join(',') : String(a.papers||'')].join('||');
+    const keep = new Map(), drop = new Set();
+    DB.assignments.forEach(a=>{
+      if(!ids.has(a.classId)) return;
+      if(a.classId!==home.id){ a.classId = home.id; changed = true; }
+      const k = sig(a), first = keep.get(k);
+      if(!first){ keep.set(k, a); return; }
+      if(Array.isArray(a.studentIds)) first.studentIds = [...new Set([...(Array.isArray(first.studentIds)?first.studentIds:[]), ...a.studentIds])];
+      drop.add(a.id); changed = true;
+    });
+    if(drop.size) DB.assignments = DB.assignments.filter(a=>!drop.has(a.id));
+  });
+  return changed;
+}
+function aGroupClasses(cls){
+  if(!cls) return [];
+  if(cls.level!=='A') return [cls];
+  return streamGroupClasses(cls);
+}
+function aGroupIds(cls){ return new Set(aGroupClasses(cls).map(c=>c.id)); }
+// Current students of the class — for an A-Level class, of ALL its streams together.
+function classRosterStudents(cls){
+  if(!cls) return [];
+  const ids = aGroupIds(cls);
+  return DB.students.filter(s=>s.status!=='left' && ids.has(s.classId));
+}
+// For an A-Level student shown under another stream of the same class, use the student's OWN class
+// (that is where the subject ticks / teacher assignments live).
+function aOwnClass(st, cls){
+  if(cls && cls.level==='A' && st && st.classId && st.classId!==cls.id){
+    const oc = DB.classes.find(c=>c.id===st.classId);
+    if(oc && oc.level==='A') return oc;
+  }
+  return cls;
+}
 function studentSubjects(st, cls){
+  cls = aOwnClass(st, cls);
   if(!cls) return [];
   if(cls.level==='O'){
     const compulsory = oCompulsoryFor(cls.form);
@@ -6480,11 +6554,13 @@ function studentSubjects(st, cls){
 // problem — see studentSubjects, which shows nothing for the subsidiary at all while
 // this is true, rather than guessing.
 function hasSubsidiaryConflict(st, cls){
+  cls = aOwnClass(st, cls);
   if(!cls || cls.level!=='A') return false;
   const roster = rosterSubjectsFor(st, cls);
   return SUBSIDIARIES.filter(s=>roster.includes(s)).length > 1;
 }
 function comboLabel(st, cls){
+  cls = aOwnClass(st, cls);
   if(!cls) return '—';
   if(cls.level==='O' || cls.level==='P'){
     const compulsory = cls.level==='O' ? oCompulsoryFor(cls.form) : pCompulsoryList();
@@ -6518,12 +6594,14 @@ function rawScores(studentId, subject, term, year){
 let _peerScoreCache = {version:-1, map:new Map()};
 function peersHaveScore(student, subject, term, year, kind, label, paper){
   if(_peerScoreCache.version!==SCORE_DATA_VERSION) _peerScoreCache = {version:SCORE_DATA_VERSION, map:new Map()};
-  const key = [student.classId, subject, term, year].join('||');
+  const _pcls = DB.classes.find(c=>c.id===student.classId);
+  const _pids = _pcls ? aGroupIds(_pcls) : new Set([student.classId]);
+  const key = [[..._pids].sort().join(','), subject, term, year].join('||');
   let byStudent = _peerScoreCache.map.get(key);
   if(!byStudent){
     byStudent = new Map(); // studentId -> Set of kinds they have ('*' = any)
     DB.students.forEach(st=>{
-      if(st.classId!==student.classId || st.status==='left') return;
+      if(!_pids.has(st.classId) || st.status==='left') return;
       const rows = rawScores(st.id, subject, term, year);
       if(!rows.length) return;
       const kinds = new Set(['*']); rows.forEach(r=>{ kinds.add(r.kind); if(r.kind==='AOI'){ kinds.add('AOI|'+(r.label||'')); kinds.add('AOI|'+(r.label||'')+'|'+r.paper); } });
@@ -6685,7 +6763,8 @@ function subjectPapersFor(subject, cls){
   // (one per paper) — e.g. Teacher A on Paper 1, Teacher B on Paper 2. Pull the paper
   // list from EVERY matching assignment, not just the first one found, or a second
   // teacher's paper never shows up and the report card can't split into sub-rows.
-  const asns = DB.assignments.filter(x=>x.subject===subject && x.classId===cls.id);
+  const _sg2 = streamGroupIds(cls);
+  const asns = DB.assignments.filter(x=>x.subject===subject && _sg2.has(x.classId));
   const papers = [];
   asns.forEach(a=>{
     if(Array.isArray(a.papers)) a.papers.forEach(p=>{ if(!papers.some(x=>String(x)===String(p))) papers.push(p); });
@@ -6739,7 +6818,8 @@ function reportPaperLabels(studentId, subject, cls, term, year){
 // Subject/class matching ignores case and stray spaces; paper-aware when one teacher is assigned per paper.
 function liveAssignedTeacherInit(subject, classId, paper){
   const nk = v=>String(v==null?'':v).replace(/\s+/g,' ').trim().toLowerCase();
-  const asns = (DB.assignments||[]).filter(a=>nk(a.subject)===nk(subject) && String(a.classId)===String(classId));
+  const _sg3 = streamGroupIdsById(classId);
+  const asns = (DB.assignments||[]).filter(a=>nk(a.subject)===nk(subject) && _sg3.has(a.classId));
   if(!asns.length) return null;
   const ordered = [];
   if(paper!=null && paper!==''){
@@ -6887,7 +6967,8 @@ function gradeColsFor(level){
 }
 function overallGradeFor(cls, avgPct){ return gradeFor('', avgPct, cls.level); }
 function teacherForSubjectClass(subject, classId){
-  const a = DB.assignments.find(a=>a.subject===subject && a.classId===classId);
+  const _sg4 = streamGroupIdsById(classId);
+  const a = DB.assignments.find(a=>a.subject===subject && _sg4.has(a.classId));
   if(!a) return null;
   return DB.accounts.find(acc=>acc.username===a.teacherUsername) || null;
 }
@@ -6946,16 +7027,17 @@ function missedSubjectsFor(st, cls, term, year){
 // subjects — unless it is compulsory for the class, in which case it still counts.
 let _markedSubjCache = {ref:null, ver:-1, key:'', set:null};
 function markedSubjectsFor(cls, term, year){
-  const key = cls.id+'|'+term+'|'+year;
+  const key = [...aGroupIds(cls)].sort().join(',')+'|'+term+'|'+year;
   if(_markedSubjCache.ref===DB.scores && _markedSubjCache.ver===SCORE_DATA_VERSION && _markedSubjCache.key===key) return _markedSubjCache.set;
   const set = new Set();
-  DB.students.filter(x=>x.status!=='left' && x.classId===cls.id).forEach(x=>{
+  classRosterStudents(cls).forEach(x=>{
     studentSubjects(x, cls).forEach(sj=>{ if(!set.has(sj) && subjectAverage(x.id, sj, term, year)!==null) set.add(sj); });
   });
   _markedSubjCache = {ref:DB.scores, ver:SCORE_DATA_VERSION, key, set};
   return set;
 }
 function computeSubjectRows(st, cls, term, year){
+  cls = aOwnClass(st, cls);
   const marked = markedSubjectsFor(cls, term, year);
   const subs = studentSubjects(st, cls).filter(sj=> marked.has(sj) || isCompulsorySubjectFor(sj, cls));
   let totalPoints=0, sumAvg=0, countAvg=0;
@@ -7020,10 +7102,11 @@ function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, t
 // it for every student, cutting a full render down to O(N) total.
 let _rankCache = {scoresRef:null, key:'', map:null};
 function computeClassRankings(cls, term, year){
-  const key = cls.id+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
+  const key = [...aGroupIds(cls)].sort().join(',')+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
   if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
-  const peers = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
-  const scored = peers.map(s=>({id:s.id, k:metricFor(s, cls, term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
+  // A-Level: every stream of the class is ranked together, so position and class size are the combined ones.
+  const peers = classRosterStudents(cls);
+  const scored = peers.map(s=>({id:s.id, k:metricFor(s, aOwnClass(s, cls), term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
   const map = new Map();
   let position = scored.length;
   for(let i=0;i<scored.length;i++){
@@ -7035,7 +7118,8 @@ function computeClassRankings(cls, term, year){
 }
 function classPosition(student, cls, term, year){
   const map = computeClassRankings(cls, term, year);
-  return map.get(student.id) || {position: DB.students.filter(s=>s.classId===cls.id).length || 1, size: DB.students.filter(s=>s.classId===cls.id).length};
+  const _gids = aGroupIds(cls), _n = DB.students.filter(s=>_gids.has(s.classId)).length;
+  return map.get(student.id) || {position: _n || 1, size: _n};
 }
 // showEOT true  -> the card has an End of Term column: comments look ahead to NEXT TERM.
 // showEOT false -> no End of Term column (e.g. a mid-term report): comments urge the student to
@@ -11913,7 +11997,7 @@ function stmNameProblem(g, names){
 function stmPanelHtml(){
   if(!STM.open){
     return `<button type="button" class="btn stm-open-btn" data-action="stmOpen">Stream students</button>
-      <p class="small" style="margin-top:6px;">Split a class into streams, choose each stream's class teacher and place every student in a stream. The original class itself becomes the first stream, so its students keep their records — admission number, marks and history — and its teacher assignments stay with them; extra streams get the same subject assignments.</p>`;
+      <p class="small" style="margin-top:6px;">Split a class into streams, choose each stream's class teacher and place every student in a stream. The original class itself becomes the first stream, so its students keep their records — admission number, marks and history — and its teacher assignments stay with them. Assignments are not repeated per stream — teachers pick the stream when entering scores.</p>`;
   }
   const groups = classGroups();
   const g = stmGroup();
@@ -11995,7 +12079,7 @@ function stmShowSummary(g){
     <p class="small" style="margin:0 0 10px;">Check the totals in each stream. Nothing is saved until you confirm.</p>
     <div style="overflow-x:auto;"><table class="data-table"><tr><th style="text-align:left;">Stream</th><th style="text-align:left;">Class teacher</th><th>Boys</th><th>Girls</th><th>Total</th></tr>${rows}
     <tr style="background:var(--blue-light);font-weight:900;"><td colspan="2" style="text-align:left;">All streams</td><td>${tB}</td><td>${tG}</td><td>${studs.length}</td></tr></table></div>
-    ${anyNew && parentHasAsn ? `<p class="small" style="margin-top:8px;">Subject assignments of ${esc(g.base)} will be copied to each new stream. You can change them later under Assign Subjects.</p>` : ''}
+    <p class="small" style="margin-top:8px;">${esc(g.base)} keeps one set of subject assignments for all its streams — nothing is repeated. Teachers choose the stream when they enter scores.</p>
     <div class="flex" style="margin-top:14px;gap:10px;justify-content:flex-end;"><button type="button" class="btn-outline" data-action="stmCancel">Go back</button><button type="button" class="btn" data-action="stmConfirm">Confirm and save</button></div>
   </div>`;
   document.body.appendChild(ov);
@@ -12527,6 +12611,7 @@ function oLevelSubjectsView(){
 
 /* ---------- Admin: Assign subjects ---------- */
 function assignSubjectsView(){
+  if(mergeStreamAssignments()){ try{ saveAssignments(); }catch(e){ console.error(e); } }
   // Teacher first -> tick the subjects they teach -> tick the classes for each subject
   // -> one save. Anything already assigned shows ticked and locked, so a teacher can
   // be topped up with more subjects/classes in later rounds without creating duplicates.
@@ -12544,7 +12629,8 @@ function assignSubjectsView(){
       byLevel[c.level].forEach(sj=>{ if(!subjectList.includes(sj)) subjectList.push(sj); });
     });
     const blocks = subjectList.map((sj,i)=>{
-      const cls = DB.classes.filter(c=>byLevel[c.level].includes(sj));
+      // One row per class: every stream of a class shares the same assignment (its first stream carries it).
+      const cls = DB.classes.filter(c=>byLevel[c.level].includes(sj) && streamGroupClasses(c)[0].id===c.id);
       if(!cls.length) return '';
       const done = cls.filter(c=>has.has(sj+'||'+c.id)).length;
       const anyNonPrimary = cls.some(c=>c.level!=='P');
@@ -12563,7 +12649,7 @@ function assignSubjectsView(){
               const asg = mine.find(x=>x.subject===sj && x.classId===c.id);
               const d = !!asg;
               const dp = asg && Array.isArray(asg.papers) ? asg.papers.map(String) : [];
-              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked':''}> ${esc(c.name)}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> c.level==='P' ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked':''):'disabled'}></td>`).join('') : ''}</tr>`;
+              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked':''}> ${esc(assignClassName(c))}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> c.level==='P' ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked':''):'disabled'}></td>`).join('') : ''}</tr>`;
             }).join('')}</table></div>`;
           })()}
         </div>
@@ -12641,7 +12727,7 @@ function teacherProfileView(username){
       <div class="grid2">
         <div><label>Class</label><select name="classId" id="assignClassSel" required>
           <option value="">-- select class --</option>
-          ${DB.classes.map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(c.name)}</option>`).join('')}
+          ${DB.classes.filter(c=>streamGroupClasses(c)[0].id===c.id).map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(assignClassName(c))}</option>`).join('')}
         </select></div>
         <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
       </div>
@@ -13398,9 +13484,9 @@ function marksheetsListView(){
   const ctClassIds = classTeacherClassIds();
   const isAdmin = CUR.role==='admin';
   const pool = isAdmin ? DB.assignments
-    : DB.assignments.filter(a=>a.teacherUsername===CUR.username || ctClassIds.includes(a.classId));
+    : DB.assignments.filter(a=>a.teacherUsername===CUR.username || ctClassIds.some(id=>streamGroupIdsById(id).has(a.classId)));
   const poolGroups = marksheetGroups(pool);
-  const classes = isAdmin ? DB.classes : DB.classes.filter(c=>poolGroups.some(g=>g.classId===c.id));
+  const classes = isAdmin ? DB.classes : DB.classes.filter(c=>poolGroups.some(g=>streamGroupIds(c).has(g.classId)));
   const selId = VIEW.params && VIEW.params.msClassId;
   const gsLevels = isAdmin ? ['P','O','A'].filter(l=>DB.classes.some(c=>c.level===l)) : [];
   const lvSel = (typeof selId==='string' && selId.indexOf('LEVEL_')===0 && gsLevels.includes(selId.slice(6))) ? selId.slice(6) : null;
@@ -13436,7 +13522,7 @@ function marksheetsListView(){
   } else if(lvSel && mode==='empty'){
     panel = generalSheetsCard('empty', gsScopeId);
   } else if(cls && mode==='filled'){
-    const subs = [...new Set(poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject))].sort((x,y)=>x.localeCompare(y));
+    const subs = [...new Set(poolGroups.filter(g=>streamGroupIds(cls).has(g.classId)).map(g=>g.subject))].sort((x,y)=>x.localeCompare(y));
     panel = (gsAllowed ? generalSheetsCard('filled', gsScopeId) : '') + `
     <div class="note" style="margin-top:14px;">A filled mark sheet lists every test and exam recorded for a subject in this class, side by side for every student — handy for spotting missing marks or reviewing a subject at a glance.${ctClassIds.length?' As Class Teacher, you can also see and download every subject for your class(es), not just the ones you personally teach.':''}</div>
     <div class="card" style="margin-top:14px;">
@@ -13463,20 +13549,22 @@ function blankSheetStudents(classId, subject){
   // Only students actually enrolled for this subject: those on the teacher's ticked class
   // list (assignment.studentIds). Until a teacher has ticked anyone, fall back to everyone
   // eligible for the subject so the sheet isn't empty.
-  const asns = DB.assignments.filter(a=>a.classId===classId && a.subject===subject);
+  // A-Level: students of every stream of this class appear, whichever stream is selected.
+  const gids = aGroupIds(cls), asnIds = streamGroupIds(cls);
+  const asns = DB.assignments.filter(a=>asnIds.has(a.classId) && a.subject===subject);
   const rosterIds = new Set();
   let anyRosterSet = false;
   asns.forEach(a=>{ if(Array.isArray(a.studentIds)){ anyRosterSet=true; a.studentIds.forEach(id=>rosterIds.add(id)); } });
   return sortByName((anyRosterSet && !isCompulsorySubjectFor(subject, cls))
-    ? DB.students.filter(s=>s.status!=='left' && s.classId===classId && rosterIds.has(s.id))
-    : DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
+    ? DB.students.filter(s=>s.status!=='left' && gids.has(s.classId) && rosterIds.has(s.id))
+    : DB.students.filter(s=>s.status!=='left' && gids.has(s.classId) && studentSubjects(s,cls).includes(subject)));
 }
 function blankMarksheetsCard(pool, selCls){
   const isAdmin = CUR.role==='admin';
   const poolGroups = marksheetGroups(pool);
   const cls = selCls;
   if(!cls) return '';
-  const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject);
+  const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>streamGroupIds(cls).has(g.classId)).map(g=>g.subject);
   const subs = [...new Set(subjects)].sort((a,b)=>a.localeCompare(b));
   const rows = subs.map(subj=>{
     const n = blankSheetStudents(cls.id, subj).length;
@@ -13495,7 +13583,7 @@ function attendanceSheetsCard(pool, selCls){
   const poolGroups = marksheetGroups(pool);
   const cls = selCls;
   if(!cls) return '';
-  const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>g.classId===cls.id).map(g=>g.subject);
+  const subjects = isAdmin ? classSubjectsFor(cls) : poolGroups.filter(g=>streamGroupIds(cls).has(g.classId)).map(g=>g.subject);
   const subs = [...new Set(subjects)].sort((a,b)=>a.localeCompare(b));
   const rows = subs.map(subj=>{
     const n = blankSheetStudents(cls.id, subj).length;
@@ -13559,12 +13647,17 @@ function gsScope(scope){
     return {isLevel:true, level, classes, cls:classes[0]||null, label: mmLevelLabel(level)+' — all classes', fileLabel: mmLevelLabel(level)};
   }
   const cls = DB.classes.find(c=>c.id===scope) || null;
+  const grp = cls ? aGroupClasses(cls) : [];
+  if(cls && grp.length>1){
+    // A-Level class with streams: one combined sheet for every stream.
+    return {isLevel:false, multi:true, level:cls.level, classes:grp, cls, label:classBaseName(cls)+' — all streams', fileLabel:classBaseName(cls)+'_all_streams'};
+  }
   return {isLevel:false, level:cls?cls.level:'', classes:cls?[cls]:[], cls, label:cls?classFullName(cls):'', fileLabel:cls?cls.name:'class'};
 }
 function gsStudents(g){
   const ids = new Set(g.classes.map(c=>c.id));
   const list = sortByName(DB.students.filter(s=>s.status!=='left' && ids.has(s.classId)));
-  return g.isLevel ? rcByClassOrder(list) : list;
+  return (g.isLevel || g.multi) ? rcByClassOrder(list) : list;
 }
 function gsAssessCols(classes){
   const out=[], seen=new Set();
@@ -13610,27 +13703,28 @@ function generalSheetView(mode, scope){
   if(!g.classes.length) return '<p>Choose a class or level from Scores Sheets and Attendances.</p>';
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const students = gsStudents(g);
+  const showCls = !!(g.isLevel || g.multi);
   let head, rows, ncols, foot = '';
   if(mode==='attendance'){
     const cols = ['Signature','Remark'];
-    head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:${l==='Signature'?'120':'140'}px;">${esc(l)}</th>`).join('')}`;
+    head = `<th>No.</th><th>Adm No</th><th>Student</th>${showCls?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:${l==='Signature'?'120':'140'}px;">${esc(l)}</th>`).join('')}`;
     const blanks = cols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
     rows = students.map((s,i)=>{
       const c = DB.classes.find(x=>x.id===s.classId);
-      return `<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${g.isLevel?`<td>${esc(c?classFullName(c):'')}</td>`:''}${blanks}</tr>`;
+      return `<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${showCls?`<td>${esc(c?classFullName(c):'')}</td>`:''}${blanks}</tr>`;
     }).join('');
-    ncols = 3 + (g.isLevel?1:0) + cols.length;
+    ncols = 3 + (showCls?1:0) + cols.length;
   } else if(mode==='empty'){
     // Only the assessments the admin has switched on; an Average/Total column is added only when there is more than one.
     const _ac = gsAssessCols(g.classes);
     const cols = (_ac.length>1 ? _ac.concat(['Average/Total']) : _ac).concat(['Position']);
-    head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('')}`;
+    head = `<th>No.</th><th>Adm No</th><th>Student</th>${showCls?'<th>Class</th>':''}${cols.map(l=>`<th style="min-width:70px;">${esc(l)}</th>`).join('')}`;
     const blanks = cols.map(()=>'<td style="height:30px;">&nbsp;</td>').join('');
     rows = students.map((s,i)=>{
       const c = DB.classes.find(x=>x.id===s.classId);
-      return `<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${g.isLevel?`<td>${esc(c?classFullName(c):'')}</td>`:''}${blanks}</tr>`;
+      return `<tr><td>${i+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${showCls?`<td>${esc(c?classFullName(c):'')}</td>`:''}${blanks}</tr>`;
     }).join('');
-    ncols = 3 + (g.isLevel?1:0) + cols.length;
+    ncols = 3 + (showCls?1:0) + cols.length;
   } else {
     const level = g.level, isA = level==='A', isP = level==='P', isO = level==='O';
     const cfg0 = examConfig(g.cls.id);
@@ -13645,7 +13739,7 @@ function generalSheetView(mode, scope){
     }
     const mean = arr=>{ const v = arr.filter(x=>x!==null && x!==undefined); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
     const gradeTd = (gr)=>`<td style="font-weight:800;${gr&&gr!=='—'?`color:${gradeColorFor(gr)};`:''}">${gr}</td>`;
-    head = `<th>No.</th><th>Adm No</th><th>Student</th>${g.isLevel?'<th>Class</th>':''}<th>Subjects</th>`
+    head = `<th>No.</th><th>Adm No</th><th>Student</th>${showCls?'<th>Class</th>':''}<th>Subjects</th>`
       + (anyCw ? `<th>Avg ${esc(cfg0.cwLabel)} (/${esc(String(cfg0.cwPercent))})</th>` : '')
       + (anyEot ? `<th>Avg ${esc(cfg0.eotLabel)} (/${esc(String(cfg0.eotPercent))})</th>` : '')
       + `<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}${isO?'<th>Result</th>':''}<th>Position</th>`;
@@ -13659,7 +13753,7 @@ function generalSheetView(mode, scope){
       const pos = has ? (g.isLevel ? levelPos.get(s.id) : classPosition(s, c, term, year)) : null;
       const agg = (isP && has) ? primaryAggregate(s, c, term, year) : null;
       const gr = has ? gradeFor('', d.avgPct, c.level) : '—';
-      return `<tr><td>${i+1}</td><td>${esc(s.admNo||'—')}</td><td style="text-align:left;">${esc(s.name)}</td>${g.isLevel?`<td>${esc(classFullName(c))}</td>`:''}<td>${sat}</td>`
+      return `<tr><td>${i+1}</td><td>${esc(s.admNo||'—')}</td><td style="text-align:left;">${esc(s.name)}</td>${showCls?`<td>${esc(classFullName(c))}</td>`:''}<td>${sat}</td>`
         + (anyCw ? `<td>${cw===null?'—':zp(cw.toFixed(1))}</td>` : '')
         + (anyEot ? `<td>${eot===null?'—':zp(eot.toFixed(1))}</td>` : '')
         + `<td>${has?zpct(d.avgPct,1):'—'}</td>`
@@ -13668,7 +13762,7 @@ function generalSheetView(mode, scope){
         + (isO ? `<td style="font-weight:800;">${has?resultTextFor(s,c,term,year):'—'}</td>` : '')
         + `<td>${pos?`${pos.position}/${pos.size}`:'—'}</td></tr>`;
     }).join('');
-    ncols = 3 + (g.isLevel?1:0) + 1 + (anyCw?1:0) + (anyEot?1:0) + 1 + (isA?1:0) + (isP?2:1) + (isO?1:0) + 1;
+    ncols = 3 + (showCls?1:0) + 1 + (anyCw?1:0) + (anyEot?1:0) + 1 + (isA?1:0) + (isP?2:1) + (isO?1:0) + 1;
     foot = `<p class="small" style="margin-top:10px;">Overall results across every subject recorded for ${esc(term||'')}, ${esc(String(year||''))}. “—” means no scores are recorded yet.</p>`;
   }
   const label = mode==='empty' ? 'Empty' : (mode==='attendance' ? 'Attendance' : 'Filled');
@@ -13759,13 +13853,14 @@ function blankMarksheetView(classId, subject){
 // eligible for the subject who hasn't been placed on a roster yet.
 function marksheetRoster(classId, subject){
   const cls = DB.classes.find(c=>c.id===classId);
-  const asns = DB.assignments.filter(a=>a.classId===classId && a.subject===subject);
+  const gids = aGroupIds(cls), asnIds = streamGroupIds(cls);
+  const asns = DB.assignments.filter(a=>asnIds.has(a.classId) && a.subject===subject);
   const rosterIds = new Set();
   let anyRosterSet = false;
   asns.forEach(a=>{ if(Array.isArray(a.studentIds)){ anyRosterSet=true; a.studentIds.forEach(id=>rosterIds.add(id)); } });
   const students = sortByName(anyRosterSet
-    ? DB.students.filter(s=>s.status!=='left' && s.classId===classId && (rosterIds.has(s.id) || studentSubjects(s,cls).includes(subject)))
-    : DB.students.filter(s=>s.status!=='left' && s.classId===classId && studentSubjects(s,cls).includes(subject)));
+    ? DB.students.filter(s=>s.status!=='left' && gids.has(s.classId) && (rosterIds.has(s.id) || studentSubjects(s,cls).includes(subject)))
+    : DB.students.filter(s=>s.status!=='left' && gids.has(s.classId) && studentSubjects(s,cls).includes(subject)));
   return {cls, students};
 }
 function marksheetColumns(students, subject){
@@ -14024,11 +14119,11 @@ function downloadMarksheetCSV(assignId, paper, kind, label, max){
 function classSubjectsFor(cls){
   // Union of every subject any student currently in the class is taking.
   const set = new Set();
-  DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).forEach(s=> studentSubjects(s, cls).forEach(su=>set.add(su)));
+  classRosterStudents(cls).forEach(s=> studentSubjects(s, cls).forEach(su=>set.add(su)));
   return [...set];
 }
 function subjectClassStats(cls, subject, term, year){
-  const students = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id && studentSubjects(s,cls).includes(subject));
+  const students = classRosterStudents(cls).filter(s=>studentSubjects(s,cls).includes(subject));
   const scored = students.map(s=>({student:s, avg: subjectAverage(s.id, subject, term, year)})).filter(x=>x.avg!==null);
   const grades = {A:0,B:0,C:0,D:0,E:0,O:0,F:0};
   let sum=0, max=null, min=null;
@@ -14102,7 +14197,10 @@ function paperAverage(studentId, subject, paper, term, year){
 // Sat / Enrolled, average, highest and lowest for one paper of a subject across the given classes.
 function paperStatsFor(classList, subject, paper, term, year){
   let enrolled=0, sat=0, sum=0, max=null, min=null;
-  classList.forEach(c=>{
+  // A-Level: every stream of a class counts together, whichever stream is passed in.
+  const _seenC = new Set(), _classes = [];
+  classList.forEach(c0=>aGroupClasses(c0).forEach(k=>{ if(!_seenC.has(k.id)){ _seenC.add(k.id); _classes.push(k); } }));
+  _classes.forEach(c=>{
     DB.students.filter(s=>s.status!=='left' && s.classId===c.id && studentSubjects(s,c).includes(subject)).forEach(s=>{
       enrolled++;
       const v = paperAverage(s.id, subject, paper, term, year);
@@ -14118,14 +14216,14 @@ function paperStatsFor(classList, subject, paper, term, year){
 function subjectPaperList(classList, subject, term, year){
   const out = [];
   const add = p=>{ const v = (p===null||p===undefined) ? '' : String(p).trim(); if(v && !out.includes(v)) out.push(v); };
-  const ids = new Set(); classList.forEach(c=>{ subjectPapersFor(subject, c).forEach(add); ids.add(c.id); });
+  const ids = new Set(); classList.forEach(c0=>aGroupClasses(c0).forEach(c=>{ subjectPapersFor(subject, c).forEach(add); ids.add(c.id); }));
   const stu = new Set(DB.students.filter(s=>s.status!=='left' && ids.has(s.classId)).map(s=>s.id));
   DB.scores.forEach(sc=>{ if(sc.subject===subject && sc.term===term && sc.year==year && stu.has(sc.studentId)) add(sc.paper); });
   out.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
   return out;
 }
 function classStudentStats(cls, term, year){
-  const students = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
+  const students = classRosterStudents(cls);
   const isA = cls.level==='A';
   return students.map(s=>{
     const {rows, totalPoints, avgPct} = computeSubjectRows(s, cls, term, year);
@@ -14243,7 +14341,7 @@ function classAnalysisViewCore(){
   const isA = cls.level==='A';
 
   termForSummary = term; yearForSummary = year;
-  const classPairs = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).map(s=>[s,cls]);
+  const classPairs = classRosterStudents(cls).map(s=>[s, aOwnClass(s, cls)]);
   const levelPairs = [];
   levelClasses(cls.level).forEach(c=>DB.students.filter(s=>s.status!=='left' && s.classId===c.id).forEach(s=>levelPairs.push([s,c])));
   // ---- Subject Performance: BOTH views are shown automatically for the selected class —
@@ -14365,7 +14463,7 @@ function classAnalysisViewCore(){
   // Same table as the General MarkSheets "Rank List" (same columns, same ranking, same descriptors), plus a
   // Combination (A-Level) / Optional Subjects (O-Level) column for the secondary levels.
   const lvl = cls.level, isAL = lvl==='A', isPL = lvl==='P', isOL = lvl==='O', hasCombo = isAL || isOL;
-  const spData = DB.students.filter(st=>st.status!=='left' && st.classId===cls.id).map(st=>{
+  const spData = classRosterStudents(cls).map(st=>{
     const d = computeSubjectRows(st, cls, term, year);
     const subjSet = new Set(studentSubjects(st, cls));
     classSubjectsFor(cls).forEach(sj=>{ if(subjectAverage(st.id, sj, term, year)!==null) subjSet.add(sj); });
@@ -14513,11 +14611,11 @@ function projectAssessmentView(){
   const comments = projectGradeComments();
 
   const takes = (s,su)=> studentSubjects(s,cls).includes(su);
-  const students = chosen.length ? sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===cls.id && chosen.some(su=>takes(s,su) || projectScoreRecord(s.id, cls.id, su, term, year, d)))) : [];
+  const students = chosen.length ? sortByName(classRosterStudents(cls).filter(s=>chosen.some(su=>takes(s,su) || projectScoreRecord(s.id, s.classId, su, term, year, d)))) : [];
 
   const rowsHtml = students.map((s,ri)=>{
     const cells = chosen.map((su,i)=>{
-      const rec = projectScoreRecord(s.id, cls.id, su, term, year, d);
+      const rec = projectScoreRecord(s.id, s.classId, su, term, year, d);
       const has = rec && rec.score!=null;
       if(!takes(s,su) && !has) return '<td>—</td>';
       const grade = has ? projectGradeFor(Number(rec.score)) : null;
@@ -14714,7 +14812,7 @@ function masterMarkSheetViewCore(forExport){
     pool.forEach((r,i)=>{ if(i===0 || !rankTie(r.k, pool[i-1].k)) pp = i+1; levelPosOf.set(r.st.id, {position:pp, size:pool.length}); });
     allStudents = pool.map(r=>r.st);
   } else {
-    allStudents = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    allStudents = classRosterStudents(cls).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   }
   const pg = paginateMarksheet(allStudents, sel.mmPage, !!forExport, 25);
   const students = pg.pageItems;
@@ -14877,7 +14975,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const isA = level==='A', isP = level==='P';
   const pool = isLevel
     ? DB.students.filter(st=>st.status!=='left' && (DB.classes.find(c=>c.id===st.classId)||{}).level===level)
-    : DB.students.filter(st=>st.status!=='left' && st.classId===cls.id);
+    : classRosterStudents(cls);
   const data = pool.map(st=>{
     const c = DB.classes.find(x=>x.id===st.classId);
     const d = computeSubjectRows(st, c, term, year);
@@ -15151,7 +15249,8 @@ function seedRosterFromScores(a){
   if(!a || Array.isArray(a.studentIds)) return false;
   const cls = DB.classes.find(c=>c.id===a.classId);
   if(!cls || isCompulsorySubjectFor(a.subject, cls)) return false;
-  const inClass = new Set(DB.students.filter(s=>s.status!=='left' && s.classId===a.classId).map(s=>s.id));
+  const _sg5 = streamGroupIdsById(a.classId);
+  const inClass = new Set(DB.students.filter(s=>s.status!=='left' && _sg5.has(s.classId)).map(s=>s.id));
   const ids = new Set();
   (DB.scores||[]).forEach(r=>{ if(r.subject===a.subject && inClass.has(r.studentId)) ids.add(r.studentId); });
   if(!ids.size) return false;
@@ -15164,6 +15263,8 @@ function seedAllRostersFromScores(){
   return changed;
 }
 function scoresEntryView(mine){
+  // Assignments repeated per stream are folded into one shared set for the class (once, then saved).
+  if(mergeStreamAssignments()){ try{ saveAssignments(); }catch(e){ console.error(e); } mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(x=>x.teacherUsername===CUR.username); }
   const sel = VIEW.params;
   const isAdmin = CUR.role==='admin';
   // Only an Admin ever sees the period picker (below), so a Teacher's sel.pTerm/pYear
@@ -15183,7 +15284,12 @@ function scoresEntryView(mine){
     // Every student already in the class is available to a subject teacher to tick —
     // admin registration never decides who takes a subject, so eligibility here is
     // simply "in this class", not "already recorded as taking this subject".
-    const eligible = sortByName(DB.students.filter(s=>s.status!=='left' && s.classId===a.classId));
+    // A class with streams: the stream chosen on the picker (or all of them) decides who is listed.
+    const _sgrp = streamGroupClasses(cls);
+    const _spick = _sgrp.length>1 ? (STREAM_PICK[a.id] || '*') : '';
+    const scopeIds = _sgrp.length>1 ? (_spick==='*' ? new Set(_sgrp.map(c=>c.id)) : new Set([_spick])) : new Set([a.classId]);
+    const clsLabel = assignPickedLabel(a, cls);
+    const eligible = sortByName(DB.students.filter(s=>s.status!=='left' && scopeIds.has(s.classId)));
     // Compulsory subjects: EVERY student in the class is listed automatically (new students included) and
     // nobody can be removed. Optional subjects keep the teacher's own list.
     const compulsoryAll = isCompulsorySubjectFor(a.subject, cls);
@@ -15205,7 +15311,7 @@ function scoresEntryView(mine){
       const allChosen = listed.length>0 && listed.every(s=>chosen.has(s.id));
       studentRows = `
       <div class="card se-fit">
-        <h3 class="fit-line">${esc(a.subject)} — ${esc(cls.name)}${missingOnly ? ' — Add missing students' : (compulsory ? ' — Select your students' : '<span style="display:block;color:#d00000;font-weight:800;margin-top:4px;">SELECT ONLY YOUR STUDENTS</span>')}</h3>
+        <h3 class="fit-line">${esc(a.subject)} — ${esc(clsLabel)}${missingOnly ? ' — Add missing students' : (compulsory ? ' — Select your students' : '<span style="display:block;color:#d00000;font-weight:800;margin-top:4px;">SELECT ONLY YOUR STUDENTS</span>')}</h3>
         <form data-form="saveRoster" data-assign="${a.id}" data-missing-only="${missingOnly?'1':''}" data-paper="${sel.paper}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}">
           ${compulsory && listed.length ? `
           <label class="sr-all">
@@ -15245,8 +15351,8 @@ function scoresEntryView(mine){
       // moved on) — for that case use "Add a student who isn't listed above" below.
       // Always A-Z by name (same order as the score/mark sheets), never admission-number order.
       let students = sortByName(DB.students.filter(s=>(compulsoryAll || a.studentIds.includes(s.id)) && (
-        (s.classId===a.classId && s.status!=='left') ||
-        (isPastPeriod && s.status==='left' && s.classId===a.classId)
+        (scopeIds.has(s.classId) && s.status!=='left') ||
+        (isPastPeriod && s.status==='left' && scopeIds.has(s.classId))
       )));
       // Students just added to the list (and with no score yet for this subject this term) wait at the
       // bottom, in the order they were added. Once any score is saved for them they drop back into
@@ -15310,7 +15416,7 @@ function scoresEntryView(mine){
         // what's already on record instead of an editable sheet.
         studentRows = `
       <div class="card se-fit">
-        <h3 style="margin-top:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
+        <h3 style="margin-top:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(clsLabel)}</h3>
         <p class="small">Scores have already been entered for this ${testWord} — ${existingCount} of ${students.length} student${students.length===1?'':'s'} on your list already ${existingCount===1?'has':'have'} a mark saved (out of ${sel.maxScore||100}). To avoid accidentally duplicating or overwriting what's on file, choose one of the options below.</p>
         <div class="se-fit-btns">
           <button class="btn" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Continue to edit</button>
@@ -15324,7 +15430,7 @@ function scoresEntryView(mine){
         studentRows = `
       <div class="card se-fit">
         <div class="flex" style="justify-content:space-between;align-items:center;">
-          <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(cls.name)}</h3>
+          <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(clsLabel)}</h3>
           <button type="button" class="btn-outline" data-action="confirmEditScores:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">Edit these scores</button>
         </div>
 
@@ -15340,7 +15446,7 @@ function scoresEntryView(mine){
       ${scoresLocked? `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>The ${esc(sel.kind==='AOI'?cfgHere.cwLabel:cfgHere.eotLabel)} submission deadline (${fmtDateTime(scoreDeadlineFor(sel.kind).deadline)}) has passed.</b> You can still see everything below, but scores can't be submitted, edited, or deleted until your admin reopens entry for you.</div>` : ''}
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center;">
-          <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(esc(cfgHere.cwLabel)+': '+esc(sel.label||'')):esc(cfgHere.eotLabel)} — ${esc(cls.name)}</h3>
+          <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(esc(cfgHere.cwLabel)+': '+esc(sel.label||'')):esc(cfgHere.eotLabel)} — ${esc(clsLabel)}</h3>
         </div>
 
         <form data-form="saveScores" data-assign="${a.id}" data-paper="${sel.paper}" data-subject="${a.subject}" data-kind="${sel.kind}" data-label="${esc(sel.label||'')}" data-max="${sel.maxScore||100}" data-term="${esc(term)}" data-year="${esc(String(year))}">
@@ -15379,7 +15485,7 @@ function scoresEntryView(mine){
             return `<tr><td class="se-tk">${pickBox}</td><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="text" inputmode="decimal" autocomplete="off" min="0" max="${sel.maxScore||100}" value="${esc(zp(existing))}" placeholder="${isMissing?'X':''}" class="zp-in ${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
           }).join('') || `<tr><td colspan="${otherCols.length?5:4}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
-          ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(cls.name)}</b> is listed automatically — including students added to the class later.
+          ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(clsLabel)}</b> is listed automatically — including students added to the class later.
             <div class="flex" style="margin-top:10px;"><button type="button" class="btn-outline" data-action="refreshRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">ADD MY MISSING STUDENTS</button></div>
             <div class="small" style="margin-top:6px;text-transform:none;">Tap to refresh the list and pick up newly added students. Scores you have typed but not saved are kept.</div></div>` : `          <div class="note" style="margin-top:10px;">
             ${newCount ? `<b>${newCount} new student${newCount>1?'s':''}</b> in this class ${newCount>1?"aren't":"isn't"} on your list yet. ` : ''}<a href="#" data-action="editRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}"><b style="font-size:calc(7*var(--uk));font-weight:900;white-space:nowrap;display:inline-block;">${newCount?'ADD MISSING STUDENTS TO LIST':'Edit my student list / add missing students'}</b></a>
@@ -15443,7 +15549,7 @@ function scoresEntryView(mine){
   const pickedCls = pickedAssign ? DB.classes.find(c=>c.id===pickedAssign.classId) : null;
   const pickerSummaryBar = pickerSubmitted ? `
   <div class="card sel-sum">
-    <div class="fit-line sel-sum-text"><b>${pickedAssign?esc(pickedAssign.subject):''}</b>${pickedCls?' — '+esc(pickedCls.name):''}${pickedCls&&pickedCls.level!=='P'?' — Paper '+esc(String(sel.paper)):''} — ${sel.kind==='AOI'?esc(sel.label||examConfig(pickedAssign?pickedAssign.classId:null).cwLabel):esc(examConfig(pickedAssign?pickedAssign.classId:null).eotLabel)} <span style="color:var(--muted);">(out of ${sel.maxScore})</span></div>
+    <div class="fit-line sel-sum-text"><b>${pickedAssign?esc(pickedAssign.subject):''}</b>${pickedCls?' — '+esc(assignPickedLabel(pickedAssign, pickedCls)):''}${pickedCls&&pickedCls.level!=='P'?' — Paper '+esc(String(sel.paper)):''} — ${sel.kind==='AOI'?esc(sel.label||examConfig(pickedAssign?pickedAssign.classId:null).cwLabel):esc(examConfig(pickedAssign?pickedAssign.classId:null).eotLabel)} <span style="color:var(--muted);">(out of ${sel.maxScore})</span></div>
     <button type="button" class="btn-outline fit-line" data-action="nav:${VIEW.name}">Change subject / paper / test</button>
   </div>` : '';
   const pickerCard = pickerSubmitted ? '' : (()=>{
@@ -15466,9 +15572,10 @@ function scoresEntryView(mine){
             <option value="">-- click here to choose what to mark --</option>
             ${mine.map(a=>{ const c=DB.classes.find(x=>x.id===a.classId);
               const teacherBit = CUR.role==='admin' ? ` — ${esc((DB.accounts.find(t=>t.username===a.teacherUsername)||{}).name||a.teacherUsername)}` : '';
-              return `<option value="${a.id}">${esc(a.subject)} — ${c?esc(c.name):''}${teacherBit}</option>`; }).join('') || '<option value="">-- no subject assignments yet --</option>'}
+              return `<option value="${a.id}">${esc(a.subject)} — ${c?esc(assignClassName(c)):''}${teacherBit}</option>`; }).join('') || '<option value="">-- no subject assignments yet --</option>'}
           </select>
         </div>
+        <div id="streamFieldWrap" style="display:none;"><label>Stream</label><select name="stream" id="streamSel"><option value="">-- choose stream --</option></select></div>
         <div id="paperFieldWrap" style="${firstIsPrimary?'display:none;':''}"><label>Paper</label><select name="paper" ${firstIsPrimary?'':'required'} id="paperSelect"><option value="">-- choose paper --</option></select></div>
       </div>
       <div class="grid2 pick-stack pick-sec">
@@ -15769,7 +15876,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // below still short-circuits to false for every call since it all flows through this.
   const editableNow = false;
   function assignmentFor(subject, paper){
-    const asns = DB.assignments.filter(a=>a.subject===subject && a.classId===cls.id);
+    const asns = DB.assignments.filter(a=>a.subject===subject && streamGroupIds(cls).has(a.classId));
     if(!asns.length) return null;
     if(paper==null) return asns[0];
     return asns.find(a=>Array.isArray(a.papers) && a.papers.some(p=>String(p)===String(paper))) || asns[0];
@@ -16250,7 +16357,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const useCwTestCols = showCW && cwTests.length>1; // keep a single CW column when only one test is configured
 
   function assignmentFor(subject, paper){
-    const asns = DB.assignments.filter(a=>a.subject===subject && a.classId===cls.id);
+    const asns = DB.assignments.filter(a=>a.subject===subject && streamGroupIds(cls).has(a.classId));
     if(!asns.length) return null;
     if(paper==null) return asns[0];
     return asns.find(a=>Array.isArray(a.papers) && a.papers.some(p=>String(p)===String(paper))) || asns[0];
@@ -17469,9 +17576,6 @@ document.addEventListener('click', async (e)=>{
       const studs = stmStudents(g);
       // Where each student currently sits, before anything moves.
       const fromClass = {}; studs.forEach(x=>{ fromClass[x.id] = x.classId; });
-      // Assignments of the class being streamed (the original class, or the first stream if already streamed).
-      const source = parent || g.rows[0] || null;
-      const srcAsn = source ? DB.assignments.filter(a=>a.classId===source.id).map(a=>({...a, papers:Array.isArray(a.papers)?a.papers.slice():a.papers, studentIds:Array.isArray(a.studentIds)?a.studentIds.slice():a.studentIds})) : [];
       const recs = []; let created = 0, converted = false, parentUsed = false;
       names.forEach((st,i)=>{
         let rec = g.rows.find(c=>(c.stream||'').trim().toLowerCase()===st.toLowerCase());
@@ -17484,13 +17588,9 @@ document.addEventListener('click', async (e)=>{
         }
         else {
           rec = {id:uid('cls'), name:g.base+' '+st, level:g.level, form:g.form, stream:st, classTeacher:STM.teachers[i]||null, nextAdmSeq:0};
+          // No assignments are copied: a class keeps ONE set of teacher/subject assignments however many
+          // streams it has — the teacher picks the stream when entering scores.
           DB.classes.push(rec); created++;
-          // The streamed class's subject assignments (teachers, papers) carry over to the new stream.
-          srcAsn.forEach(a=>{
-            const copy = {id:uid('asn'), teacherUsername:a.teacherUsername, classId:rec.id, subject:a.subject, papers:a.papers};
-            if(Array.isArray(a.studentIds)) copy.studentIds = a.studentIds.filter(id=>STM.assign[id]===i);
-            DB.assignments.push(copy);
-          });
         }
         recs.push(rec);
       });
@@ -17504,13 +17604,8 @@ document.addEventListener('click', async (e)=>{
         try{ projectData().scores.forEach(r=>{ if(r.studentId===stu.id && r.classId===fromClass[stu.id]){ r.classId = target; projMoved = true; } }); }catch(e){ console.error(e); }
         stu.classId = target; moved++;
       });
-      // Per-student subject ticks on the streamed class's assignments: drop students who left that class.
-      DB.assignments.forEach(a=>{
-        if(!Array.isArray(a.studentIds)) return;
-        const rc = recs.find(r=>r.id===a.classId); if(!rc) return;
-        const idx = recs.indexOf(rc);
-        a.studentIds = a.studentIds.filter(id=>STM.assign[id]===undefined || STM.assign[id]===idx);
-      });
+      // Fold any assignments that were repeated per stream into one shared set for the whole class.
+      mergeStreamAssignments();
       if(projMoved) await saveInfo();
       await saveClasses(); await saveAssignments(); await saveStudents();
       stmCloseSummary();
@@ -17549,7 +17644,8 @@ Continue?`);
       const _delCls = DB.classes.find(c=>c.id===arg);
       if(!_delCls) break;
       const _delStudents = DB.students.filter(s=>s.classId===arg && s.status!=='left').length;
-      const _delAssigns = DB.assignments.filter(a=>a.classId===arg).length;
+      const _delSibs = streamGroupClasses(_delCls).filter(c=>c.id!==arg);   // other streams of the same class keep the shared assignments
+      const _delAssigns = _delSibs.length ? 0 : DB.assignments.filter(a=>a.classId===arg).length;
       if(!confirm(`Delete the class "${_delCls.name}"?`
         + (_delAssigns ? `\n\nIts ${_delAssigns} subject/teacher assignment${_delAssigns===1?'':'s'} will also be removed.` : '')
         + (_delStudents ? `\n${_delStudents} student${_delStudents===1?' is':'s are'} currently in this class.` : '')
@@ -17561,7 +17657,8 @@ Continue?`);
       // (reading 'level')") the moment anyone tried to pick them. Cascade the
       // assignments out along with the class so nothing dangling is left behind.
       DB.classes = DB.classes.filter(c=>c.id!==arg);
-      DB.assignments = DB.assignments.filter(a=>a.classId!==arg);
+      if(_delSibs.length){ DB.assignments.forEach(a=>{ if(a.classId===arg) a.classId = _delSibs[0].id; }); }   // shared assignments move to another stream
+      else DB.assignments = DB.assignments.filter(a=>a.classId!==arg);
       await Promise.all([saveClasses(), saveAssignments()]);
       showActionSuccess(`Class deleted successfully`, el, true); render(); break;
     }
@@ -18978,6 +19075,17 @@ document.addEventListener('change', (e)=>{
     // test picker, and the suggested max score to match THIS class the moment it's
     // picked — instead of leaving the school-wide defaults showing.
     refreshAssessmentTypeUI(form, a ? a.classId : null);
+    // A class with more than one stream: a Stream card appears at once (like the Paper card) and must be answered.
+    const _sw = form.querySelector('#streamFieldWrap'), _ss = form.querySelector('#streamSel');
+    if(_sw && _ss){
+      const _grp = assignedCls ? streamGroupClasses(assignedCls) : [];
+      if(_grp.length>1){
+        _ss.innerHTML = '<option value="">-- choose stream --</option>' + _grp.map(c=>`<option value="${c.id}">${esc(streamShortName(c))}</option>`).join('') + '<option value="*">All streams</option>';
+        _ss.required = true; _sw.style.display = 'block';
+      } else {
+        _ss.innerHTML = '<option value="">-- choose stream --</option>'; _ss.required = false; _sw.style.display = 'none';
+      }
+    }
   }
   if(e.target.name==='role' && e.target.id==='roleSel'){
     document.getElementById('parentLinkWrap').style.display = e.target.value==='parent'?'block':'none';
@@ -20493,7 +20601,14 @@ document.addEventListener('submit', async (e)=>{
       if(!(fd.get('subject')||'').trim()){ alert('Please select a subject.'); return; }
       const papers = (assignCls && assignCls.level==='P') ? ['1'] : (fd.get('papers')||'').split(',').map(p=>p.trim()).filter(Boolean);
       if(!papers.length){ alert('Please enter the papers taught, e.g. 1,2'); return; }
-      DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
+      // The same teacher + subject for any stream of this class is the SAME assignment — never repeated.
+      const _gi = streamGroupIds(assignCls);
+      const _dup = DB.assignments.find(x=>x.teacherUsername===fd.get('teacherUsername') && x.subject===fd.get('subject') && _gi.has(x.classId));
+      if(_dup){
+        _dup.papers = [...new Set([...(Array.isArray(_dup.papers)?_dup.papers:[]).map(String), ...papers.map(String)])].sort();
+      } else {
+        DB.assignments.push({id:uid('asn'), teacherUsername:fd.get('teacherUsername'), classId:fd.get('classId'), subject:fd.get('subject'), papers});
+      }
       await saveAssignments(); form.reset(); render();
     }
     else if(type==='assignBulk'){
@@ -20906,6 +21021,10 @@ document.addEventListener('submit', async (e)=>{
       const _pickCls = _pickA ? DB.classes.find(c=>c.id===_pickA.classId) : null;
       if(!(_pickCls && _pickCls.level==='P') && !fd.get('paper')){ alert('Please choose a paper.'); return; }
       if(!fd.get('kind')){ alert('Please choose an assessment type.'); return; }
+      if(_pickA && _pickCls && streamGroupClasses(_pickCls).length>1){
+        if(!fd.get('stream')){ alert('Please choose the stream.'); return; }
+        STREAM_PICK[_pickA.id] = String(fd.get('stream'));
+      } else if(_pickA){ delete STREAM_PICK[_pickA.id]; }
       // A named test arrives as "AOI::<name>"; End of Term (or the single unnamed Course Work bucket) as plain "EOT" / "AOI".
       const _kindRaw = String(fd.get('kind'));
       const _pickKind = _kindRaw.split('::')[0];
@@ -21005,7 +21124,7 @@ document.addEventListener('submit', async (e)=>{
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
       if(!lines.length){ alert('That file appears to be empty.'); return; }
-      const rosterIds = (Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, DB.classes.find(c=>c.id===a.classId))) ? a.studentIds : DB.students.filter(s=>s.classId===a.classId).map(s=>s.id);
+      const rosterIds = (Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, DB.classes.find(c=>c.id===a.classId))) ? a.studentIds : DB.students.filter(s=>streamGroupIdsById(a.classId).has(s.classId)).map(s=>s.id);
       const byAdmNo = new Map(DB.students.filter(s=>rosterIds.includes(s.id)).map(s=>[s.admNo, s]));
       let imported=0, skipped=0, outOfRange=0;
       const importRows = [];
