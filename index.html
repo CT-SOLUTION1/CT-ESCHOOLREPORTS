@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-16-1700'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-16-1800'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -17952,6 +17952,9 @@ document.addEventListener('click', async (e)=>{
           rec = {id:uid('cls'), name:g.base+' '+st, level:g.level, form:g.form, stream:st, classTeacher:STM.teachers[i]||null, nextAdmSeq:0};
           // No assignments are copied: a class keeps ONE set of teacher/subject assignments however many
           // streams it has — the teacher picks the stream when entering scores.
+          // Class-level exam settings (custom weights, named course-work tests) go with the class: copy them so the
+          // scores already entered still match the tests/weights in the stream their student moves to.
+          try{ const srcCls = parent || g.rows[0]; if(srcCls && srcCls.examConfig) rec.examConfig = JSON.parse(JSON.stringify(srcCls.examConfig)); }catch(e){ console.error(e); }
           DB.classes.push(rec); created++;
         }
         recs.push(rec);
@@ -17969,12 +17972,20 @@ document.addEventListener('click', async (e)=>{
             fd_.classAgreed.push({...r, id:uid('cagree'), classId:rc.id}); finCopied = true;
           });
         });
+        const sel_ = fd_.classReqSelections || {}, srcId_ = (parent || g.rows[0]).id;
+        recs.forEach(rc=>{
+          if(oldIds.has(rc.id) || sel_[rc.id]!==undefined || sel_[srcId_]===undefined) return;
+          sel_[rc.id] = Array.isArray(sel_[srcId_]) ? sel_[srcId_].slice() : sel_[srcId_]; finCopied = true;
+        });
       }catch(e){ console.error(e); }
       let moved = 0, projMoved = false;
       studs.forEach(stu=>{
         const target = recs[STM.assign[stu.id]].id;
         if(target===stu.classId) return;
         // The student record, admission number and marks stay as they are; only the class placement changes (with history).
+        // A student with no placement history yet is first recorded in the class they were in all along, so earlier
+        // terms (and the scores entered in them) still resolve to their class instead of becoming "unknown".
+        if(!Array.isArray(stu.classHistory) || !stu.classHistory.length) noteClassPlacement(stu, stu.classId, 'Term 1', 0);
         noteClassPlacement(stu, target, DB.info.currentTerm, DB.info.currentYear);
         // Project-assessment scores are tagged with the class: move them with the student.
         try{ projectData().scores.forEach(r=>{ if(r.studentId===stu.id && r.classId===fromClass[stu.id]){ r.classId = target; projMoved = true; } }); }catch(e){ console.error(e); }
