@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-13-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-16-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -7086,6 +7086,7 @@ function computeSubjectRows(st, cls, term, year){
 // Admin switch (Report Cards screen): "Number of subjects counts in ranking and positions". ON (default) = the rules above.
 // OFF = the number of subjects scored is ignored: Primary / O-Level learners are ranked on their plain AVERAGE (so someone
 // with fewer subjects is not pushed down), A-Level keeps total Points then average. The RESULT 1 / 2 / 3 rule at O-Level still applies.
+function rankMode(){ return (DB.info && DB.info.rankMode==='stream') ? 'stream' : 'class'; }
 function subjectCountRanks(){ return !(DB.info && DB.info.subjectCountInRanking===false); }
 function rankKeyOf(d, level, st, cls, term, year){
   let r = 0;
@@ -7120,10 +7121,11 @@ function metricFor(st, cls, term, year){ const d = computeSubjectRows(st, cls, t
 // it for every student, cutting a full render down to O(N) total.
 let _rankCache = {scoresRef:null, key:'', map:null};
 function computeClassRankings(cls, term, year){
-  const key = [...rankGroupIds(cls)].sort().join(',')+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
+  const _sm = rankMode()==='stream';
+  const key = (_sm ? 'S:'+cls.id : [...rankGroupIds(cls)].sort().join(','))+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
   if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
   // Every level: every stream of the class is ranked together, so position and class size are the combined ones.
-  const peers = rankRosterStudents(cls);
+  const peers = _sm ? DB.students.filter(s=>s.status!=='left' && s.classId===cls.id) : rankRosterStudents(cls);
   const scored = peers.map(s=>({id:s.id, k:metricFor(s, aOwnClass(s, cls), term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
   const map = new Map();
   let position = scored.length;
@@ -7135,8 +7137,9 @@ function computeClassRankings(cls, term, year){
   return map;
 }
 function classPosition(student, cls, term, year){
+  if(rankMode()==='stream'){ const own = DB.classes.find(c=>c.id===student.classId); if(own) cls = own; }
   const map = computeClassRankings(cls, term, year);
-  const _gids = rankGroupIds(cls), _n = DB.students.filter(s=>_gids.has(s.classId)).length;
+  const _gids = rankMode()==='stream' ? new Set([cls.id]) : rankGroupIds(cls), _n = DB.students.filter(s=>_gids.has(s.classId)).length;
   return map.get(student.id) || {position: _n || 1, size: _n};
 }
 // showEOT true  -> the card has an End of Term column: comments look ahead to NEXT TERM.
@@ -11980,7 +11983,7 @@ function classGroups(){
   });
   return groups;
 }
-function stmGroup(){ return classGroups().find(g=>g.key===STM.key) || null; }
+function stmGroup(){ return pickGroups().find(g=>g.key===STM.key) || null; }
 function stmExisting(g){ return g ? g.rows.filter(c=>(c.stream||'').trim()) : []; }
 // Pre-fills the stream list from streams the class already has.
 function stmInitFromClass(g){
@@ -13104,8 +13107,8 @@ function scoreDeadlineCardsHTML(){
 // Class-teacher dropdown used by both promotion forms. "" leaves the next class's teacher
 // alone, "__MOVE__" moves the promoted class's own class teacher up with the students,
 // anything else is a teacher username to set as the next class's class teacher.
-function promoTeacherOptions(){
-  return `<option value="">-- leave unchanged --</option><option value="__MOVE__">↗ Move up with the class (same class teacher)</option>`
+function promoTeacherOptions(sel){
+  return `<option value="">-- leave unchanged --</option><option value="__MOVE__"${sel==='__MOVE__'?' selected':''}>↗ Move up with the class (same class teacher)</option>`
     + DB.accounts.filter(a=>a.role==='teacher').sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(t=>`<option value="${esc(t.username)}">${esc(t.name)}</option>`).join('');
 }
 // Applies the class-teacher choices of a promotion. Snapshots every class's teacher first so
@@ -13123,8 +13126,110 @@ function applyPromoTeachers(moves){
   Object.keys(assign).forEach(id=>{ const c = DB.classes.find(x=>x.id===id); if(c && (c.classTeacher||'')!==assign[id]){ c.classTeacher = assign[id]; changed = true; } });
   return changed;
 }
+
+
+// Ranking mode switch (Report Cards): tap, or swipe left/right on the button.
+async function rcSetRankMode(mode, el){
+  if(!el) el = document.getElementById('rcModeBtn');
+  if(el && el.classList.contains('rc-busy')) return;
+  const old = rankMode(); mode = mode || (old==='stream' ? 'class' : 'stream');
+  if(mode===old) return;
+  if(el) el.classList.add('rc-busy');
+  try{
+    DB.info.rankMode = mode; await saveInfo(); invalidateScoreLookupCache(); _rankCache = {scoresRef:null, key:'', map:null};
+  }catch(err){ DB.info.rankMode = old; if(el) el.classList.remove('rc-busy'); alert('Could not save — try again.'); return; }
+  render();
+}
+(function(){ var x0=null;
+  document.addEventListener('touchstart', function(e){ var b=e.target.closest&&e.target.closest('.rc-mode'); x0=b?e.touches[0].clientX:null; }, {passive:true});
+  document.addEventListener('touchend', function(e){ if(x0===null) return; var b=e.target.closest&&e.target.closest('.rc-mode'); var dx=e.changedTouches[0].clientX-x0; x0=null;
+    if(b && Math.abs(dx)>24){ e.preventDefault(); rcSetRankMode(dx<0?'stream':'class', b); } }, {passive:false});
+})();
+// ---- One class picker + stream cards (shared by Report Cards and Promotion) ----
+// A class with streams (S.3 East, S.3 West ...) is ONE entry in the class picker; its streams then appear as cards.
+function pickGroups(list){
+  const seen=new Set(), out=[];
+  (list||DB.classes).forEach(c=>{ const g=streamGroupClasses(c), h=g[0]; if(seen.has(h.id)) return; seen.add(h.id);
+    out.push({id:h.id, label:g.length>1?classBaseName(h):classFullName(h), streams:g}); });
+  return out;
+}
+function streamCardsHTML(streams, sel, onToggle, onAll){
+  const allOn = streams.length>0 && streams.every(c=>sel.has(c.id));
+  const cnt = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
+  return `<div class="sc-grid"><button type="button" class="sc-card sc-all${allOn?' on':''}" onclick="${onAll}(${!allOn})"><b>All streams</b><span>${streams.reduce((n,c)=>n+cnt(c.id),0)} students</span></button>`
+    + streams.map(c=>{ const on=sel.has(c.id); return `<button type="button" class="sc-card${on?' on':''}" onclick="${onToggle}('${esc(c.id)}',${!on})"><b>${esc(streamShortName(c))}</b><span>${cnt(c.id)} students</span></button>`; }).join('')+`</div>`;
+}
+var PR = {from:'', to:'', sel:new Set(), mode:'keep'}, PR_CREATED = false;
+function prDestOf(src, dg){
+  const nm = (src.stream||'').trim().toLowerCase();
+  return nm ? dg.streams.find(d=>(d.stream||'').trim().toLowerCase()===nm) || null : (dg.streams.find(d=>!(d.stream||'').trim()) || dg.streams[0]);
+}
+function prRender(){
+  const el = document.getElementById('prDyn'); if(!el) return;
+  const all = pickGroups(), g = all.find(x=>x.id===PR.from), dg = all.find(x=>x.id===PR.to); let h = '';
+  if(g && g.streams.length>1) h += `<label style="margin-top:10px;">Streams to promote</label>` + streamCardsHTML(g.streams, PR.sel, 'prToggle', 'prAll');
+  if(g && PR.sel.size && PR.to==='__OLD__'){
+    h += `<table class="data-table" style="margin-top:10px;"><tr><th>From</th><th>Goes to</th></tr>` + g.streams.filter(c=>PR.sel.has(c.id)).map(c=>`<tr><td>${esc(classFullName(c))}</td><td><input type="hidden" name="to__${esc(c.id)}" value="__OLD__">🎒 Old Students</td></tr>`).join('') + `</table>`;
+  } else if(g && PR.sel.size && dg){
+    const srcs = g.streams.filter(c=>PR.sel.has(c.id)), multi = g.streams.length>1, mode = multi ? PR.mode : 'combine';
+    h += `<input type="hidden" name="prMode" value="${mode}">`;
+    if(multi) h += `<label style="margin-top:12px;">What happens to the streams?</label><div class="sc-grid">`
+      + `<button type="button" class="sc-card${mode==='keep'?' on':''}" onclick="prSetMode('keep')"><b>Maintain streams</b><span>Each stream moves with its students; missing streams are created in ${esc(dg.label)}</span></button>`
+      + `<button type="button" class="sc-card${mode==='combine'?' on':''}" onclick="prSetMode('combine')"><b>Combine</b><span>All ticked streams join one class</span></button></div>`;
+    if(mode==='keep'){
+      h += `<table class="data-table" style="margin-top:10px;"><tr><th>From</th><th>Goes to</th><th>Class teacher</th></tr>` + srcs.map(c=>{
+        const ex = prDestOf(c, dg), nm = (c.stream||'').trim();
+        return `<tr><td>${esc(classFullName(c))}</td><td>${ex ? esc(classFullName(ex)) : esc(dg.label+' '+nm)+' <small>(new stream)</small>'}</td><td><select name="ct__${esc(c.id)}">${promoTeacherOptions('__MOVE__')}</select></td></tr>`; }).join('') + `</table>`;
+    } else {
+      h += `<div class="pc" style="margin-top:10px;"><label>${dg.streams.length>1?'Combine into which stream of '+esc(dg.label)+'?':'Goes to'}</label><select name="prDest" required>${dg.streams.length>1?'<option value="">-- choose stream --</option>':''}${dg.streams.map(c=>`<option value="${esc(c.id)}">${esc(classFullName(c))}</option>`).join('')}</select></div>`
+        + `<div class="pc" style="margin-top:8px;"><label>Class teacher of that class</label><select name="prCt">${promoTeacherOptions('')}</select></div>`;
+    }
+  }
+  el.innerHTML = h;
+}
+function prSetMode(m){ PR.mode = m; prRender(); }
+async function prBuildMoves(fd){
+  const all = pickGroups(), g = all.find(x=>x.id===PR.from), dg = all.find(x=>x.id===PR.to), mode = fd.get('prMode');
+  if(!g || !dg || !PR.sel.size){ alert('Choose the class, its streams and the next class first.'); return null; }
+  if(dg.id===g.id){ alert('Next class must be different from the class being promoted.'); return null; }
+  const srcs = g.streams.filter(c=>PR.sel.has(c.id)), lines = [], plan = [];
+  const cnt = id => DB.students.filter(x=>x.classId===id && x.status!=='left').length;
+  let dest = null;
+  if(mode==='keep'){
+    srcs.forEach(c=>{ const ex = prDestOf(c, dg), nm = (c.stream||'').trim(); plan.push({src:c, nm, ex, teacher:fd.get('ct__'+c.id)||''});
+      lines.push(`• ${classFullName(c)} → ${ex ? classFullName(ex) : dg.label+' '+nm+' (new stream will be created)'} (${cnt(c.id)})`); });
+  } else {
+    dest = dg.streams.find(x=>x.id===fd.get('prDest'));
+    if(!dest){ alert('Choose the class to promote into.'); return null; }
+    srcs.forEach(c=>lines.push(`• ${classFullName(c)} → ${classFullName(dest)} (${cnt(c.id)})`));
+  }
+  const total = srcs.reduce((n,c)=>n+cnt(c.id),0);
+  if(!confirm(`Promote to ${dg.label} — ${mode==='keep'?'MAINTAIN STREAMS':'COMBINE INTO ONE CLASS'}\n\n${lines.join('\n')}\n\nTotal: ${total} student(s). Subject assignments stay as they are.\n\nConfirm promotion?`)) return null;
+  if(!(await requireOwnerCode(`promote ${srcs.length} stream${srcs.length===1?'':'s'} of ${g.label}`, 'Promote'))) return null;
+  if(mode!=='keep'){
+    const pt = fd.get('prCt')||'';
+    return srcs.map((c,i)=>({from:c.id, to:dest.id, teacher:i===0?pt:''}));
+  }
+  let converted = false;
+  plan.forEach(p=>{
+    if(p.ex){ p.to = p.ex.id; return; }
+    if(!p.nm){ p.to = dg.streams[0].id; return; }
+    const parent = dg.streams.find(d=>!(d.stream||'').trim()), h = dg.streams[0];
+    let rec;
+    if(parent && !converted && !DB.students.some(x=>x.classId===parent.id && x.status!=='left')){ rec = parent; converted = true; rec.name = dg.label+' '+p.nm; rec.stream = p.nm; }
+    else { rec = {id:uid('cls'), name:dg.label+' '+p.nm, level:h.level, form:h.form, stream:p.nm, classTeacher:null, nextAdmSeq:0}; DB.classes.push(rec); }
+    PR_CREATED = true; p.to = rec.id;
+  });
+  if(converted) PR_CREATED = true;
+  return plan.map(p=>({from:p.src.id, to:p.to, teacher:p.teacher}));
+}
+function prPickFrom(id){ PR.from=id; PR.sel=new Set(); const g=pickGroups().find(x=>x.id===id); if(g && g.streams.length===1) PR.sel.add(g.streams[0].id); prRender(); }
+function prPickTo(v){ PR.to=v; prRender(); }
+function prToggle(id,on){ if(on) PR.sel.add(id); else PR.sel.delete(id); prRender(); }
+function prAll(on){ const g=pickGroups().find(x=>x.id===PR.from); PR.sel=new Set(on&&g?g.streams.map(c=>c.id):[]); prRender(); }
 function promoteView(){
   const i = DB.info;
+  PR = {from:'', to:'', sel:new Set(), mode:'keep'};
   const defaultCurr = i.currentYear || new Date().getFullYear();
   return `
   <h2>Year, Term & Promotion</h2>
@@ -13132,14 +13237,14 @@ function promoteView(){
   ${scoreDeadlineCardsHTML()}
   <div class="card">
     <h3>Promote Students</h3>
-    <form data-form="promote">
+    <form data-form="promoteAll">
       <div class="promote-row promote-stack">
-        <div class="pl"><div class="pc"><label>Class</label><select name="fromClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div><p class="small ph">The class to move up. Every student in it moves.</p></div>
+        <div class="pl"><div class="pc"><label>Class</label><select onchange="prPickFrom(this.value)"><option value="">-- select --</option>${pickGroups().map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}</select></div><p class="small ph">The class to move up. If it has streams, tap the stream cards that appear.</p></div>
         <div class="pl"><div class="pc"><label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required></div><p class="small ph">The year this promotion belongs to.</p></div>
-        <div class="pl"><div class="pc"><label>Next class</label><select name="toClass" required><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select></div><p class="small ph">Where they go. Old Students = graduating / leaving.</p></div>
-        <div class="pl"><div class="pc"><label>Class teacher of the next class</label><select name="classTeacher">${promoTeacherOptions()}</select></div><p class="small ph">Optional. Pick a teacher, or move the current one up with the class. Ignored for Old Students.</p></div>
+        <div class="pl"><div class="pc"><label>Next class</label><select onchange="prPickTo(this.value)"><option value="">-- select --</option>${pickGroups().map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select></div><p class="small ph">Where they go. If it has streams you choose to maintain or combine them next.</p></div>
       </div>
-      <p class="small" style="margin:8px 0 0;">Score history is kept. Moved students leave their old class roster.</p>
+      <div id="prDyn"></div>
+      <p class="small" style="margin:8px 0 0;">Score history, subject assignments and class teachers are kept as they are. A class teacher changes only if you pick one above.</p>
       <button class="btn" style="margin-top:10px;">Submit — promote class</button>
     </form>
   </div>
@@ -13150,8 +13255,8 @@ function promoteView(){
       <label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required>
       <table class="data-table" style="margin-top:8px;">
         <tr><th>Class</th><th>Promote to</th><th>Class teacher of next class</th></tr>
-        ${DB.classes.map(c=>`<tr><td>${esc(c.name)}</td><td>
-          <select name="to__${c.id}"><option value="">-- don't promote --</option>${DB.classes.filter(o=>o.id!==c.id).map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
+        ${DB.classes.map(c=>`<tr><td>${esc(classFullName(c))}</td><td>
+          <select name="to__${c.id}"><option value="">-- don't promote --</option>${DB.classes.filter(o=>o.id!==c.id).map(o=>`<option value="${o.id}">${esc(classFullName(o))}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select>
         </td><td><select name="ct__${c.id}">${promoTeacherOptions()}</select></td></tr>`).join('') || `<tr><td colspan="3">No classes yet — add a class first.</td></tr>`}
       </table>
       <button class="btn" style="margin-top:10px;">Submit — promote all classes</button>
@@ -13169,12 +13274,15 @@ function reportsListView(){
   const tAllowed = teachersMayViewReports();
   const scOn = subjectCountRanks();
   const zOn = reportZeroOn();
-  const togglesCard = isAdmin ? `
+  const rmS = rankMode()==='stream';
+  const rankSwitch = `<button type="button" class="rc-tog rc-mode ${rmS?'is-stream':'is-class'}" id="rcModeBtn" onclick="rcSetRankMode(null,this)" aria-label="Ranking mode"><span class="rc-mode-cap">Ranking</span><span class="rc-mode-track"><span class="rc-mode-thumb"></span><span class="rc-mode-l">Per class</span><span class="rc-mode-r">Per stream</span></span></button>`;
+  const togglesCard = !isAdmin ? `<div class="card rc-toggle-card"><div class="rc-toggle-row">${rankSwitch}</div></div>` : `
   <div class="card rc-toggle-card"><div class="rc-toggle-row">
     <button type="button" class="rc-tog ${tAllowed?'on':'off'}" data-action="toggleTeacherReports">Teacher access<br>${tAllowed?'ON':'OFF'}</button>
     <button type="button" class="rc-tog ${scOn?'on':'off'}" data-action="toggleSubjectCountRank">No. of subjects in ranking<br>${scOn?'ON':'OFF'}</button>
     <button type="button" class="rc-tog ${zOn?'on':'off'}" data-action="toggleReportZero">Leading zero (05)<br>${zOn?'ON':'OFF'}</button>
-  </div></div>` : '';
+    ${rankSwitch}
+  </div></div>`;
   const rcIds = rcAppliedIds().filter(id=>visibleClasses.some(c=>c.id===id));
   const rcCollapsed = rcIds.length>0;
   const rcNames = rcIds.map(id=>(visibleClasses.find(c=>c.id===id)||{}).name||'').filter(Boolean).join(', ');
@@ -13229,38 +13337,51 @@ function rcVisibleClasses(){
   const isT = CUR.role==='teacher';
   const as = isT ? DB.assignments.filter(a=>a.teacherUsername===CUR.username) : DB.assignments;
   const ids = [...new Set(as.map(a=>a.classId))];
-  return isT ? DB.classes.filter(c=>ids.includes(c.id)) : DB.classes;
+  return isT ? DB.classes.filter(c=>ids.some(id=>streamGroupIdsById(id).has(c.id))) : DB.classes;
 }
+var RC_BASE = '';
+function rcGroups(){ return pickGroups(rcVisibleClasses()); }
 function rcPickedClasses(){ return rcVisibleClasses().filter(c=>RC_PICK.has(c.id)); }
 function rcDdSummary(){
   const ps = rcPickedClasses();
-  if(!ps.length) return '-- select classes --';
-  return ps.length<=2 ? ps.map(c=>c.name).join(', ') : ps.length+' classes ticked';
+  if(!ps.length) return '-- select class --';
+  return ps.length===1 ? classFullName(ps[0]) : classBaseName(ps[0])+': '+ps.map(streamShortName).join(', ');
+}
+function rcStreamsHTML(){
+  const g = rcGroups().find(x=>x.id===RC_BASE);
+  return (g && g.streams.length>1) ? `<p class="small" style="margin:12px 0 6px;">Tap the stream(s) to load.</p>` + streamCardsHTML(g.streams, RC_PICK, 'rcPickToggle', 'rcPickAll') : '';
 }
 function rcPickRefresh(){
-  const vis = rcVisibleClasses(), n = rcPickedClasses().length;
-  const all = document.getElementById('rcPickAll'); if(all) all.checked = vis.length>0 && n===vis.length;
+  const n = rcPickedClasses().length;
   const ok = document.getElementById('rcPickOk'); if(ok) ok.disabled = !n;
   const dl = document.getElementById('rcPickDl'); if(dl) dl.disabled = !n;
-  const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n+' class'+(n===1?'':'es')+' ticked';
+  const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n ? n+' stream'+(n===1?'':'s')+' selected' : 'Nothing selected';
   const tx = document.getElementById('rcDdTxt'); if(tx) tx.textContent = rcDdSummary();
+  const st = document.getElementById('rcStreams'); if(st) st.innerHTML = rcStreamsHTML();
 }
 function rcModalHTML(){
-  const vis = rcVisibleClasses(), isAdmin = CUR.role==='admin', n = rcPickedClasses().length;
-  const cnt = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
+  const gs = rcGroups(), n = rcPickedClasses().length;
+  const cnt = g => g.streams.reduce((t,c)=>t+DB.students.filter(s=>s.status!=='left' && s.classId===c.id).length,0);
   return `<div class="rc-modal" id="rcModal" onclick="if(event.target===this)rcDdToggle(false)">
-    <div class="rc-modal-card" role="dialog" aria-modal="true" aria-label="Select classes">
-      <div class="rc-modal-head"><div><h3>Select Class(es)</h3><p>Tick the classes whose report cards you want to load.</p></div><button type="button" class="rc-modal-x" onclick="rcDdToggle(false)" aria-label="Close">×</button></div>
+    <div class="rc-modal-card" role="dialog" aria-modal="true" aria-label="Select class">
+      <div class="rc-modal-head"><div><h3>Select Class</h3><p>Pick a class. If it has streams, tap the stream cards.</p></div><button type="button" class="rc-modal-x" onclick="rcDdToggle(false)" aria-label="Close">×</button></div>
       <div class="rc-modal-list">
-        ${vis.length ? `<label class="rc-opt rc-opt-all"><span class="rc-opt-name">Select all classes</span><input type="checkbox" class="rc-tick" id="rcPickAll" ${n===vis.length?'checked':''} onchange="rcPickAll(this.checked)"></label>
-        ${vis.map(c=>`<label class="rc-opt"><span class="rc-opt-name">${esc(c.name)}</span><span class="rc-opt-n">(${cnt(c.id)})</span><input type="checkbox" class="rc-tick rc-pick-cb" value="${esc(c.id)}" ${RC_PICK.has(c.id)?'checked':''} onchange="rcPickToggle(this.value,this.checked)"></label>`).join('')}` : '<p class="small" style="margin:16px 0;">No classes yet.</p>'}
+        ${gs.length ? gs.map(g=>`<label class="rc-opt"><span class="rc-opt-name">${esc(g.label)}</span><span class="rc-opt-n">(${cnt(g)})</span><input type="radio" name="rcBase" class="rc-tick" value="${esc(g.id)}" ${RC_BASE===g.id?'checked':''} onchange="rcPickGroup(this.value)"></label>`).join('') : '<p class="small" style="margin:16px 0;">No classes yet.</p>'}
+        <div id="rcStreams">${rcStreamsHTML()}</div>
       </div>
       <div class="rc-modal-foot">
-        <span class="rc-splash-count" id="rcPickCount">${n} class${n===1?'':'es'} ticked</span>
+        <span class="rc-splash-count" id="rcPickCount">${n ? n+' stream'+(n===1?'':'s')+' selected' : 'Nothing selected'}</span>
         <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${n?'':'disabled'}>Submit — load report cards</button>
       </div>
     </div>
   </div>`;
+}
+function rcPickGroup(id){
+  RC_BASE = id; RC_PICK.clear();
+  const g = rcGroups().find(x=>x.id===id); if(g && g.streams.length===1) RC_PICK.add(g.streams[0].id);
+  rcPickRefresh();
+  const st = document.getElementById('rcStreams'); if(st) st.innerHTML = rcStreamsHTML();
+  rcFitModal();
 }
 // Shrinks every size in the class card together until the whole card fits the screen — no scrolling up/down
 // or sideways — whatever the number of classes or the phone's screen size.
@@ -13279,7 +13400,7 @@ function rcDdToggle(force){
   const open = (typeof force==='boolean') ? force : !document.getElementById('rcModal');
   const old = document.getElementById('rcModal'); if(old) old.remove();
   if(open){
-    RC_PICK.clear();   // every opening starts with nothing ticked
+    RC_PICK.clear(); RC_BASE = '';   // every opening starts with nothing ticked
     const d = document.createElement('div'); d.innerHTML = rcModalHTML();
     document.body.appendChild(d.firstElementChild);
     document.body.style.overflow = 'hidden';
@@ -13291,14 +13412,14 @@ function rcDdToggle(force){
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('rcModal')) rcDdToggle(false); });
 function rcPickToggle(id, on){ if(on) RC_PICK.add(id); else RC_PICK.delete(id); rcPickRefresh(); }
 function rcPickAll(on){
-  rcVisibleClasses().forEach(c=>{ if(on) RC_PICK.add(c.id); else RC_PICK.delete(c.id); });
-  document.querySelectorAll('.rc-pick-cb').forEach(cb=>{ cb.checked = on; });
+  const g = rcGroups().find(x=>x.id===RC_BASE); RC_PICK.clear();
+  if(on && g) g.streams.forEach(c=>RC_PICK.add(c.id));
   rcPickRefresh();
 }
 function rcPickedIds(){ return rcPickedClasses().map(c=>c.id); }
 function rcPickOk(){
   const ids = rcPickedIds();
-  if(!ids.length){ alert('Tick at least one class first.'); return; }
+  if(!ids.length){ alert('Select a class first.'); return; }
   rcDdToggle(false);
   RC_PICK.clear();   // fresh splash card next time
   VIEW.params = {...VIEW.params, classIds: ids, classId: null};
@@ -21019,11 +21140,16 @@ document.addEventListener('submit', async (e)=>{
       // destination to (a next class, or Old Students). Any class left on
       // "-- don't promote --" is skipped entirely, so its students keep their current
       // class untouched.
-      const moves = DB.classes
+      PR_CREATED = false;
+      let moves;
+      if(fd.get('prMode')){ moves = await prBuildMoves(fd); if(!moves) return; }
+      else {
+      moves = DB.classes
         .map(c=>({from:c.id, to:fd.get('to__'+c.id), teacher:fd.get('ct__'+c.id)||''}))
         .filter(m=>m.to);
       if(!moves.length){ alert('Choose a destination for at least one class before submitting.'); return; }
       if(!(await requireOwnerCode(`promote ${moves.length} class${moves.length===1?'':'es'}`, 'Promote'))) return;
+      }
       let totalMoved = 0;
       moves.forEach(({from,to})=>{
         const moved = DB.students.filter(s=>s.classId===from && s.status!=='left');
@@ -21035,7 +21161,7 @@ document.addEventListener('submit', async (e)=>{
         totalMoved += moved.length;
       });
       const ctChanged = applyPromoTeachers(moves);
-      await Promise.all([saveStudents(), saveInfo(), ...(ctChanged?[saveClasses()]:[])]); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.${ctChanged?' Class teachers updated.':''}`); render();
+      await Promise.all([saveStudents(), saveInfo(), ...((ctChanged||PR_CREATED)?[saveClasses()]:[])]); alertOk(`${totalMoved} student(s) across ${moves.length} class(es) promoted successfully.${PR_CREATED?' New streams created.':''}${ctChanged?' Class teachers updated.':''}`); render();
     }
     else if(type==='changePassword'){
       if(CUR.password!==fd.get('old')){ alert('Current password is incorrect.'); return; }
@@ -23454,6 +23580,19 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 })();
 </script>
 <style id="ctUiOverrides">
+.rc-tog.rc-mode{background:#1f3a5f;padding:6px 4px;display:flex;flex-direction:column;gap:4px;align-items:stretch;touch-action:pan-y;}
+.rc-mode-cap{font-size:11px;font-weight:800;}
+.rc-mode-track{position:relative;display:flex;border-radius:999px;background:rgba(255,255,255,.18);overflow:hidden;}
+.rc-mode-thumb{position:absolute;top:0;bottom:0;left:0;width:50%;border-radius:999px;background:#0f7a3a;transition:left .2s;}
+.rc-mode.is-stream .rc-mode-thumb{left:50%;}
+.rc-mode-l,.rc-mode-r{position:relative;flex:1;padding:5px 2px;font-size:11px;font-weight:800;text-align:center;}
+
+.sc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:6px;}
+.sc-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:8px;border:3px solid #1f3a5f;border-radius:12px;background:#fff;color:#1f3a5f;font:inherit;cursor:pointer;text-align:center;}
+.sc-card b{font-size:16px;} .sc-card span{font-size:12px;opacity:.8;}
+.sc-card.on{background:#0f7a3a;border-color:#0f7a3a;color:#fff;}
+.sc-card.sc-all{grid-column:1/-1;}
+
 /* Report cards list: the Action cell hugs its buttons and the PDF button has no spare space inside it */
 table.rc-list td:last-child,table.rc-list th:last-child{width:1%;white-space:nowrap !important;}
 table.rc-list td:last-child .btn-outline.rc-pdf-btn{padding:0 !important;margin:0 !important;min-width:0 !important;width:auto !important;line-height:1.1 !important;border-width:1px !important;letter-spacing:0;}
