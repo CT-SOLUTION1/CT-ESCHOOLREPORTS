@@ -14428,13 +14428,13 @@ function integratedMarksheetView(classId, subject, page, forExport){
     const bd = subjectBreakdown(s.id, subject, term, year);
     // 'x' = this learner has nothing yet while classmates already have scores for it; a BLANK when nobody has any score yet.
     const gapTxt = (kind, label, paper)=> peersHaveScore(s, subject, term, year, kind, label, paper) ? 'x' : '';
-    const grade = bd.final===null ? gapTxt() : gradeFor(subject, bd.final, cls.level);
+    const grade = bd.final===null ? '' : gradeFor(subject, bd.final, cls.level);
     const cells = cols.map(c=>{
       const row = scoreCellFor(s.id, subject, c, term, year);
       if(!row) return `<td>${c.kind==='EOT'?gapTxt('EOT'):gapTxt('AOI', c.label||'', c.paper)}</td>`;
       return `<td>${esc(zp(row.marks))}/${esc(row.max)}</td>`;
     }).join('');
-    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?gapTxt('AOI'):zp(bd.aoiAvg.toFixed(1))}</td><td>${bd.eotAvg===null?gapTxt('EOT'):zp(bd.eotAvg.toFixed(1))}</td><td>${bd.final===null?gapTxt():zp(bd.final.toFixed(1))}</td><td>${bd.final===null?gapTxt():grade}</td></tr>`;
+    return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?'':zp(bd.aoiAvg.toFixed(1))}</td><td>${bd.eotAvg===null?'':zp(bd.eotAvg.toFixed(1))}</td><td>${bd.final===null?'':zp(bd.final.toFixed(1))}</td><td>${bd.final===null?'':grade}</td></tr>`;
   }).join('');
   // ---- Summary at the foot of the sheet (counted over EVERY learner on the sheet, not just the page
   // showing on screen): how many learners earned each grade, plus the highest, lowest and average
@@ -15281,31 +15281,13 @@ function masterMarkSheetViewCore(forExport){
   // single-paper subject gets one Score column. In Grades mode every subject — no matter
   // how many papers — collapses to a single Grade column, since a letter/code is awarded
   // for the subject as a whole, never for one paper alone (mirrors the report card).
-  // Real Scores sheet: every subject gets its OWN column for each Course Work test (Test 1, Test 2, BOT ...)
-  // and for End of Term (one set per paper when the subject has several papers), then its Avg. Which
-  // groups appear follows the assessment type picked (Course Work only / End of Term only / Integrated).
-  const _mmCfgs = isLevelSheet ? levelClasses(level).map(c=>examConfig(c.id)) : [examConfig(cls.id)];
-  const _mmTests = [];
-  _mmCfgs.forEach(c=>{ if(c.cwEnabled) (c.cwTests||[]).forEach(t=>{ if(!_mmTests.some(x=>x.name===t.name)) _mmTests.push({name:t.name, max:t.max}); }); });
-  const _mmShowCw  = RA_MODE!=='eot' && _mmCfgs.some(c=>c.cwEnabled);
-  const _mmShowEot = RA_MODE!=='cw'  && _mmCfgs.some(c=>c.eotEnabled);
-  const _mmCwLabel = (_mmCfgs[0] && _mmCfgs[0].cwLabel) || 'Course Work', _mmEotLabel = (_mmCfgs[0] && _mmCfgs[0].eotLabel) || 'End of Term';
   const subjectMeta = (isLevelSheet ? levelSubjectsFor(level) : classSubjectsFor(cls)).sort((a,b)=>a.localeCompare(b)).map(subj=>{
     const papers = isLevelSheet
       ? [...new Set(levelClasses(level).flatMap(c=>subjectPapersFor(subj, c).map(String)))].sort((x,y)=>x.localeCompare(y, undefined, {numeric:true}))
       : subjectPapersFor(subj, cls);
     const multi = papers.length>=2;
-    const cols = [];
-    (multi ? papers : [papers.length===1 ? papers[0] : null]).forEach(pp=>{
-      const pre = multi ? 'P'+pp+' ' : '';
-      if(_mmShowCw){
-        if(_mmTests.length) _mmTests.forEach(t=>cols.push({paper:pp, kind:'AOI', label:t.name, max:t.max, head:pre+t.name}));
-        else cols.push({paper:pp, kind:'AOI', label:'', max:null, head:pre+_mmCwLabel});
-      }
-      if(_mmShowEot) cols.push({paper:pp, kind:'EOT', label:'', max:null, head:pre+_mmEotLabel});
-    });
-    const colspan = mode==='grades' ? 1 : cols.length+1;
-    return {subject:subj, papers, multi, cols, colspan};
+    const colspan = mode==='grades' ? 1 : (multi ? papers.length+1 : 1);
+    return {subject:subj, papers, multi, colspan};
   });
 
   let allStudents, levelPosOf = null;
@@ -15340,23 +15322,14 @@ function masterMarkSheetViewCore(forExport){
       // 'x' only for a subject this learner is ENROLLED in, has no score for, while classmates already do.
       const gap = (bd.final===null && studentSubjects(s, cls).includes(sm.subject) && peersHaveScore(s, sm.subject, term, year)) ? 'x' : '';
       const grade = bd.final===null ? gap : gradeFor(sm.subject, bd.final, cls.level);
-      // One cell per Course Work test / End of Term column of this subject: the real mark when entered,
-      // 'x' if classmates already have a score there, blank if nobody does yet (never a hidden 0).
       let paperCells = [];
-      if(mode==='scores'){
-        const _all = rawScores(s.id, sm.subject, term, year);
-        const _enr = _enrolled.has(sm.subject);
-        paperCells = sm.cols.map(c=>{
-          const rs = _all.filter(r=>r.kind===c.kind && (c.paper==null || String(r.paper)===String(c.paper)) && (c.kind==='EOT' || !c.label || r.label===c.label));
-          if(rs.length){
-            let v;
-            if(c.kind==='EOT') v = rs.map(r=>scaleRow(r, cfg.eotPercent)).reduce((a,b)=>a+b,0)/rs.length;
-            else if(c.label) v = scaleRow(rs[0], c.max>0 ? c.max : cfg.cwPercent);
-            else v = caAvgFromRows(rs, cfg);
-            return (v===null||v===undefined) ? '' : zp(v.toFixed(1));
-          }
-          const lab = (c.kind==='AOI' && c.label) ? c.label : undefined;
-          return (_enr && peersHaveScore(s, sm.subject, term, year, c.kind, lab, lab!==undefined ? c.paper : undefined)) ? 'x' : '';
+      if(sm.multi){
+        const pb = subjectPaperBreakdown(s.id, sm.subject, cls, term, year);
+        paperCells = sm.papers.map(p=>{
+          const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
+          if(!row || !row.hasAny) return gap;
+          const val = combinePaper(row.aoiAvg, row.eotAvg, cfg, peerPenaltyFlags(s, sm.subject, term, year, p));
+          return val===null ? gap : zp(val.toFixed(1));
         });
       }
       return { paperCells, avg: bd.final===null?gap:zp(bd.final.toFixed(1)), grade, has: (_enrolled.has(sm.subject) || bd.final!==null) };
@@ -15375,7 +15348,7 @@ function masterMarkSheetViewCore(forExport){
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>${isLevelSheet?'<th rowspan="2">Class</th>':''}` +
       subjectMeta.map(sm=>sm.colspan>1?`<th colspan="${sm.colspan}" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`:`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
       `<th rowspan="2">Subjects</th><th rowspan="2">Average</th><th rowspan="2">GRADE</th>${level==='O'?'<th rowspan="2">RESULT</th>':''}<th rowspan="2">Position</th>`;
-    headerRow2 = subjectMeta.map(sm=> sm.colspan>1 ? sm.cols.map(c=>`<th>${esc(c.head)}</th>`).join('') + `<th>Avg</th>` : '').join('');
+    headerRow2 = subjectMeta.map(sm=> sm.multi ? sm.papers.map(p=>`<th>P${esc(String(p))}</th>`).join('') + `<th>Avg</th>` : '').join('');
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>{
         const paperTds = ps.paperCells.map(v=>`<td>${v}</td>`).join('');
@@ -15383,7 +15356,7 @@ function masterMarkSheetViewCore(forExport){
       }).join('');
       return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${r.subjCount}</td><td>${zpct(r.avgPct,1)}</td>${gradeTd(r.overallGradeTxt)}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 7 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.reduce((a,sm)=>a+sm.colspan,0);
+    colCount = 7 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.reduce((a,sm)=>a+(sm.multi?sm.papers.length+1:1),0);
   } else {
     // Letter/code grades only — one Grade column per subject, plus the official overall
     // Points/Average, Grade/Aggregate(+Division), and Position, exactly as they'd appear
