@@ -6657,7 +6657,7 @@ function peersHaveScore(student, subject, term, year, kind, label, paper){
       if(!_pids.has(st.classId) || st.status==='left') return;
       const rows = rawScores(st.id, subject, term, year);
       if(!rows.length) return;
-      const kinds = new Set(['*']); rows.forEach(r=>{ kinds.add(r.kind); if(r.kind==='AOI'){ kinds.add('AOI|'+(r.label||'')); kinds.add('AOI|'+(r.label||'')+'|'+r.paper); } });
+      const kinds = new Set(['*']); rows.forEach(r=>{ kinds.add(r.kind); { const _pk = (r.paper==null||r.paper==='') ? 'none' : String(r.paper); kinds.add('*|P|'+_pk); kinds.add(r.kind+'|P|'+_pk); } if(r.kind==='AOI'){ kinds.add('AOI|'+(r.label||'')); kinds.add('AOI|'+(r.label||'')+'|'+r.paper); } });
       byStudent.set(st.id, kinds);
     });
     _peerScoreCache.map.set(key, byStudent);
@@ -6666,7 +6666,14 @@ function peersHaveScore(student, subject, term, year, kind, label, paper){
   // until then its cells stay blank (no x).
   let k = kind || '*';
   if(kind==='AOI' && label!==undefined && label!==null) k = 'AOI|'+label+((paper!==undefined && paper!==null)?'|'+paper:'');
-  for(const [id, kinds] of byStudent){ if(id!==student.id && kinds.has(k)) return true; }
+  // A PAPER is only "given" once a classmate has a score in THAT paper (and, when `kind` is given, of that kind):
+  // a paper nobody has been scored in yet never produces an x. Scores saved with no paper count for any paper.
+  const _paperAware = !(kind==='AOI' && label!==undefined && label!==null) && paper!==undefined && paper!==null && paper!=='';
+  for(const [id, kinds] of byStudent){
+    if(id===student.id) continue;
+    if(_paperAware){ if(kinds.has(k+'|P|'+paper) || kinds.has(k+'|P|none')) return true; }
+    else if(kinds.has(k)) return true;
+  }
   return false;
 }
 // PENALTY RULE: a learner is only penalised (missing assessment counts as 0) when classmates in the
@@ -6775,6 +6782,10 @@ function scaleRow(row, outOf){
 // Result Analysis can look at Course Work only ('cw'), End of Term only ('eot') or both together ('all').
 // Only ever switched on for the duration of one Result Analysis render (see withAssessMode).
 let RA_MODE = 'all';
+// The kind of score that counts as "classmates already have one" for the x / hidden-zero rules: on a
+// Course Work only sheet only Course Work scores count, on an End of Term only sheet only End of Term
+// scores, otherwise any score.
+function raPeerKind(){ return RA_MODE==='cw' ? 'AOI' : (RA_MODE==='eot' ? 'EOT' : undefined); }
 // SCORING RULES (set by the admin in Exam Setup)
 // 1) Continuous Assessment + End of Term: when the two set maximums add up to EXACTLY 100 the two are simply ADDED
 //    (CA out of its max + EOT out of its max = mark out of 100). Otherwise each is converted to 100 first and averaged.
@@ -7087,7 +7098,7 @@ function primaryAggregate(st, cls, term, year){
     let avg = subjectAverage(st.id, subj, term, year);
     if(avg===null){
       // missed a core subject that classmates already have scores in: counts as 0 (hidden); otherwise not counted
-      if(studentSubjects(st, cls).includes(subj) && coreSubjects.some(sj=>subjectAverage(st.id, sj, term, year)!==null) && peersHaveScore(st, subj, term, year)) avg = 0;
+      if(studentSubjects(st, cls).includes(subj) && coreSubjects.some(sj=>subjectAverage(st.id, sj, term, year)!==null) && peersHaveScore(st, subj, term, year, raPeerKind())) avg = 0;
       else continue;
     }
     const g = gradeFor(subj, avg, 'P');
@@ -7202,7 +7213,7 @@ function computeSubjectRows(st, cls, term, year){
       pts = isPassFailSubject(subj) ? passFailLevelFor(avg).points : (Number(aPoints()[grade]) || 0);
     }
     if(avg!==null){ sumAvg+=avg; countAvg++; totalPoints+=pts; }
-    else if(_hasAny && peersHaveScore(st, subj, term, year)){
+    else if(_hasAny && peersHaveScore(st, subj, term, year, raPeerKind())){
       const zg = gradeFor(subj, 0, cls.level);
       let zp0 = 0;
       if(cls.level==='A' && zg) zp0 = isPassFailSubject(subj) ? passFailLevelFor(0).points : (Number(aPoints()[zg]) || 0);
@@ -14431,7 +14442,7 @@ function integratedMarksheetView(classId, subject, page, forExport){
     const grade = bd.final===null ? '' : gradeFor(subject, bd.final, cls.level);
     const cells = cols.map(c=>{
       const row = scoreCellFor(s.id, subject, c, term, year);
-      if(!row) return `<td>${c.kind==='EOT'?gapTxt('EOT'):gapTxt('AOI', c.label||'', c.paper)}</td>`;
+      if(!row) return `<td>${c.kind==='EOT'?gapTxt('EOT', undefined, c.paper):gapTxt('AOI', c.label||'', c.paper)}</td>`;
       return `<td>${esc(zp(row.marks))}/${esc(row.max)}</td>`;
     }).join('');
     return `<tr>${canBulk?`<td><input type="checkbox" class="msSelCb" value="${esc(s.id)}" onchange="updateMsSelCount()" style="width:auto;"></td>`:''}<td>${pg.startIndex+ri+1}</td><td>${esc(s.admNo)}</td><td style="text-align:left;">${esc(s.name)}</td>${cells}<td>${bd.aoiAvg===null?'':zp(bd.aoiAvg.toFixed(1))}</td><td>${bd.eotAvg===null?'':zp(bd.eotAvg.toFixed(1))}</td><td>${bd.final===null?'':zp(bd.final.toFixed(1))}</td><td>${bd.final===null?'':grade}</td></tr>`;
@@ -15320,16 +15331,17 @@ function masterMarkSheetViewCore(forExport){
     const perSubject = subjectMeta.map(sm=>{
       const bd = subjectBreakdown(s.id, sm.subject, term, year);
       // 'x' only for a subject this learner is ENROLLED in, has no score for, while classmates already do.
-      const gap = (bd.final===null && studentSubjects(s, cls).includes(sm.subject) && peersHaveScore(s, sm.subject, term, year)) ? 'x' : '';
+      const gap = (bd.final===null && studentSubjects(s, cls).includes(sm.subject) && peersHaveScore(s, sm.subject, term, year, raPeerKind())) ? 'x' : '';
       const grade = bd.final===null ? gap : gradeFor(sm.subject, bd.final, cls.level);
       let paperCells = [];
       if(sm.multi){
         const pb = subjectPaperBreakdown(s.id, sm.subject, cls, term, year);
         paperCells = sm.papers.map(p=>{
           const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
-          if(!row || !row.hasAny) return gap;
+          const pGap = (_enrolled.has(sm.subject) && peersHaveScore(s, sm.subject, term, year, raPeerKind(), undefined, p)) ? 'x' : '';
+          if(!row || !row.hasAny) return pGap;
           const val = combinePaper(row.aoiAvg, row.eotAvg, cfg, peerPenaltyFlags(s, sm.subject, term, year, p));
-          return val===null ? gap : zp(val.toFixed(1));
+          return val===null ? pGap : zp(val.toFixed(1));
         });
       }
       return { paperCells, avg: bd.final===null?gap:zp(bd.final.toFixed(1)), grade, has: (_enrolled.has(sm.subject) || bd.final!==null) };
@@ -16424,9 +16436,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // Builds the Course Work cell(s) for one physical row (either the whole subject, when
   // it has a single paper, or one paper's sub-row): the raw mark for each admin-defined
   // test plus, in the last sub-column, the scaled average actually used for grading.
-  function cwCellsFor(paper, avgVal){
+  function cwCellsFor(paper, avgVal, pk){
     if(!showCW) return '';
-    const avgTxt = (avgVal===null || avgVal===undefined) ? dashFor(r_subject,'AOI') : zr(avgVal.toFixed(1));
+    const avgTxt = (avgVal===null || avgVal===undefined) ? dashFor(r_subject,'AOI',undefined,pk) : zr(avgVal.toFixed(1));
     if(!useCwTestCols) return `<td>${avgTxt}</td>`;
     const testTds = cwTests.map(t=>{
       const row = cwTestScore(s.id, r_subject, t.name, paper, term, year);
@@ -16486,7 +16498,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // around this cell and in the header row.
       const papersTxt = useSubrows ? esc(String(p.paper)) : (singleLabel ? esc(singleLabel) : (peersHaveScore(s, r.subject, term, year) ? '—' : '&nbsp;'));
       const papersTd = isP ? '' : `<td>${papersTxt}</td>`;
-      const cwHtml = cwCellsFor(paperForLookup, p.aoiAvg);
+      const cwHtml = cwCellsFor(paperForLookup, p.aoiAvg, useSubrows ? p.paper : null);
       let eotHtml = '';
       if(showEOT){
         if(canEditScore(r.subject, paperForLookup, 'EOT')){
@@ -16498,7 +16510,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
           // 55 became 44 once scaled onto /80), throwing off Paper Avg and Final Average.
           eotHtml = `<td>${scoreInputHtml(r.subject, paperForLookup, 'EOT', '', (eotRow&&eotRow.max)?eotRow.max:cfg.eotPercent, eotRow?eotRow.marks:null)}</td>`;
         } else {
-          eotHtml = `<td>${(p.eotAvg===null||p.eotAvg===undefined)?dashFor(r.subject,'EOT'):zr(p.eotAvg.toFixed(1))}</td>`;
+          eotHtml = `<td>${(p.eotAvg===null||p.eotAvg===undefined)?dashFor(r.subject,'EOT',undefined,useSubrows ? p.paper : null):zr(p.eotAvg.toFixed(1))}</td>`;
         }
       }
       // This paper's own average out of 100 (Course Work + End of Term, or whichever one
@@ -16508,7 +16520,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // subjects too (paperRows has one entry in that case), not just multi-paper ones.
       const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
-      const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject):zr(paperFinal.toFixed(1))}</td>`;
+      const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject,undefined,undefined,useSubrows ? p.paper : null):zr(paperFinal.toFixed(1))}</td>`;
       // Cells that apply to the WHOLE subject (Subject name, Final Average, Grade,
       // Points, Descriptor) rather than one paper are visually merged down across every
       // paper sub-row. On screen and in the browser Print dialog that's just a normal
@@ -16905,7 +16917,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       let cwTestVals = [];
       let cwAvgTxt = '';
       if(showCW){
-        cwAvgTxt = (p.aoiAvg===null || p.aoiAvg===undefined) ? dashFor('AOI') : zr(p.aoiAvg.toFixed(1));
+        cwAvgTxt = (p.aoiAvg===null || p.aoiAvg===undefined) ? dashFor('AOI',undefined,useSubrows ? p.paper : null) : zr(p.aoiAvg.toFixed(1));
         if(useCwTestCols){
           cwTestVals = cwTests.map(t=>{
             const row = cwTestScore(s.id, r.subject, t.name, paperForLookup, term, year);
@@ -16917,10 +16929,10 @@ function buildReportCardData(studentId, viewTerm, viewYear){
         }
       }
       let eotTxt = '';
-      if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT') : zr(p.eotAvg.toFixed(1));
+      if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT',undefined,useSubrows ? p.paper : null) : zr(p.eotAvg.toFixed(1));
       const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
-      return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor():zr(paperFinal.toFixed(1)), teacherInitTxt: initTxt };
+      return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor(undefined,undefined,useSubrows ? p.paper : null):zr(paperFinal.toFixed(1)), teacherInitTxt: initTxt };
     });
 
     return {
