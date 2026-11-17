@@ -6857,7 +6857,7 @@ function subjectBreakdown(studentId, subject, term, year){
   // average and one combined EOT average and halving that (which is what aoiAvg/eotAvg
   // above still do, purely for display when no paper has been entered yet).
   const papers = subjectPapersFor(subject, cls);
-  let final, outAoi = aoiAvg, outEot = eotAvg;
+  let final, outAoi, outEot;   // outAoi/outEot = the penalised figures used ONLY for grading, never displayed
   if(papers.length >= 2){
     // Multi-paper subjects: one general, peer-aware rule for BOTH assessment types.
     // A paper where the learner has no score of a type counts as ZERO if classmates have a score of
@@ -6879,7 +6879,7 @@ function subjectBreakdown(studentId, subject, term, year){
   } else {
     final = combine(aoiAvg, eotAvg);
   }
-  return {aoiAvg: outAoi, eotAvg: outEot, final};
+  return {aoiAvg, eotAvg, final};   // aoiAvg/eotAvg stay the real entered averages (shown on cards); final carries any hidden zeros
 }
 function subjectAverage(studentId, subject, term, year){
   return subjectBreakdown(studentId, subject, term, year).final;
@@ -7084,8 +7084,12 @@ function primaryAggregate(st, cls, term, year){
   const coreSubjects = pCompulsoryList();
   let sum=0, count=0;
   for(const subj of coreSubjects){
-    const avg = subjectAverage(st.id, subj, term, year);
-    if(avg===null) continue;
+    let avg = subjectAverage(st.id, subj, term, year);
+    if(avg===null){
+      // missed a core subject that classmates already have scores in: counts as 0 (hidden); otherwise not counted
+      if(studentSubjects(st, cls).includes(subj) && coreSubjects.some(sj=>subjectAverage(st.id, sj, term, year)!==null) && peersHaveScore(st, subj, term, year)) avg = 0;
+      else continue;
+    }
     const g = gradeFor(subj, avg, 'P');
     sum += PLE_GRADE_POINTS[g]; count++;
   }
@@ -7182,8 +7186,13 @@ function computeSubjectRows(st, cls, term, year){
   const marked = markedSubjectsFor(cls, term, year);
   const subs = studentSubjects(st, cls).filter(sj=> marked.has(sj) || isCompulsorySubjectFor(sj, cls));
   let totalPoints=0, sumAvg=0, countAvg=0;
-  const rows = subs.map(subj=>{
-    const avg = subjectAverage(st.id, subj, term, year);
+  // A learner who has scores in some subjects but MISSED a subject that classmates already have scores in
+  // gets 0 for it in the overall average / points / position — behind the scenes only: the row itself still
+  // shows no mark (the cards print x there).
+  const _avgs = subs.map(sj=>subjectAverage(st.id, sj, term, year));
+  const _hasAny = _avgs.some(v=>v!==null);
+  const rows = subs.map((subj,_i)=>{
+    const avg = _avgs[_i];
     const grade = avg===null ? null : gradeFor(subj, avg, cls.level);
     let pts=0;
     if(cls.level==='A' && grade){
@@ -7193,6 +7202,12 @@ function computeSubjectRows(st, cls, term, year){
       pts = isPassFailSubject(subj) ? passFailLevelFor(avg).points : (Number(aPoints()[grade]) || 0);
     }
     if(avg!==null){ sumAvg+=avg; countAvg++; totalPoints+=pts; }
+    else if(_hasAny && peersHaveScore(st, subj, term, year)){
+      const zg = gradeFor(subj, 0, cls.level);
+      let zp0 = 0;
+      if(cls.level==='A' && zg) zp0 = isPassFailSubject(subj) ? passFailLevelFor(0).points : (Number(aPoints()[zg]) || 0);
+      countAvg++; totalPoints += zp0;   // adds 0 to sumAvg
+    }
     const t = teacherForSubjectClass(subj, cls.id);
     return {subject:subj, avg, grade, pts, teacherInit: t?initials(t.name):'--'};
   });
@@ -16438,7 +16453,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     // Initials columns carry a value on every physical row.
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
-    const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
+    const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny || (()=>{ const f=peerPenaltyFlags(s, r.subject, term, year, p.paper); return f.cw||f.eot; })()) : [];
     // Only split into per-paper rows once at least one paper actually has a score on
     // record — until then (or for a single-paper subject) it stays one combined row.
     // Split into per-paper rows as soon as 2+ papers have scores; with just one paper entered
@@ -16479,7 +16494,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // combinePaper() helper — the exact same math used for the subject's overall Final
       // Average, so this column and Final Average always agree. Shown for single-paper
       // subjects too (paperRows has one entry in that case), not just multi-paper ones.
-      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, useSubrows ? p.paper : null));
+      const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject):zr(paperFinal.toFixed(1))}</td>`;
       // Cells that apply to the WHOLE subject (Subject name, Final Average, Grade,
@@ -16863,7 +16878,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     const descriptor = r.avg==null ? dashFor() : (isP ? primaryFinalRemark(r.avg) : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
-    const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny) : [];
+    const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny || (()=>{ const f=peerPenaltyFlags(s, r.subject, term, year, p.paper); return f.cw||f.eot; })()) : [];
     const useSubrows = enteredPapers.length>=2;
     const _pl = reportPaperLabels(s.id, r.subject, cls, term, year);
     const singleLabel = _pl.entered.length ? _pl.entered.join(', ') : (_pl.assigned.length ? _pl.assigned.join(', ') : '');
@@ -16891,7 +16906,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       }
       let eotTxt = '';
       if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT') : zr(p.eotAvg.toFixed(1));
-      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, useSubrows ? p.paper : null));
+      const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor():zr(paperFinal.toFixed(1)), teacherInitTxt: initTxt };
     });
