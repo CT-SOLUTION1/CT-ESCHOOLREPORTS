@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-16-2300'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-16-2400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -2982,6 +2982,9 @@ function examConfig(classId){
     eotPercent: c.eotPercent!=null ? Number(c.eotPercent) : EOT_MAX,
     cwEnabled: c.cwEnabled!==false,   // on by default
     eotEnabled: c.eotEnabled!==false, // on by default
+    // What to do when a student has one assessment type but not the other (e.g. no End of Term yet):
+    // 'scale' (default) = grade off the one on record, scaled to 100 like the rest; 'penalize' = the missing one counts as 0.
+    missingMode: c.missingMode==='penalize' ? 'penalize' : 'scale',
     // Admin-defined Course Work tests (e.g. Test 1, Test 2, BOT), each with its own
     // maximum. Once at least one exists, teachers pick from this list instead of typing
     // a free-text label, and each test gets its own column on mark sheets/report cards.
@@ -6787,6 +6790,11 @@ function combinePaper(cwAvg, eotAvg, cfg){
   if(RA_MODE==='cw') return cwPct;
   if(RA_MODE==='eot') return eotPct;
   if(cwPct!==null && eotPct!==null) return (cwPct + eotPct) / 2;
+  // Only one assessment type on record: either penalize (the missing one counts as 0) or scale the one on record to 100.
+  if((hasCw || hasEot) && cfg.missingMode==='penalize' && cfg.cwEnabled!==false && cfg.eotEnabled!==false){
+    if(assessmentsAddDirectly(cfg)) return (hasCw?cwAvg:0) + (hasEot?eotAvg:0);
+    return ((hasCw?cwPct:0) + (hasEot?eotPct:0)) / 2;
+  }
   if(cwPct!==null) return cwPct;
   if(eotPct!==null) return eotPct;
   return null;
@@ -13102,6 +13110,12 @@ function examSetupView(gcClassId){
         </div>
       </div>
       <p class="small">The two percentages should add up to 100 when both components are switched on.</p>
+      <label>When a student has only one of the two assessment types</label>
+      <select name="missingMode">
+        <option value="scale" ${examConfig().missingMode==='penalize'?'':'selected'}>Do not penalize — scale the one on record to 100, like the rest of the students</option>
+        <option value="penalize" ${examConfig().missingMode==='penalize'?'selected':''}>Penalize — the missing assessment type counts as zero</option>
+      </select>
+      <p class="small">Applies to the Paper Average and Final Average when one type (e.g. End of Term) has no score yet.</p>
       <button class="btn" style="margin-top:14px;">Submit — save exam type setup</button>
     </form>
   </div>
@@ -13164,7 +13178,13 @@ function examSetupView(gcClassId){
               <label>Percent of final mark</label><input name="eotPercent" type="number" min="0" max="100" step="1" value="${ccfg.eotPercent}">
             </div>
           </div>
-          <p class="small">The two percentages should add up to 100 when both components are switched on. These fields only take effect once the checkbox above is ticked — otherwise ${esc(gcls.name)} just keeps following the school-wide setup, and nothing here is lost if you leave it unticked.</p>
+          <label>When a student has only one of the two assessment types</label>
+      <select name="missingMode">
+        <option value="scale" ${ccfg.missingMode==='penalize'?'':'selected'}>Do not penalize — scale the one on record to 100, like the rest of the students</option>
+        <option value="penalize" ${ccfg.missingMode==='penalize'?'selected':''}>Penalize — the missing assessment type counts as zero</option>
+      </select>
+      <p class="small">Applies to the Paper Average and Final Average when one type (e.g. End of Term) has no score yet.</p>
+      <p class="small">The two percentages should add up to 100 when both components are switched on. These fields only take effect once the checkbox above is ticked — otherwise ${esc(gcls.name)} just keeps following the school-wide setup, and nothing here is lost if you leave it unticked.</p>
           <button class="btn" style="margin-top:14px;">Submit — save ${esc(gcls.name)}'s assessment type</button>
         </form>
       </div>
@@ -21398,6 +21418,7 @@ document.addEventListener('submit', async (e)=>{
         eotEnabled: fd.get('eotEnabled')==='on',
         eotLabel: (fd.get('eotLabel')||'End of Term').trim() || 'End of Term',
         eotPercent: Math.max(0, Math.min(100, Number(fd.get('eotPercent'))||0)),
+        missingMode: fd.get('missingMode')==='penalize' ? 'penalize' : 'scale',
         cwTests: (DB.info.examConfig && Array.isArray(DB.info.examConfig.cwTests)) ? DB.info.examConfig.cwTests : []
       };
       await saveInfo(); render();
@@ -21445,6 +21466,7 @@ document.addEventListener('submit', async (e)=>{
             eotEnabled: fd.get('eotEnabled')==='on',
             eotLabel: (fd.get('eotLabel')||'End of Term').trim() || 'End of Term',
             eotPercent: Math.max(0, Math.min(100, Number(fd.get('eotPercent'))||0)),
+            missingMode: fd.get('missingMode')==='penalize' ? 'penalize' : 'scale',
             cwTests: testsOf(cls)
           };
         });
