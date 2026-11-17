@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-16-2100'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-16-2200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -3206,9 +3206,20 @@ function computeLookbackAdmissionYear(level, form){
 // per-class running sequence starting at 001 that never resets or gets reassigned —
 // every student keeps the same admission number for as long as they remain at the
 // school, even if they're later promoted to a new class.
+// All streams of a class (S.5 East, S.5 West...) share ONE running sequence: a new student continues from the
+// highest number used anywhere in the class — in any stream — instead of starting again at 001 in each stream.
+function streamGroupAdmSeq(cls){
+  const grp = streamGroupClasses(cls), ids = new Set(grp.map(c=>c.id));
+  let m = 0;
+  grp.forEach(c=>{ m = Math.max(m, Number(c.nextAdmSeq)||0); });
+  (DB.students||[]).forEach(st=>{ if(ids.has(st.classId)) m = Math.max(m, Number(st.admSeq)||0); });
+  return m;
+}
 function nextAdmissionNumber(cls){
   const year = computeLookbackAdmissionYear(cls.level, cls.form);
-  cls.nextAdmSeq = (cls.nextAdmSeq||0) + 1;
+  const next = streamGroupAdmSeq(cls) + 1;
+  streamGroupClasses(cls).forEach(c=>{ c.nextAdmSeq = next; });   // every stream's counter stays level with the class
+  cls.nextAdmSeq = next;
   const seq = String(cls.nextAdmSeq).padStart(3,'0');
   return `${schoolInitials()}/${year}/${cls.level||'O'}/${seq}`;
 }
@@ -3218,7 +3229,7 @@ function nextAdmissionNumber(cls){
 function peekNextAdmissionNumber(cls){
   if(!cls) return '';
   const year = computeLookbackAdmissionYear(cls.level, cls.form);
-  const seq = String((cls.nextAdmSeq||0)+1).padStart(3,'0');
+  const seq = String(streamGroupAdmSeq(cls)+1).padStart(3,'0');
   return `${schoolInitials()}/${year}/${cls.level||'O'}/${seq}`;
 }
 // Alphabetical (A-Z) sort by student name, used everywhere a class roster or student
@@ -3709,6 +3720,18 @@ async function pruneOldScores(){
 // otherwise be permanently stuck on the old format. Once a school is caught up to
 // the current version it's a no-op again until the version next changes, and
 // brand-new students always get their number from nextAdmissionNumber() directly.
+// Numbers students 001-upwards ONE RUN per class: the streams of a class follow each other (the next stream starts
+// where the previous one ends). studentsOf(cls) gives the students to number for that stream.
+function renumberAdmissionSeqs(studentsOf, resetEmpty){
+  const done = new Set();
+  DB.classes.forEach(cls=>{
+    if(done.has(cls.id)) return;
+    const grp = streamGroupClasses(cls); grp.forEach(c=>done.add(c.id));
+    let n = 0;
+    grp.forEach(c=>{ studentsOf(c).forEach(st=>{ st.admSeq = ++n; st.admNo = nextAdmissionNumberFromSeq(c, st.admSeq); }); });
+    if(n>0 || resetEmpty) grp.forEach(c=>{ c.nextAdmSeq = n; });
+  });
+}
 const ADM_SCHEMA_VERSION = 5;
 async function migrateAdmissionSystem(){
   if(!DB.info || (DB.info.admSchemaVersion||0) >= ADM_SCHEMA_VERSION) return;
@@ -3724,14 +3747,8 @@ async function migrateAdmissionSystem(){
       if(inferred) cls.form = inferred;
     }
   });
-  DB.classes.forEach(cls=>{ cls.nextAdmSeq = 0; });
-  DB.classes.forEach(cls=>{
-    DB.students.filter(s=>s.classId===cls.id).forEach(s=>{
-      s.admSeq = (cls.nextAdmSeq = (cls.nextAdmSeq||0) + 1);
-      s.admNo = nextAdmissionNumberFromSeq(cls, s.admSeq);
-      if(!s.status) s.status = 'active';
-    });
-  });
+  DB.students.forEach(s=>{ if(!s.status) s.status = 'active'; });
+  renumberAdmissionSeqs(cls=>DB.students.filter(s=>s.classId===cls.id), true);
   DB.info.admSchemaVersion = ADM_SCHEMA_VERSION;
   DB.info.admSchemaMigrated = true; // kept for backward compatibility with older reads of this flag
   await Promise.all([saveInfo(), saveClasses(), saveStudents()]);
@@ -17987,6 +18004,8 @@ document.addEventListener('click', async (e)=>{
         }
         recs.push(rec);
       });
+      // Admission numbers: the streams share one running sequence, so a new stream continues where the class ends.
+      try{ const _mx = streamGroupAdmSeq(recs[0]); recs.forEach(rc=>{ rc.nextAdmSeq = _mx; }); }catch(e){ console.error(e); }
       // Class-level agreed fees belong to the class record: copy them to each NEW stream so students
       // placed there keep exactly the same agreed fees as before.
       let finCopied = false;
@@ -18042,12 +18061,7 @@ Existing admission numbers for these students will be replaced by the rule, usin
 Continue?`);
       if(!sure) break;
       showActionProgress('Adjusting existing admission numbers…', el);
-      DB.classes.forEach(cls=>{
-        const students=DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
-        if(!students.length) return;
-        cls.nextAdmSeq=0;
-        students.forEach(s=>{ s.admSeq=++cls.nextAdmSeq; s.admNo=nextAdmissionNumberFromSeq(cls,s.admSeq); });
-      });
+      renumberAdmissionSeqs(cls=>DB.students.filter(s=>s.status!=='left' && s.classId===cls.id), false);
       DB.info.admSchemaVersion=ADM_SCHEMA_VERSION;
       DB.info.admSchemaMigrated=true;
       await Promise.all([saveInfo(),saveClasses(),saveStudents()]);
