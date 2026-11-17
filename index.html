@@ -6859,14 +6859,9 @@ function subjectBreakdown(studentId, subject, term, year){
   const papers = subjectPapersFor(subject, cls);
   let final, outAoi = aoiAvg, outEot = eotAvg;
   if(papers.length >= 2){
-    // Multi-paper subjects: a paper with no score is treated differently per assessment type.
-    //  - Continuous Assessment (Course Work): a missing paper is simply left out of the average,
-    //    so it never affects the average or grade.
-    //  - End of Term: a missing paper COUNTS AS ZERO (lowers the average and grade) — but only if
-    //    classmates have an End of Term score in THAT paper; otherwise the paper is simply left out.
-    //    If NO paper has an End of Term score, or NO paper has a Course Work score, that whole
-    //    assessment type is missing and combine() penalizes it (counts as zero) only if classmates
-    //    have scores of that type — a Course Work score on any one paper avoids the Course Work penalty.
+    // Multi-paper subjects: one general, peer-aware rule for BOTH assessment types.
+    // A paper where the learner has no score of a type counts as ZERO if classmates have a score of
+    // that type in that paper; if nobody has one yet, the paper is simply left out (no penalty).
     const per = papers.map(p=>{
       const pRows = rows.filter(r=>String(r.paper)===String(p));
       const pEot = cfg.eotEnabled ? pRows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
@@ -6875,11 +6870,11 @@ function subjectBreakdown(studentId, subject, term, year){
         eot: pEot.length ? pEot.reduce((a,b)=>a+b,0)/pEot.length : null
       };
     });
-    const cwList = per.map(x=>x.cw).filter(v=>v!==null);
-    const eotVals = per.map((x,i)=> x.eot!==null ? x.eot : (peerPenaltyFlags(_st, subject, term, year, papers[i]).eot ? 0 : null)).filter(v=>v!==null);
-    const anyEot = per.some(x=>x.eot!==null);
-    outAoi = cwList.length ? cwList.reduce((a,b)=>a+b,0)/cwList.length : null;
-    outEot = (anyEot && eotVals.length) ? eotVals.reduce((a,b)=>a+b,0)/eotVals.length : null;
+    const flags = papers.map(p=>peerPenaltyFlags(_st, subject, term, year, p));
+    const cwVals = per.map((x,i)=> x.cw!==null ? x.cw : (cfg.cwEnabled && flags[i].cw ? 0 : null)).filter(v=>v!==null);
+    const eotVals = per.map((x,i)=> x.eot!==null ? x.eot : (cfg.eotEnabled && flags[i].eot ? 0 : null)).filter(v=>v!==null);
+    outAoi = cwVals.length ? cwVals.reduce((a,b)=>a+b,0)/cwVals.length : null;
+    outEot = eotVals.length ? eotVals.reduce((a,b)=>a+b,0)/eotVals.length : null;
     final = (outAoi===null && outEot===null) ? combine(aoiAvg, eotAvg) : combine(outAoi, outEot);
   } else {
     final = combine(aoiAvg, eotAvg);
