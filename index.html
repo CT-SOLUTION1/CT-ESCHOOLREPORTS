@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-16-2200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-16-2300'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -6743,9 +6743,45 @@ function scaleRow(row, outOf){
 // Result Analysis can look at Course Work only ('cw'), End of Term only ('eot') or both together ('all').
 // Only ever switched on for the duration of one Result Analysis render (see withAssessMode).
 let RA_MODE = 'all';
+// SCORING RULES (set by the admin in Exam Setup)
+// 1) Continuous Assessment + End of Term: when the two set maximums add up to EXACTLY 100 the two are simply ADDED
+//    (CA out of its max + EOT out of its max = mark out of 100). Otherwise each is converted to 100 first and averaged.
+function assessmentsAddDirectly(cfg){
+  return !!cfg && cfg.cwEnabled!==false && cfg.eotEnabled!==false && Math.abs((Number(cfg.cwPercent)||0) + (Number(cfg.eotPercent)||0) - 100) < 1e-9;
+}
+// 2) Inside Continuous Assessment: when the maximums of the Course Work tests add up to EXACTLY the set CA maximum, the
+//    tests are simply ADDED (the result is out of the CA maximum). Otherwise each test is converted first and averaged.
+function cwTestsAddDirectly(cfg){
+  const t = (cfg && cfg.cwTests) || [];
+  if(!t.length) return false;
+  const sum = t.reduce((a,x)=>a+(Number(x.max)||0),0);
+  return sum>0 && Math.abs(sum - Number(cfg.cwPercent)) < 1e-9;
+}
+// The Continuous Assessment figure (out of cfg.cwPercent) from one student's AOI score rows; null = nothing entered.
+function caAvgFromRows(aoiRows, cfg){
+  if(!aoiRows || !aoiRows.length) return null;
+  if(!cwTestsAddDirectly(cfg)){
+    const sc = aoiRows.map(r=>scaleRow(r, cfg.cwPercent));
+    return sc.reduce((a,b)=>a+b,0)/sc.length;
+  }
+  const byPaper = new Map();
+  aoiRows.forEach(r=>{ const k = String(r.paper); if(!byPaper.has(k)) byPaper.set(k, []); byPaper.get(k).push(r); });
+  const totals = [];
+  byPaper.forEach(rs=>{
+    let sum = 0;
+    rs.forEach(r=>{
+      const t = cfg.cwTests.find(x=>String(x.name)===String(r.label));
+      const tmax = t ? Number(t.max) : 0, rmax = Number(r.max)>0 ? Number(r.max) : 100;
+      sum += tmax>0 ? (Number(r.marks)/rmax)*tmax : scaleRow(r, cfg.cwPercent);
+    });
+    totals.push(Math.min(sum, Number(cfg.cwPercent)));
+  });
+  return totals.reduce((a,b)=>a+b,0)/totals.length;
+}
 function combinePaper(cwAvg, eotAvg, cfg){
   const hasCw = cwAvg!==null && cwAvg!==undefined;
   const hasEot = eotAvg!==null && eotAvg!==undefined;
+  if(hasCw && hasEot && RA_MODE==='all' && assessmentsAddDirectly(cfg)) return cwAvg + eotAvg;
   const cwPct = hasCw ? (cfg.cwPercent>0 ? (cwAvg/cfg.cwPercent)*100 : cwAvg) : null;
   const eotPct = hasEot ? (cfg.eotPercent>0 ? (eotAvg/cfg.eotPercent)*100 : eotAvg) : null;
   if(RA_MODE==='cw') return cwPct;
@@ -6760,9 +6796,8 @@ function subjectBreakdown(studentId, subject, term, year){
   const cls = _st ? classOf(_st) : null;
   const cfg = examConfig(_st && _st.classId);
   const rows = rawScores(studentId, subject, term, year);
-  const aoiScaled = cfg.cwEnabled ? rows.filter(r=>r.kind==='AOI').map(r=>scaleRow(r, cfg.cwPercent)) : [];
   const eotScaled = cfg.eotEnabled ? rows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
-  const aoiAvg = aoiScaled.length ? aoiScaled.reduce((a,b)=>a+b,0)/aoiScaled.length : null;
+  const aoiAvg = cfg.cwEnabled ? caAvgFromRows(rows.filter(r=>r.kind==='AOI'), cfg) : null;
   const eotAvg = eotScaled.length ? eotScaled.reduce((a,b)=>a+b,0)/eotScaled.length : null;
   if(aoiAvg===null && eotAvg===null) return {aoiAvg:null, eotAvg:null, final:null};
   // Final average rule: Course Work and End of Term always contribute equally (50/50),
@@ -6786,9 +6821,8 @@ function subjectBreakdown(studentId, subject, term, year){
   if(papers.length >= 2){
     const paperFinals = papers.map(p=>{
       const pRows = rows.filter(r=>String(r.paper)===String(p));
-      const pAoi = cfg.cwEnabled ? pRows.filter(r=>r.kind==='AOI').map(r=>scaleRow(r, cfg.cwPercent)) : [];
       const pEot = cfg.eotEnabled ? pRows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
-      const pAoiAvg = pAoi.length ? pAoi.reduce((a,b)=>a+b,0)/pAoi.length : null;
+      const pAoiAvg = cfg.cwEnabled ? caAvgFromRows(pRows.filter(r=>r.kind==='AOI'), cfg) : null;
       const pEotAvg = pEot.length ? pEot.reduce((a,b)=>a+b,0)/pEot.length : null;
       if(pAoiAvg===null && pEotAvg===null) return null;
       return combine(pAoiAvg, pEotAvg);
@@ -6839,9 +6873,8 @@ function subjectPaperBreakdown(studentId, subject, cls, term, year){
   const perPaper = papers.map(p=>{
     const pRows = rows.filter(r=>String(r.paper)===String(p));
     const hasAny = pRows.length>0;
-    const aoiScaled = cfg.cwEnabled ? pRows.filter(r=>r.kind==='AOI').map(r=>scaleRow(r, cfg.cwPercent)) : [];
     const eotScaled = cfg.eotEnabled ? pRows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
-    const aoiAvg = aoiScaled.length ? aoiScaled.reduce((a,b)=>a+b,0)/aoiScaled.length : null;
+    const aoiAvg = cfg.cwEnabled ? caAvgFromRows(pRows.filter(r=>r.kind==='AOI'), cfg) : null;
     const eotAvg = eotScaled.length ? eotScaled.reduce((a,b)=>a+b,0)/eotScaled.length : null;
     return {paper:p, hasAny, aoiAvg, eotAvg};
   });
@@ -14561,9 +14594,8 @@ function paperAverage(studentId, subject, paper, term, year){
   const cfg = examConfig(st && st.classId);
   const rows = rawScores(studentId, subject, term, year).filter(r=>String(r.paper)===String(paper));
   if(!rows.length) return null;
-  const aoi = cfg.cwEnabled ? rows.filter(r=>r.kind==='AOI').map(r=>scaleRow(r, cfg.cwPercent)) : [];
   const eot = cfg.eotEnabled ? rows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
-  const aoiAvg = aoi.length ? aoi.reduce((a,b)=>a+b,0)/aoi.length : null;
+  const aoiAvg = cfg.cwEnabled ? caAvgFromRows(rows.filter(r=>r.kind==='AOI'), cfg) : null;
   const eotAvg = eot.length ? eot.reduce((a,b)=>a+b,0)/eot.length : null;
   if(aoiAvg===null && eotAvg===null) return null;
   return combinePaper(aoiAvg, eotAvg, cfg);
@@ -16679,7 +16711,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
 
-    <div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>
+    ${assessmentsAddDirectly(cfg) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
     </div>
   </div>${bareCard ? '' : '</div>'}`;
 }
@@ -17505,7 +17537,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?('UGX '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?('UGX '+Number(data.nextTermFees).toLocaleString()):'—'}`;
   centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
-  centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
+  if(!assessmentsAddDirectly(data.cfg)) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
 
   // Fit the finished content exactly between the top and bottom insets of the
   // A4 frame. This works for both short and very long report cards. The frame
