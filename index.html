@@ -2982,9 +2982,6 @@ function examConfig(classId){
     eotPercent: c.eotPercent!=null ? Number(c.eotPercent) : EOT_MAX,
     cwEnabled: c.cwEnabled!==false,   // on by default
     eotEnabled: c.eotEnabled!==false, // on by default
-    // What to do when a student has one assessment type but not the other (e.g. no End of Term yet):
-    // 'scale' (default) = grade off the one on record, scaled to 100 like the rest; 'penalize' = the missing one counts as 0.
-    missingMode: c.missingMode==='penalize' ? 'penalize' : 'scale',
     // Admin-defined Course Work tests (e.g. Test 1, Test 2, BOT), each with its own
     // maximum. Once at least one exists, teachers pick from this list instead of typing
     // a free-text label, and each test gets its own column on mark sheets/report cards.
@@ -6672,6 +6669,38 @@ function peersHaveScore(student, subject, term, year, kind, label, paper){
   for(const [id, kinds] of byStudent){ if(id!==student.id && kinds.has(k)) return true; }
   return false;
 }
+// PENALTY RULE: a learner is only penalised (missing assessment counts as 0) when classmates in the
+// same subject (and class / stream group) already have a score for that assessment type — in that
+// paper when `paper` is given, otherwise in any paper. If nobody has been scored yet in that type, nobody is penalised.
+// Returns {cw:bool, eot:bool}.
+let _peerKindCache = {version:-1, map:new Map()};
+function peerPenaltyFlags(student, subject, term, year, paper){
+  const none = {cw:false, eot:false};
+  if(!student) return none;
+  if(_peerKindCache.version!==SCORE_DATA_VERSION) _peerKindCache = {version:SCORE_DATA_VERSION, map:new Map()};
+  const _pcls = DB.classes.find(c=>c.id===student.classId);
+  const _pids = _pcls ? rankGroupIds(_pcls) : new Set([student.classId]);
+  const key = [[..._pids].sort().join(','), subject, term, year].join('||');
+  let byStudent = _peerKindCache.map.get(key);
+  if(!byStudent){
+    byStudent = new Map();
+    DB.students.forEach(st=>{
+      if(!_pids.has(st.classId) || st.status==='left') return;
+      const rows = rawScores(st.id, subject, term, year);
+      if(!rows.length) return;
+      const ks = new Set();
+      rows.forEach(r=>{ ks.add(r.kind); ks.add(r.kind+'|'+String(r.paper)); });
+      byStudent.set(st.id, ks);
+    });
+    _peerKindCache.map.set(key, byStudent);
+  }
+  const has = kind=>{
+    const k = (paper===undefined || paper===null) ? kind : kind+'|'+String(paper);
+    for(const [id, ks] of byStudent){ if(id!==student.id && ks.has(k)) return true; }
+    return false;
+  };
+  return {cw: has('AOI'), eot: has('EOT')};
+}
 // Returns every distinct term/year for which this student has at least one score on
 // file, most recent first, limited to the MAX_TERMS_BEHIND retention window — used to
 // populate the "view a past term" picker on the report card.
@@ -6781,7 +6810,7 @@ function caAvgFromRows(aoiRows, cfg){
   });
   return totals.reduce((a,b)=>a+b,0)/totals.length;
 }
-function combinePaper(cwAvg, eotAvg, cfg){
+function combinePaper(cwAvg, eotAvg, cfg, pen){
   const hasCw = cwAvg!==null && cwAvg!==undefined;
   const hasEot = eotAvg!==null && eotAvg!==undefined;
   if(hasCw && hasEot && RA_MODE==='all' && assessmentsAddDirectly(cfg)) return cwAvg + eotAvg;
@@ -6790,8 +6819,11 @@ function combinePaper(cwAvg, eotAvg, cfg){
   if(RA_MODE==='cw') return cwPct;
   if(RA_MODE==='eot') return eotPct;
   if(cwPct!==null && eotPct!==null) return (cwPct + eotPct) / 2;
-  // Only one assessment type on record: either penalize (the missing one counts as 0) or scale the one on record to 100.
-  if((hasCw || hasEot) && cfg.missingMode==='penalize' && cfg.cwEnabled!==false && cfg.eotEnabled!==false){
+  // Only one assessment type on record: the missing one is penalised (counts as zero) ONLY when
+  // classmates already have scores of that missing type (pen.cw / pen.eot, see peerPenaltyFlags) and
+  // both types are in use for this class. Otherwise the type simply hasn't been done yet: no penalty.
+  const penalise = (hasCw || hasEot) && pen && (hasCw ? pen.eot : pen.cw);
+  if(penalise && cfg.cwEnabled!==false && cfg.eotEnabled!==false){
     if(assessmentsAddDirectly(cfg)) return (hasCw?cwAvg:0) + (hasEot?eotAvg:0);
     return ((hasCw?cwPct:0) + (hasEot?eotPct:0)) / 2;
   }
@@ -6816,7 +6848,7 @@ function subjectBreakdown(studentId, subject, term, year){
   // so far (e.g. the admin hasn't switched on / no scores exist yet for the other one),
   // grade off just that component scaled to 100 instead of waiting for both parts.
   function combine(cwAvg, eotAvg2){
-    return combinePaper(cwAvg, eotAvg2, cfg);
+    return combinePaper(cwAvg, eotAvg2, cfg, peerPenaltyFlags(_st, subject, term, year, null));
   }
   // Subjects with two (or more) papers grade differently: each paper is graded on its
   // own — that paper's Course Work and End of Term marks combined via the same ÷2 rule
@@ -6825,25 +6857,34 @@ function subjectBreakdown(studentId, subject, term, year){
   // average and one combined EOT average and halving that (which is what aoiAvg/eotAvg
   // above still do, purely for display when no paper has been entered yet).
   const papers = subjectPapersFor(subject, cls);
-  let final;
+  let final, outAoi = aoiAvg, outEot = eotAvg;
   if(papers.length >= 2){
-    const paperFinals = papers.map(p=>{
+    // Multi-paper subjects: a paper with no score is treated differently per assessment type.
+    //  - Continuous Assessment (Course Work): a missing paper is simply left out of the average,
+    //    so it never affects the average or grade.
+    //  - End of Term: a missing paper COUNTS AS ZERO (lowers the average and grade) — but only if
+    //    classmates have an End of Term score in THAT paper; otherwise the paper is simply left out.
+    //    If NO paper has an End of Term score, or NO paper has a Course Work score, that whole
+    //    assessment type is missing and combine() penalizes it (counts as zero) only if classmates
+    //    have scores of that type — a Course Work score on any one paper avoids the Course Work penalty.
+    const per = papers.map(p=>{
       const pRows = rows.filter(r=>String(r.paper)===String(p));
       const pEot = cfg.eotEnabled ? pRows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
-      const pAoiAvg = cfg.cwEnabled ? caAvgFromRows(pRows.filter(r=>r.kind==='AOI'), cfg) : null;
-      const pEotAvg = pEot.length ? pEot.reduce((a,b)=>a+b,0)/pEot.length : null;
-      if(pAoiAvg===null && pEotAvg===null) return null;
-      return combine(pAoiAvg, pEotAvg);
-    }).filter(f=>f!==null);
-    // Only average across papers that actually have a score on record yet — a paper
-    // with nothing entered simply doesn't drag the average down. If NO paper has
-    // anything on record yet (shouldn't normally happen since aoiAvg/eotAvg above
-    // would then also be null), fall back to the combined figures.
-    final = paperFinals.length ? paperFinals.reduce((a,b)=>a+b,0)/paperFinals.length : combine(aoiAvg, eotAvg);
+      return {
+        cw: cfg.cwEnabled ? caAvgFromRows(pRows.filter(r=>r.kind==='AOI'), cfg) : null,
+        eot: pEot.length ? pEot.reduce((a,b)=>a+b,0)/pEot.length : null
+      };
+    });
+    const cwList = per.map(x=>x.cw).filter(v=>v!==null);
+    const eotVals = per.map((x,i)=> x.eot!==null ? x.eot : (peerPenaltyFlags(_st, subject, term, year, papers[i]).eot ? 0 : null)).filter(v=>v!==null);
+    const anyEot = per.some(x=>x.eot!==null);
+    outAoi = cwList.length ? cwList.reduce((a,b)=>a+b,0)/cwList.length : null;
+    outEot = (anyEot && eotVals.length) ? eotVals.reduce((a,b)=>a+b,0)/eotVals.length : null;
+    final = (outAoi===null && outEot===null) ? combine(aoiAvg, eotAvg) : combine(outAoi, outEot);
   } else {
     final = combine(aoiAvg, eotAvg);
   }
-  return {aoiAvg, eotAvg, final};
+  return {aoiAvg: outAoi, eotAvg: outEot, final};
 }
 function subjectAverage(studentId, subject, term, year){
   return subjectBreakdown(studentId, subject, term, year).final;
@@ -13110,12 +13151,6 @@ function examSetupView(gcClassId){
         </div>
       </div>
       <p class="small">The two percentages should add up to 100 when both components are switched on.</p>
-      <label>When a student has only one of the two assessment types</label>
-      <select name="missingMode">
-        <option value="scale" ${examConfig().missingMode==='penalize'?'':'selected'}>Do not penalize — scale the one on record to 100, like the rest of the students</option>
-        <option value="penalize" ${examConfig().missingMode==='penalize'?'selected':''}>Penalize — the missing assessment type counts as zero</option>
-      </select>
-      <p class="small">Applies to the Paper Average and Final Average when one type (e.g. End of Term) has no score yet.</p>
       <button class="btn" style="margin-top:14px;">Submit — save exam type setup</button>
     </form>
   </div>
@@ -13178,12 +13213,6 @@ function examSetupView(gcClassId){
               <label>Percent of final mark</label><input name="eotPercent" type="number" min="0" max="100" step="1" value="${ccfg.eotPercent}">
             </div>
           </div>
-          <label>When a student has only one of the two assessment types</label>
-      <select name="missingMode">
-        <option value="scale" ${ccfg.missingMode==='penalize'?'':'selected'}>Do not penalize — scale the one on record to 100, like the rest of the students</option>
-        <option value="penalize" ${ccfg.missingMode==='penalize'?'selected':''}>Penalize — the missing assessment type counts as zero</option>
-      </select>
-      <p class="small">Applies to the Paper Average and Final Average when one type (e.g. End of Term) has no score yet.</p>
       <p class="small">The two percentages should add up to 100 when both components are switched on. These fields only take effect once the checkbox above is ticked — otherwise ${esc(gcls.name)} just keeps following the school-wide setup, and nothing here is lost if you leave it unticked.</p>
           <button class="btn" style="margin-top:14px;">Submit — save ${esc(gcls.name)}'s assessment type</button>
         </form>
@@ -14618,7 +14647,7 @@ function paperAverage(studentId, subject, paper, term, year){
   const aoiAvg = cfg.cwEnabled ? caAvgFromRows(rows.filter(r=>r.kind==='AOI'), cfg) : null;
   const eotAvg = eot.length ? eot.reduce((a,b)=>a+b,0)/eot.length : null;
   if(aoiAvg===null && eotAvg===null) return null;
-  return combinePaper(aoiAvg, eotAvg, cfg);
+  return combinePaper(aoiAvg, eotAvg, cfg, peerPenaltyFlags(st, subject, term, year, paper));
 }
 // Sat / Enrolled, average, highest and lowest for one paper of a subject across the given classes.
 function paperStatsFor(classList, subject, paper, term, year){
@@ -15277,7 +15306,7 @@ function masterMarkSheetViewCore(forExport){
         paperCells = sm.papers.map(p=>{
           const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
           if(!row || !row.hasAny) return gap;
-          const val = combinePaper(row.aoiAvg, row.eotAvg, cfg);
+          const val = combinePaper(row.aoiAvg, row.eotAvg, cfg, peerPenaltyFlags(s, sm.subject, term, year, p));
           return val===null ? gap : zp(val.toFixed(1));
         });
       }
@@ -16455,7 +16484,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // combinePaper() helper — the exact same math used for the subject's overall Final
       // Average, so this column and Final Average always agree. Shown for single-paper
       // subjects too (paperRows has one entry in that case), not just multi-paper ones.
-      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg);
+      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, useSubrows ? p.paper : null));
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject):zr(paperFinal.toFixed(1))}</td>`;
       // Cells that apply to the WHOLE subject (Subject name, Final Average, Grade,
@@ -16867,7 +16896,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       }
       let eotTxt = '';
       if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT') : zr(p.eotAvg.toFixed(1));
-      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg);
+      const paperFinal = combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, useSubrows ? p.paper : null));
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor():zr(paperFinal.toFixed(1)), teacherInitTxt: initTxt };
     });
@@ -21418,7 +21447,6 @@ document.addEventListener('submit', async (e)=>{
         eotEnabled: fd.get('eotEnabled')==='on',
         eotLabel: (fd.get('eotLabel')||'End of Term').trim() || 'End of Term',
         eotPercent: Math.max(0, Math.min(100, Number(fd.get('eotPercent'))||0)),
-        missingMode: fd.get('missingMode')==='penalize' ? 'penalize' : 'scale',
         cwTests: (DB.info.examConfig && Array.isArray(DB.info.examConfig.cwTests)) ? DB.info.examConfig.cwTests : []
       };
       await saveInfo(); render();
@@ -21466,7 +21494,6 @@ document.addEventListener('submit', async (e)=>{
             eotEnabled: fd.get('eotEnabled')==='on',
             eotLabel: (fd.get('eotLabel')||'End of Term').trim() || 'End of Term',
             eotPercent: Math.max(0, Math.min(100, Number(fd.get('eotPercent'))||0)),
-            missingMode: fd.get('missingMode')==='penalize' ? 'penalize' : 'scale',
             cwTests: testsOf(cls)
           };
         });
