@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-16-1900'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-16-2100'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -3257,6 +3257,7 @@ let DB = { info:null, accounts:[], classes:[], students:[], assignments:[], scor
 let KNOWN_SCORE_SHARDS = {};
 // Fast in-memory score index for large schools.
 let SCORE_DATA_VERSION = 0;
+let _scoresPartial = false;   // true while DB.scores holds only ONE period (loaded for a mark sheet / analysis)
 let _scoreLookupCache = {version:-1, map:null};
 function invalidateScoreLookupCache(){ SCORE_DATA_VERSION++; _scoreLookupCache={version:-1,map:null}; _rankCache={scoresRef:null,key:'',map:null}; }
 function scoreLookupMap(){
@@ -4045,7 +4046,7 @@ function deleteScores(rows){
 // it always reflects every teacher's latest saved marks.
 async function refreshScores(){
   if(!SCHOOL_ID) return;
-  try{ DB.scores = await loadAllScores(SCHOOL_ID); invalidateScoreLookupCache(); }catch(e){ console.error(e); }
+  try{ DB.scores = await loadAllScores(SCHOOL_ID); _scoresPartial = false; invalidateScoreLookupCache(); }catch(e){ console.error(e); }
 }
 // Master Mark Sheet only needs ONE term/year. Loading every historical score shard
 // just to display one sheet was the biggest remaining source of delay for large schools.
@@ -4067,7 +4068,7 @@ async function loadScoresForPeriod(schoolId, term, year){
 }
 async function refreshScoresForPeriod(term, year){
   if(!SCHOOL_ID || !term || !year) return;
-  try{ DB.scores=await loadScoresForPeriod(SCHOOL_ID,term,year); invalidateScoreLookupCache(); }
+  try{ DB.scores=await loadScoresForPeriod(SCHOOL_ID,term,year); _scoresPartial = true; invalidateScoreLookupCache(); }
   catch(e){ console.error(e); }
 }
 
@@ -6440,6 +6441,7 @@ function combinationCode(principals){ return principals.map(p=>ABBR[p]||p.slice(
 // tick (assignment.studentIds) is the single source of truth used everywhere below.
 function rosterSubjectsFor(st, cls){
   if(!cls) return [];
+  ensureRostersSeeded();
   const subs = new Set();
   const _sg = streamGroupIds(cls);
   DB.assignments.filter(a=>_sg.has(a.classId) && Array.isArray(a.studentIds) && a.studentIds.includes(st.id))
@@ -6475,9 +6477,9 @@ function scopeHas(scope, classId){ if(!scope || scope==='all') return true; cons
 // the class (or a stand-in named "S.5 (all streams)") a scope points at; null when it no longer exists
 function scopeClass(scope){ const g = allStrClasses(scope); if(g) return g[0] ? Object.assign({}, g[0], {name: classBaseName(g[0])+' (all streams)'}) : null; return DB.classes.find(c=>c.id===scope) || null; }
 // <option>s that let an A-Level class with streams be chosen as "All streams" (the stream picker turns them into the All streams card)
-function allStrOptions(selected, list){
+function allStrOptions(selected, list, anyLevel){
   const seen = new Set(); let h = '';
-  (list||DB.classes).forEach(c=>{ if(c.level!=='A') return; const g = streamGroupClasses(c), head = g[0]; if(g.length<2 || seen.has(head.id)) return; seen.add(head.id);
+  (list||DB.classes).forEach(c=>{ if(!anyLevel && c.level!=='A') return; const g = streamGroupClasses(c), head = g[0]; if(g.length<2 || seen.has(head.id)) return; seen.add(head.id);
     h += `<option value="${ALLSTR}${esc(head.id)}" ${selected===ALLSTR+head.id?'selected':''}>${esc(classBaseName(head))} (all streams)</option>`; });
   return h;
 }
@@ -13083,20 +13085,22 @@ function examSetupView(gcClassId){
     <label>Class</label>
     <select data-csp onchange="setAnalysisParam('gcClassId', this.value)">
       <option value="">-- choose a class to view/set its assessment type --</option>
-      ${DB.classes.map(c=>`<option value="${c.id}" ${c.id===gcClassId?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('') || ''}
+      ${allStrOptions(gcClassId, null, true)}${DB.classes.map(c=>`<option value="${c.id}" ${c.id===gcClassId?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('') || ''}
     </select>
     ${(()=>{
       if(!gcClassId) return '';
-      const gcls = DB.classes.find(c=>c.id===gcClassId);
+      const gcAll = isAllStr(gcClassId);   // "All streams": the setting is read from, and saved to, every stream of the class
+      const gcls = gcAll ? scopeClass(gcClassId) : DB.classes.find(c=>c.id===gcClassId);
       if(!gcls) return '<p class="small" style="margin-top:10px;">Class not found.</p>';
+      const gcKey = gcClassId, gcN = gcAll ? (allStrClasses(gcClassId)||[]).length : 1;
       const cc = gcls.examConfig || {};
-      const ccfg = examConfig(gcClassId); // resolved values (custom if on, otherwise the school default) — used to prefill the form either way
+      const ccfg = examConfig(gcAll ? gcClassId.slice(ALLSTR.length) : gcClassId); // resolved values (custom if on, otherwise the school default) — used to prefill the form either way
       const classCwTests = Array.isArray(cc.cwTests) ? cc.cwTests : [];
       const editClassTestId = VIEW.params && VIEW.params.editClassTestId;
       return `
       <div class="card" style="margin-top:14px;background:var(--blue-light);">
         <p class="small" style="margin:0 0 10px;">${esc(gcls.name)} is currently using: <b>${cc.useCustom ? `its own custom assessment type` : `the school-wide default above`}</b></p>
-        <form data-form="saveClassExamConfig" data-class="${gcls.id}">
+        ${gcAll?`<p class="small" style="margin:0 0 10px;">Everything saved here is applied to all ${gcN} streams of ${esc(classBaseName(gcls))} together.</p>`:''}<form data-form="saveClassExamConfig" data-class="${gcKey}">
           <label class="flex"><input type="checkbox" name="useCustom" style="width:auto;" ${cc.useCustom?'checked':''}> <span>Use a custom assessment type for ${esc(gcls.name)} (overrides the school-wide setup above, for this class only)</span></label>
           <div class="grid2" style="margin-top:10px;">
             <div class="card" style="margin:0;">
@@ -13119,15 +13123,15 @@ function examSetupView(gcClassId){
         <p class="small">Only used while the custom assessment type above is switched on for this class — separate from, and in addition to, the school-wide tests list.</p>
         <table class="data-table"><tr><th>Test name</th><th>Max score</th><th>Actions</th></tr>
         ${classCwTests.map(t=> t.id===editClassTestId ? `<tr><td colspan="3">
-          <form data-form="editClassCwTest" data-class="${gcls.id}" data-test="${t.id}" class="flex" style="gap:8px;align-items:center;flex-wrap:wrap;">
+          <form data-form="editClassCwTest" data-class="${gcKey}" data-test="${t.id}" class="flex" style="gap:8px;align-items:center;flex-wrap:wrap;">
             <input name="name" value="${esc(t.name)}" placeholder="Test name" required style="flex:1;min-width:120px;">
             <input name="max" type="number" min="1" step="1" value="${esc(String(t.max))}" required style="width:90px;">
             <button class="btn" type="submit">Save</button>
             <button class="btn-outline" type="button" data-action="cancelEditClassCwTest">Cancel</button>
           </form>
-        </td></tr>` : `<tr><td>${esc(t.name)}</td><td>${esc(String(t.max))}</td><td><button class="btn-outline" data-action="editClassCwTestStart:${gcls.id}:${t.id}">Edit</button> <button class="btn-danger" data-action="delClassCwTest:${gcls.id}:${t.id}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">No class-specific tests set up yet.</td></tr>`}
+        </td></tr>` : `<tr><td>${esc(t.name)}</td><td>${esc(String(t.max))}</td><td><button class="btn-outline" data-action="editClassCwTestStart:${gcKey}:${t.id}">Edit</button> <button class="btn-danger" data-action="delClassCwTest:${gcKey}:${t.id}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">No class-specific tests set up yet.</td></tr>`}
         </table>
-        <form data-form="addClassCwTest" data-class="${gcls.id}" style="margin-top:12px;">
+        <form data-form="addClassCwTest" data-class="${gcKey}" style="margin-top:12px;">
           <div class="grid2">
             <div><label>Test name</label><input name="name" placeholder="e.g. Test 1" required></div>
             <div><label>Max score</label><input name="max" type="number" min="1" step="1" value="20" required></div>
@@ -15628,6 +15632,19 @@ function seedAllRostersFromScores(){
   (DB.assignments||[]).forEach(a=>{ if(seedRosterFromScores(a)) changed = true; });
   return changed;
 }
+// Report cards and mark sheets list a student's optional subjects from the subject rosters. A subject whose
+// roster was never built (scores entered while it was compulsory, or before streaming) would silently drop its
+// scores from the card until someone opened Enter Scores, which builds the roster. Do that here, once per
+// load of the scores, and only when DB.scores holds every period (a one-period load must never fix a roster).
+let _rosterSeedVer = -1;
+function ensureRostersSeeded(){
+  if(_scoresPartial || !DB.scores || !DB.scores.length || !DB.assignments || !DB.assignments.length) return;
+  if(_rosterSeedVer===SCORE_DATA_VERSION) return;
+  _rosterSeedVer = SCORE_DATA_VERSION;
+  let changed = false;
+  try{ changed = seedAllRostersFromScores(); }catch(e){ console.error(e); }
+  if(changed && typeof CUR!=='undefined' && CUR && (CUR.role==='admin' || CUR.role==='teacher')){ try{ saveAssignments(); }catch(e){ console.error(e); } }
+}
 function scoresEntryView(mine){
   // Assignments repeated per stream are folded into one shared set for the class (once, then saved).
   if(mergeStreamAssignments()){ try{ saveAssignments(); }catch(e){ console.error(e); } mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(x=>x.teacherUsername===CUR.username); }
@@ -18004,6 +18021,8 @@ document.addEventListener('click', async (e)=>{
       });
       // Fold any assignments that were repeated per stream into one shared set for the whole class.
       mergeStreamAssignments();
+      try{ if(!_scoresPartial) seedAllRostersFromScores(); }catch(e){ console.error(e); }
+      invalidateScoreLookupCache(); _markedSubjCache = {ref:null,ver:-1,key:'',set:null};   // class membership changed
       if(projMoved || finCopied){ try{ const d_ = financeData(); studs.forEach(x=>syncStudentFinance(x.id, d_)); }catch(e){ console.error(e); } await saveInfo(); }
       await saveClasses(); await saveAssignments(); await saveStudents();
       stmCloseSummary();
@@ -18185,20 +18204,26 @@ Continue?`);
       VIEW.params = {...VIEW.params, editCwTestId: null}; render(); break;
     }
     case 'delClassCwTest': {
-      const [classId, testId] = arg.split(':');
-      const cls = DB.classes.find(c=>c.id===classId);
-      if(!cls) break;
-      const sure = confirm('Delete this test? Scores already recorded under it stay on file (and keep counting toward the Course Work average) but it will no longer be offered to teachers, and its column will disappear from report cards.');
+      const _i = arg.lastIndexOf(':'), classId = arg.slice(0,_i), testId = arg.slice(_i+1);
+      const all = isAllStr(classId);
+      const targets = all ? (allStrClasses(classId)||[]) : [DB.classes.find(c=>c.id===classId)].filter(Boolean);
+      if(!targets.length) break;
+      const label = all ? (scopeClass(classId)||{}).name : targets[0].name;
+      const sure = confirm('Delete this test'+(all?' from every stream':'')+'? Scores already recorded under it stay on file (and keep counting toward the Course Work average) but it will no longer be offered to teachers, and its column will disappear from report cards.');
       if(!sure) break;
-      { const _t = ((cls.examConfig||{}).cwTests||[]).find(t=>t.id===testId);
-        if(_t && !(await binGuard('cwtest', _t.name||'Course Work test', `Test in ${cls.name}`, {classId:cls.id, test:_t}))) break; }
-      const cfg = {...(cls.examConfig||{})};
-      cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=>t.id!==testId);
-      cls.examConfig = cfg;
+      const tests0 = ((targets[0].examConfig||{}).cwTests||[]);
+      const _t = tests0.find(t=>t.id===testId);
+      if(_t && !(await binGuard('cwtest', _t.name||'Course Work test', `Test in ${label}`, {classId:targets[0].id, test:_t}))) break;
+      const refName = _t ? String(_t.name).toLowerCase() : null;
+      targets.forEach(cls=>{
+        const cfg = {...(cls.examConfig||{})};
+        cfg.cwTests = (Array.isArray(cfg.cwTests)?cfg.cwTests:[]).filter(t=> !(t.id===testId || (refName && String(t.name).toLowerCase()===refName)));
+        cls.examConfig = cfg;
+      });
       await saveClasses(); showActionSuccess('Test deleted', el, true); render(); break;
     }
     case 'editClassCwTestStart': {
-      const [, testId] = arg.split(':');
+      const testId = arg.slice(arg.lastIndexOf(':')+1);
       VIEW.params = {...VIEW.params, editClassTestId: testId}; render(); break;
     }
     case 'cancelEditClassCwTest': {
@@ -21356,53 +21381,58 @@ document.addEventListener('submit', async (e)=>{
       VIEW.params = {...VIEW.params, editCwTestId: null};
       await saveInfo(); showDeliveredToast('Test updated'); render();
     }
-    else if(type==='saveClassExamConfig'){
+    else if(type==='saveClassExamConfig' || type==='addClassCwTest' || type==='editClassCwTest'){
+      // The class can be one class or 'allstr:<home id>' = every stream of it; the change is applied to each stream.
       const classId = form.dataset.class;
-      const cls = DB.classes.find(c=>c.id===classId);
-      if(!cls){ alert('Class not found.'); return; }
-      const prevTests = (cls.examConfig && Array.isArray(cls.examConfig.cwTests)) ? cls.examConfig.cwTests : [];
-      cls.examConfig = {
-        useCustom: fd.get('useCustom')==='on',
-        cwEnabled: fd.get('cwEnabled')==='on',
-        cwLabel: (fd.get('cwLabel')||'Course Work').trim() || 'Course Work',
-        cwPercent: Math.max(0, Math.min(100, Number(fd.get('cwPercent'))||0)),
-        eotEnabled: fd.get('eotEnabled')==='on',
-        eotLabel: (fd.get('eotLabel')||'End of Term').trim() || 'End of Term',
-        eotPercent: Math.max(0, Math.min(100, Number(fd.get('eotPercent'))||0)),
-        cwTests: prevTests
-      };
-      await saveClasses(); showDeliveredToast(`${cls.name}'s assessment type saved`); render();
-    }
-    else if(type==='addClassCwTest'){
-      const classId = form.dataset.class;
-      const cls = DB.classes.find(c=>c.id===classId);
-      if(!cls){ alert('Class not found.'); return; }
-      const name = (fd.get('name')||'').trim();
-      const max = Math.max(1, Number(fd.get('max'))||20);
-      if(!name){ alert('Enter a test name.'); return; }
-      const cfg = {...(cls.examConfig||{})};
-      const tests = Array.isArray(cfg.cwTests) ? [...cfg.cwTests] : [];
-      if(tests.some(t=>t.name.toLowerCase()===name.toLowerCase())){ alert('A test with that name already exists for this class.'); return; }
-      tests.push({id:uid('cwt'), name, max});
-      cfg.cwTests = tests;
-      cls.examConfig = cfg;
-      await saveClasses(); showDeliveredToast('Test added'); render();
-    }
-    else if(type==='editClassCwTest'){
-      const classId = form.dataset.class;
-      const testId = form.dataset.test;
-      const cls = DB.classes.find(c=>c.id===classId);
-      if(!cls){ alert('Class not found.'); return; }
-      const name = (fd.get('name')||'').trim();
-      const max = Math.max(1, Number(fd.get('max'))||20);
-      if(!name){ alert('Enter a test name.'); return; }
-      const cfg = {...(cls.examConfig||{})};
-      const tests = Array.isArray(cfg.cwTests) ? [...cfg.cwTests] : [];
-      if(tests.some(t=>t.id!==testId && t.name.toLowerCase()===name.toLowerCase())){ alert('A test with that name already exists for this class.'); return; }
-      cfg.cwTests = tests.map(t=> t.id===testId ? {...t, name, max} : t);
-      cls.examConfig = cfg;
-      VIEW.params = {...VIEW.params, editClassTestId: null};
-      await saveClasses(); showDeliveredToast('Test updated'); render();
+      const all = isAllStr(classId);
+      const targets = all ? (allStrClasses(classId)||[]) : [DB.classes.find(c=>c.id===classId)].filter(Boolean);
+      if(!targets.length){ alert('Class not found.'); return; }
+      const label = all ? (scopeClass(classId)||{}).name : targets[0].name;
+      const testsOf = c => (c.examConfig && Array.isArray(c.examConfig.cwTests)) ? [...c.examConfig.cwTests] : [];
+      if(type==='saveClassExamConfig'){
+        targets.forEach(cls=>{
+          cls.examConfig = {
+            useCustom: fd.get('useCustom')==='on',
+            cwEnabled: fd.get('cwEnabled')==='on',
+            cwLabel: (fd.get('cwLabel')||'Course Work').trim() || 'Course Work',
+            cwPercent: Math.max(0, Math.min(100, Number(fd.get('cwPercent'))||0)),
+            eotEnabled: fd.get('eotEnabled')==='on',
+            eotLabel: (fd.get('eotLabel')||'End of Term').trim() || 'End of Term',
+            eotPercent: Math.max(0, Math.min(100, Number(fd.get('eotPercent'))||0)),
+            cwTests: testsOf(cls)
+          };
+        });
+        await saveClasses(); showDeliveredToast(`${label}'s assessment type saved`); render();
+      }
+      else if(type==='addClassCwTest'){
+        const name = (fd.get('name')||'').trim();
+        const max = Math.max(1, Number(fd.get('max'))||20);
+        if(!name){ alert('Enter a test name.'); return; }
+        const need = targets.filter(cls=>!testsOf(cls).some(t=>t.name.toLowerCase()===name.toLowerCase()));
+        if(!need.length){ alert(all ? 'A test with that name already exists for every stream.' : 'A test with that name already exists for this class.'); return; }
+        const tid = uid('cwt');   // one id for every stream, so the test stays the same test everywhere
+        need.forEach(cls=>{ const cfg = {...(cls.examConfig||{})}; cfg.cwTests = [...testsOf(cls), {id:tid, name, max}]; cls.examConfig = cfg; });
+        await saveClasses(); showDeliveredToast('Test added'); render();
+      }
+      else {
+        const testId = form.dataset.test;
+        const name = (fd.get('name')||'').trim();
+        const max = Math.max(1, Number(fd.get('max'))||20);
+        if(!name){ alert('Enter a test name.'); return; }
+        const refT = testsOf(targets[0]).find(t=>t.id===testId);
+        const refName = refT ? String(refT.name).toLowerCase() : null;
+        const matchT = (tests)=> tests.find(t=>t.id===testId) || (refName ? tests.find(t=>String(t.name).toLowerCase()===refName) : null);
+        for(const cls of targets){
+          const tests = testsOf(cls), m = matchT(tests);
+          if(tests.some(t=>t!==m && t.name.toLowerCase()===name.toLowerCase())){ alert('A test with that name already exists for '+(all?cls.name:'this class')+'.'); return; }
+        }
+        targets.forEach(cls=>{
+          const tests = testsOf(cls), m = matchT(tests); if(!m) return;
+          const cfg = {...(cls.examConfig||{})}; cfg.cwTests = tests.map(t=> t===m ? {...t, name, max} : t); cls.examConfig = cfg;
+        });
+        VIEW.params = {...VIEW.params, editClassTestId: null};
+        await saveClasses(); showDeliveredToast('Test updated'); render();
+      }
     }
     else if(type==='promote'){
       const currYearRaw = fd.get('currYear');
@@ -23941,7 +23971,7 @@ h6:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
       if(!e){ e = seen[h.id] = {plain:false, head:h, first:c, text:o.textContent, members:[]}; entries.push(e); }
       e.members.push(c);
     });
-    entries.forEach(function(e){ if(!e.plain && e.members.length>1){ multiAny = true; if(allVals[e.head.id] && e.head.level==='A') e.allVal = allVals[e.head.id]; } });
+    entries.forEach(function(e){ if(!e.plain && e.members.length>1){ multiAny = true; if(allVals[e.head.id]) e.allVal = allVals[e.head.id]; } });
     if(!multiAny){ sel.setAttribute('data-csp-done','1'); return; }            // no streams here: leave the dropdown as it is
     var key = sel.id || sel.name || sel.getAttribute('onchange') || 'csp';
     var cur = sel.value, pend = PENDING[key];
