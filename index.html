@@ -2005,12 +2005,7 @@ form[data-form="saveClassReqSelection"] .pick-btn.req-pick{white-space:normal;ov
     el.querySelector('#ipNo').addEventListener('click', close);
     el.addEventListener('click', function(e){ if(e.target===el) close(); });
     el.querySelector('#ipYes').addEventListener('click', function(){
-      if(!ios){ installPWA(); return; }   // opens the install box at once; the card then shows only "App installed" or "App not installed"
-      // iPhone/iPad cannot open an install box from a button: the Share-menu steps are the only way.
-      steps.style.display='block';
-      steps.innerHTML = '<b>On iPhone / iPad:</b><br>1. Tap the <b>Share</b> button in Safari.<br>2. Choose <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>, then open the app from your Home Screen.';
-      el.querySelector('#ipYes').textContent='Got it';
-      el.querySelector('#ipYes').onclick=close;
+      installPWA();   // opens the install box at once where the browser allows it; otherwise the card shows the exact steps for this browser/phone
     });
   }
   function start(){ setTimeout(show, 1800); }   // short delay so the screen and the browser's own install event are ready
@@ -3630,43 +3625,110 @@ function updatePWAInstallState(){
     btn.style.opacity = '1';
   }
 }
-// The ONLY two messages an install attempt ever shows: "App installed" or "App not installed" + Re-install.
-function cteInstallResult(ok){
+// Works out the browser/phone type so the right install route (or the right step-by-step help) is used.
+function cteBrowserInfo(){
+  var ua=navigator.userAgent||'';
+  var ios=/iphone|ipad|ipod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints>1);
+  var android=/android/i.test(ua);
+  // Browsers built into other apps (Facebook, Instagram, WhatsApp links, TikTok, WeChat, Android WebView...) can never install an app.
+  var inApp=/FBAN|FBAV|FB_IAB|FBIOS|Instagram|MicroMessenger|Snapchat|TikTok|BytedanceWebview|Line\/|Twitter|LinkedInApp|Pinterest|GSA\/|;\s*wv\)/i.test(ua) || (ios && !/safari/i.test(ua));
+  var firefox=/firefox|fxios/i.test(ua), samsung=/SamsungBrowser/i.test(ua), edge=/edg(e|a|ios)?\//i.test(ua), opera=/opr\/|opera/i.test(ua);
+  var chromium=/chrome|crios|chromium/i.test(ua) && !firefox;
+  var safari=/safari/i.test(ua) && !chromium && !firefox;
+  // Only Chromium-family browsers (Chrome, Edge, Opera, Samsung Internet) announce an install box that code can open.
+  var canPrompt=!ios && !inApp && !firefox && (chromium || samsung || edge || opera);
+  return {ua:ua,ios:ios,android:android,inApp:inApp,firefox:firefox,samsung:samsung,edge:edge,opera:opera,chromium:chromium,safari:safari,canPrompt:canPrompt};
+}
+function cteInstallGuideHtml(){
+  var b=cteBrowserInfo(), h;
+  if(b.inApp){
+    h='<b>This page is open inside another app</b> (such as WhatsApp, Facebook, Instagram or a mail app). Those built-in browsers cannot install apps.<br>'
+     +'1. Tap the <b>⋮</b> or <b>Share</b> button at the top or bottom of the screen.<br>'
+     +'2. Choose <b>Open in browser</b> / <b>Open in Chrome</b> / <b>Open in Safari</b>.<br>'
+     +'3. Then tap <b>Install App</b> again.';
+  } else if(b.ios && b.safari){
+    h='<b>On iPhone / iPad (Safari):</b><br>1. Tap the <b>Share</b> button (square with an arrow).<br>2. Scroll down and choose <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>, then open the app from your Home Screen.';
+  } else if(b.ios){
+    h='<b>On iPhone / iPad:</b><br>1. Tap the <b>Share</b> button of this browser (or its <b>⋯</b> menu).<br>2. Choose <b>Add to Home Screen</b>, then tap <b>Add</b>.<br>If you do not see it, open this same page in <b>Safari</b> and do the same.';
+  } else if(b.firefox && b.android){
+    h='<b>On Android (Firefox):</b><br>1. Tap the <b>⋮</b> menu.<br>2. Choose <b>Install</b> (or <b>Add to Home screen</b>).<br>3. Confirm with <b>Add</b>.';
+  } else if(b.firefox){
+    h='<b>Firefox on a computer cannot install this app.</b><br>Open the system in <b>Google Chrome</b> or <b>Microsoft Edge</b> and use <b>Install App</b> there.';
+  } else if(b.samsung){
+    h='<b>On Samsung Internet:</b><br>1. Tap the <b>☰</b> menu.<br>2. Choose <b>Add page to</b> → <b>Home screen</b> (or <b>Install app</b>).<br>3. Confirm with <b>Add</b>.';
+  } else if(b.android){
+    h='<b>On Android (Chrome / Edge):</b><br>1. Tap the <b>⋮</b> menu at the top right.<br>2. Choose <b>Install app</b> (or <b>Add to Home screen</b>).<br>3. Confirm with <b>Install</b>.';
+  } else if(b.safari){
+    h='<b>Safari on a Mac:</b> choose <b>File → Add to Dock</b>.<br>On Windows or other computers, open the system in <b>Chrome</b> or <b>Edge</b> and use <b>Install App</b>.';
+  } else {
+    h='<b>On a computer (Chrome / Edge):</b><br>1. Click the <b>install icon</b> at the right end of the address bar (a small screen with a down arrow), or open the <b>⋮</b> menu.<br>2. Choose <b>Install CT-E SOLUTIONS</b> / <b>Install app</b>.<br>3. Confirm with <b>Install</b>.';
+  }
+  return h+'<br><span style="font-size:.9em;opacity:.85">Tip: use the normal browser window (not Private / Incognito) and keep a good internet connection while installing.</span>';
+}
+// Makes sure the install card exists (the Install button on the login screen has no pop-up open yet) and returns its card element.
+function cteEnsureInstallCard(){
+  var pop=document.getElementById('cteInstallPopup');
+  if(!pop){
+    pop=document.createElement('div'); pop.id='cteInstallPopup';
+    pop.setAttribute('role','dialog'); pop.setAttribute('aria-modal','true');
+    pop.innerHTML='<div class="ip-card"></div>';
+    pop.addEventListener('click', function(e){ if(e.target===pop) pop.remove(); });
+    document.body.appendChild(pop);
+  }
+  return pop.querySelector('.ip-card');
+}
+// Messages an install attempt shows: "App installed", or — when it could not be done by one tap — a clear reason and the exact steps for THIS browser.
+// reason: 'declined' (box closed), 'blocked' (browser refused to open it), 'unsupported' (this browser has no install box).
+function cteInstallResult(ok, reason){
   PWA_INSTALL_FAILED = !ok;
   if(ok) PWA_JUST_INSTALLED = true;
   updatePWAInstallState();
-  const pop = document.getElementById('cteInstallPopup');
-  const card = pop && pop.querySelector('.ip-card');
-  if(!card) return;
+  var card=cteEnsureInstallCard(); if(!card) return;
+  function closePop(){ var p=document.getElementById('cteInstallPopup'); if(p) p.remove(); }
   if(ok){
     card.innerHTML = '<div class="ip-icon">✅</div><h3>App installed</h3><div class="ip-row"><button type="button" class="ip-yes" id="ipOpen">Open in App</button></div>';
-    const op = card.querySelector('#ipOpen'); if(op) op.onclick = ()=>{ openInstalledPWA(); const p=document.getElementById('cteInstallPopup'); if(p) p.remove(); };
-  } else {
-    card.innerHTML = '<div class="ip-icon">⚠️</div><h3>App not installed</h3><div class="ip-row"><button type="button" class="ip-yes" id="ipRe">Re-install</button></div>';
-    const re = card.querySelector('#ipRe'); if(re) re.onclick = ()=>installPWA();
+    var op = card.querySelector('#ipOpen'); if(op) op.onclick = function(){ openInstalledPWA(); closePop(); };
+    return;
   }
+  var icon='⚠️', title='App not installed', lead='', retry=true;
+  if(reason==='unsupported'){ icon='📲'; title='Install from your browser menu'; lead='This browser cannot open the install box by itself, but it can still install the app. Follow these steps:'; retry=false; }
+  else if(reason==='declined'){ lead='The installation was cancelled. Tap <b>Re-install</b> to try again, or use these steps:'; }
+  else { lead='The browser could not open the install box. Tap <b>Re-install</b> to try again, or use these steps:'; }
+  card.innerHTML = '<div class="ip-icon">'+icon+'</div><h3>'+title+'</h3><p>'+lead+'</p>'
+    + '<div class="ip-steps" style="display:block">'+cteInstallGuideHtml()+'</div>'
+    + '<div class="ip-row"><button type="button" class="ip-no" id="ipClose">Close</button>'
+    + (retry ? '<button type="button" class="ip-yes" id="ipRe">Re-install</button>' : '') + '</div>';
+  var cl=card.querySelector('#ipClose'); if(cl) cl.onclick=closePop;
+  var re=card.querySelector('#ipRe'); if(re) re.onclick=function(){ installPWA(); };
 }
+let CTE_INSTALL_BUSY = false;
 async function installPWA(){
   if(PWA_INSTALLED) return;
   if(PWA_JUST_INSTALLED){ openInstalledPWA(); return; }
-  // If the tap landed before the browser announced the install box, wait briefly (still inside the tap) instead of failing.
-  if(!DEFERRED_INSTALL_PROMPT && !/iphone|ipad|ipod/i.test(navigator.userAgent)){
-    await new Promise(function(res){
-      var t=setTimeout(done,2500);
-      function done(){ clearTimeout(t); window.removeEventListener('beforeinstallprompt',done); setTimeout(res,0); }
-      window.addEventListener('beforeinstallprompt',done);
-    });
-  }
-  if(DEFERRED_INSTALL_PROMPT){
-    // Straight to the browser's own install box.
-    const p = DEFERRED_INSTALL_PROMPT; DEFERRED_INSTALL_PROMPT = null;
-    let choice = null;
-    try{ p.prompt(); choice = await p.userChoice; }catch(e){}
-    cteInstallResult(!!(choice && choice.outcome==='accepted'));
-    return;
-  }
-  // iPhone/iPad cannot open an install box from code; no extra message is shown here, the result is simply "not installed".
-  cteInstallResult(false);
+  if(CTE_INSTALL_BUSY) return;   // ignore double-taps while the browser's own install box is open
+  CTE_INSTALL_BUSY = true;
+  try{
+    var info = cteBrowserInfo();
+    // Browsers that can open an install box announce it a moment after the page loads: if the tap landed before that, wait briefly instead of failing.
+    if(!DEFERRED_INSTALL_PROMPT && info.canPrompt){
+      await new Promise(function(res){
+        var t=setTimeout(done,3000);
+        function done(){ clearTimeout(t); window.removeEventListener('beforeinstallprompt',done); setTimeout(res,0); }
+        window.addEventListener('beforeinstallprompt',done);
+      });
+    }
+    if(DEFERRED_INSTALL_PROMPT){
+      // Straight to the browser's own install box.
+      var p = DEFERRED_INSTALL_PROMPT; DEFERRED_INSTALL_PROMPT = null;
+      var choice = null, threw = false;
+      try{ var pr = p.prompt(); choice = await p.userChoice; if(pr && pr.then) await pr.catch(function(){}); }catch(e){ threw = true; }
+      if(choice && choice.outcome==='accepted'){ cteInstallResult(true); return; }
+      cteInstallResult(false, (choice && choice.outcome==='dismissed') ? 'declined' : (threw ? 'blocked' : 'declined'));
+      return;
+    }
+    // No install box is available (iPhone/iPad, Firefox, Safari, in-app browsers, or the browser has not offered it): show the exact steps for this browser.
+    cteInstallResult(false, 'unsupported');
+  } finally { CTE_INSTALL_BUSY = false; }
 }
 // Best-effort attempt to hand off to the freshly-installed app. There is no
 // universal browser API to force-launch an installed PWA from a page still
@@ -23150,6 +23212,20 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     holder.appendChild(measureTable);
     // Narrow tables (few columns) are stretched so the sheet fills the page side to side.
     const tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, section.fillPage ? 560 : (orientation==='portrait' ? 720 : 1000));
+    // Column proportions measured once on the FULL table, then reused on EVERY page: otherwise each page lets its own
+    // (shorter) content decide the column widths, so a page with a long name wraps more, grows taller and gets shrunk
+    // to fit — leaving blank bands at the sides instead of covering the width like page 1.
+    let pageColPct = null;
+    try{
+      // Grid width = column count of the FIRST header row (its colspans cover every column, also for two-row headers).
+      const headCols = headRows.length ? [...headRows[0].cells].reduce((n,c)=>n+c.colSpan,0) : 0;
+      const refRow = [...measureTbody.rows].find(r=>r.cells.length===headCols && [...r.cells].every(c=>c.colSpan===1));
+      if(refRow){
+        const ws = [...refRow.cells].map(c=>c.getBoundingClientRect().width);
+        const tot = ws.reduce((n,w)=>n+w,0);
+        if(tot>0 && ws.every(w=>w>0)) pageColPct = ws.map(w=>w/tot*100);
+      }
+    }catch(e){ pageColPct = null; }
     const headerH = measureThead.offsetHeight || 0;
     const bodyTrs = [...measureTbody.rows];
     let rowHeights = bodyRows.map((_,i)=> bodyTrs[i] ? bodyTrs[i].offsetHeight : 22);
@@ -23209,6 +23285,11 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
       const pageTable = document.createElement('table');
       pageTable.className = 'data-table' + (orientation==='portrait' ? ' pg-compact' : '') + (section.isSp ? ' pg-sp' : '');
       pageTable.style.width = tableW+'px';
+      if(pageColPct){
+        const cg = document.createElement('colgroup');
+        pageColPct.forEach(w=>{ const c=document.createElement('col'); c.style.width=w.toFixed(3)+'%'; cg.appendChild(c); });
+        pageTable.appendChild(cg);
+      }
       const thead = document.createElement('thead');
       headRows.forEach(r=>thead.appendChild(r.cloneNode(true)));
       pageTable.appendChild(thead);
@@ -23278,6 +23359,18 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
         fitStyle.textContent = `.pg-fit th,.pg-fit td{padding-top:${padV}px !important;padding-bottom:${padV}px !important;${hV?`height:${hV}px !important;`:''}}`;
         if(pageWrap.offsetHeight/pageWrap.offsetWidth <= maxRatio) break;
       }
+      }
+
+      // Still taller than the page? Reduce the text size a little (never the whole sheet, which would leave blank bands at the
+      // sides) until the page fits, so every page keeps covering the full width like page 1.
+      if(pageWrap.offsetHeight/pageWrap.offsetWidth > maxRatio + 0.0005){
+        const tdEl = pageTable.querySelector('tbody td'), thEl = pageTable.querySelector('thead th');
+        const tdF = tdEl ? (parseFloat(getComputedStyle(tdEl).fontSize)||11) : 11, thF = thEl ? (parseFloat(getComputedStyle(thEl).fontSize)||9) : 9;
+        const baseCss = fitStyle.textContent;
+        for(let r=0.95; r>=0.55; r-=0.05){
+          fitStyle.textContent = baseCss + `.pg-fit tbody td{font-size:${(tdF*r).toFixed(2)}px !important;line-height:1.1 !important;} .pg-fit thead th{font-size:${(thF*r).toFixed(2)}px !important;line-height:1.1 !important;}`;
+          if(pageWrap.offsetHeight/pageWrap.offsetWidth <= maxRatio + 0.0005) break;
+        }
       }
 
       const canvas = await html2canvasBold(pageWrap, {scale:captureScale, backgroundColor:'#ffffff'}, true); // light 0.5px list rules
