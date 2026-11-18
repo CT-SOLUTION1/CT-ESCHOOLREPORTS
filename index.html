@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-18-0200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-18-2200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -3615,7 +3615,7 @@ function updatePWAInstallState(){
     btn.textContent = '↗ Open in App';
     btn.disabled = false;
     btn.style.opacity = '1';
-  } else if(PWA_INSTALL_FAILED){
+  } else if(PWA_INSTALL_FAILED && DEFERRED_INSTALL_PROMPT){   // "Re-install" only while the browser really offers its install box again; otherwise the normal label (its tap shows the menu steps)
     btn.textContent = 'Re-install App';
     btn.disabled = false;
     btn.style.opacity = '1';
@@ -3680,7 +3680,7 @@ function cteEnsureInstallCard(){
 // Messages an install attempt shows: "App installed", or — when it could not be done by one tap — a clear reason and the exact steps for THIS browser.
 // reason: 'declined' (box closed), 'blocked' (browser refused to open it), 'unsupported' (this browser has no install box).
 function cteInstallResult(ok, reason){
-  PWA_INSTALL_FAILED = !ok;
+  PWA_INSTALL_FAILED = !ok && reason!=='unsupported';
   if(ok) PWA_JUST_INSTALLED = true;
   updatePWAInstallState();
   var card=cteEnsureInstallCard(); if(!card) return;
@@ -3692,8 +3692,9 @@ function cteInstallResult(ok, reason){
   }
   var icon='⚠️', title='App not installed', lead='', retry=true;
   if(reason==='unsupported'){ icon='📲'; title='Install from your browser menu'; lead='This browser cannot open the install box by itself, but it can still install the app. Follow these steps:'; retry=false; }
-  else if(reason==='declined'){ lead='The installation was cancelled. Tap <b>Re-install</b> to try again, or use these steps:'; }
-  else { lead='The browser could not open the install box. Tap <b>Re-install</b> to try again, or use these steps:'; }
+  else if(reason==='declined'){ lead = DEFERRED_INSTALL_PROMPT ? 'The installation was cancelled. Tap <b>Re-install</b> to try again, or use these steps:' : 'The installation was cancelled. You can still install the app from your browser menu:'; }
+  else { lead = DEFERRED_INSTALL_PROMPT ? 'The browser could not open the install box. Tap <b>Re-install</b> to try again, or use these steps:' : 'The browser could not open the install box, but the app can still be installed from your browser menu:'; }
+  if(reason!=='unsupported' && !DEFERRED_INSTALL_PROMPT){ retry=false; }   // no install box available to open again: a Re-install button would only fail, so show the steps only
   card.innerHTML = '<div class="ip-icon">'+icon+'</div><h3>'+title+'</h3><p>'+lead+'</p>'
     + '<div class="ip-steps" style="display:block">'+cteInstallGuideHtml()+'</div>'
     + '<div class="ip-row"><button type="button" class="ip-no" id="ipClose">Close</button>'
@@ -23161,6 +23162,36 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
                 footerHtml (optional, raw HTML shown after the LAST chunk of this
                 section), emptyText (optional, shown if bodyRows is empty) }]
    opts: { orientation: 'landscape'|'portrait' (default landscape) } ---------- */
+/* Paged lists (Student Performance / Rank Lists): the "RESULT 2 - MISSED SUBJECTS" list used to be squeezed under the last
+   page of learners, which shrank that page's rows and text so it no longer matched the pages before it. It now gets its OWN
+   pages: same letterhead, same table width / text size / row height (35 rows a page), the last learners' page stays a normal page. */
+function splitListFooterPages(sections){
+  const out = [];
+  sections.forEach(sec=>{
+    try{
+      if(!(sec && sec.fillPage && sec.footerHtml)){ out.push(sec); return; }
+      const box = document.createElement('div'); box.innerHTML = sec.footerHtml;
+      const mt = box.querySelector('table');
+      if(!mt){ out.push(sec); return; }
+      const trs = [...mt.querySelectorAll('tr')];
+      if(trs.length < 2){ out.push(sec); return; }
+      const heading = [...box.querySelectorAll('div')].find(d=>/^\s*RESULT 2/i.test(d.textContent) && !d.querySelector('table'));
+      const headingTxt = heading ? heading.textContent.replace(/\s+/g,' ').trim() : 'Result 2 — Missed Subjects';
+      const headTr = trs[0], bodyTrs = trs.slice(1);
+      [...headTr.cells].forEach(c=>{ c.removeAttribute('style'); c.style.textAlign='left'; });
+      bodyTrs.forEach(r=>[...r.cells].forEach((c,i)=>{ c.removeAttribute('style'); c.style.textAlign='left'; if(i===r.cells.length-1) c.style.fontWeight='700'; }));
+      const restHtml = [...box.querySelectorAll('p')].map(e=>e.outerHTML).join('');
+      out.push(Object.assign({}, sec, {footerHtml:'', footerExtraPx:0}));
+      out.push(Object.assign({}, sec, {
+        subtitle: [sec.subtitle, headingTxt].filter(Boolean).join('  •  '),
+        headRows:[headTr], bodyRows: bodyTrs,
+        footerHtml: restHtml ? `<div style="margin:0 0 6px;color:#000;">${restHtml}</div>` : '', footerExtraPx: restHtml ? 40 : 0,
+        isSp:true, fillPage:true, matchPrevWidth:true, emptyText:''
+      }));
+    }catch(e){ console.warn('footer page split failed', e); out.push(sec); }
+  });
+  return out;
+}
 async function renderTableSectionsAsPdf(sections, filename, opts={}){
   setAppBusy(true); // guards this long-running export against an auto-update reload
   const progressLabel = opts.progressLabel || 'Downloading';
@@ -23172,6 +23203,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
   opts = Object.assign({}, opts, {pageNumberBottom:true});
   // Each section may have its own paper orientation (e.g. Subject Performance = portrait).
   const secOrient = sec => (sec && sec.orientation) || opts.orientation || 'landscape';
+  sections = splitListFooterPages(sections);
   const pdf = new jsPDF(secOrient(sections[0])==='portrait'?'p':'l', 'pt', 'a4');
   const margin = PDF_FRAME_CONTENT; // keeps every table inside the page frame
   // A strip is kept free at the bottom of every page for the page number.
@@ -23184,8 +23216,10 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
 
   const captureScale = 2;
   let firstPageOverall = true;
+  let prevFillTableW = 0;   // table width of the previous learner list, reused by its Result 2 pages so text size matches
 
   for(const section of sections){
+    let sectionRowH = null;   // row height of the first filled page: every later page of this list reuses it
     const orientation = secOrient(section);
     const pageW = orientation==='portrait' ? 595.28 : 841.89;
     const pageH = orientation==='portrait' ? 841.89 : 595.28;
@@ -23211,7 +23245,9 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     holder.innerHTML = '';
     holder.appendChild(measureTable);
     // Narrow tables (few columns) are stretched so the sheet fills the page side to side.
-    const tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, section.fillPage ? 560 : (orientation==='portrait' ? 720 : 1000));
+    let tableW = Math.max(measureTable.scrollWidth || measureTable.offsetWidth || 1, section.fillPage ? 560 : (orientation==='portrait' ? 720 : 1000));
+    if(section.matchPrevWidth && prevFillTableW) tableW = prevFillTableW;
+    if(section.fillPage && !section.matchPrevWidth) prevFillTableW = tableW;
     // Column proportions measured once on the FULL table, then reused on EVERY page: otherwise each page lets its own
     // (shorter) content decide the column widths, so a page with a long name wraps more, grows taller and gets shrunk
     // to fit — leaving blank bands at the sides instead of covering the width like page 1.
@@ -23348,12 +23384,18 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
         const k = Math.max(1, chunks[ci].length);
         const nRows = fillThisPage ? Math.max(35, k) : Math.max(opts.rowsPerPage, k);   // a short last page keeps the full pages' row height
         let rowH = 20;
+        if(fillThisPage && sectionRowH){
+          // Same row height as the first page of this list, so the last page (and any footer) looks exactly like the others.
+          rowH = sectionRowH;
+          fitStyle.textContent = `.pg-fit tbody td{padding-top:0 !important;padding-bottom:0 !important;vertical-align:middle !important;height:${rowH}px !important;}`;
+        } else
         for(let it=0; it<8; it++){
           fitStyle.textContent = `.pg-fit tbody td{padding-top:0 !important;padding-bottom:0 !important;vertical-align:middle !important;height:${rowH}px !important;}`;
           const diff = targetH - pageWrap.offsetHeight - (nRows-k)*rowH;   // height still to gain if ALL nRows rows (real + blank) were rowH tall
           if(Math.abs(diff) < 0.5) break;
           rowH = Math.max(8, rowH + diff/nRows);   // divide by nRows (not k): a short page must converge to the full-page row height, not overshoot
         }
+        if(fillThisPage && !sectionRowH) sectionRowH = rowH;
       } else {
       for(const [padV, hV] of [[7,0],[5,0],[4,0],[3,0],[2,0],[1,0],[1,26],[1,24],[1,22],[1,20],[1,18],[1,16]]){
         fitStyle.textContent = `.pg-fit th,.pg-fit td{padding-top:${padV}px !important;padding-bottom:${padV}px !important;${hV?`height:${hV}px !important;`:''}}`;
@@ -23473,7 +23515,7 @@ async function downloadMasterMarkSheetPdf(elementId, filename, opts={}){
     school: (schoolEl&&schoolEl.textContent) || DB.info.schoolName || '',
     title: (titleEl&&titleEl.textContent) || '',
     subtitle: metaEl ? metaEl.textContent : '',
-    headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0, isSp: isRankTable,
+    headRows, bodyRows, footerHtml, footerExtraPx: summaryEl ? 110 : 0, isSp: isRankTable, fillPage: isRankTable && bodyRows.length>=1,
     emptyText: 'No students to show yet.'
   }], filename, {progressLabel:'Downloading Master Mark Sheet', orientation: opts.orientation, rowsPerPage: opts.rowsPerPage || 25});
 }
