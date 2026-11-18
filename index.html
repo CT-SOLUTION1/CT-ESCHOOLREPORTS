@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-16-2400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-18-0200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -421,6 +421,9 @@ button{font-family:inherit;cursor:pointer;}
 .pick-c0{background:#C8102E;} .pick-c1{background:#1D4E89;} .pick-c2{background:#1E8E3E;}
 .pick-c3{background:#E8710A;} .pick-c4{background:#7B3FA0;} .pick-c5{background:#0F8B8D;}
 .btn-gold{background:var(--gold);color:#3a2c00;border:none;padding:10px 18px;border-radius:6px;font-weight:800;}
+.btn-green{background:#1e8e3e;color:#fff;border:none;padding:10px 18px;border-radius:6px;font-weight:800;}
+.fees-fig-row{display:flex;flex-wrap:nowrap;gap:10px;margin-top:12px;}
+.fees-fig-row>button{flex:1 1 0;min-width:0;white-space:nowrap;font-size:14px;padding:11px 8px;}
 /* Requirements: category-first picker (see reqSelectionFormHTML) */
 .req-cat-btn{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px;}
 .req-cat-btn:hover{background:var(--blue-light);}
@@ -6042,6 +6045,7 @@ function maybeShowFirstLoginPwSticker(){
 #firstPwSticker .pw-show input{width:calc(18*var(--pu));height:calc(18*var(--pu));margin:0;}
 #firstPwSticker #fpwErr{min-height:1.2em;font-size:calc(16*var(--pu));font-weight:700;color:#8a1c1c;margin-top:calc(10*var(--pu));}
 #firstPwSticker .btn{display:block;width:100%;box-sizing:border-box;font-size:calc(20*var(--pu)) !important;padding:calc(15*var(--pu)) calc(20*var(--pu)) !important;border-radius:calc(9*var(--pu));margin-top:calc(14*var(--pu));}
+#firstPwSticker .pw-back{display:block;margin:calc(18*var(--pu)) auto 0;background:#fff;color:#475569;border:calc(1.5*var(--pu)) solid #b9c9da;border-radius:calc(20*var(--pu));font-size:calc(14*var(--pu));font-weight:700;padding:calc(7*var(--pu)) calc(16*var(--pu));cursor:pointer;}
 #firstPwSticker .btn-outline{font-size:calc(17*var(--pu)) !important;padding:calc(12*var(--pu)) calc(14*var(--pu)) !important;border-width:calc(2*var(--pu));margin-top:calc(14*var(--pu));}`;
     document.head.appendChild(st);
   }
@@ -6060,6 +6064,7 @@ function maybeShowFirstLoginPwSticker(){
     <label class="pw-show"><input id="fpwShow" type="checkbox"> Show digits</label>
     <div id="fpwErr"></div>
     <button type="button" id="fpwSave" class="btn">Change password</button>
+    <button type="button" id="fpwBack" class="pw-back" data-action="logout">&#8592; Back to sign in</button>
   </div>`;
   document.body.appendChild(o);
   // Fit-to-screen-height, same method as the sign-in screen: shrink --pwfit (0.3-1) until the whole card is visible.
@@ -6104,6 +6109,11 @@ function maybeShowFirstLoginPwSticker(){
       saveB.disabled = ignB.disabled = false; btnIdle(saveB); btnIdle(ignB);
     }
   };
+  // Back to sign in: the button's data-action="logout" signs the teacher out; the sticker is cleared once that has happened.
+  $('fpwBack').addEventListener('click', ()=>{
+    let tries = 0;
+    const iv = setInterval(()=>{ if(!CUR || ++tries>100){ clearInterval(iv); o.remove(); } }, 50);
+  });
   ignB.addEventListener('click', ()=>finish(null));
   saveB.addEventListener('click', async ()=>{
     const a = nw.value, b = cf.value;
@@ -8647,6 +8657,7 @@ let FINANCE_ONLY = false; // signed in through the Account Section slot: this se
 let FINANCE_RESET_SKIPPED = false; // 'Later' pressed on the forced Finance password reset prompt (this unlock only)
 let FINANCE_FORGOT = false; // showing the owner-code recovery form on the Finance lock screen
 function money(n){ return Number(n||0).toLocaleString(); }
+const FEES_CUR = 'UGX'; // currency shown in brackets on the Fees Balance / Next Term Fees columns and fields
 // Payer details are deliberately limited to just these three fields — name,
 // relationship to the student, and a contact number — nothing else. Used for both
 // fee payments and requirement cash payments. Formats compactly for table display,
@@ -9377,15 +9388,15 @@ function syncStudentFinance(studentId, d){
   const hasItemizedData = d.fees.some(f=>financeItemAppliesToStudent(f,s)) || d.payments.some(p=>p.studentId===s.id);
   if(hasItemizedData){
     const sum = studentFinanceSummary(s,d);
-    s.feesBalance = sum.balance;
-    if(sum.nextTermFees>0) s.nextTermFees = sum.nextTermFees;
+    if(!s.feesBalLocked) s.feesBalance = sum.balance;           // an uploaded fees figure overrides Account Section
+    if(sum.nextTermFees>0 && !s.nextFeesLocked) s.nextTermFees = sum.nextTermFees;
     return;
   }
   const hasAgreedData = studentHasAgreedData(s, d, term, year);
   if(!hasAgreedData) return; // no finance data for this student yet, in either ledger — leave any manually-typed balance alone
-  s.feesBalance = cumulativeAgreedBalance(s, term, year, d);
+  if(!s.feesBalLocked) s.feesBalance = cumulativeAgreedBalance(s, term, year, d);   // uploaded figure overrides Account Section
   const nextAmt = studentAgreedNextTermFees(s, d);
-  if(nextAmt>0) s.nextTermFees = nextAmt;
+  if(nextAmt>0 && !s.nextFeesLocked) s.nextTermFees = nextAmt;
 }
 function syncAllStudentsFinance(){ const d=financeData(); if(!financeSectionInUse(d)) return; DB.students.forEach(s=>syncStudentFinance(s.id,d)); }
 /* ---- 5-YEAR RETENTION OF ACCOUNT SECTION RECORDS ----
@@ -12563,8 +12574,8 @@ function studentsView(){
       </div>
       <div class="grid3">
         <div><label>Fees Code No. (optional)</label><input name="feesCode" placeholder="Leave blank if unused"></div>
-        <div><label>Fees balance</label><input name="feesBalance" type="number" step="0.01" placeholder="0"></div>
-        <div><label>Next term fees</label><input name="nextTermFees" type="number" step="0.01" placeholder="0"></div>
+        <div><label>Fees balance (${FEES_CUR})</label><input name="feesBalance" type="number" step="0.01" placeholder="0"></div>
+        <div><label>Next term fees (${FEES_CUR})</label><input name="nextTermFees" type="number" step="0.01" placeholder="0"></div>
       </div>
       <div class="grid3 stu-bio3">
         <div><label>Religion (optional)</label><input name="religion"></div>
@@ -12573,6 +12584,15 @@ function studentsView(){
       </div>
       <button class="btn" style="margin-top:10px;">Submit — add student</button>
     </form>
+  </div>
+  <div class="card" id="feesFigCard">
+    <h3>Fees balance &amp; next term fees (download &amp; upload)</h3>
+    <p class="small" style="margin:2px 0 10px;line-height:1.35;">Tap <b>Download template</b> and choose the class. Fill in each student's <b>Fees Balance</b> and <b>Next Term Fees</b> once, save as CSV, then tap <b>Upload file</b>, choose the same class and pick the file. The currency written in brackets on each column heading, e.g. <b>Fees Balance (USD)</b>, is the currency shown on the report cards. Figures <b>override</b> the fees details from Account Section for those students; blank cells are left unchanged.</p>
+    <div class="fees-fig-row">
+      <button type="button" class="btn" data-action="dlFeesFigTemplate">Download template</button>
+      <button type="button" class="btn-green" data-action="upFeesFigStart">Upload file</button>
+    </div>
+    <input type="file" id="feesFigFile" accept=".csv,text/csv" style="display:none" onchange="uploadFeesFigures(this)">
   </div>
   <div class="card">
     <h3 class="bulk-title">BULK UPLOAD A CLASS LIST</h3>
@@ -12735,7 +12755,7 @@ function stuRestoreAnchor(){
 // ---- Print / download the listed students with their full profile in tight columns ----
 let STU_LIST_VIEW = [], STU_LIST_LABEL = 'Students';
 function studentsListRows(){
-  const header = ['No.','Name','Adm No','Fees Code','Sex','Class','Combination','Religion','House','Home Place','Fees Balance','Next Term Fees'];
+  const header = ['No.','Name','Adm No','Fees Code','Sex','Class','Combination','Religion','House','Home Place','Fees Balance ('+FEES_CUR+')','Next Term Fees ('+FEES_CUR+')'];
   const rows = STU_LIST_VIEW.map(({s,clsId},i)=>{
     const cls = DB.classes.find(c=>c.id===clsId);
     const n = v=> (v===null||v===undefined||v==='') ? '' : v;
@@ -13255,8 +13275,8 @@ function studentProfileView(studentId){
       </select>
       <p class="small" style="margin-top:6px;">Moving a student to a different class does not carry subjects over — each subject teacher in the new class ticks them in separately.</p>
       <div class="grid2">
-        <div><label>Fees balance</label><input name="feesBalance" type="number" step="0.01" value="${s.feesBalance!=null?s.feesBalance:''}"></div>
-        <div><label>Next term fees</label><input name="nextTermFees" type="number" step="0.01" value="${s.nextTermFees!=null?s.nextTermFees:''}"></div>
+        <div><label>Fees balance (${FEES_CUR})</label><input name="feesBalance" type="number" step="0.01" value="${s.feesBalance!=null?s.feesBalance:''}"></div>
+        <div><label>Next term fees (${FEES_CUR})</label><input name="nextTermFees" type="number" step="0.01" value="${s.nextTermFees!=null?s.nextTermFees:''}"></div>
       </div>
       <p class="small">If this student has any fee items or payments recorded in <a href="#" data-action="nav:finance">Account Section</a>, these two numbers are recalculated automatically from that record every time a fee or payment affecting them changes — anything typed here manually is then only a temporary override until the next finance update.</p>
       <button class="btn" style="margin-top:14px;">Submit — save student profile</button>
@@ -14783,9 +14803,120 @@ function downloadFeesCodeList(){
   rows.push(['# Fill in the Fees Pay Code column only. Do not change Admission No - it is used to match each code to the right student. Rows left blank are not changed.']);
   downloadCsv(`${cls.name.replace(/\s+/g,'_')}_fees_pay_codes.csv`, rows);
 }
+// Small class-picker dialog used by the fees figures Download template / Upload file buttons.
+let FEES_FIG_CLASS = '';
+function feesFigAskClass(title, okLabel, onPick){
+  const old = document.getElementById('feesFigAsk'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'feesFigAsk';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;';
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:420px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.35);">
+    <h3 style="margin:0 0 4px;">${esc(title)}</h3>
+    <p class="small" style="margin:0 0 10px;">Choose the class these fees figures belong to.</p>
+    <select data-csp id="feesFigAskSel" style="width:100%;">
+      <option value="">-- select class --</option>
+      ${DB.classes.map(c=>`<option value="${c.id}">${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}${allStrOptions('')}
+    </select>
+    <div class="flex" style="margin-top:14px;gap:10px;justify-content:flex-end;"><button type="button" class="btn-outline" id="feesFigAskNo">Cancel</button><button type="button" class="btn" id="feesFigAskOk">${esc(okLabel)}</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('feesFigAskNo').onclick = ()=>ov.remove();
+  document.getElementById('feesFigAskOk').onclick = ()=>{
+    const v = document.getElementById('feesFigAskSel').value;
+    if(!v){ alert('Please select a class first.'); return; }
+    ov.remove();
+    onPick(v);   // runs inside the tap, so the file chooser is still allowed to open
+  };
+}
+function downloadFeesFigTemplate(){
+  feesFigAskClass('Download fees template','Download', buildFeesFigTemplate);
+}
+function buildFeesFigTemplate(classId){
+  const cls = scopeClass(classId);
+  if(!cls){ alert('Please select a class first.'); return; }
+  const list = sortByName(DB.students.filter(s=>scopeHas(classId, s.classId) && s.status!=='left'));
+  if(!list.length){ alert('There are no students in that class.'); return; }
+  const n = v=> (v===null||v===undefined) ? '' : v;
+  const rows = [['Admission No','Name','Class','Fees Balance ('+FEES_CUR+')','Next Term Fees ('+FEES_CUR+')']];
+  list.forEach(s=>{ const _sc = DB.classes.find(c=>c.id===s.classId); rows.push([s.admNo, s.name, _sc?_sc.name:cls.name, n(s.feesBalance), n(s.nextTermFees)]); });
+  rows.push(['# Fill in the two fees columns only (figures only, no commas needed). The currency in brackets on each heading, e.g. (UGX) or (USD), is the currency used on the report cards - change it there if needed. Do not change Admission No - it is used to match each row to the right student. Cells left blank are not changed.']);
+  downloadCsv(`${cls.name.replace(/\s+/g,'_')}_fees_figures_template.csv`, rows);
+}
+function startFeesFigUpload(){
+  feesFigAskClass('Upload fees figures','Choose file', classId=>{
+    FEES_FIG_CLASS = classId;
+    const f = document.getElementById('feesFigFile');
+    if(f){ f.value=''; f.click(); }
+  });
+}
+async function uploadFeesFigures(input){
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const classId = FEES_FIG_CLASS;
+  try{
+    if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+    const cls = scopeClass(classId);
+    if(!classId || !cls){ alert('Please tap Upload file and choose the class first.'); return; }
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+    if(!lines.length){ alert('That file appears to be empty.'); return; }
+    const norm = v => (v||'').replace(/^\uFEFF/,'').trim().toLowerCase().replace(/[^a-z]/g,'');
+    // The currency is whatever is written in brackets on the column heading, e.g. "Fees Balance (USD)".
+    const curOf = h=>{ const m = /\(([^)]*)\)/.exec(h||''); const c = m ? m[1].trim().toUpperCase().slice(0,8) : ''; return c || FEES_CUR; };
+    let col = {adm:0, bal:3, next:4, balCur:FEES_CUR, nextCur:FEES_CUR};
+    const inClass = DB.students.filter(s=>scopeHas(classId, s.classId));
+    const byAdm = new Map(inClass.map(s=>[String(s.admNo||'').trim().toLowerCase(), s]));
+    const allAdm = new Set(DB.students.map(s=>String(s.admNo||'').trim().toLowerCase()));
+    const toNum = raw=>{
+      const t = String(raw||'').replace(/[,\s]/g,'').replace(/[^0-9.\-]/g,'');
+      if(t===''||t==='-'||t==='.') return null;
+      const v = Number(t);
+      return (isFinite(v) && v>=0) ? v : null;
+    };
+    let balSet=0, nextSet=0, blank=0, notFound=0, otherClass=0, badNum=0;
+    const touched = new Set();
+    for(const line of lines){
+      const parts = parseCsvLine(line);
+      const first = (parts[0]||'').replace(/^\uFEFF/,'').trim();
+      if(!first || first.startsWith('#')) continue;
+      const hAdm = parts.findIndex(p=>['admissionno','admno','admissionnumber','admnumber'].includes(norm(p)));
+      if(hAdm>-1){
+        const hBal = parts.findIndex(p=>norm(p).startsWith('feesbalance')||norm(p)==='balance');
+        const hNext = parts.findIndex(p=>norm(p).includes('nexttermfees')||norm(p)==='nextterm');
+        if(hBal>-1 || hNext>-1){ col = {adm:hAdm, bal:hBal, next:hNext, balCur:hBal>-1?curOf(parts[hBal]):FEES_CUR, nextCur:hNext>-1?curOf(parts[hNext]):FEES_CUR}; continue; }
+      }
+      const key = (parts[col.adm]||'').trim().toLowerCase();
+      const st = byAdm.get(key);
+      if(!st){ if(allAdm.has(key)) otherClass++; else notFound++; continue; }
+      const balRaw = col.bal>-1 ? (parts[col.bal]||'').trim() : '';
+      const nextRaw = col.next>-1 ? (parts[col.next]||'').trim() : '';
+      if(!balRaw && !nextRaw){ blank++; continue; }
+      let changed = false;
+      if(balRaw){ const v = toNum(balRaw); if(v===null) badNum++; else { st.feesBalance = v; st.feesBalLocked = true; st.feesBalCur = col.balCur; balSet++; changed = true; } }
+      if(nextRaw){ const v = toNum(nextRaw); if(v===null) badNum++; else { st.nextTermFees = v; st.nextFeesLocked = true; st.nextFeesCur = col.nextCur; nextSet++; changed = true; } }
+      if(changed) touched.add(st.id);
+    }
+    if(touched.size) await saveStudents();
+    alert(`Fees figures upload complete for ${cls.name}.\n`+
+      `Students updated: ${touched.size}\n`+
+      `Fees balances set (${col.balCur}): ${balSet}\n`+
+      `Next term fees set (${col.nextCur}): ${nextSet}\n`+
+      `These figures now show on the report cards and override Account Section for those students.\n`+
+      (blank?`Rows with both cells blank (left unchanged): ${blank}\n`:'')+
+      (otherClass?`Rows skipped - student is not in ${cls.name}: ${otherClass}\n`:'')+
+      (notFound?`Rows skipped - Admission No not found: ${notFound}\n`:'')+
+      (badNum?`Cells skipped - not a valid figure: ${badNum}\n`:''));
+    render();
+  }catch(err){
+    console.error(err);
+    alert('CHECK YOUR INTERNET CONNECTION before you upload the fees figures. Nothing was lost - try again.');
+  }finally{
+    try{ input.value=''; }catch(e){}
+  }
+}
 function downloadBulkStudentTemplate(){
   downloadCsv(`${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_students_template.csv`, [
-    ['Name','Sex','Fees Pay Code','Fees Balance','Next Term Fees'],
+    ['Name','Sex','Fees Pay Code','Fees Balance ('+FEES_CUR+')','Next Term Fees ('+FEES_CUR+')'],
     ['Nakato Sarah','F','','',''],
     ['Okello James','M','','','']
   ]);
@@ -17017,7 +17148,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     </div>
 
     <div class="legend-strip">
-      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?('UGX '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?('UGX '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
+      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
     </div>
 
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
@@ -17212,7 +17343,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     },
     signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
-    feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, photo: s.photo
+    feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, photo: s.photo
   };
 }
 
@@ -17845,7 +17976,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   cy += 28;
 
   // ---- 11. Fees legend, motto, scoring note ----
-  const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?('UGX '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?('UGX '+Number(data.nextTermFees).toLocaleString()):'—'}`;
+  const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?((data.feesBalCur||FEES_CUR)+' '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?((data.nextFeesCur||FEES_CUR)+' '+Number(data.nextTermFees).toLocaleString()):'—'}`;
   centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
   if(!assessmentsAddDirectly(data.cfg)) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
@@ -18692,6 +18823,8 @@ Continue?`);
       render(); break;
     }
     case 'dlFeesCodeList': downloadFeesCodeList(); break;
+    case 'dlFeesFigTemplate': downloadFeesFigTemplate(); break;
+    case 'upFeesFigStart': startFeesFigUpload(); break;
     case 'dlBulkStudentTemplate': downloadBulkStudentTemplate(); break;
     case 'exportBackup': {
       showActionProgress('Preparing full backup…', el);
@@ -21418,7 +21551,7 @@ document.addEventListener('submit', async (e)=>{
           col = {name:hName,
             sex: find(n=>n==='sex'||n==='gender'),
             code: find(n=>n.includes('feescode')||n.includes('feespaycode')||n==='paycode'||n==='code'),
-            bal: find(n=>n==='feesbalance'||n==='balance'),
+            bal: find(n=>n.startsWith('feesbalance')||n==='balance'),
             next: find(n=>n.includes('nexttermfees')||n==='nextterm')};
           continue;
         }
@@ -21606,6 +21739,8 @@ document.addEventListener('submit', async (e)=>{
       noteClassPlacement(s, cls.id, DB.info.currentTerm, DB.info.currentYear);
       s.feesBalance = fd.get('feesBalance')!==''? Number(fd.get('feesBalance')) : null;
       s.nextTermFees = fd.get('nextTermFees')!==''? Number(fd.get('nextTermFees')) : null;
+      if(s.feesBalance===null){ delete s.feesBalLocked; delete s.feesBalCur; }      // blank = hand this figure back to Account Section
+      if(s.nextTermFees===null){ delete s.nextFeesLocked; delete s.nextFeesCur; }
       s.feesCode = (fd.get('feesCode')||'').trim() || null;
       s.religion = (fd.get('religion')||'').trim() || null; s.house = (fd.get('house')||'').trim() || null; s.homePlace = (fd.get('homePlace')||'').trim() || null;
       // Subjects are never edited here — they stay whatever each subject teacher's own
