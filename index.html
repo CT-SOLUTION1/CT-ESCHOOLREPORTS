@@ -3680,16 +3680,12 @@ function cteEnsureInstallCard(){
 // Messages an install attempt shows: "App installed", or — when it could not be done by one tap — a clear reason and the exact steps for THIS browser.
 // reason: 'declined' (box closed), 'blocked' (browser refused to open it), 'unsupported' (this browser has no install box).
 function cteInstallResult(ok, reason){
+  if(ok){ cteConfirmInstalled(); return; }   // never say "installed" until the app has really landed on the device
   PWA_INSTALL_FAILED = !ok && reason!=='unsupported';
   if(ok) PWA_JUST_INSTALLED = true;
   updatePWAInstallState();
   var card=cteEnsureInstallCard(); if(!card) return;
   function closePop(){ var p=document.getElementById('cteInstallPopup'); if(p) p.remove(); }
-  if(ok){
-    card.innerHTML = '<div class="ip-icon">✅</div><h3>App installed</h3><div class="ip-row"><button type="button" class="ip-yes" id="ipOpen">Open in App</button></div>';
-    var op = card.querySelector('#ipOpen'); if(op) op.onclick = function(){ openInstalledPWA(); closePop(); };
-    return;
-  }
   var icon='⚠️', title='App not installed', lead='', retry=true;
   if(reason==='unsupported'){ icon='📲'; title='Install from your browser menu'; lead='This browser cannot open the install box by itself, but it can still install the app. Follow these steps:'; retry=false; }
   else if(reason==='declined'){ lead = DEFERRED_INSTALL_PROMPT ? 'The installation was cancelled. Tap <b>Re-install</b> to try again, or use these steps:' : 'The installation was cancelled. You can still install the app from your browser menu:'; }
@@ -3701,6 +3697,47 @@ function cteInstallResult(ok, reason){
     + (retry ? '<button type="button" class="ip-yes" id="ipRe">Re-install</button>' : '') + '</div>';
   var cl=card.querySelector('#ipClose'); if(cl) cl.onclick=closePop;
   var re=card.querySelector('#ipRe'); if(re) re.onclick=function(){ installPWA(); };
+}
+
+// Shows "Installing…" first, then "App installed" only once the app has had time to really appear
+// on the device (Android needs a few seconds to add it to the home screen / app list).
+let CTE_CONFIRMING = false;
+function cteShowInstalledCard(note){
+  var card=cteEnsureInstallCard(); if(!card) return;
+  var b=cteBrowserInfo();
+  var where = b.android ? 'on your <b>home screen</b> or in your <b>app list</b>' : 'on your <b>desktop / Start menu / Applications</b>';
+  card.innerHTML='<div class="ip-icon">✅</div><h3>App installed</h3>'
+    +(note ? '<p>'+note+'</p>' : '')
+    +'<p>Find <b>CT-E SOLUTIONS</b> '+where+' and open it from there.</p>'
+    +'<div class="ip-row"><button type="button" class="ip-no" id="ipOk">Close</button><button type="button" class="ip-yes" id="ipOpen">Open in App</button></div>';
+  var ok=card.querySelector('#ipOk'); if(ok) ok.onclick=function(){ var p=document.getElementById('cteInstallPopup'); if(p) p.remove(); };
+  var op=card.querySelector('#ipOpen'); if(op) op.onclick=function(){ openInstalledPWA(); };
+}
+async function cteConfirmInstalled(){
+  if(CTE_CONFIRMING || PWA_JUST_INSTALLED) return;
+  CTE_CONFIRMING = true;
+  PWA_INSTALL_FAILED = false;
+  var card=cteEnsureInstallCard();
+  if(card) card.innerHTML='<div class="ip-icon">⏳</div><h3>Installing…</h3><p>Adding the app to your device. Please wait a moment.</p>';
+  var btn=document.getElementById('installAppBtn');
+  if(btn){ btn.textContent='Installing…'; btn.disabled=true; btn.style.opacity='.7'; }
+  var sleep=function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+  var info=cteBrowserInfo();
+  var minWait = info.android ? 2000 : 1000, maxWait = info.android ? 6000 : 1500;
+  var start=Date.now();
+  try{
+    while(Date.now()-start < maxWait){
+      await sleep(500);
+      if(Date.now()-start >= minWait && navigator.getInstalledRelatedApps){
+        try{ var apps=await navigator.getInstalledRelatedApps(); if(apps && apps.length) break; }catch(e){}
+      }
+    }
+  } finally {
+    PWA_JUST_INSTALLED = true;
+    CTE_CONFIRMING = false;
+    updatePWAInstallState();
+    if(document.getElementById('cteInstallPopup')) cteShowInstalledCard();
+  }
 }
 let CTE_INSTALL_BUSY = false;
 async function installPWA(){
@@ -3738,9 +3775,28 @@ async function installPWA(){
 // route to the installed app) and always leaves a plain-language fallback so
 // the person isn't stuck if that hand-off doesn't happen automatically.
 function openInstalledPWA(){
-  const url = location.origin + location.pathname;
-  try{ window.open(url, '_blank'); }catch(e){}
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var b=cteBrowserInfo();
+  // Only Android can hand a tab over to an installed web app (via an intent link the installed app claims).
+  // iPhone and desktop browsers have no way to do this from a page, so they get the "where to find it" card.
+  if(!(b.android && !b.inApp)){ cteShowInstalledCard(); return; }
+  var left=false;
+  function gone(){ left=true; }
+  document.addEventListener('visibilitychange', gone);
+  window.addEventListener('pagehide', gone);
+  window.addEventListener('blur', gone);
+  try{
+    var proto=location.protocol.replace(':','');
+    location.href='intent://'+location.host+location.pathname+location.search
+      +'#Intent;scheme='+proto+';action=android.intent.action.VIEW;end';
+  }catch(e){}
+  setTimeout(function(){
+    document.removeEventListener('visibilitychange', gone);
+    window.removeEventListener('pagehide', gone);
+    window.removeEventListener('blur', gone);
+    if(!left && !document.hidden){
+      cteShowInstalledCard('Your phone did not open the app automatically.');
+    }
+  }, 2000);
 }
 window.addEventListener('beforeinstallprompt', e=>{
   e.preventDefault();
