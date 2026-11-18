@@ -3270,11 +3270,54 @@ let KNOWN_SCORE_SHARDS = {};
 let SCORE_DATA_VERSION = 0;
 let _scoresPartial = false;   // true while DB.scores holds only ONE period (loaded for a mark sheet / analysis)
 let _scoreLookupCache = {version:-1, map:null};
-function invalidateScoreLookupCache(){ SCORE_DATA_VERSION++; _scoreLookupCache={version:-1,map:null}; _rankCache={scoresRef:null,key:'',map:null}; }
+let _liveScoresCache = {version:-1, ref:null, arr:null};
+let _rosterOffCache = new Map();
+function invalidateScoreLookupCache(){ SCORE_DATA_VERSION++; _scoreLookupCache={version:-1,map:null}; _liveScoresCache={version:-1,ref:null,arr:null}; _rosterOffCache=new Map(); _rankCache={scoresRef:null,key:'',map:null}; }
+// Matching a saved score to its column ("slot"): paper, test name and year are compared in a forgiving way (spacing / capitals in a
+// test name, a paper stored as 1 or "1" or missing, a year stored as 2026 or "2026"), so editing or adding scores for an existing
+// column always UPDATES the saved rows and never creates a second column.
+function normPaper(v){ return (v==null || v==='undefined' || v==='null') ? '' : String(v).trim(); }
+function samePaper(a, b){ return normPaper(a)===normPaper(b); }
+function normLabel(v){ return String(v==null?'':v).trim().replace(/\s+/g,' ').toLowerCase(); }
+function scoreLabelEq(a, b){ return normLabel(a)===normLabel(b); }
+// A student REMOVED from a subject's marking list (Enter Scores > REMOVE STUDENT) must vanish from that subject everywhere:
+// mark sheets, report cards, rank lists, analysis and the "peers have scores" checks. The saved score rows are kept in the
+// database (re-ticking the student under "Add missing students" brings them straight back) but are treated as not there.
+// A student counts as removed only when the subject is optional for their class, at least one teacher list exists for it
+// in their class/stream group, every such list is a real list (not a never-built one), and the student is on none of them.
+function studentRemovedFromSubject(st, subject){
+  if(!st || !subject) return false;
+  const key = st.classId+'||'+subject;
+  let e = _rosterOffCache.get(key);
+  if(!e){
+    const cls = DB.classes.find(c=>c.id===st.classId);
+    let restrict = false; const ids = new Set();
+    if(cls && !isCompulsorySubjectFor(subject, cls)){
+      const gids = streamGroupIds(cls);
+      let has = false, unbuilt = false;
+      (DB.assignments||[]).forEach(a=>{
+        if(a.subject!==subject || !gids.has(a.classId)) return;
+        if(Array.isArray(a.studentIds)){ has = true; a.studentIds.forEach(i=>ids.add(i)); } else unbuilt = true;
+      });
+      restrict = has && !unbuilt;
+    }
+    e = {restrict, ids};
+    _rosterOffCache.set(key, e);
+  }
+  return e.restrict && !e.ids.has(st.id);
+}
+// DB.scores minus the rows of students removed from that subject's list. Use this (not DB.scores) for anything displayed or counted.
+function liveScores(){
+  if(_liveScoresCache.version===SCORE_DATA_VERSION && _liveScoresCache.ref===DB.scores && _liveScoresCache.arr) return _liveScoresCache.arr;
+  const stu = new Map((DB.students||[]).map(x=>[x.id,x]));
+  const arr = (DB.scores||[]).filter(r=>{ const st = stu.get(r.studentId); return !st || !studentRemovedFromSubject(st, r.subject); });
+  _liveScoresCache = {version:SCORE_DATA_VERSION, ref:DB.scores, arr};
+  return arr;
+}
 function scoreLookupMap(){
   if(_scoreLookupCache.version===SCORE_DATA_VERSION && _scoreLookupCache.map) return _scoreLookupCache.map;
   const map=new Map();
-  (DB.scores||[]).forEach(r=>{ const key=[r.studentId,r.subject,r.term,r.year].join('||'); let arr=map.get(key); if(!arr){arr=[];map.set(key,arr);} arr.push(r); });
+  liveScores().forEach(r=>{ const key=[r.studentId,r.subject,r.term,r.year].join('||'); let arr=map.get(key); if(!arr){arr=[];map.set(key,arr);} arr.push(r); });
   _scoreLookupCache={version:SCORE_DATA_VERSION,map};
   return map;
 }
@@ -4188,6 +4231,7 @@ async function loadSchoolData(id){
   ]);
   DB.info = info; DB.accounts = accounts; DB.classes = classes; DB.students = students;
   DB.assignments = assignments; DB.scores = scores; DB.bands = bands; DB.obands = obands;
+  invalidateScoreLookupCache();
   DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
   undoResetShadow();
   try{ histEnsure(); }catch(e){}
@@ -4514,7 +4558,7 @@ async function saveInfo(){ try{ stampFinanceCapture(); }catch(e){ console.error(
 async function saveAccounts(){ await undoTracked('accounts', ()=>setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts)); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
 async function saveClasses(){ await undoTracked('classes', ()=>setShared(`sch_${SCHOOL_ID}_classes`, DB.classes)); }
 async function saveStudents(){ await undoTracked('students', ()=>setShared(`sch_${SCHOOL_ID}_students`, DB.students)); }
-async function saveAssignments(){ await undoTracked('assignments', ()=>setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments)); }
+async function saveAssignments(){ invalidateScoreLookupCache(); await undoTracked('assignments', ()=>setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments)); }
 async function saveScores(){ await saveScoresShardedFor(SCHOOL_ID, DB.scores); }
 async function saveBands(){ await undoTracked('bands', ()=>setShared(`sch_${SCHOOL_ID}_bands`, DB.bands)); }
 async function saveOBands(){ await undoTracked('obands', ()=>setShared(`sch_${SCHOOL_ID}_obands`, DB.obands)); }
@@ -4535,7 +4579,7 @@ const UNDO_COLS = {
   accounts:    {get:()=>DB.accounts,    set:v=>{ DB.accounts=v; },     save:()=>saveAccounts(),    name:'accounts'},
   classes:     {get:()=>DB.classes,     set:v=>{ DB.classes=v; },      save:()=>saveClasses(),     name:'classes'},
   students:    {get:()=>DB.students,    set:v=>{ DB.students=v; },     save:()=>saveStudents(),    name:'students'},
-  assignments: {get:()=>DB.assignments, set:v=>{ DB.assignments=v; },  save:()=>saveAssignments(), name:'subject assignments'},
+  assignments: {get:()=>DB.assignments, set:v=>{ DB.assignments=v; invalidateScoreLookupCache(); },  save:()=>saveAssignments(), name:'subject assignments'},
   bands:       {get:()=>DB.bands,       set:v=>{ DB.bands=v; },        save:()=>saveBands(),       name:'grading bands'},
   obands:      {get:()=>DB.obands,      set:v=>{ DB.obands=v; },       save:()=>saveOBands(),      name:'grading bands'},
   pbands:      {get:()=>DB.pbands,      set:v=>{ DB.pbands=v; },       save:()=>savePBands(),      name:'grading bands'}
@@ -6713,7 +6757,7 @@ function peerPenaltyFlags(student, subject, term, year, paper){
 // populate the "view a past term" picker on the report card.
 function availableTermYears(studentId){
   const seen = new Map();
-  DB.scores.filter(s=>s.studentId===studentId).forEach(s=>{
+  liveScores().filter(s=>s.studentId===studentId).forEach(s=>{
     if(!s.term || !s.year) return;
     const dist = termsBehindCurrent(s.term, s.year);
     // Only hide a term once it's genuinely older than the retention window
@@ -6744,7 +6788,7 @@ function availableTermYears(studentId){
 function reportCardPeriods(studentId){
   const years = new Set(availableTermYears(studentId).map(p=>Number(p.year)));
   years.add(Number(DB.info.currentYear));
-  const hasScore = new Set(DB.scores.filter(sc=>sc.studentId===studentId).map(sc=>`${sc.term}||${sc.year}`));
+  const hasScore = new Set(liveScores().filter(sc=>sc.studentId===studentId).map(sc=>`${sc.term}||${sc.year}`));
   const termOrder = ['Term 1','Term 2','Term 3'];
   const list = [];
   years.forEach(y=>{
@@ -6808,12 +6852,12 @@ function caAvgFromRows(aoiRows, cfg){
     return sc.reduce((a,b)=>a+b,0)/sc.length;
   }
   const byPaper = new Map();
-  aoiRows.forEach(r=>{ const k = String(r.paper); if(!byPaper.has(k)) byPaper.set(k, []); byPaper.get(k).push(r); });
+  aoiRows.forEach(r=>{ const k = normPaper(r.paper); if(!byPaper.has(k)) byPaper.set(k, []); byPaper.get(k).push(r); });
   const totals = [];
   byPaper.forEach(rs=>{
     let sum = 0;
     rs.forEach(r=>{
-      const t = cfg.cwTests.find(x=>String(x.name)===String(r.label));
+      const t = cfg.cwTests.find(x=>scoreLabelEq(x.name, r.label));
       const tmax = t ? Number(t.max) : 0, rmax = Number(r.max)>0 ? Number(r.max) : 100;
       sum += tmax>0 ? (Number(r.marks)/rmax)*tmax : scaleRow(r, cfg.cwPercent);
     });
@@ -6974,7 +7018,7 @@ function liveAssignedTeacherInit(subject, classId, paper){
   return null;
 }
 function paperTeacherInit(studentId, subject, paper, term, year){
-  let rows = DB.scores.filter(sc=>sc.studentId===studentId && sc.subject===subject && sc.term===term && sc.year===year && sc.teacher);
+  let rows = liveScores().filter(sc=>sc.studentId===studentId && sc.subject===subject && sc.term===term && sc.year===year && sc.teacher);
   if(paper!=null) rows = rows.filter(sc=>String(sc.paper)===String(paper));
   if(!rows.length) return null;
   // Only credit these initials to whoever entered the marks if that person is actually
@@ -6991,7 +7035,7 @@ function paperTeacherInit(studentId, subject, paper, term, year){
 // paper===null matches any paper on record (used while a multi-paper subject hasn't
 // had every paper broken out into its own report-card sub-row yet).
 function cwTestScore(studentId, subject, testName, paper, term, year){
-  return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.kind==='AOI' && sc.label===testName
+  return liveScores().find(sc=>sc.studentId===studentId && sc.subject===subject && sc.kind==='AOI' && scoreLabelEq(sc.label, testName)
     && sc.term===term && sc.year===year && (paper==null || String(sc.paper)===String(paper)));
 }
 // Picks a grade by minimum-threshold only (not max) — a score qualifies for the
@@ -14346,9 +14390,9 @@ function marksheetColumns(students, subject){
   students.forEach(s=>{
     // Only assessment types the admin has switched on under Exam Set Up (for this student's class) get a column.
     const _mcfg = examConfig(s.classId);
-    DB.scores.filter(sc=>sc.studentId===s.id && sc.subject===subject && sc.term===term && sc.year===year).forEach(sc=>{
+    liveScores().filter(sc=>sc.studentId===s.id && sc.subject===subject && sc.term===term && sc.year===year).forEach(sc=>{
       if((sc.kind==='AOI' && !_mcfg.cwEnabled) || (sc.kind==='EOT' && !_mcfg.eotEnabled)) return;
-      const key = sc.paper+'||'+sc.kind+'||'+(sc.kind==='AOI'?sc.label:'');
+      const key = normPaper(sc.paper)+'||'+sc.kind+'||'+(sc.kind==='AOI'?normLabel(sc.label):'');
       if(!seen.has(key)) seen.set(key, {paper:sc.paper, kind:sc.kind, label:sc.label||''});
     });
   });
@@ -14360,8 +14404,8 @@ function marksheetColumns(students, subject){
     const _c = DB.classes.find(x=>x.id===st.classId); if(!_c) return;
     const _cf = examConfig(st.classId);
     subjectPapersFor(subject, _c).forEach(pp=>{
-      if(_cf.cwEnabled) (_cf.cwTests||[]).forEach(t=>{ const k = pp+'||AOI||'+t.name; if(!seen.has(k)) seen.set(k, {paper:pp, kind:'AOI', label:t.name}); });
-      if(_cf.eotEnabled){ const k = pp+'||EOT||'; if(!seen.has(k)) seen.set(k, {paper:pp, kind:'EOT', label:''}); }
+      if(_cf.cwEnabled) (_cf.cwTests||[]).forEach(t=>{ const k = normPaper(pp)+'||AOI||'+normLabel(t.name); if(!seen.has(k)) seen.set(k, {paper:pp, kind:'AOI', label:t.name}); });
+      if(_cf.eotEnabled){ const k = normPaper(pp)+'||EOT||'; if(!seen.has(k)) seen.set(k, {paper:pp, kind:'EOT', label:''}); }
     });
   });
   const cols = [...seen.values()];
@@ -14373,7 +14417,7 @@ function marksheetColumns(students, subject){
   return cols;
 }
 function scoreCellFor(studentId, subject, col, term, year){
-  return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==col.paper && sc.kind===col.kind && (col.kind!=='AOI' || sc.label===col.label) && sc.term===term && sc.year===year);
+  return liveScores().find(sc=>sc.studentId===studentId && sc.subject===subject && samePaper(sc.paper, col.paper) && sc.kind===col.kind && (col.kind!=='AOI' || scoreLabelEq(sc.label, col.label)) && sc.term===term && sc.year==year);
 }
 // Scores in this class + subject for the current term that the signed-in person may delete in bulk:
 // an Admin may delete all of them; a Teacher only for subjects they are assigned to teach in that
@@ -14590,10 +14634,10 @@ function downloadMarksheetCSV(assignId, paper, kind, label, max){
   students.forEach(s=>{
     let existing = '';
     if(kind==='EOT'){
-      const row = DB.scores.find(sc=>sc.studentId===s.id && sc.subject===a.subject && sc.paper==paper && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
+      const row = DB.scores.find(sc=>sc.studentId===s.id && sc.subject===a.subject && samePaper(sc.paper, paper) && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year==DB.info.currentYear);
       if(row) existing = row.marks;
     } else {
-      const row = DB.scores.find(sc=>sc.studentId===s.id && sc.subject===a.subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
+      const row = DB.scores.find(sc=>sc.studentId===s.id && sc.subject===a.subject && samePaper(sc.paper, paper) && sc.kind==='AOI' && scoreLabelEq(sc.label, label) && sc.term===DB.info.currentTerm && sc.year==DB.info.currentYear);
       if(row) existing = row.marks;
     }
     rows.push([s.admNo, s.name, existing]);
@@ -14706,7 +14750,7 @@ function subjectPaperList(classList, subject, term, year){
   const add = p=>{ const v = (p===null||p===undefined) ? '' : String(p).trim(); if(v && !out.includes(v)) out.push(v); };
   const ids = new Set(); classList.forEach(c0=>aGroupClasses(c0).forEach(c=>{ subjectPapersFor(subject, c).forEach(add); ids.add(c.id); }));
   const stu = new Set(DB.students.filter(s=>s.status!=='left' && ids.has(s.classId)).map(s=>s.id));
-  DB.scores.forEach(sc=>{ if(sc.subject===subject && sc.term===term && sc.year==year && stu.has(sc.studentId)) add(sc.paper); });
+  liveScores().forEach(sc=>{ if(sc.subject===subject && sc.term===term && sc.year==year && stu.has(sc.studentId)) add(sc.paper); });
   out.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
   return out;
 }
@@ -14838,11 +14882,12 @@ function classAnalysisViewCore(){
   if(!assessKey) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now choose the assessment type to analyse: Course Work only, End of Term only, or Integrated (both together).</p></div></div>`;
   if(!cls) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now select ${isLevelForm?'a level':'a class'} to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div></div>`;
   const isA = cls.level==='A';
+  const SK = !!window._skelPass;   // headings-only first pass
 
   termForSummary = term; yearForSummary = year;
-  const classPairs = classRosterStudents(cls).map(s=>[s, aOwnClass(s, cls)]);
+  const classPairs = SK ? [] : classRosterStudents(cls).map(s=>[s, aOwnClass(s, cls)]);
   const levelPairs = [];
-  levelClasses(cls.level).forEach(c=>DB.students.filter(s=>s.status!=='left' && s.classId===c.id).forEach(s=>levelPairs.push([s,c])));
+  if(!SK) levelClasses(cls.level).forEach(c=>DB.students.filter(s=>s.status!=='left' && s.classId===c.id).forEach(s=>levelPairs.push([s,c])));
   // ---- Subject Performance: BOTH views are shown automatically for the selected class —
   // class-wise (this class) and level-wise (every class of this class's level combined).
   const classGradeCols = gradeColsFor(cls.level);
@@ -14852,7 +14897,7 @@ function classAnalysisViewCore(){
     const clsIds = new Set(((classList && classList.length) ? classList : [cls]).map(c=>c.id));
     const ids = new Set(DB.students.filter(s=>s.status!=='left' && clsIds.has(s.classId)).map(s=>s.id));
     const users = [];
-    DB.scores.forEach(sc=>{ if(sc.subject===subj && (paper==null || String(sc.paper)===String(paper)) && sc.term===term && sc.year==year && sc.teacher && ids.has(sc.studentId) && !users.includes(sc.teacher)) users.push(sc.teacher); });
+    liveScores().forEach(sc=>{ if(sc.subject===subj && (paper==null || String(sc.paper)===String(paper)) && sc.term===term && sc.year==year && sc.teacher && ids.has(sc.studentId) && !users.includes(sc.teacher)) users.push(sc.teacher); });
     let names = users.map(u=>DB.accounts.find(a=>a.username===u)).filter(a=>a && a.role==='teacher').map(a=>a.name);
     if(!names.length) names = DB.assignments.filter(a=>clsIds.has(a.classId) && a.subject===subj && (paper==null || !Array.isArray(a.papers) || !a.papers.length || a.papers.some(x=>String(x)===String(paper)))).map(a=>DB.accounts.find(x=>x.username===a.teacherUsername)).filter(Boolean).map(a=>a.name);
     return [...new Set(names)];
@@ -14865,7 +14910,7 @@ function classAnalysisViewCore(){
     const stuIds = new Set(DB.students.filter(s=>s.status!=='left' && clsIds.has(s.classId)).map(s=>s.id));
     const out = [];
     const add = p=>{ const v = (p===null||p===undefined) ? '' : String(p).trim(); if(v && !out.includes(v)) out.push(v); };
-    DB.scores.forEach(sc=>{ if(sc.subject===subj && sc.term===term && sc.year==year && stuIds.has(sc.studentId)) add(sc.paper); });
+    liveScores().forEach(sc=>{ if(sc.subject===subj && sc.term===term && sc.year==year && stuIds.has(sc.studentId)) add(sc.paper); });
     DB.assignments.forEach(a=>{ if(a.subject===subj && clsIds.has(a.classId) && Array.isArray(a.papers)) a.papers.forEach(add); });
     out.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
     return out.join(', ');
@@ -14929,14 +14974,14 @@ function classAnalysisViewCore(){
     return statRow(t, cols, withTeacher).replace('<tr>','<tr style="font-weight:bold;background:#eef1f6;">');
   };
   const buildClassWise = ()=>{
-  const classRowData = analysisSubjectsFor(cls).map(subj=>{ const pi = paperInfoFor([cls], subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:[cls], ...subjectClassStats(cls, subj, term, year), paperRows:pi.rows}; })
+  const classRowData = (SK ? [] : analysisSubjectsFor(cls)).map(subj=>{ const pi = paperInfoFor([cls], subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:[cls], ...subjectClassStats(cls, subj, term, year), paperRows:pi.rows}; })
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const classRows = classRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (classRowData.length ? totalsRow(classRowData, classGradeCols, true) : '');
   const classWiseHtml = `
     <h3>Subject Performance — CLASS-WISE — ${esc(cls.name)} — ${esc(assessLabel)}</h3>
     <p class="small">How each subject was done across this class this term — average, spread, and grade distribution.</p>
     <table class="data-table ra-table"><tr><th>Subject</th><th>Papers</th><th>Sat / Enrolled</th><th>Class Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
-    ${classRows || `<tr><td colspan="${7+classGradeCols.length}">No subjects on record for this class yet.</td></tr>`}
+    ${classRows || `<tr><td colspan="${7+classGradeCols.length}">${SK?'Loading…':'No subjects on record for this class yet.'}</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, 7+classGradeCols.length, cls.level) : ''}
     </table>`;
   return `<div class="card" data-orient="landscape" style="overflow:auto;">${classWiseHtml}</div>`;
@@ -14945,14 +14990,14 @@ function classAnalysisViewCore(){
   const spLevel = cls.level;
   const spLevelName = levelLabel({level:spLevel,form:''}).trim();
   const levelClassNames = levelClasses(spLevel).map(c=>c.name).join(', ');
-  const levelRowData = analysisLevelSubjectsFor(spLevel).map(subj=>{ const pi = paperInfoFor(levelClasses(spLevel), subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:levelClasses(spLevel), ...subjectLevelStats(spLevel, subj, term, year), paperRows:pi.rows}; })
+  const levelRowData = (SK ? [] : analysisLevelSubjectsFor(spLevel)).map(subj=>{ const pi = paperInfoFor(levelClasses(spLevel), subj, true); return {subject:subj, papers:pi.label, soloPaper:pi.solo, classList:levelClasses(spLevel), ...subjectLevelStats(spLevel, subj, term, year), paperRows:pi.rows}; })
     .sort((a,b)=> (b.avg??-1) - (a.avg??-1));
   const levelRows = levelRowData.map(r=>statRow(r, classGradeCols, true)).join('') + (levelRowData.length ? totalsRow(levelRowData, classGradeCols, true) : '');
   const levelWiseHtml = `
     <h3>Subject Performance — LEVEL-WISE — ${esc(spLevelName)} — ${esc(assessLabel)}</h3>
     <p class="small">How each subject was done across all ${esc(spLevelName)} classes combined this term (${esc(levelClassNames)}).</p>
     <table class="data-table ra-table"><tr><th>Subject</th><th>Papers</th><th>Sat / Enrolled</th><th>Level Average</th><th>Highest</th><th>Lowest</th>${classGradeCols.map(g=>`<th>${g}</th>`).join('')}<th>Responsible Teacher</th></tr>
-    ${levelRows || `<tr><td colspan="${7+classGradeCols.length}">No subjects on record for this level yet.</td></tr>`}
+    ${levelRows || `<tr><td colspan="${7+classGradeCols.length}">${SK?'Loading…':'No subjects on record for this level yet.'}</td></tr>`}
     ${levelPairs.length ? resultSummaryRow(levelPairs, 7+classGradeCols.length, cls.level) : ''}
     </table>`;
 
@@ -14962,7 +15007,7 @@ function classAnalysisViewCore(){
   // Same table as the General MarkSheets "Rank List" (same columns, same ranking, same descriptors), plus a
   // Combination (A-Level) / Optional Subjects (O-Level) column for the secondary levels.
   const lvl = cls.level, isAL = lvl==='A', isPL = lvl==='P', isOL = lvl==='O', hasCombo = isAL || isOL;
-  const spData = classRosterStudents(cls).map(st=>{
+  const spData = (SK ? [] : classRosterStudents(cls)).map(st=>{
     const d = computeSubjectRows(st, cls, term, year);
     const subjSet = new Set(studentSubjects(st, cls));
     classSubjectsFor(cls).forEach(sj=>{ if(subjectAverage(st.id, sj, term, year)!==null) subjSet.add(sj); });
@@ -15011,7 +15056,7 @@ function classAnalysisViewCore(){
     <h3>${esc(cls.name)} — Student Performance — ${esc(assessLabel)} — ${esc(term)}, ${esc(String(year))}</h3>
     <p class="small">How each student did overall this term, ranked by class position.</p>
     <table class="data-table ra-table sp-students"><tr>${spHead}</tr>
-    ${studentRowsHtml || `<tr><td colspan="${spCols}">No students in this class yet.</td></tr>`}
+    ${studentRowsHtml || `<tr><td colspan="${spCols}">${SK?'Loading…':'No students in this class yet.'}</td></tr>`}
     ${classPairs.length ? resultSummaryRow(classPairs, spCols, cls.level) : ''}
     </table>
     ${spMissedHtml}
@@ -15063,7 +15108,8 @@ function setAnalysisParam(key, value, _go){
   // Each step re-opens the ones after it: a new form clears assessment type + class/level; a new assessment type clears class/level.
   const cascade = key==='form' ? {assess:'', classId:'', level:''} : (key==='assess' ? {classId:'', level:''} : {});
   VIEW.params = {...VIEW.params, ...cascade, [key]: value};
-  render();
+  if((key==='classId' || key==='level' || key==='streamId') && value && VIEW && VIEW.name==='classanalysis') skeletonThenRender();
+  else render();
   if((key==='form' || key==='assess') && value){
     if(!raOpenNextDropdown(key)) setTimeout(()=>raOpenNextDropdown(key), 60);
   }
@@ -15302,7 +15348,9 @@ function masterMarkSheetViewCore(forExport){
   });
 
   let allStudents, levelPosOf = null;
-  if(isLevelSheet){
+  const SK = !!window._skelPass;   // headings-only first pass
+  if(SK){ allStudents = []; }
+  else if(isLevelSheet){
     // Whole level, best first — same metric as the report-card position (Average %, or Points at A-Level).
     const pool = DB.students.filter(st=>st.status!=='left' && (DB.classes.find(c=>c.id===st.classId)||{}).level===level)
       .map(st=>{ const c = clsOf(st); const d = computeSubjectRows(st, c, term, year); return {st, k: rankKeyOf(d, c.level, st, c, term, year)}; })
@@ -15435,7 +15483,7 @@ function masterMarkSheetViewCore(forExport){
           ${headerRow2?`<tr>${headerRow2}</tr>`:''}
         </thead>
         <tbody>
-          ${bodyRows || `<tr><td colspan="${colCount}">No students in this class yet.</td></tr>`}
+          ${bodyRows || `<tr><td colspan="${colCount}">${SK?'Loading…':'No students in this class yet.'}</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -15473,9 +15521,10 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const level = isLevel ? (levels.includes(sel.mmLevel) ? sel.mmLevel : levels[0]) : cls.level;
   window._mmLevelUsed = level;
   const isA = level==='A', isP = level==='P';
-  const pool = isLevel
+  const SK = !!window._skelPass;   // headings-only first pass
+  const pool = SK ? [] : (isLevel
     ? DB.students.filter(st=>st.status!=='left' && (DB.classes.find(c=>c.id===st.classId)||{}).level===level)
-    : classRosterStudents(cls);
+    : classRosterStudents(cls));
   const data = pool.map(st=>{
     const c = DB.classes.find(x=>x.id===st.classId);
     const d = computeSubjectRows(st, c, term, year);
@@ -15547,7 +15596,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     <div class="mm-tablewrap">
       <table class="mm-table mm-rank" style="width:100%;">
         <thead><tr>${head}</tr></thead>
-        <tbody>${body || `<tr><td colspan="${colCount}">No students to rank yet.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="${colCount}">${SK?'Loading…':'No students to rank yet.'}</td></tr>`}</tbody>
       </table>
     </div>
     ${missedHtml}
@@ -15583,6 +15632,15 @@ function mmOpenNextDropdown(key){
   if(!opened){ sel.size = Math.min(sel.options.length, 8); }
   return true;
 }
+// Two-step render for the big lists (Result Analysis, General Master MarkSheets): FIRST paint the page with every table heading and
+// "Loading…" in place of the rows (window._skelPass makes the views skip the heavy student/score calculations), THEN build the full
+// lists once the browser has painted.
+function skeletonThenRender(){
+  const vw = VIEW, tok = NAV_TOKEN;
+  window._skelPass = true;
+  try{ render(); } finally { window._skelPass = false; }
+  setTimeout(()=>{ if(VIEW===vw && NAV_TOKEN===tok){ try{ render(); }catch(e){ console.error(e); } } }, 60);
+}
 // Big, clear "Loading..." box with moving dots, shown while a General Marksheet / Rank List is being built.
 let _mmLoadT0 = 0;
 function mmShowLoading(){
@@ -15604,9 +15662,8 @@ function setMasterMarkSheetParam(key, value){
   VIEW.params = params;
   const myKey=VIEW.name+'|'+JSON.stringify(params);
   if((key==='mmClassId' || key==='mmLevel') && value){
-    // Class / level just chosen: the sheet takes a few seconds to build, so paint the Loading box first, then build.
-    mmShowLoading();
-    setTimeout(()=>{ try{ render(); } finally { mmHideLoading(); } }, 60);
+    // Class / level just chosen: show the list headings at once, then fill in the rows.
+    skeletonThenRender();
   } else render();
   if((key==='mmMode' || key==='mmAssess') && value){
     if(!mmOpenNextDropdown(key)) setTimeout(()=>mmOpenNextDropdown(key), 60);
@@ -15896,7 +15953,7 @@ function scoresEntryView(mine){
       // they're currently filling in) — reuses the same column logic as the
       // integrated mark sheet.
       const isP = cls.level==='P';
-      const isCurrentCol = c => String(c.paper)===String(sel.paper) && c.kind===sel.kind && (c.kind!=='AOI' || c.label===(sel.label||''));
+      const isCurrentCol = c => samePaper(c.paper, sel.paper) && c.kind===sel.kind && (c.kind!=='AOI' || scoreLabelEq(c.label, sel.label));
       const otherCols = marksheetColumns(students, a.subject).filter(c=>!isCurrentCol(c))
         .filter(c=>students.some(s=>{ const r=scoreCellFor(s.id, a.subject, c, periodTerm, periodYear); return r && r.marks!==''&&r.marks!=null; }));
       // Primary has no concept of papers (a single implicit paper per subject), so the
@@ -15925,9 +15982,9 @@ function scoresEntryView(mine){
       // routine re-visit for a fresh, empty sheet and re-key everything from scratch.
       function existingScoreFor(studentId){
         if(sel.kind==='EOT'){
-          return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===a.subject && sc.paper==sel.paper && sc.kind==='EOT' && sc.term===term && sc.year===year);
+          return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===a.subject && samePaper(sc.paper, sel.paper) && sc.kind==='EOT' && sc.term===term && sc.year==year);
         }
-        return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===a.subject && sc.paper==sel.paper && sc.kind==='AOI' && sc.label===(sel.label||'') && sc.term===term && sc.year===year);
+        return DB.scores.find(sc=>sc.studentId===studentId && sc.subject===a.subject && samePaper(sc.paper, sel.paper) && sc.kind==='AOI' && scoreLabelEq(sc.label, sel.label) && sc.term===term && sc.year==year);
       }
       const existingCount = students.filter(s=>existingScoreFor(s.id)).length;
       const hasExisting = existingCount>0;
@@ -21779,10 +21836,10 @@ document.addEventListener('submit', async (e)=>{
         // be if typed straight into the on-screen mark sheet.
         if(marks<0 || marks>max){ outOfRange++; continue; }
         if(kind==='EOT'){
-          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
+          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && samePaper(sc.paper, paper) && sc.kind==='EOT' && sc.term===DB.info.currentTerm && sc.year==DB.info.currentYear);
           importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'EOT', label:'', term:DB.info.currentTerm, year:DB.info.currentYear, marks, max, teacher:CUR.username});
         } else {
-          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===DB.info.currentTerm && sc.year===DB.info.currentYear);
+          const idx = DB.scores.findIndex(sc=>sc.studentId===st.id && sc.subject===subject && samePaper(sc.paper, paper) && sc.kind==='AOI' && scoreLabelEq(sc.label, label) && sc.term===DB.info.currentTerm && sc.year==DB.info.currentYear);
           importRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId:st.id, subject, paper, kind:'AOI', label, term:DB.info.currentTerm, year:DB.info.currentYear, marks, max, teacher:CUR.username});
         }
         imported++;
@@ -21850,9 +21907,9 @@ document.addEventListener('submit', async (e)=>{
         const studentId = key.slice(2);
         let existingRow;
         if(kind==='EOT'){
-          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===targetTerm && sc.year===targetYear);
+          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && samePaper(sc.paper, paper) && sc.kind==='EOT' && sc.term===targetTerm && sc.year==targetYear);
         } else {
-          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===targetTerm && sc.year===targetYear);
+          existingRow = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && samePaper(sc.paper, paper) && sc.kind==='AOI' && scoreLabelEq(sc.label, label) && sc.term===targetTerm && sc.year==targetYear);
         }
         if(!existingRow) missSetNow.add(studentId);
       }
@@ -21881,10 +21938,10 @@ document.addEventListener('submit', async (e)=>{
           }
         }
         if(kind==='EOT'){
-          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='EOT' && sc.term===targetTerm && sc.year===targetYear);
+          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && samePaper(sc.paper, paper) && sc.kind==='EOT' && sc.term===targetTerm && sc.year==targetYear);
           submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'EOT', label:'', term:targetTerm, year:targetYear, marks:Number(val), max, teacher:CUR.username});
         } else {
-          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && sc.paper==paper && sc.kind==='AOI' && sc.label===label && sc.term===targetTerm && sc.year===targetYear);
+          const idx = DB.scores.findIndex(sc=>sc.studentId===studentId && sc.subject===subject && samePaper(sc.paper, paper) && sc.kind==='AOI' && scoreLabelEq(sc.label, label) && sc.term===targetTerm && sc.year==targetYear);
           submitRows.push({id: idx>=0?DB.scores[idx].id:uid('sc'), studentId, subject, paper, kind:'AOI', label, term:targetTerm, year:targetYear, marks:Number(val), max, teacher:CUR.username});
         }
       }
@@ -21896,7 +21953,7 @@ document.addEventListener('submit', async (e)=>{
       // Nothing to do? If this column already has saved scores and this submit changes none of
       // them (same marks, no new scores, no newly blank students), say so instead of re-saving.
       {
-        const colHasSaved = DB.scores.some(sc=>sc.subject===subject && sc.paper==paper && sc.kind===kind && sc.term===targetTerm && sc.year===targetYear && (kind==='EOT' || sc.label===label) && (!a || !Array.isArray(a.studentIds) || a.studentIds.includes(sc.studentId)));
+        const colHasSaved = DB.scores.some(sc=>sc.subject===subject && samePaper(sc.paper, paper) && sc.kind===kind && sc.term===targetTerm && sc.year==targetYear && (kind==='EOT' || scoreLabelEq(sc.label, label)) && (!a || !Array.isArray(a.studentIds) || a.studentIds.includes(sc.studentId)));
         const changed = submitRows.some(r=>{
           const old = DB.scores.find(sc=>sc.id===r.id);
           return !old || Number(old.marks)!==Number(r.marks) || Number(old.max)!==Number(r.max);
@@ -23223,8 +23280,8 @@ function rosterRemovalEffects(subject){
   return [
     'The student(s) will no longer appear on YOUR marking list or in Enter Scores for '+subject+'.',
     'For optional subjects (and every A-Level subject) they will no longer count as taking '+subject+': it can disappear from their report card, mark sheets and class analysis, and change their average / points and class position.',
-    'Scores already saved are not deleted from the database, but they may stop showing anywhere once the student is off the list.',
-    'To undo it you must tick the student(s) again under "Edit my student list / add missing students".'
+    'Scores already saved for '+subject+' are kept safely, but they will no longer show on mark sheets, report cards, rank lists or analysis, and they stop counting in class positions, while the student is off the list.',
+    'To undo it, tick the student(s) again under "Add missing students": their saved scores come straight back.'
   ];
 }
 /* ---------- No-internet guard ----------
