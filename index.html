@@ -3318,6 +3318,27 @@ function aoiColKey(label, classId){
 // between teachers (e.g. P1 and P2 each have their own list), taking the subject is per student, not per paper, so a student must be
 // on EVERY such paper's list: removing him from one paper's list removes him from the subject everywhere (mark sheets, report cards).
 // Teachers who share the SAME paper(s) (different groups) are still just added together.
+// One subject = ONE list. Removing a student from any teacher's marking list for a subject removes them from EVERY other list
+// of that same subject in the class / stream group (other teachers, other papers, whichever assessment type is being marked and
+// whoever entered the scores). These helpers find / apply that. Lists never built (studentIds not an array) are left alone.
+function peerRosterHits(a, ids){
+  if(!a || !ids || !ids.length) return [];
+  const gids = streamGroupIdsById(a.classId), want = new Set(ids), out = [];
+  (DB.assignments||[]).forEach(x=>{
+    if(x.id===a.id || x.subject!==a.subject || !gids.has(x.classId) || !Array.isArray(x.studentIds)) return;
+    const hit = x.studentIds.filter(i=>want.has(i));
+    if(hit.length) out.push({assignId:x.id, studentIds:hit});
+  });
+  return out;
+}
+function applyPeerRosterRemoval(hits){
+  (hits||[]).forEach(h=>{
+    const x = DB.assignments.find(y=>y.id===h.assignId); if(!x || !Array.isArray(x.studentIds)) return;
+    const gone = new Set(h.studentIds);
+    x.studentIds = x.studentIds.filter(i=>!gone.has(i));
+    if(x.pending && Array.isArray(x.pending.ids)) x.pending = Object.assign({}, x.pending, {ids:x.pending.ids.filter(i=>!gone.has(i))});
+  });
+}
 function effectiveRosterIds(classId, subject){
   const key = 'ER||'+classId+'||'+subject;
   let e = _rosterOffCache.get(key);
@@ -3423,6 +3444,7 @@ function syncStatusBanner(key){
   const s = SCORE_SYNC_STATUS[key];
   if(!s) return '';
   if(s.state==='saving') return `<div class="sync-status sync-saving" id="syncStatus_${esc(key)}">⏳ Saving &amp; sending your marks…</div>`;
+  if(s.state==='queued') return `<div class="sync-status sync-saving" id="syncStatus_${esc(key)}">📴 NOT YET SENT — no internet. Your marks are kept safely on this device and will be sent and saved automatically when internet returns. Keep this page open if you can.</div>`;
   if(s.state==='error') return `<div class="sync-status sync-error" id="syncStatus_${esc(key)}">⚠ Not saved — check your connection and hit Submit again. Nothing on the report card has changed yet.</div>`;
   if(s.state==='saved') return `<div class="sync-status sync-saved" id="syncStatus_${esc(key)}">✓ Sent &amp; saved${s.at?` at ${fmtDateTime(s.at)}`:''} — these marks are already showing on the report card.</div>`;
   return '';
@@ -4095,6 +4117,7 @@ async function _mergeScoreShardInner(schoolId, term, year, mutate){
     // this folds in anything another teacher saved to this same shard in
     // the meantime too, not just this tab's own change.
     DB.scores = DB.scores.filter(r=>scoreShardKey(r.term,r.year)!==shardSuffix).concat(merged);
+    try{ scoreOutboxReapply(); }catch(_){}
     invalidateScoreLookupCache();
   }
   return merged;
@@ -4105,22 +4128,91 @@ async function _mergeScoreShardInner(schoolId, term, year, mutate){
 // permanently persisted (or rejects if it ultimately couldn't be saved, e.g.
 // no connection — callers should surface that to the teacher rather than
 // assume success).
-function upsertScores(rows){
+/* ------------------------------------------------------------
+   OFFLINE-SAFE SCORE OUTBOX.
+   Every score save is first written to this device (localStorage) and only then sent to the database. If the internet
+   or mobile data is off (or drops mid-save) the marks stay on the page AND on the device, the screen says plainly
+   that they are "waiting for internet" (never "saved"), and they are sent automatically — in order, without
+   duplicates — as soon as the connection is back (online event, every few seconds, when the tab is shown again, and
+   after the next sign-in / reload). A mark is only reported as "saved" once the database has confirmed it.
+------------------------------------------------------------- */
+const SCORE_OUTBOX_PREFIX = 'cte_score_outbox_';
+let _scoreFlushP = null;
+function scoreOutboxKey(){ return SCORE_OUTBOX_PREFIX + (SCHOOL_ID||''); }
+function scoreOutboxRead(){ try{ const a = JSON.parse(localStorage.getItem(scoreOutboxKey())||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function scoreOutboxWrite(a){ try{ if(a.length) localStorage.setItem(scoreOutboxKey(), JSON.stringify(a)); else localStorage.removeItem(scoreOutboxKey()); }catch(e){ console.error(e); } scoreOutboxPill(); }
+function scoreOutboxPill(){
+  try{
+    const n = SCHOOL_ID ? scoreOutboxRead().length : 0;
+    let el = document.getElementById('scoreOutboxPill');
+    if(!n){ if(el) el.remove(); return; }
+    if(!el){ el = document.createElement('div'); el.id='scoreOutboxPill';
+      el.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:9998;background:#e67e00;color:#fff;font:700 14px Inter,sans-serif;padding:9px 16px;border-radius:22px;box-shadow:0 3px 12px rgba(0,0,0,.35);max-width:92vw;text-align:center;';
+      document.body.appendChild(el); }
+    el.textContent = '📴 ' + n + ' score save' + (n===1?'':'s') + ' kept on this device — sending automatically when internet returns. Do not clear browser data.';
+  }catch(e){}
+}
+// Put queued (not yet delivered) rows back on screen — after a reload, or after a server reconcile replaced a shard.
+function scoreOutboxReapply(){
+  if(!SCHOOL_ID) return;
+  const q = scoreOutboxRead(); if(!q.length) return;
+  q.forEach(e=>(e.rows||[]).forEach(r=>mergeRowIntoShard(DB.scores, r)));
+  invalidateScoreLookupCache();
+}
+function _withTimeout(p, ms){ return new Promise((res,rej)=>{ const t=setTimeout(()=>rej(new Error('timeout')), ms); p.then(v=>{clearTimeout(t);res(v);}, e=>{clearTimeout(t);rej(e);}); }); }
+function _sendScoreRows(rows){
+  const byShard = {};
+  rows.forEach(r=>{ const k = scoreShardKey(r.term, r.year); (byShard[k] = byShard[k] || {term:r.term, year:r.year, rows:[]}).rows.push(r); });
+  return Promise.all(Object.values(byShard).map(({term,year,rows})=>
+    mergeScoreShard(SCHOOL_ID, term, year, fresh=>{ rows.forEach(row=>{ mergeRowIntoShard(fresh, row); }); return fresh; })
+  ));
+}
+function flushScoreOutbox(){
+  if(_scoreFlushP) return _scoreFlushP;
+  if(!SCHOOL_ID || !scoreOutboxRead().length) return Promise.resolve(true);
+  _scoreFlushP = (async()=>{
+    let allSent = true;
+    try{
+      for(;;){
+        const q = scoreOutboxRead(); if(!q.length) break;
+        if(!DEMO_MODE && navigator.onLine===false){ allSent = false; break; }
+        const e = q[0];
+        try{ await _withTimeout(_sendScoreRows(e.rows||[]), 25000); }
+        catch(err){ console.error('Score send failed — kept for retry', err); allSent = false; break; }
+        scoreOutboxWrite(scoreOutboxRead().filter(x=>x.qid!==e.qid));
+        try{ scoreOutboxDelivered(e); }catch(_){}
+      }
+    } finally { _scoreFlushP = null; }
+    return allSent;
+  })();
+  return _scoreFlushP;
+}
+// A queued save reached the database: flip its status line / button from "waiting" to "saved".
+function scoreOutboxDelivered(e){
+  if(!e || !e.syncKey) return;
+  if(SCORE_SYNC_STATUS[e.syncKey] && SCORE_SYNC_STATUS[e.syncKey].state==='queued'){
+    SCORE_SYNC_STATUS[e.syncKey] = {state:'saved', at:Date.now()};
+    const el = document.getElementById(`syncStatus_${e.syncKey}`);
+    if(el) el.outerHTML = syncStatusBanner(e.syncKey);
+    try{ scoreBtnState('saved'); }catch(_){}
+    try{ showDeliveredToast('Your offline scores have now been sent and saved'); }catch(_){}
+  }
+}
+window.addEventListener('online', ()=>{ setTimeout(()=>{ flushScoreOutbox(); }, 800); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) flushScoreOutbox(); });
+setInterval(()=>{ if(SCHOOL_ID && scoreOutboxRead().length) flushScoreOutbox(); }, 10000);
+
+// Upsert one or more score rows. Updates DB.scores immediately (so the caller can render right away), writes the change
+// to the on-device outbox, then tries to send it. Resolves 'saved' once the database confirmed it, or 'queued' when it
+// could not be sent yet (offline / flaky data) — in that case it stays queued and is retried automatically.
+function upsertScores(rows, syncKey){
   rows = Array.isArray(rows) ? rows : [rows];
-  if(!rows.length) return Promise.resolve();
+  if(!rows.length) return Promise.resolve('saved');
   rows.forEach(row=>{ mergeRowIntoShard(DB.scores, row); }); // optimistic local update
   invalidateScoreLookupCache();
-  const byShard = {};
-  rows.forEach(r=>{
-    const k = scoreShardKey(r.term, r.year);
-    (byShard[k] = byShard[k] || {term:r.term, year:r.year, rows:[]}).rows.push(r);
-  });
-  return Promise.all(Object.values(byShard).map(({term,year,rows})=>
-    mergeScoreShard(SCHOOL_ID, term, year, fresh=>{
-      rows.forEach(row=>{ mergeRowIntoShard(fresh, row); });
-      return fresh;
-    })
-  ));
+  const entry = {qid:uid('q'), at:Date.now(), syncKey:syncKey||'', rows:JSON.parse(JSON.stringify(rows))};
+  scoreOutboxWrite(scoreOutboxRead().concat([entry]));
+  return flushScoreOutbox().then(()=> scoreOutboxRead().some(x=>x.qid===entry.qid) ? 'queued' : 'saved');
 }
 // Delete one or more score rows. Pass the full row (not just an id) so the
 // row's term/year is known and the right shard gets merged. Same instant
@@ -4285,6 +4377,7 @@ async function loadSchoolData(id){
   ]);
   DB.info = info; DB.accounts = accounts; DB.classes = classes; DB.students = students;
   DB.assignments = assignments; DB.scores = scores; DB.bands = bands; DB.obands = obands;
+  try{ scoreOutboxReapply(); setTimeout(()=>{ flushScoreOutbox(); scoreOutboxPill(); }, 1500); }catch(_){}
   invalidateScoreLookupCache();
   DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
   undoResetShadow();
@@ -5444,6 +5537,11 @@ async function binApply(kind, data){
       const have = new Set(Array.isArray(a.studentIds) ? a.studentIds : []);
       const back = (data.studentIds||[]).filter(i=>!have.has(i) && DB.students.some(s=>s.id===i));
       a.studentIds = (Array.isArray(a.studentIds) ? a.studentIds : []).concat(back);
+      (data.peers||[]).forEach(h=>{
+        const x = DB.assignments.find(y=>y.id===h.assignId); if(!x || !Array.isArray(x.studentIds)) return;
+        const hv = new Set(x.studentIds);
+        x.studentIds = x.studentIds.concat((h.studentIds||[]).filter(i=>!hv.has(i) && DB.students.some(s=>s.id===i)));
+      });
       await saveAssignments();
       return {ok:true};
     }
@@ -6342,9 +6440,9 @@ function scoreBtnState(state){
   if(state==='idle'){
     b.textContent=b.dataset.orig; b.disabled=!!b.dataset.wasDis; b.style.removeProperty('background'); return;
   }
-  const m={saving:['⏳ Saving scores…','#e67e00',true],saved:['✓ Scores saved','#0f6b3a',false],already:['✓ Scores already saved','#0f6b3a',false],error:['✕ Not saved — tap to try again','#b3261e',false]}[state];
+  const m={saving:['⏳ Saving scores…','#e67e00',true],saved:['✓ Scores saved','#0f6b3a',false],already:['✓ Scores already saved','#0f6b3a',false],error:['✕ Not saved — tap to try again','#b3261e',false],queued:['📴 Kept on device — sends when online','#e67e00',false]}[state];
   b.textContent=m[0]; b.disabled=m[2]; b.style.setProperty('background',m[1],'important');
-  if(state!=='saving') _scoreBtnTimer=setTimeout(()=>scoreBtnState('idle'), state==='error'?5000:2500);
+  if(state!=='saving') _scoreBtnTimer=setTimeout(()=>scoreBtnState('idle'), state==='error'?5000:(state==='queued'?6000:2500));
 }
 function _bannerEl(big){ let el=document.getElementById('actionProgressToast'); if(!el){ el=document.createElement('div'); el.id='actionProgressToast'; document.body.appendChild(el); } _lastBannerBig=!!big; el.classList.toggle('big', !!big); return el; }
 function placeActionBannerNear(button){
@@ -16118,7 +16216,7 @@ function scoresEntryView(mine){
               <button type="button" class="btn-danger" data-action="removeSelectedFromRoster:${a.id}">REMOVE SELECTED FROM LIST</button>
               <button type="button" class="btn-danger" data-action="removeAllFromRoster:${a.id}">REMOVE ALL FROM LIST</button>
             </div>
-            <div class="small" style="margin-top:6px;text-transform:none;">Tick the small box before a student's name, then press REMOVE SELECTED FROM LIST — or remove everyone. Saved scores are not deleted.</div>
+            <div class="small" style="margin-top:6px;text-transform:none;">Tick the small box before a student's name, then press REMOVE SELECTED FROM LIST — or remove everyone. Saved scores are not deleted, but the student leaves every list of this subject, whoever entered the marks.</div>
           </div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th class="se-tk" title="Tick the small box before a name to select that student">☑</th><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
           ${students.map(s=>{
             let existing = '';
@@ -19040,10 +19138,13 @@ Continue?`);
         action:`You are about to REMOVE ${st?st.name:'this student'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}.`,
         effects: rosterRemovalEffects(a.subject), confirmLabel:'Yes, remove this student'});
       if(!sure) break;
-      if(Array.isArray(a.studentIds) && a.studentIds.includes(studentId)){
-        if(!(await binGuard('roster', `${st?st.name:'A student'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:[studentId]}))) break;
+      const _peers = peerRosterHits(a, [studentId]);
+      const _inThis = Array.isArray(a.studentIds) && a.studentIds.includes(studentId);
+      if(_inThis || _peers.length){
+        if(!(await binGuard('roster', `${st?st.name:'A student'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:_inThis?[studentId]:[], peers:_peers}))) break;
       }
       a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>id!==studentId) : a.studentIds;
+      applyPeerRosterRemoval(_peers);
       await saveAssignments(); render();
       } finally { seRestore(_seCtx); }
       break;
@@ -19075,9 +19176,11 @@ Continue?`);
           effects: rosterRemovalEffects(a.subject), confirmLabel:`Yes, remove ${ids.length}`});
         if(!sure) break;
         const inList = Array.isArray(a.studentIds) ? ids.filter(id=>a.studentIds.includes(id)) : [];
-        if(inList.length && !(await binGuard('roster', `${inList.length} student${inList.length===1?'':'s'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:inList}))) break;
+        const _peers = peerRosterHits(a, ids);
+        if((inList.length || _peers.length) && !(await binGuard('roster', `${ids.length} student${ids.length===1?'':'s'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:inList, peers:_peers}))) break;
         const gone = new Set(ids);
         a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>!gone.has(id)) : a.studentIds;
+        applyPeerRosterRemoval(_peers);
         await saveAssignments(); render();
       } finally { seRestore(_seCtx); }
       break;
@@ -19095,8 +19198,11 @@ Continue?`);
         action:`You are about to REMOVE ALL ${n} student${n===1?'':'s'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}. Your list will be completely empty.`,
         effects: rosterRemovalEffects(a.subject), confirmLabel:`Yes, remove all ${n}`});
       if(!sure) break;
-      if(n>0 && !(await binGuard('roster', `All ${n} student${n===1?'':'s'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:a.studentIds.slice()}))) break;
+      const _all = Array.isArray(a.studentIds) ? a.studentIds.slice() : [];
+      const _peers = peerRosterHits(a, _all);
+      if(n>0 && !(await binGuard('roster', `All ${n} student${n===1?'':'s'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:_all, peers:_peers}))) break;
       a.studentIds = [];
+      applyPeerRosterRemoval(_peers);
       await saveAssignments(); render();
       break;
     }
@@ -19927,9 +20033,13 @@ function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPer
 
 document.addEventListener('submit', async (e)=>{
   e.preventDefault();
-  if(sessionCheckDue()){ if(!(await ensureSessionValid())) return; }
   const form = e.target;
   const type = form.dataset.form;
+  if(sessionCheckDue() && !(type==='saveScores' && navigator.onLine===false)){
+    const _sv = ensureSessionValid();
+    const _ok = type==='saveScores' ? await Promise.race([_sv, new Promise(r=>setTimeout(()=>r(true), 4000))]) : await _sv;
+    if(!_ok) return;
+  }
   const fd = new FormData(form);
   const actionButton = e.submitter || document.activeElement;
   if(type==='saveScores') scoreBtnState('saving'); else { showActionProgress('Saving your changes…', actionButton); if(actionButton && actionButton.form===form) btnBusy(actionButton); }
@@ -22051,7 +22161,7 @@ document.addEventListener('submit', async (e)=>{
       // same instant; we only need to speak up if it ultimately fails.
       const syncKey = scoreSyncKey(assignId, paper, kind, label||'');
       SCORE_SYNC_STATUS[syncKey] = {state:'saving'};
-      const saveScoresPromise = upsertScores(submitRows);
+      const saveScoresPromise = upsertScores(submitRows, syncKey);
       window.__cteScoreSaving = (window.__cteScoreSaving||0)+1;
       saveScoresPromise.then(()=>{window.__cteScoreSaving--;},()=>{window.__cteScoreSaving--;});
       render();
@@ -22060,10 +22170,16 @@ document.addEventListener('submit', async (e)=>{
       // render() once the background save confirms/fails — a full render()
       // here could yank focus away from a box the teacher has since moved on
       // to editing.
-      saveScoresPromise.then(()=>{
-        SCORE_SYNC_STATUS[syncKey] = {state:'saved', at:Date.now()};
-        scoreBtnState('saved');
-        speak('Scores have been saved successfully.');
+      saveScoresPromise.then(res=>{
+        if(res==='queued'){
+          SCORE_SYNC_STATUS[syncKey] = {state:'queued'};
+          scoreBtnState('queued');
+          speak('No internet. Your scores are kept on this device and will be sent automatically when internet returns.');
+        } else {
+          SCORE_SYNC_STATUS[syncKey] = {state:'saved', at:Date.now()};
+          scoreBtnState('saved');
+          speak('Scores have been saved successfully.');
+        }
         const el = document.getElementById(`syncStatus_${syncKey}`);
         if(el) el.outerHTML = syncStatusBanner(syncKey);
       }).catch(err=>{
@@ -23351,7 +23467,7 @@ function askPasswordConfirm(opts){
 }
 function rosterRemovalEffects(subject){
   return [
-    'The student(s) will no longer appear on YOUR marking list or in Enter Scores for '+subject+'.',
+    'The student(s) will be removed from EVERY marking list for '+subject+' in this class (yours and other teachers\'), for every assessment type, so they no longer appear in Enter Scores for '+subject+' for anyone.',
     'For optional subjects (and every A-Level subject) they will no longer count as taking '+subject+': it can disappear from their report card, mark sheets and class analysis, and change their average / points and class position.',
     'Scores already saved for '+subject+' are kept safely, but they will no longer show on mark sheets, report cards, rank lists or analysis, and they stop counting in class positions, while the student is off the list.',
     'To undo it, tick the student(s) again under "Add missing students": their saved scores come straight back.'
@@ -23396,6 +23512,7 @@ function offlineActionLabel(type, submitter){
 const OFFLINE_BLOCK_ACTION = /^(del[A-Z]|delete|approveAcc$|rejectAcc$|closeAcc$|reopenAcc$|resetAccPw$|markStudentLeft$|restoreStudent$|restoreAutoSnapshot$|promote$|removeFromRoster$|removeAllFromRoster$|removeLevelRow$|removeSchoolStamp$|removeTeacherSignature$|confirmEditScores$|lockScoreDeadline$|reopenScoreDeadline$|reopenAllScoreDeadline$|settle|reqMarkItem$|reqUndoStatus$|repairAdmissionNumbers$|resyncFinance$|found(Approve|Close|Reject|Reopen|DeleteSchool|ResetLoginPw|ResetOwnerCode|RestoreSnapshot|EditLogin)$|setRole$|clearRole$|addALevel$|addPFLevel$|addExtraScoreStudent$|toggleTeacherReports$)/;
 document.addEventListener('submit', (e)=>{
   if(navigator.onLine!==false || DEMO_MODE) return;
+  if(e.target && e.target.dataset && e.target.dataset.form==='saveScores') return;   // marks are kept on the device and sent when internet returns
   e.preventDefault(); e.stopImmediatePropagation();
   const f = e.target;
   showConnectionModal(offlineActionLabel(f && f.dataset && f.dataset.form, e.submitter));
