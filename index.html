@@ -3365,6 +3365,7 @@ function effectiveRosterIds(classId, subject){
 }
 function studentRemovedFromSubject(st, subject){
   if(!st || !subject) return false;
+  if(Array.isArray(st.dropSubjects) && st.dropSubjects.includes(subject)) return true;
   const key = st.classId+'||'+subject;
   let e = _rosterOffCache.get(key);
   if(!e){
@@ -6900,6 +6901,11 @@ function studentSubjects(st, cls){
   return v;
 }
 function _studentSubjectsRaw(st, cls){
+  const _all = _studentSubjectsRaw0(st, cls);
+  const _drop = st && Array.isArray(st.dropSubjects) ? st.dropSubjects : null;
+  return (_drop && _drop.length) ? _all.filter(sj=>!_drop.includes(sj)) : _all;
+}
+function _studentSubjectsRaw0(st, cls){
   cls = aOwnClass(st, cls);
   if(!cls) return [];
   if(cls.level==='O'){
@@ -8534,7 +8540,7 @@ function navByRoleRaw(role){
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','PARENTS AND NON TEACHING STAFF','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','SCORES SHEETS AND ATTENDANCES','📋'],['classanalysis','RESULT ANALYSIS','📈'],
-      ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
+      ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['subjectlists','EDIT SUBJECT LIST','🧾'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
   }
@@ -8619,6 +8625,7 @@ function renderShell(){
 // already hides these links from non-admins, but this makes it impossible to reach them
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
 const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','staffaccounts','parentaccounts','students','oldstudents','assignsubjects','olevel','grading','examsetup','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems','databackup']);
+ADMIN_ONLY_VIEWS.add('subjectlists');
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
@@ -8674,6 +8681,7 @@ function renderView(view){
       case 'classanalysis': return classAnalysisView();
       case 'projects': return projectAssessmentView();
       case 'mastermarksheet': return masterMarkSheetView();
+      case 'subjectlists': return subjectListView();
       case 'tdash': return teacherDashboard();
       case 'tscores': return scoresEntryView(liveAssignments(DB.assignments.filter(a=>a.teacherUsername===CUR.username)));
       case 'treports': return (CUR.role==='teacher' && !teachersMayViewReports()) ? '<p>Report cards have been switched off for teachers by the Admin.</p>' : reportsListView();
@@ -15732,6 +15740,7 @@ function masterMarkSheetViewCore(forExport){
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
     </div>`:''}
     ${buttonsHtml||''}
+    ${isAdmin?`<div style="margin-top:16px;"><button type="button" data-action="nav:subjectlists" style="width:fit-content;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;">EDIT SUBJECT LIST</button></div>`:''}
   </div>`;
   if(!formKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Start by choosing a sheet type on the left. Then pick the assessment type (Course Work, End of Term or Integrated), and finally the class (or the level, for the whole-level sheets).</p></div></div>`;
   if(!assessKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Now choose the assessment type: Course Work only, End of Term only, or Integrated (both together).</p></div></div>`;
@@ -15935,6 +15944,139 @@ function rankOverallDescriptor(level, avgPct, grade){
   }
   const m = gradeCommentsFor(level) || {};
   return m[grade] || '—';
+}
+
+/* ---------- Subject Lists (admin): pick a Class + Subject, see who takes it, remove / add back students ----------
+   Removing a student from a subject takes them off that subject EVERYWHERE: Enter Scores lists, mark sheets,
+   rank lists, Result Analysis and their report card (the subject disappears from it and averages, points and
+   positions are worked out without it). Their saved scores are kept (hidden) and come straight back with "Add back".
+   Optional subjects / A-Level: removed from the teachers' marking lists (assignment.studentIds).
+   Compulsory subjects: recorded on the student as dropSubjects. */
+function slClassStudents(cls){ return sortByName(classRosterStudents(cls)); }
+function slEnrolled(cls, subject){ return slClassStudents(cls).filter(s=>studentSubjects(s, cls).includes(subject)); }
+function subjectListView(){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId) || null;
+  const subjects = cls ? analysisSubjectsFor(cls).sort((a,b)=>a.localeCompare(b)) : [];
+  const subject = (cls && subjects.includes(p.slSubject)) ? p.slSubject : '';
+  let head = `<h2>EDIT SUBJECT LIST</h2>
+  <div class="card">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
+      <div style="flex:1 1 220px;min-width:0;"><label>1. Class</label>
+        <select onchange="setSubjectListParam('slClassId', this.value)">
+          <option value="" ${cls?'':'selected'}>— Select class —</option>
+          ${DB.classes.map(c=>`<option value="${esc(c.id)}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+        </select></div>
+      <div style="flex:1 1 220px;min-width:0;"><label>2. Subject</label>
+        <select ${cls?'':'disabled'} onchange="setSubjectListParam('slSubject', this.value)">
+          <option value="" ${subject?'':'selected'}>— Select subject —</option>
+          ${subjects.map(sj=>`<option value="${esc(sj)}" ${sj===subject?'selected':''}>${esc(sj)}</option>`).join('')}
+        </select></div>
+      <div><button type="button" class="btn-outline" data-action="nav:mastermarksheet">◀ General Marksheets</button></div>
+    </div>
+  </div>`;
+  if(!DB.classes.length) return head + `<div class="card"><p>No classes yet — add a class first.</p></div>`;
+  if(!cls) return head + `<div class="card"><p class="small">Choose a class, then a subject, to see every student taking that subject.</p></div>`;
+  if(!subject) return head + `<div class="card"><p class="small">Now choose a subject${subjects.length?'':' — no subject has students or a teacher in this class yet'}.</p></div>`;
+  const list = slEnrolled(cls, subject);
+  const compulsory = isCompulsorySubjectFor(subject, cls);
+  const multiCls = streamGroupClasses(cls).length>1;
+  const rows = list.map((s,i)=>{
+    const c = DB.classes.find(x=>x.id===s.classId);
+    return `<tr><td style="width:34px;">${compulsory?'':`<input type="checkbox" class="slPick" data-sid="${esc(s.id)}" style="width:auto;">`}</td>
+      <td>${i+1}</td><td>${esc(s.admNo||'')}</td><td style="text-align:left;">${esc(s.name)}</td>
+      ${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}
+      <td>${compulsory?'':`<button type="button" class="btn-outline" style="color:var(--danger);border-color:var(--danger);" data-action="slRemove:${esc(s.id)}">Remove</button>`}</td></tr>`;
+  }).join('');
+  const notIn = slClassStudents(cls).filter(s=>!list.some(x=>x.id===s.id));
+  const hasAsn = DB.assignments.some(a=>streamGroupIds(cls).has(a.classId) && a.subject===subject && Array.isArray(a.studentIds));
+  const canAdd = !compulsory && notIn.length && hasAsn;
+  return head + `<div class="card">
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+      <div><b>${esc(subject)}</b> — ${esc(cls.name)}<br><span class="small">${list.length} student${list.length===1?'':'s'} taking this subject${compulsory?' (compulsory subject)':''}</span></div>
+      ${compulsory?'':`<div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-outline" data-action="slPickAll">Tick / untick all</button>
+        <button type="button" class="btn" style="background:var(--danger);" data-action="slRemoveSelected">Remove ticked</button>
+      </div>`}
+    </div>
+    <div style="overflow-x:auto;margin-top:10px;">
+    ${list.length?`<table><thead><tr><th></th><th>#</th><th>Adm No</th><th style="text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}<th></th></tr></thead><tbody>${rows}</tbody></table>`
+      :`<p class="small">No student is taking ${esc(subject)} in this class.</p>`}
+    </div>
+    ${compulsory?`<p class="small" style="margin-top:10px;"><b>${esc(subject)} is a compulsory subject</b> — every student in the class stays on its list, so nobody can be removed.</p>`:''}
+    ${compulsory?'':`<p class="small" style="margin-top:10px;">Tick any number of students, then tap <b>Remove ticked</b> once and enter your password once. This works even for students who already have scores. Removing a student takes ${esc(subject)} off their report card and out of every list, mark sheet, rank list and analysis. Their saved scores are kept and return if you add them back.</p>`}
+  </div>
+  ${canAdd?`<div class="card"><label>Add a student back to ${esc(subject)}</label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <select id="slAddSel" style="flex:1 1 240px;min-width:0;">${notIn.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.admNo?' ('+esc(s.admNo)+')':''}</option>`).join('')}</select>
+      <button type="button" class="btn" data-action="slAdd">Add back</button></div></div>`:''}`;
+}
+function setSubjectListParam(key, value){
+  const cascade = key==='slClassId' ? {slSubject:''} : {};
+  VIEW.params = {...VIEW.params, ...cascade, [key]: value};
+  render();
+}
+function slRemovalEffects(subject, cls, compulsory){
+  const fx = [
+    `They will be removed from the ${subject} list of ${cls.name} everywhere: Enter Scores, mark sheets, rank lists, Result Analysis and report cards.`,
+    `${subject} will disappear from their report card, and their average / points and class position are worked out without it.`,
+    `Saved ${subject} scores are kept safely (hidden). Use "Add back" on this page to restore them.`
+  ];
+  if(cls.level==='P' && compulsory) fx.push('Primary: the Division needs every core subject, so no Division is shown for them while a core subject is removed.');
+  return fx;
+}
+async function slApplyRemoval(ids){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId);
+  const subject = p.slSubject;
+  if(!cls || !subject || !ids.length) return;
+  if(isCompulsorySubjectFor(subject, cls)){ alert('This is a compulsory subject — every student in the class stays on the list. Students cannot be removed from it.'); return; }
+  const names = ids.slice(0,5).map(id=>{ const st=DB.students.find(x=>x.id===id); return st?st.name:'a student'; });
+  const compulsory = isCompulsorySubjectFor(subject, cls);
+  const sure = await askPasswordConfirm({
+    title:`REMOVE ${ids.length} STUDENT${ids.length===1?'':'S'} FROM ${subject}`,
+    action:`You are about to REMOVE ${names.join(', ')}${ids.length>5?` and ${ids.length-5} more`:''} from ${subject} (${cls.name}).`,
+    effects: slRemovalEffects(subject, cls, compulsory), confirmLabel:`Yes, remove ${ids.length}`});
+  if(!sure) return;
+  const gone = new Set(ids);
+  if(compulsory){
+    DB.students.forEach(st=>{ if(gone.has(st.id)){ const d = Array.isArray(st.dropSubjects) ? st.dropSubjects : []; if(!d.includes(subject)) st.dropSubjects = [...d, subject]; } });
+    await saveStudents();
+    invalidateScoreLookupCache();
+  } else {
+    const gids = streamGroupIds(cls);
+    const asns = DB.assignments.filter(a=>gids.has(a.classId) && a.subject===subject && Array.isArray(a.studentIds));
+    for(const a of asns){
+      const hit = a.studentIds.filter(i=>gone.has(i));
+      if(!hit.length) continue;
+      if(!(await binGuard('roster', `${hit.length} student${hit.length===1?'':'s'} removed from ${subject} list`, cls.name, {assignId:a.id, studentIds:hit, peers:[]}))) return;
+    }
+    asns.forEach(a=>{
+      a.studentIds = a.studentIds.filter(i=>!gone.has(i));
+      if(a.pending && Array.isArray(a.pending.ids)) a.pending = Object.assign({}, a.pending, {ids:a.pending.ids.filter(i=>!gone.has(i))});
+    });
+    await saveAssignments();
+  }
+  render();
+}
+async function slApplyAdd(id){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId);
+  const subject = p.slSubject;
+  const st = DB.students.find(x=>x.id===id);
+  if(!cls || !subject || !st) return;
+  if(isCompulsorySubjectFor(subject, cls)){
+    st.dropSubjects = (st.dropSubjects||[]).filter(x=>x!==subject);
+    await saveStudents();
+    invalidateScoreLookupCache();
+  } else {
+    const gids = streamGroupIds(cls);
+    const asn = DB.assignments.find(a=>gids.has(a.classId) && a.subject===subject && Array.isArray(a.studentIds));
+    if(!asn){ alert('No teacher has a marking list for this subject in this class yet.'); return; }
+    if(!asn.studentIds.includes(id)) asn.studentIds = [...asn.studentIds, id];
+    await saveAssignments();
+  }
+  render();
 }
 function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport, selectorsHtml, assessLabelMM}){
   const isLevel = mode==='level';
@@ -16350,7 +16492,7 @@ function scoresEntryView(mine){
       // that still exists isn't covered by this class-based lookup (their classId has
       // moved on) — for that case use "Add a student who isn't listed above" below.
       // Always A-Z by name (same order as the score/mark sheets), never admission-number order.
-      let students = sortByName(DB.students.filter(s=>(compulsoryAll || a.studentIds.includes(s.id)) && (
+      let students = sortByName(DB.students.filter(s=>(compulsoryAll ? !(Array.isArray(s.dropSubjects) && s.dropSubjects.includes(a.subject)) : a.studentIds.includes(s.id)) && (
         (scopeIds.has(s.classId) && s.status!=='left') ||
         (isPastPeriod && s.status==='left' && scopeIds.has(s.classId))
       )));
@@ -19437,6 +19579,20 @@ Continue?`);
       } finally { seRestore(_seCtx); }
       break;
     }
+    case 'slRemove': { await slApplyRemoval([arg]); break; }
+    case 'slRemoveSelected': {
+      { const _c = DB.classes.find(c=>c.id===(VIEW.params||{}).slClassId); if(_c && isCompulsorySubjectFor(VIEW.params.slSubject,_c)){ alert('This is a compulsory subject — every student in the class stays on the list.'); break; } }
+      const ids = [...document.querySelectorAll('.slPick:checked')].map(b=>b.dataset.sid);
+      if(!ids.length){ alert('Tick the small box before the names of the students you want to remove first.'); break; }
+      await slApplyRemoval(ids); break;
+    }
+    case 'slPickAll': {
+      const boxes = [...document.querySelectorAll('.slPick')];
+      const all = boxes.length && boxes.every(b=>b.checked);
+      boxes.forEach(b=>{ b.checked = !all; });
+      break;
+    }
+    case 'slAdd': { const sel = document.getElementById('slAddSel'); if(sel && sel.value) await slApplyAdd(sel.value); break; }
     case 'removeAllFromRoster': {
       const assignId = (arg||'').split(':')[0];
       const a = DB.assignments.find(x=>x.id===assignId);
