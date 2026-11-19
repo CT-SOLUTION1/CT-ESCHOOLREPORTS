@@ -8562,7 +8562,7 @@ function navByRoleRaw(role){
 // sized to fit comfortably on a phone screen. excludeKey leaves off the
 // dashboard's own tile since the user is already there.
 function featureTilesHTML(role, excludeKey){
-  const items = navByRole(role).filter(([k])=>k!==excludeKey);
+  const items = navByRole(role).filter(([k])=>k!==excludeKey && !(role==='admin' && k==='subjectlists')); // Edit Subject List lives as a button under General Marksheets, not a tile
   if(!items.length) return '';
   if(role==='admin'){ // Result Analysis and Account Section trade places on the dashboard
     const a = items.findIndex(x=>x[0]==='classanalysis'), b = items.findIndex(x=>x[0]==='finance');
@@ -8616,7 +8616,7 @@ function renderShell(){
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
   <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
-    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${nav.map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
+    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${nav.filter(([k])=>!(CUR.role==='admin' && k==='subjectlists')).map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
     <div class="main${view==='classanalysis'?' main-wide':''}${(view==='reportcard'||view==='preport')?' main-rc':''}" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
@@ -15953,6 +15953,14 @@ function rankOverallDescriptor(level, avgPct, grade){
    Optional subjects / A-Level: removed from the teachers' marking lists (assignment.studentIds).
    Compulsory subjects: recorded on the student as dropSubjects. */
 function slClassStudents(cls){ return sortByName(classRosterStudents(cls)); }
+// Every OPTIONAL subject a student takes altogether (compulsory ones left out), so the admin can see the full
+// picture before removing them from one of them. The subject being edited is shown in bold.
+function slOptionalSubjectsHtml(st, cls, current){
+  const c = aOwnClass(st, cls) || cls;
+  const opts = studentSubjects(st, c).filter(sj=>!isCompulsorySubjectFor(sj, c)).sort((a,b)=>a.localeCompare(b));
+  if(!opts.length) return '<span class="small">—</span>';
+  return opts.map(sj=>`<span class="chip"${sj===current?' style="font-weight:800;"':''}>${esc(sj)}</span>`).join(' ');
+}
 function slEnrolled(cls, subject){ return slClassStudents(cls).filter(s=>studentSubjects(s, cls).includes(subject)); }
 function subjectListView(){
   const p = VIEW.params || {};
@@ -15968,7 +15976,7 @@ function subjectListView(){
           ${DB.classes.map(c=>`<option value="${esc(c.id)}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
         </select></div>
       <div style="flex:1 1 220px;min-width:0;"><label>2. Subject</label>
-        <select ${cls?'':'disabled'} onchange="setSubjectListParam('slSubject', this.value)">
+        <select id="slSubjectSel" ${cls?'':'disabled'} onchange="setSubjectListParam('slSubject', this.value)">
           <option value="" ${subject?'':'selected'}>— Select subject —</option>
           ${subjects.map(sj=>`<option value="${esc(sj)}" ${sj===subject?'selected':''}>${esc(sj)}</option>`).join('')}
         </select></div>
@@ -15985,6 +15993,7 @@ function subjectListView(){
     const c = DB.classes.find(x=>x.id===s.classId);
     return `<tr><td style="width:34px;">${compulsory?'':`<input type="checkbox" class="slPick" data-sid="${esc(s.id)}" style="width:auto;">`}</td>
       <td>${i+1}</td><td>${esc(s.admNo||'')}</td><td style="text-align:left;">${esc(s.name)}</td>
+      <td style="text-align:left;">${slOptionalSubjectsHtml(s, cls, subject)}</td>
       ${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}
       <td>${compulsory?'':`<button type="button" class="btn-outline" style="color:var(--danger);border-color:var(--danger);" data-action="slRemove:${esc(s.id)}">Remove</button>`}</td></tr>`;
   }).join('');
@@ -16000,7 +16009,7 @@ function subjectListView(){
       </div>`}
     </div>
     <div style="overflow-x:auto;margin-top:10px;">
-    ${list.length?`<table><thead><tr><th></th><th>#</th><th>Adm No</th><th style="text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}<th></th></tr></thead><tbody>${rows}</tbody></table>`
+    ${list.length?`<table><thead><tr><th></th><th>#</th><th>Adm No</th><th style="text-align:left;">Name</th><th style="text-align:left;">Optional subjects (all)</th>${multiCls?'<th>Class</th>':''}<th></th></tr></thead><tbody>${rows}</tbody></table>`
       :`<p class="small">No student is taking ${esc(subject)} in this class.</p>`}
     </div>
     ${compulsory?`<p class="small" style="margin-top:10px;"><b>${esc(subject)} is a compulsory subject</b> — every student in the class stays on its list, so nobody can be removed.</p>`:''}
@@ -16015,6 +16024,16 @@ function setSubjectListParam(key, value){
   const cascade = key==='slClassId' ? {slSubject:''} : {};
   VIEW.params = {...VIEW.params, ...cascade, [key]: value};
   render();
+  if(key==='slClassId' && value) slOpenSubjectPicker();
+}
+// Right after a class is picked, open the Subject drop-down by itself so the next choice is one tap away.
+function slOpenSubjectPicker(){
+  setTimeout(()=>{
+    const el = document.getElementById('slSubjectSel');
+    if(!el || el.disabled) return;
+    try{ el.focus(); }catch(e){}
+    try{ if(typeof el.showPicker==='function') el.showPicker(); }catch(e){}
+  }, 60);
 }
 function slRemovalEffects(subject, cls, compulsory){
   const fx = [
