@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-18-2200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-20-1800'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -526,6 +526,24 @@ img{max-width:100%;height:auto;}
 .sl-savebtn.busy{background:#e67e22 !important;color:#fff !important;}
 .sl-savebtn.done{background:#1a9a3a !important;color:#fff !important;}
 .sl-savebtn.err{background:#c0392b !important;color:#fff !important;}
+.sl-grid td.sl-tc{text-align:left;padding:3px 4px;}
+.sl-nav-btn{display:block;box-sizing:border-box;width:fit-content;max-width:100%;margin:0 0 8px;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
+.sl-nav-gold{border:2px solid var(--gold);background:var(--gold);color:#2f2600;}
+.sl-nav-purple{border:2px solid #7B3FA0;background:#7B3FA0;color:#fff;}
+.sl-nav-red{border:2px solid #B23A3A;background:#B23A3A;color:#fff;}
+/* Assign Subjects teacher box and Edit Student Subjects class box: as tall as the Username box on the sign-in page */
+#assignTeacherPick,#slClassPick{box-sizing:border-box;width:100%;padding:calc(16*var(--uk)) calc(16*var(--uk)) !important;font-size:calc(21*var(--uk)) !important;border:calc(1.5*var(--uk)) solid #b9c9da;border-radius:calc(8*var(--uk));}
+.sl-cw{display:flex;align-items:center;gap:6px;cursor:pointer;}
+.sl-cw .sl-cell{flex:0 0 28px;width:28px;min-width:28px;padding:3px 0;font-size:18px;}
+.sl-cw .sl-nm{font-size:11px;font-weight:700;line-height:1.15;text-align:left;overflow-wrap:anywhere;color:#0a2a4a;}
+.sl-cw .sl-cell.off + .sl-nm{color:#8a3a3a;}
+.sl-actions{display:flex;flex-wrap:nowrap;gap:8px;width:100%;}
+.sl-actions>button.sl-ab-btn{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;font-size:clamp(11px,3.2vw,15px);padding:13px 6px;border-radius:8px;font-weight:800;border:2px solid transparent;color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1.2;}
+.sl-actions>button.sl-ab-btn.sl-dl:not(.dl-ready-btn):not(.host-busy){background:#7B3FA0;border-color:#7B3FA0;}
+.sl-actions>button.sl-ab-btn.sl-pr:not(.dl-loading){background:#1D4E89;border-color:#1D4E89;}
+.sl-actions>button.sl-ab-btn.sl-sv:not(.busy):not(.done):not(.err){background:#C9A227;border-color:#C9A227;color:#3a2c00;}
+.sl-actions>button.sl-ab-btn.host-busy{background:#e67e22;border-color:#e67e22;color:#fff;}
+.sl-actions>button.sl-ab-btn:disabled{cursor:progress;}
 .aiu-btn{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid #b91c1c;border-radius:8px;background:#dc2626;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;text-decoration:none;}
 .aiu-btn:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .aiu-card{--aiu-k:1;margin:8px auto;width:100%;max-width:640px;box-sizing:border-box;padding:calc(28px*var(--aiu-k)) calc(22px*var(--aiu-k));display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
@@ -6286,6 +6304,11 @@ function maybeShowFirstLoginPwSticker(){
 #firstPwSticker #fpwErr{min-height:1.2em;font-size:calc(16*var(--pu));font-weight:700;color:#8a1c1c;margin-top:calc(10*var(--pu));}
 #firstPwSticker .btn{display:block;width:100%;box-sizing:border-box;font-size:calc(20*var(--pu)) !important;padding:calc(15*var(--pu)) calc(20*var(--pu)) !important;border-radius:calc(9*var(--pu));margin-top:calc(14*var(--pu));}
 #firstPwSticker .pw-back{display:block;margin:calc(18*var(--pu)) auto 0;background:#fff;color:#475569;border:calc(1.5*var(--pu)) solid #b9c9da;border-radius:calc(20*var(--pu));font-size:calc(14*var(--pu));font-weight:700;padding:calc(7*var(--pu)) calc(16*var(--pu));cursor:pointer;}
+#firstPwSticker #fpwStack{display:grid;}
+#firstPwSticker #fpwStack>div{grid-area:1/1;min-width:0;}
+#firstPwSticker #fpwChoice{display:flex;flex-direction:column;justify-content:space-evenly;}
+#firstPwSticker #fpwChoice .btn,#firstPwSticker #fpwChoice .pw-or,#firstPwSticker #fpwChoice .pw-msg{margin-top:0;margin-bottom:0;}
+#firstPwSticker .pw-hide{visibility:hidden;pointer-events:none;}
 #firstPwSticker .btn-outline{font-size:calc(17*var(--pu)) !important;padding:calc(12*var(--pu)) calc(14*var(--pu)) !important;border-width:calc(2*var(--pu));margin-top:calc(14*var(--pu));}`;
     document.head.appendChild(st);
   }
@@ -6294,9 +6317,15 @@ function maybeShowFirstLoginPwSticker(){
   o.innerHTML = `<div class="pw-card">
     <div class="pw-lock">&#128274;</div>
     <div class="pw-title">Change your password</div>
-    <div class="pw-msg">${esc(CUR.name||'Teacher')}, you can keep your current password, or choose a new <b>4-digit</b> one below.</div>
-    <button type="button" id="fpwIgnore" class="btn">Ignore &mdash; keep my current password</button>
-    <div class="pw-or"><span></span>or change password<span></span></div>
+    <div id="fpwStack">
+    <div id="fpwChoice">
+      <div class="pw-msg">${esc(CUR.name||'Teacher')}, you can change your password, or keep your current one.</div>
+      <button type="button" id="fpwChoose" class="btn">CHANGE YOUR PASSWORD IF YOU WANT</button>
+      <div class="pw-or"><span></span>or<span></span></div>
+      <button type="button" id="fpwIgnore" class="btn">IGNORE TO KEEP YOUR CURRENT PASSWORD</button>
+    </div>
+    <div id="fpwForm" class="pw-hide" inert>
+    <div class="pw-msg">Choose a new <b>4-digit</b> password below.</div>
     <label for="fpwNew">New 4-digit password</label>
     <input id="fpwNew" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="New 4-digit password">
     <label for="fpwConfirm">Confirm new password</label>
@@ -6304,6 +6333,8 @@ function maybeShowFirstLoginPwSticker(){
     <label class="pw-show"><input id="fpwShow" type="checkbox"> Show digits</label>
     <div id="fpwErr"></div>
     <button type="button" id="fpwSave" class="btn">Change password</button>
+    </div>
+    </div>
     <button type="button" id="fpwBack" class="pw-back" data-action="logout">&#8592; Back to sign in</button>
   </div>`;
   document.body.appendChild(o);
@@ -6330,7 +6361,7 @@ function maybeShowFirstLoginPwSticker(){
   try{ new MutationObserver(schedFit).observe(o, {childList:true, subtree:true, characterData:true}); }catch(e){}
   schedFit(); setTimeout(schedFit,300);
   const $ = id=>document.getElementById(id);
-  const nw=$('fpwNew'), cf=$('fpwConfirm'), err=$('fpwErr'), saveB=$('fpwSave'), ignB=$('fpwIgnore');
+  const nw=$('fpwNew'), cf=$('fpwConfirm'), err=$('fpwErr'), saveB=$('fpwSave'), ignB=$('fpwIgnore'), chooseB=$('fpwChoose');
   [nw,cf].forEach(el=>el.addEventListener('input', ()=>{ el.value = el.value.replace(/\D/g,'').slice(0,4); err.textContent=''; }));
   $('fpwShow').addEventListener('change', e=>{ nw.type = cf.type = e.target.checked ? 'text' : 'password'; });
   const finish = async (newPw)=>{
@@ -6355,11 +6386,17 @@ function maybeShowFirstLoginPwSticker(){
     const iv = setInterval(()=>{ if(!CUR || ++tries>100){ clearInterval(iv); o.remove(); } }, 50);
   });
   ignB.addEventListener('click', ()=>finish(null));
+  // CHANGE YOUR PASSWORD IF YOU WANT: swaps the two choice buttons for the change-password fields.
+  chooseB.addEventListener('click', ()=>{
+    const ch=$('fpwChoice'), fm=$('fpwForm'); ch.classList.add('pw-hide'); ch.inert=true; fm.classList.remove('pw-hide'); fm.inert=false;
+    schedFit(); setTimeout(schedFit,100);
+    setTimeout(()=>{ try{ nw.focus(); }catch(e){} }, 50);
+  });
   saveB.addEventListener('click', async ()=>{
     const a = nw.value, b = cf.value;
     if(!/^\d{4}$/.test(a)){ err.textContent = 'The password must be exactly 4 digits (0-9).'; return; }
     if(a!==b){ err.textContent = 'The two passwords do not match.'; return; }
-    if(a===CUR.password){ err.textContent = 'That is your current password. Type a different one, or tap Ignore.'; return; }
+    if(a===CUR.password){ err.textContent = 'That is your current password. Please type a different one.'; return; }
     saveB.disabled = ignB.disabled = true; btnBusy(saveB);
     try{
       const c = await checkCredentialUniqueness(CUR.username, a, {excludeSchoolId:SCHOOL_ID, excludeUsername:CUR.username});
@@ -6367,7 +6404,6 @@ function maybeShowFirstLoginPwSticker(){
     }catch(e){ console.error(e); }
     await finish(a);
   });
-  setTimeout(()=>{ try{ nw.focus(); }catch(e){} }, 50);
 }
 
 /* ---- Forced sign-out when this account's username or password is changed (e.g. by the admin) ----
@@ -13510,7 +13546,11 @@ function assignSubjectsView(){
       ${pickerHtml}
     </form>
   </div>
-  <div class="card">
+  <div style="margin-top:22px;display:flex;flex-direction:column;align-items:flex-start;gap:20px;">
+    <button type="button" class="sl-nav-btn sl-nav-purple" id="asTeachersBtn" onclick="var l=document.getElementById('asTeachersList');var o=l.style.display==='none';l.style.display=o?'':'none';this.textContent=o?'HIDE TEACHERS LIST ▴':'TEACHERS LIST ▾';">TEACHERS LIST ▾</button>
+    <button type="button" class="sl-nav-btn sl-nav-red" data-action="nav:subjectlists" onclick="SL_FROM='assignsubjects'">EDIT STUDENT SUBJECTS</button>
+  </div>
+  <div class="card" id="asTeachersList" style="display:none;">
     <table class="data-table"><tr><th>Teacher</th><th>Class</th><th>Subject</th><th>Papers</th><th>Action</th></tr>
     ${DB.assignments.map(a=>{
       const t = DB.accounts.find(x=>x.username===a.teacherUsername); const c = DB.classes.find(x=>x.id===a.classId);
@@ -15538,6 +15578,7 @@ function classAnalysisViewCore(){
   const levelWord = l => l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "A'-Level");
   const selectorsHtml = (showButtons)=>`
   <h2>RESULT ANALYSIS</h2>
+  ${isAdmin?`<button type="button" class="sl-nav-btn sl-nav-gold" data-action="nav:subjectlists" onclick="SL_FROM='classanalysis'">EDIT STUDENT SUBJECTS</button>`:''}
   <div class="card">
     <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
       <div style="flex:1 1 300px;min-width:0;"><label>1. Analysis form</label>
@@ -16006,7 +16047,7 @@ function masterMarkSheetViewCore(forExport){
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
     </div>`:''}
     ${buttonsHtml||''}
-    ${isAdmin?`<div style="margin-top:16px;"><button type="button" data-action="nav:subjectlists" style="width:fit-content;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;">EDIT STUDENT SUBJECTS</button></div>`:''}
+    ${isAdmin?`<div style="margin-top:16px;"><button type="button" data-action="nav:subjectlists" onclick="SL_FROM='mastermarksheet'" style="width:fit-content;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;">EDIT STUDENT SUBJECTS</button></div>`:''}
   </div>`;
   if(!formKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Start by choosing a sheet type on the left. Then pick the assessment type (Course Work, End of Term or Integrated), and finally the class (or the level, for the whole-level sheets).</p></div></div>`;
   if(!assessKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Now choose the assessment type: Course Work only, End of Term only, or Integrated (both together).</p></div></div>`;
@@ -16259,18 +16300,20 @@ function adminAddedNotice(ids, subject){
     m.querySelector('#aaIgnore').onclick = ()=>done('ignore');
   });
 }
+let SL_FROM = 'mastermarksheet';
 function subjectListView(){
+  const SL_BACK = ({classanalysis:['Result Analysis','classanalysis'], assignsubjects:['Assign Subjects','assignsubjects']})[SL_FROM] || ['General Marksheets','mastermarksheet'];
   const p = VIEW.params || {};
   const cls = DB.classes.find(c=>c.id===p.slClassId) || null;
   const head = `<h2>EDIT STUDENT SUBJECTS</h2>
   <div class="card">
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
       <div style="flex:1 1 220px;min-width:0;"><label>Class</label>
-        <select onchange="setSubjectListParam('slClassId', this.value)">
+        <select id="slClassPick" onchange="setSubjectListParam('slClassId', this.value)">
           <option value="" ${cls?'':'selected'}>— Select class —</option>
           ${DB.classes.map(c=>`<option value="${esc(c.id)}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
         </select></div>
-      <div><button type="button" class="btn-outline" data-action="nav:mastermarksheet">◀ General Marksheets</button></div>
+      <div><button type="button" class="btn-outline" data-action="nav:${SL_BACK[1]}">◀ ${SL_BACK[0]}</button></div>
     </div>
   </div>`;
   if(!DB.classes.length) return head + `<div class="card"><p>No classes yet — add a class first.</p></div>`;
@@ -16294,26 +16337,77 @@ function subjectListView(){
     const c = DB.classes.find(x=>x.id===s.classId);
     const cells = cols.map(sj=>{
       const on = takes(s, sj);
-      return `<td><button type="button" class="sl-cell ${on?'on':'off'}" data-sid="${esc(s.id)}" data-sub="${esc(sj)}" data-orig="${on?1:0}" data-now="${on?1:0}" title="${esc(s.name)} – ${esc(sj)}" aria-label="${esc(s.name)} ${esc(sj)}" onclick="slToggleCell(this)">${on?'✔':'✘'}</button></td>`;
+      return `<td class="sl-tc"><div class="sl-cw" onclick="slToggleCell(this.querySelector('.sl-cell'))"><button type="button" class="sl-cell ${on?'on':'off'}" data-sid="${esc(s.id)}" data-sub="${esc(sj)}" data-orig="${on?1:0}" data-now="${on?1:0}" title="${esc(s.name)} – ${esc(sj)}" aria-label="${esc(s.name)} ${esc(sj)}">${on?'✔':'✘'}</button><span class="sl-nm" title="${esc(sj)}">${esc(msAbbr(sj))}</span></div></td>`;
     }).join('');
     return `<tr><td>${i+1}</td><td>${esc(s.admNo||'')}</td><td style="text-align:left;">${esc(s.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}${cells}</tr>`;
   }).join('');
   const optHead = cols.map((sj,k)=>`<th title="${esc(sj)}">OPT${k+1}<div class="sl-ab">${esc(msAbbr(sj))}</div></th>`).join('');
   const bar = `<div class="sl-bar">
-      <div class="sl-key"><span><b class="k-on">✔</b> = student does this subject</span><span><b class="k-off">✘</b> = student does not do this subject</span></div>
-      <button type="button" class="btn sl-savebtn" onclick="slSaveGrid()">SAVE CHANGES</button>
+      <div class="sl-key" style="flex:1 1 100%;"><span><b class="k-on">✔</b> = student does this subject</span><span><b class="k-off">✘</b> = student does not do this subject</span></div>
+      <div class="sl-actions">
+        <button type="button" class="sl-ab-btn sl-dl" onclick="runDownloadSubjectsPdf(this)">⬇ DOWNLOAD PDF</button>
+        <button type="button" class="sl-ab-btn sl-pr" onclick="printSubjectsCopy()">🖨 PRINT COPY</button>
+        <button type="button" class="btn sl-savebtn sl-ab-btn sl-sv" onclick="slSaveGrid()">SAVE CHANGES</button>
+      </div>
     </div>`;
   const legend = cols.map((sj,k)=>`<span class="chip" style="margin:2px;">OPT${k+1}: ${esc(msAbbr(sj))} = ${esc(sj)}</span>`).join(' ');
   return head + `<div class="card">
     <div><b>${esc(cls.name)}</b><br><span class="small">${students.length} student${students.length===1?'':'s'} · tap a ✔ or ✘ to change it, then tap Save changes</span></div>
     ${students.length ? bar : ''}
     <div class="sl-wrap" style="margin-top:4px;">
-    ${students.length?`<table class="sl-grid" style="min-width:${300+cols.length*54}px;"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
+    ${students.length?`<table class="sl-grid" style="min-width:${300+cols.length*84}px;"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
     </div>
     ${students.length ? bar : ''}
     <p class="small" style="margin:8px 0 0;">${legend}</p>
     <p class="small" style="margin-top:10px;"><b>Adding</b> a subject (✘ → ✔) puts the student on every list, ranking and report card for it. The subject teacher can still remove them, but is first told they were added by admin and must confirm. <b>Removing</b> a subject (✔ → ✘) needs your password and hides the student's scores for it from every list, report card and ranking; a teacher may put them back on a marking list, but the scores stay hidden until you tick the subject again. Compulsory subjects are not listed because nobody can be removed from them.</p>
   </div>`;
+}
+// Download PDF / Print copy of the Edit Student Subjects list: every student with each optional subject beside its ✔ / ✘ (as last saved).
+function slExportRows(cls){
+  const students = slClassStudents(cls);
+  const multiCls = streamGroupClasses(cls).length>1;
+  const gids = streamGroupIds(cls);
+  const ownC = st=> aOwnClass(st, cls) || cls;
+  const colSet = new Set();
+  DB.assignments.forEach(a=>{ if(gids.has(a.classId) && Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, cls)) colSet.add(a.subject); });
+  students.forEach(st=>{
+    const c = ownC(st);
+    studentSubjects(st, c).forEach(sj=>{ if(!isCompulsorySubjectFor(sj, c)) colSet.add(sj); });
+    (Array.isArray(st.dropSubjects)?st.dropSubjects:[]).forEach(sj=>{ if(!isCompulsorySubjectFor(sj, c)) colSet.add(sj); });
+  });
+  const cols = [...colSet].sort((x,y)=>x.localeCompare(y));
+  const headRow = document.createElement('tr');
+  headRow.innerHTML = '<th>#</th><th>Adm No</th><th style="text-align:left;">Name</th>' + (multiCls?'<th>Class</th>':'') + cols.map((sj,k)=>`<th>OPT${k+1}</th>`).join('');
+  const bodyRows = students.map((st,i)=>{
+    const c = DB.classes.find(x=>x.id===st.classId);
+    const sub = new Set(studentSubjects(st, ownC(st)));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${esc(st.admNo||'')}</td><td style="text-align:left;">${esc(st.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}`
+      + cols.map(sj=>{ const on = sub.has(sj); return `<td style="text-align:left;white-space:nowrap;"><b style="color:${on?'#1a9a3a':'#d62828'};">${on?'✔':'✘'}</b> ${esc(msAbbr(sj))}</td>`; }).join('');
+    return tr;
+  });
+  return {students, cols, headRow, bodyRows};
+}
+async function slBuildSubjectsPdf(){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId);
+  if(!cls){ alert('Choose a class first.'); return; }
+  const {students, cols, headRow, bodyRows} = slExportRows(cls);
+  if(!students.length){ alert('No students in this class.'); return; }
+  if(!cols.length){ alert('This class has no optional subjects yet.'); return; }
+  await renderTableSectionsAsPdf([{
+    school: DB.info.schoolName || '',
+    title: `${cls.name} — Student Optional Subjects`,
+    subtitle: `${students.length} student${students.length===1?'':'s'} · ✔ = does the subject, ✘ = does not`,
+    headRows: [headRow], bodyRows
+  }], `${cls.name.replace(/[^\w]+/g,'_')}_optional_subjects.pdf`, {orientation:'landscape', rowsPerPage:22});
+}
+async function runDownloadSubjectsPdf(btn){
+  if(btn.disabled) return;
+  await runWithHostButton(btn, ()=>slBuildSubjectsPdf());
+}
+async function printSubjectsCopy(){
+  await withPdfPrint(()=>slBuildSubjectsPdf());
 }
 function slToggleCell(b){
   const now = b.dataset.now==='1' ? '0' : '1';
