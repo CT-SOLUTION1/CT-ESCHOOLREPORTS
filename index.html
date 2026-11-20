@@ -513,6 +513,19 @@ img{max-width:100%;height:auto;}
 .sl-grid td:nth-child(3){text-align:left;}
 .sl-grid th{background:#e8eef7;}
 .sl-grid input[type=checkbox]{width:13px;height:13px;}
+.sl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.sl-grid .sl-ab{font-size:10px;font-weight:700;color:#0a2a4a;margin-top:1px;}
+.sl-cell{width:100%;min-width:30px;border:0;background:transparent;font-size:20px;font-weight:900;line-height:1;padding:5px 0;cursor:pointer;border-radius:4px;box-shadow:none;}
+.sl-cell.on{color:#1a9a3a;}
+.sl-cell.off{color:#d62828;}
+.sl-cell.chg{outline:2px solid #e0a800;background:#fff6c9;}
+.sl-bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;margin:8px 0;}
+.sl-key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;font-weight:700;}
+.sl-key .k-on{color:#1a9a3a;font-size:18px;} .sl-key .k-off{color:#d62828;font-size:18px;}
+.sl-savebtn{transition:background .2s;}
+.sl-savebtn.busy{background:#e67e22 !important;color:#fff !important;}
+.sl-savebtn.done{background:#1a9a3a !important;color:#fff !important;}
+.sl-savebtn.err{background:#c0392b !important;color:#fff !important;}
 .aiu-btn{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid #b91c1c;border-radius:8px;background:#dc2626;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;text-decoration:none;}
 .aiu-btn:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .aiu-card{--aiu-k:1;margin:8px auto;width:100%;max-width:640px;box-sizing:border-box;padding:calc(28px*var(--aiu-k)) calc(22px*var(--aiu-k));display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
@@ -8752,7 +8765,7 @@ function navByRoleRaw(role){
       ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
       ['parentaccounts','PARENTS AND NON TEACHING STAFF','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','SCORES SHEETS AND ATTENDANCES','📋'],['classanalysis','RESULT ANALYSIS','📈'],
-      ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['subjectlists','EDIT SUBJECT LIST','🧾'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
+      ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['subjectlists','EDIT STUDENT SUBJECTS','🧾'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
       ['reports','Report Cards','📄']
     ];
   }
@@ -15993,7 +16006,7 @@ function masterMarkSheetViewCore(forExport){
       <div><label>Year</label><input value="${esc(String(year||''))}" onchange="setMasterMarkSheetParam('mmYear', this.value)"></div>
     </div>`:''}
     ${buttonsHtml||''}
-    ${isAdmin?`<div style="margin-top:16px;"><button type="button" data-action="nav:subjectlists" style="width:fit-content;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;">EDIT SUBJECT LIST</button></div>`:''}
+    ${isAdmin?`<div style="margin-top:16px;"><button type="button" data-action="nav:subjectlists" style="width:fit-content;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;">EDIT STUDENT SUBJECTS</button></div>`:''}
   </div>`;
   if(!formKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Start by choosing a sheet type on the left. Then pick the assessment type (Course Work, End of Term or Integrated), and finally the class (or the level, for the whole-level sheets).</p></div></div>`;
   if(!assessKey) return `<div class="center-stage">` + selectorsHtml('') + `<div class="card"><p class="small">Now choose the assessment type: Course Work only, End of Term only, or Integrated (both together).</p></div></div>`;
@@ -16215,10 +16228,41 @@ function slOptionalSubjectsHtml(st, cls, current){
   return opts.map(sj=>`<span class="chip"${sj===current?' style="font-weight:800;"':''}>${esc(sj)}</span>`).join(' ');
 }
 function slEnrolled(cls, subject){ return slClassStudents(cls).filter(s=>studentSubjects(s, cls).includes(subject)); }
+/* ---- Admin-added subjects: a student the admin ticks into a subject is flagged (student.adminAdded). When a teacher later tries
+   to take them off that subject's list, they first see who added them and choose Confirm remove or Ignore (keep them and give scores). ---- */
+function adminAddedIds(ids, subject){
+  const set = new Set(ids||[]);
+  return DB.students.filter(x=>set.has(x.id) && Array.isArray(x.adminAdded) && x.adminAdded.includes(subject)).map(x=>x.id);
+}
+function clearAdminAdded(ids, subject){
+  const set = new Set(ids||[]); let n = 0;
+  DB.students.forEach(x=>{ if(set.has(x.id) && Array.isArray(x.adminAdded) && x.adminAdded.includes(subject)){ x.adminAdded = x.adminAdded.filter(z=>z!==subject); n++; } });
+  return n;
+}
+function adminAddedNotice(ids, subject){
+  return new Promise(resolve=>{
+    const old = document.getElementById('aaNotice'); if(old) old.remove();
+    const m = document.createElement('div'); m.id = 'aaNotice'; m.setAttribute('role','alertdialog');
+    m.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(10,20,40,.72);display:flex;align-items:center;justify-content:center;padding:14px;font-family:Inter,sans-serif;overflow:auto;';
+    const lines = ids.map(id=>{ const st = DB.students.find(x=>x.id===id); return `<li style="margin:8px 0;">This student <b>${esc(st?st.name:'a student')}</b> was added to subject <b>${esc(subject)}</b> by admin.</li>`; }).join('');
+    m.innerHTML = '<div style="background:#fff;border:5px solid #e0a800;border-radius:16px;max-width:600px;width:100%;padding:22px 20px;box-shadow:0 10px 40px rgba(0,0,0,.5);max-height:96vh;overflow:auto;">'
+      + '<div style="font-size:24px;font-weight:800;color:#8a5a00;line-height:1.25;">⚠ ADDED BY ADMIN</div>'
+      + '<ul style="font-size:18px;color:#0a2a4a;line-height:1.4;margin:12px 0 0;padding-left:22px;">'+lines+'</ul>'
+      + '<div style="font-size:16px;color:#222;margin-top:12px;line-height:1.4;">Choose <b>Confirm remove</b> to take '+(ids.length===1?'them':'them all')+' off your '+esc(subject)+' list, or <b>Ignore</b> to keep '+(ids.length===1?'them':'them')+' on the list and give scores.</div>'
+      + '<div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">'
+      + '<button type="button" id="aaRemove" style="flex:1;min-width:140px;font-size:18px;font-weight:800;padding:14px;border:0;border-radius:10px;background:#c0392b;color:#fff;cursor:pointer;">Confirm remove</button>'
+      + '<button type="button" id="aaIgnore" style="flex:1;min-width:140px;font-size:18px;font-weight:800;padding:14px;border:0;border-radius:10px;background:#1a9a3a;color:#fff;cursor:pointer;">Ignore – give scores</button>'
+      + '</div></div>';
+    document.body.appendChild(m);
+    const done = v=>{ m.remove(); resolve(v); };
+    m.querySelector('#aaRemove').onclick = ()=>done('remove');
+    m.querySelector('#aaIgnore').onclick = ()=>done('ignore');
+  });
+}
 function subjectListView(){
   const p = VIEW.params || {};
   const cls = DB.classes.find(c=>c.id===p.slClassId) || null;
-  const head = `<h2>EDIT SUBJECT LIST</h2>
+  const head = `<h2>EDIT STUDENT SUBJECTS</h2>
   <div class="card">
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
       <div style="flex:1 1 220px;min-width:0;"><label>Class</label>
@@ -16233,69 +16277,106 @@ function subjectListView(){
   if(!cls) return head + `<div class="card"><p class="small">Choose a class to see every student with the optional subjects they take.</p></div>`;
   const students = slClassStudents(cls);
   const multiCls = streamGroupClasses(cls).length>1;
-  const optsOf = st=>{ const c = aOwnClass(st, cls) || cls; return studentSubjects(st, c).filter(sj=>!isCompulsorySubjectFor(sj, c)).sort((a,b)=>a.localeCompare(b)); };
-  const droppedOf = st=>{ const c = aOwnClass(st, cls) || cls; return (Array.isArray(st.dropSubjects)?st.dropSubjects:[]).filter(sj=>!isCompulsorySubjectFor(sj, c)); };
-  const data = students.map(s=>{
-    const on = optsOf(s), off = droppedOf(s).filter(sj=>!on.includes(sj));
-    const all = [...on.map(sj=>({sj, off:false})), ...off.map(sj=>({sj, off:true}))].sort((a,b)=>a.sj.localeCompare(b.sj));
-    return {s, opts: all};
-  });
-  const nOpt = Math.max(1, ...data.map(d=>d.opts.length));
-  const rows = data.map((d,i)=>{
-    const c = DB.classes.find(x=>x.id===d.s.classId);
-    let cells = '';
-    for(let k=0;k<nOpt;k++){
-      const o = d.opts[k];
-      cells += o ? `<td><label style="display:flex;align-items:center;gap:3px;margin:0;font-weight:600;${o.off?'color:#a33;':''}"><input type="checkbox" class="slPick" data-sid="${esc(d.s.id)}" data-sub="${esc(o.sj)}" data-off="${o.off?1:0}" style="width:auto;min-width:0;margin:0;flex:0 0 auto;"><span title="${esc(o.sj)}"${o.off?' style="text-decoration:line-through;"':''}>${esc(msAbbr(o.sj))}</span></label></td>` : `<td></td>`;
-    }
-    return `<tr><td>${i+1}</td><td>${esc(d.s.admNo||'')}</td><td style="text-align:left;">${esc(d.s.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}${cells}</tr>`;
-  }).join('');
-  const optHead = Array.from({length:nOpt},(_,k)=>`<th>OPT${k+1}</th>`).join('');
-  // Add back: pick a subject, then a student who is not on its list.
   const gids = streamGroupIds(cls);
-  const addSubs = [...new Set(DB.assignments.filter(a=>gids.has(a.classId) && Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, cls)).map(a=>a.subject))].sort((x,y)=>x.localeCompare(y))
-    .filter(sj=>students.some(s=>!studentSubjects(s, aOwnClass(s, cls)||cls).includes(sj)));
-  const addSub = addSubs.includes(p.slAddSubject) ? p.slAddSubject : '';
-  const addStu = addSub ? students.filter(s=>!studentSubjects(s, aOwnClass(s, cls)||cls).includes(addSub)) : [];
-  const tb = `<div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" class="btn-outline" data-action="slPickAll">Tick / untick all</button>
-        <button type="button" class="btn" style="background:var(--danger);" data-action="slTickRemove">REMOVE ALL TICKED</button>
-        <button type="button" class="btn" data-action="slTickAdd">ADD ALL TICKED</button>
-      </div>`;
+  const ownC = st=> aOwnClass(st, cls) || cls;
+  const takes = (st, sj)=> studentSubjects(st, ownC(st)).includes(sj);
+  // Every optional subject of the class becomes one column (OPT1, OPT2 ...), the same for every student row.
+  const colSet = new Set();
+  DB.assignments.forEach(a=>{ if(gids.has(a.classId) && Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, cls)) colSet.add(a.subject); });
+  students.forEach(st=>{
+    const c = ownC(st);
+    studentSubjects(st, c).forEach(sj=>{ if(!isCompulsorySubjectFor(sj, c)) colSet.add(sj); });
+    (Array.isArray(st.dropSubjects)?st.dropSubjects:[]).forEach(sj=>{ if(!isCompulsorySubjectFor(sj, c)) colSet.add(sj); });
+  });
+  const cols = [...colSet].sort((x,y)=>x.localeCompare(y));
+  if(!cols.length) return head + `<div class="card"><p class="small">${esc(cls.name)} has no optional subjects yet. They appear here once a subject teacher is assigned an optional subject for this class.</p></div>`;
+  const rows = students.map((s,i)=>{
+    const c = DB.classes.find(x=>x.id===s.classId);
+    const cells = cols.map(sj=>{
+      const on = takes(s, sj);
+      return `<td><button type="button" class="sl-cell ${on?'on':'off'}" data-sid="${esc(s.id)}" data-sub="${esc(sj)}" data-orig="${on?1:0}" data-now="${on?1:0}" title="${esc(s.name)} – ${esc(sj)}" aria-label="${esc(s.name)} ${esc(sj)}" onclick="slToggleCell(this)">${on?'✔':'✘'}</button></td>`;
+    }).join('');
+    return `<tr><td>${i+1}</td><td>${esc(s.admNo||'')}</td><td style="text-align:left;">${esc(s.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}${cells}</tr>`;
+  }).join('');
+  const optHead = cols.map((sj,k)=>`<th title="${esc(sj)}">OPT${k+1}<div class="sl-ab">${esc(msAbbr(sj))}</div></th>`).join('');
+  const bar = `<div class="sl-bar">
+      <div class="sl-key"><span><b class="k-on">✔</b> = student does this subject</span><span><b class="k-off">✘</b> = student does not do this subject</span></div>
+      <button type="button" class="btn sl-savebtn" onclick="slSaveGrid()">SAVE CHANGES</button>
+    </div>`;
+  const legend = cols.map((sj,k)=>`<span class="chip" style="margin:2px;">OPT${k+1}: ${esc(msAbbr(sj))} = ${esc(sj)}</span>`).join(' ');
   return head + `<div class="card">
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
-      <div><b>${esc(cls.name)}</b><br><span class="small">${students.length} student${students.length===1?'':'s'} · optional subjects each student takes</span></div>
-      ${tb}
+    <div><b>${esc(cls.name)}</b><br><span class="small">${students.length} student${students.length===1?'':'s'} · tap a ✔ or ✘ to change it, then tap Save changes</span></div>
+    ${students.length ? bar : ''}
+    <div class="sl-wrap" style="margin-top:4px;">
+    ${students.length?`<table class="sl-grid" style="min-width:${300+cols.length*54}px;"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
     </div>
-    <div style="margin-top:10px;">
-    ${students.length?`<table class="sl-grid"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
-    </div>
-    ${students.length?`<div style="margin-top:10px;">${tb}</div>`:''}
-    <p class="small" style="margin-top:10px;">Tick any subjects you want to take off a student, then tap <b>Remove ticked</b> once and enter your password once. Removing a subject takes it off their report card and out of every list, mark sheet, rank list and analysis; averages, points and positions are worked out without it. Removed subjects stay in the table (struck through): a teacher may put the student back on their marking list and enter scores, but those scores stay hidden and affect nothing until you tick the subject and tap <b>ADD ALL TICKED</b>. Compulsory subjects are not listed because nobody can be removed from them.</p>
-  </div>
-  ${addSubs.length?`<div class="card"><label>Add a subject back to a student</label>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-      <select style="flex:1 1 200px;min-width:0;" onchange="setSubjectListParam('slAddSubject', this.value)"><option value="">— Subject —</option>${addSubs.map(sj=>`<option value="${esc(sj)}" ${sj===addSub?'selected':''}>${esc(sj)}</option>`).join('')}</select>
-      ${addSub?`<select id="slAddSel" style="flex:1 1 240px;min-width:0;">${addStu.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.admNo?' ('+esc(s.admNo)+')':''}</option>`).join('')}</select>
-      <button type="button" class="btn" data-action="slAdd">Add back</button>`:''}</div></div>`:''}`;
+    ${students.length ? bar : ''}
+    <p class="small" style="margin:8px 0 0;">${legend}</p>
+    <p class="small" style="margin-top:10px;"><b>Adding</b> a subject (✘ → ✔) puts the student on every list, ranking and report card for it. The subject teacher can still remove them, but is first told they were added by admin and must confirm. <b>Removing</b> a subject (✔ → ✘) needs your password and hides the student's scores for it from every list, report card and ranking; a teacher may put them back on a marking list, but the scores stay hidden until you tick the subject again. Compulsory subjects are not listed because nobody can be removed from them.</p>
+  </div>`;
 }
-// Removes the ticked (student, subject) pairs: one password confirmation for the whole batch; each subject is
-// taken off exactly as before (assignment roster for optional subjects).
-async function slApplyRemovalPairs(pairs){
+function slToggleCell(b){
+  const now = b.dataset.now==='1' ? '0' : '1';
+  b.dataset.now = now;
+  b.classList.toggle('on', now==='1'); b.classList.toggle('off', now!=='1');
+  b.classList.toggle('chg', now!==b.dataset.orig);
+  b.textContent = now==='1' ? '✔' : '✘';
+  if(document.querySelector('.sl-savebtn.done, .sl-savebtn.err')) slSetSaveBtns('', 'SAVE CHANGES');
+}
+function slSetSaveBtns(state, text){
+  document.querySelectorAll('.sl-savebtn').forEach(btn=>{
+    btn.classList.remove('busy','done','err');
+    if(state) btn.classList.add(state);
+    btn.textContent = text;
+    btn.disabled = (state==='busy');
+  });
+}
+let SL_SAVING = false;
+async function slSaveGrid(){
+  if(SL_SAVING) return;
+  if(navigator.onLine===false && !(typeof DEMO_MODE!=='undefined' && DEMO_MODE)){ showConnectionModal('save changes'); return; }
   const p = VIEW.params || {};
   const cls = DB.classes.find(c=>c.id===p.slClassId);
-  if(!cls || !pairs.length) return;
-  const nm = id=>{ const st=DB.students.find(x=>x.id===id); return st?st.name:'a student'; };
-  const preview = pairs.slice(0,5).map(x=>`${nm(x.id)} – ${x.sub}`);
-  const sure = await askPasswordConfirm({
-    title:`REMOVE ${pairs.length} SUBJECT${pairs.length===1?'':'S'}`,
-    action:`You are about to REMOVE: ${preview.join('; ')}${pairs.length>5?` and ${pairs.length-5} more`:''} (${cls.name}).`,
-    effects:[
-      `Each subject is removed from that student everywhere: Enter Scores, mark sheets, rank lists, Result Analysis and report cards.`,
-      `The subject disappears from their report card, and their average / points and class position are worked out without it.`,
-      `Saved scores are kept safely (hidden). Use "Add back" on this page to restore them.`],
-    confirmLabel:`Yes, remove ${pairs.length}`});
-  if(!sure) return;
+  if(!cls) return;
+  const changed = [...document.querySelectorAll('.sl-cell')].filter(b=>b.dataset.orig!==b.dataset.now);
+  if(!changed.length){
+    slSetSaveBtns('', 'NO CHANGES TO SAVE');
+    setTimeout(()=>{ if(!document.querySelector('.sl-savebtn.busy')) slSetSaveBtns('', 'SAVE CHANGES'); }, 1600);
+    return;
+  }
+  const toRemove = changed.filter(b=>b.dataset.now==='0').map(b=>({id:b.dataset.sid, sub:b.dataset.sub}));
+  const toAdd = changed.filter(b=>b.dataset.now==='1').map(b=>({id:b.dataset.sid, sub:b.dataset.sub}));
+  SL_SAVING = true;
+  try{
+    try{ undoSetLabel('Edit student subjects'); }catch(_){}
+    if(toRemove.length){
+      const nm = id=>{ const st=DB.students.find(x=>x.id===id); return st?st.name:'a student'; };
+      const preview = toRemove.slice(0,5).map(x=>`${nm(x.id)} – ${x.sub}`);
+      const sure = await askPasswordConfirm({
+        title:`REMOVE ${toRemove.length} SUBJECT${toRemove.length===1?'':'S'}`,
+        action:`You are about to REMOVE: ${preview.join('; ')}${toRemove.length>5?` and ${toRemove.length-5} more`:''} (${cls.name}).`,
+        effects:[
+          `Each subject is removed from that student everywhere: Enter Scores, mark sheets, rank lists, Result Analysis and report cards.`,
+          `The subject disappears from their report card, and their average / points and class position are worked out without it.`,
+          `Saved scores are kept safely (hidden). A teacher may put the student back on a marking list, but the scores stay hidden until you tick the subject again here.`],
+        confirmLabel:`Yes, remove ${toRemove.length}`});
+      if(!sure) return;
+    }
+    slSetSaveBtns('busy', 'PROCESSING…');
+    if(toRemove.length){ const ok = await slDoRemovePairs(cls, toRemove); if(!ok){ slSetSaveBtns('', 'SAVE CHANGES'); return; } }
+    if(toAdd.length) await slDoAddPairs(cls, toAdd);
+    await saveStudents(); await saveAssignments(); invalidateScoreLookupCache();
+    changed.forEach(b=>{ b.dataset.orig = b.dataset.now; b.classList.remove('chg'); });
+    slSetSaveBtns('done', 'SUBJECTS SAVED ✔');
+    setTimeout(()=>{ if(document.querySelector('.sl-savebtn.done')) slSetSaveBtns('', 'SAVE CHANGES'); }, 3000);
+  }catch(e){
+    console.error('slSaveGrid failed', e);
+    slSetSaveBtns('err', 'NOT SAVED – TRY AGAIN');
+  }finally{ SL_SAVING = false; }
+}
+// Takes each (student, subject) pair off: off every teacher list of that subject in the class group, and recorded as a
+// removal by the admin (dropSubjects) so the student's scores for it stay hidden everywhere. Returns false if cancelled.
+async function slDoRemovePairs(cls, pairs){
   const bySub = new Map();
   pairs.forEach(x=>{ if(!bySub.has(x.sub)) bySub.set(x.sub, new Set()); bySub.get(x.sub).add(x.id); });
   const gids = streamGroupIds(cls);
@@ -16304,32 +16385,49 @@ async function slApplyRemovalPairs(pairs){
     for(const a of asns){
       const hit = a.studentIds.filter(i=>gone.has(i));
       if(!hit.length) continue;
-      if(!(await binGuard('roster', `${hit.length} student${hit.length===1?'':'s'} removed from ${subject} list`, cls.name, {assignId:a.id, studentIds:hit, peers:[]}))) return;
+      if(!(await binGuard('roster', `${hit.length} student${hit.length===1?'':'s'} removed from ${subject} list`, cls.name, {assignId:a.id, studentIds:hit, peers:[]}))) return false;
     }
-    asns.forEach(a=>{
+  }
+  bySub.forEach((gone, subject)=>{
+    DB.assignments.filter(a=>gids.has(a.classId) && a.subject===subject && Array.isArray(a.studentIds)).forEach(a=>{
       a.studentIds = a.studentIds.filter(i=>!gone.has(i));
       if(a.pending && Array.isArray(a.pending.ids)) a.pending = Object.assign({}, a.pending, {ids:a.pending.ids.filter(i=>!gone.has(i))});
     });
-  }
-  bySub.forEach((gone, subject)=>{
-    DB.students.forEach(st=>{ if(gone.has(st.id)){ const d = Array.isArray(st.dropSubjects) ? st.dropSubjects : []; if(!d.includes(subject)) st.dropSubjects = [...d, subject]; } });
+    DB.students.forEach(st=>{
+      if(!gone.has(st.id)) return;
+      const d = Array.isArray(st.dropSubjects) ? st.dropSubjects : [];
+      if(!d.includes(subject)) st.dropSubjects = [...d, subject];
+      if(Array.isArray(st.adminAdded)) st.adminAdded = st.adminAdded.filter(z=>z!==subject);
+    });
   });
-  await saveAssignments(); await saveStudents(); invalidateScoreLookupCache();
-  render();
+  return true;
 }
-// Adds the ticked (student, subject) pairs back: the subject returns to the student and any hidden scores come back with it.
-async function slApplyAddPairs(pairs){
-  const p = VIEW.params || {};
-  const cls = DB.classes.find(c=>c.id===p.slClassId);
-  if(!cls || !pairs.length) return;
+// Adds each (student, subject) pair: the subject returns to the student (hidden scores come back), the student goes onto EVERY
+// teacher list of that subject in the class group (waiting at the bottom until scored), and is flagged as added by the admin.
+async function slDoAddPairs(cls, pairs){
   const gids = streamGroupIds(cls);
+  const key = `${DB.info.currentTerm}|${DB.info.currentYear}`;
   pairs.forEach(x=>{
     const st = DB.students.find(y=>y.id===x.id); if(!st) return;
     st.dropSubjects = (st.dropSubjects||[]).filter(z=>z!==x.sub);
     if(isCompulsorySubjectFor(x.sub, cls)) return;
-    const asn = DB.assignments.find(a=>gids.has(a.classId) && a.subject===x.sub && Array.isArray(a.studentIds));
-    if(asn && !asn.studentIds.includes(x.id)) asn.studentIds = [...asn.studentIds, x.id];
+    let placed = false;
+    DB.assignments.filter(a=>gids.has(a.classId) && a.subject===x.sub && Array.isArray(a.studentIds)).forEach(a=>{
+      if(!a.studentIds.includes(x.id)){
+        a.studentIds = [...a.studentIds, x.id];
+        const cur = (a.pending && a.pending.key===key && Array.isArray(a.pending.ids)) ? a.pending.ids : [];
+        a.pending = {key, ids:[...new Set([...cur, x.id])]};
+      }
+      placed = true;
+    });
+    if(placed){ const f = Array.isArray(st.adminAdded) ? st.adminAdded : []; if(!f.includes(x.sub)) st.adminAdded = [...f, x.sub]; }
   });
+}
+async function slApplyAddPairs(pairs){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId);
+  if(!cls || !pairs.length) return;
+  await slDoAddPairs(cls, pairs);
   await saveStudents(); await saveAssignments(); invalidateScoreLookupCache();
   render();
 }
@@ -19851,6 +19949,8 @@ Continue?`);
       try{
       const st = DB.students.find(x=>x.id===studentId);
       const clsR = DB.classes.find(c=>c.id===a.classId);
+      { const _aa = adminAddedIds([studentId], a.subject);
+        if(_aa.length){ const _ch = await adminAddedNotice(_aa, a.subject); if(_ch!=='remove') break; } }
       const sure = await askPasswordConfirm({
         title:'REMOVE STUDENT FROM YOUR LIST',
         action:`You are about to REMOVE ${st?st.name:'this student'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}.`,
@@ -19863,6 +19963,7 @@ Continue?`);
       }
       a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>id!==studentId) : a.studentIds;
       applyPeerRosterRemoval(_peers);
+      if(clearAdminAdded([studentId], a.subject)) await saveStudents();
       await saveAssignments(); render();
       } finally { seRestore(_seCtx); }
       break;
@@ -19881,8 +19982,10 @@ Continue?`);
       if(isCompulsorySubjectFor(a.subject, DB.classes.find(c=>c.id===a.classId))){ alert('This is a compulsory subject — every student in the class stays on the list.'); break; }
       if(CUR.role==='teacher' && a.teacherUsername!==CUR.username){ alert('This is not your subject list.'); break; }
       const f = seForm(); if(!f) break;
-      const ids = [...f.querySelectorAll('.se-pick:checked')].map(b=>b.dataset.sid);
+      let ids = [...f.querySelectorAll('.se-pick:checked')].map(b=>b.dataset.sid);
       if(!ids.length){ alert('Tick the small box before the names of the students you want to remove first.'); break; }
+      { const _aa = adminAddedIds(ids, a.subject);
+        if(_aa.length){ const _ch = await adminAddedNotice(_aa, a.subject); if(_ch!=='remove'){ ids = ids.filter(id=>!_aa.includes(id)); if(!ids.length) break; } } }
       const clsR = DB.classes.find(c=>c.id===a.classId);
       const names = ids.slice(0,5).map(id=>{ const st=DB.students.find(x=>x.id===id); return st?st.name:'a student'; });
       const _seCtx = seCapture(ids[0]);
@@ -19899,6 +20002,7 @@ Continue?`);
         const gone = new Set(ids);
         a.studentIds = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>!gone.has(id)) : a.studentIds;
         applyPeerRosterRemoval(_peers);
+        if(clearAdminAdded(ids, a.subject)) await saveStudents();
         await saveAssignments(); render();
       } finally { seRestore(_seCtx); }
       break;
@@ -19935,16 +20039,20 @@ Continue?`);
       if(CUR.role==='teacher' && a.teacherUsername!==CUR.username){ alert('This is not your subject list.'); break; }
       const n = Array.isArray(a.studentIds) ? a.studentIds.length : 0;
       const clsR = DB.classes.find(c=>c.id===a.classId);
+      let _keepAA = [];
+      { const _aa = adminAddedIds(Array.isArray(a.studentIds)?a.studentIds:[], a.subject);
+        if(_aa.length){ const _ch = await adminAddedNotice(_aa, a.subject); if(_ch!=='remove') _keepAA = _aa; } }
       const sure = await askPasswordConfirm({
         title:`REMOVE ALL ${n} STUDENT${n===1?'':'S'} FROM YOUR LIST`,
         action:`You are about to REMOVE ALL ${n} student${n===1?'':'s'} from your ${a.subject} marking list${clsR?' ('+clsR.name+')':''}. Your list will be completely empty.`,
         effects: rosterRemovalEffects(a.subject), confirmLabel:`Yes, remove all ${n}`});
       if(!sure) break;
-      const _all = Array.isArray(a.studentIds) ? a.studentIds.slice() : [];
+      const _all = Array.isArray(a.studentIds) ? a.studentIds.filter(id=>!_keepAA.includes(id)) : [];
       const _peers = peerRosterHits(a, _all);
       if(n>0 && !(await binGuard('roster', `All ${n} student${n===1?'':'s'} removed from ${a.subject} list`, clsR?clsR.name:'Marking list', {assignId:a.id, studentIds:_all, peers:_peers}))) break;
-      a.studentIds = [];
+      a.studentIds = _keepAA.slice();
       applyPeerRosterRemoval(_peers);
+      if(clearAdminAdded(_all, a.subject)) await saveStudents();
       await saveAssignments(); render();
       break;
     }
@@ -22706,6 +22814,15 @@ document.addEventListener('submit', async (e)=>{
         const wasSet = Array.isArray(a.studentIds);
         const added = ticked.filter(id=>!prev.includes(id));
         const missingOnlyMode = form.dataset.missingOnly==='1';
+        if(!missingOnlyMode && wasSet){
+          const _gone = prev.filter(id=>!ticked.includes(id));
+          const _aa = adminAddedIds(_gone, a.subject);
+          if(_aa.length){
+            const _ch = await adminAddedNotice(_aa, a.subject);
+            if(_ch==='remove'){ clearAdminAdded(_aa, a.subject); await saveStudents(); }
+            else _aa.forEach(id=>ticked.push(id));
+          }
+        }
         a.studentIds = missingOnlyMode ? [...prev, ...added] : [...prev.filter(id=>ticked.includes(id)), ...added];
         if(wasSet && added.length){
           const key = `${DB.info.currentTerm}|${DB.info.currentYear}`;
