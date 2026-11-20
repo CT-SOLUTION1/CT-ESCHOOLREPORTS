@@ -504,6 +504,13 @@ img{max-width:100%;height:auto;}
 /* Pages other than the dashboard: the blue menu tucks away so the page can use the whole screen. Only one clear Dashboard bar
    stays; tapping it shows every option (as a grid), and choosing one re-renders the page with the menu tucked away again. */
 .sidebar a.nav-home{display:none;}
+.aiu-btn{display:inline-block;box-sizing:border-box;max-width:100%;text-align:center;padding:9px 16px;font-size:13px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;text-decoration:none;}
+.aiu-btn:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
+.aiu-card{margin:16px auto;width:min(460px,100%);box-sizing:border-box;}
+.aiu-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #d5dbe6;border-radius:10px;margin:8px 0;cursor:pointer;background:#fff;}
+.aiu-opt input{position:absolute;opacity:0;width:0;height:0;}
+.aiu-circ{flex:0 0 auto;width:22px;height:22px;border-radius:50%;border:2px solid #1e6fd9;box-sizing:border-box;background:#fff;}
+.aiu-opt input:checked + .aiu-circ{background:#1e6fd9;box-shadow:inset 0 0 0 4px #fff;}
 .layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
 .layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
 .layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
@@ -2987,6 +2994,66 @@ function examConfig(classId){
     isClassOverride // true when this came from a class-specific override, not the school default
   };
 }
+// ---- ASSESSMENTS IN USE (Exam Setup -> ASSESSMENTS IN USE) ----
+// Per class, the admin can switch individual assessment types (each Course Work test, and End of Term) off.
+// Only assessments that are in use count for averages, grades, ranking and report-card final averages.
+// Switched-off assessments that have scores are still SHOWN on report cards, just never counted.
+// Stored as cls.assessOff = [keys of assessments NOT in use]; nothing stored = everything in use (new tests default to in use).
+function assessListFor(classId){
+  const cfg = examConfig(classId), out = [];
+  if(cfg.cwEnabled){
+    if(cfg.cwTests.length) cfg.cwTests.forEach(t=>out.push({key:'AOI::'+normLabel(t.name), label:t.name, sub:cfg.cwLabel+' \u00B7 out of '+t.max}));
+    else out.push({key:'AOI', label:cfg.cwLabel, sub:'Continuous assessment \u00B7 out of '+cfg.cwPercent});
+  }
+  if(cfg.eotEnabled) out.push({key:'EOT', label:cfg.eotLabel, sub:'End of term \u00B7 out of '+cfg.eotPercent});
+  return out;
+}
+function assessOffSet(classId){
+  const cls = DB.classes.find(c=>c.id===classId);
+  return (cls && Array.isArray(cls.assessOff) && cls.assessOff.length) ? new Set(cls.assessOff) : null;
+}
+function assessRowInUse(r, off, cfg){
+  if(!off) return true;
+  if(r.kind==='EOT') return !off.has('EOT');
+  if(r.kind!=='AOI') return true;
+  const tests = cfg.cwTests || [];
+  if(!tests.length) return !off.has('AOI');
+  if(tests.length===1) return !off.has('AOI::'+normLabel(tests[0].name));
+  const t = tests.find(x=>normLabel(x.name)===normLabel(r.label));
+  if(t) return !off.has('AOI::'+normLabel(t.name));
+  return tests.some(x=>!off.has('AOI::'+normLabel(x.name)));
+}
+function inUseRows(rows, classId){
+  const off = assessOffSet(classId);
+  if(!off || !rows || !rows.length) return rows;
+  const cfg = examConfig(classId);
+  return rows.filter(r=>assessRowInUse(r, off, cfg));
+}
+// Exam config used ONLY for calculations (averages, grades, ranks): components/tests that are not in use are switched off.
+function calcExamConfig(classId){
+  const cfg = examConfig(classId), off = assessOffSet(classId);
+  if(!off) return cfg;
+  const tests = cfg.cwTests || [];
+  const keep = tests.filter(t=>!off.has('AOI::'+normLabel(t.name)));
+  const cwOn = tests.length ? keep.length>0 : !off.has('AOI');
+  return Object.assign({}, cfg, {cwEnabled: cfg.cwEnabled && cwOn, eotEnabled: cfg.eotEnabled && !off.has('EOT'), cwTests: tests.length ? keep : tests});
+}
+// Averages for DISPLAY on report cards: include every assessment with scores, in use or not.
+function assessDisplayAvgs(allRows, classId, aoiAvg, eotAvg){
+  if(!assessOffSet(classId)) return {aoi:aoiAvg, eot:eotAvg};
+  const d = examConfig(classId);
+  const e = d.eotEnabled ? allRows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, d.eotPercent)) : [];
+  return { aoi: d.cwEnabled ? caAvgFromRows(allRows.filter(r=>r.kind==='AOI'), d) : null, eot: e.length ? e.reduce((a,b)=>a+b,0)/e.length : null };
+}
+// Report-card note: only when SOME (not all) of the class's assessments are in use; names them by their column titles.
+function assessNoteFor(classId){
+  const off = assessOffSet(classId); if(!off) return '';
+  const list = assessListFor(classId);
+  if(!list.some(a=>off.has(a.key))) return '';
+  const used = list.filter(a=>!off.has(a.key)).map(a=>a.label);
+  return used.length ? 'Assessments considered in final averages and gradings: '+used.join(', ')+'.' : '';
+}
+function rcShow(p, k){ const v = p[k+'Show']; return v!==undefined ? v : p[k+'Avg']; }
 
 // ---- Primary (Uganda PLE-style) ----
 // The 4 subjects examined at PLE (Primary Leaving Examination) by UNEB.
@@ -6811,6 +6878,47 @@ function streamGroupClasses(cls){
   return g.length ? g : [cls];
 }
 function streamGroupIds(cls){ return new Set(streamGroupClasses(cls).map(c=>c.id)); }
+// ---- A-Level automatic streaming: ARTS and SCIENCES ----
+// An A-Level class made without streams gets the two initial streams ARTS and SCIENCES (sharing the class teacher by default).
+// A student who takes (or has scores in) ANY principal subject categorised SCIENCES is placed in SCIENCES; a student is in ARTS only
+// when every principal subject they take is ARTS. Students with no principal subject yet stay where they are.
+function aStreamPair(cls){
+  const g = streamGroupClasses(cls);
+  const arts = g.find(c=>/^arts?$/i.test(String(c.stream||'').trim()));
+  const sci = g.find(c=>/^sciences?$/i.test(String(c.stream||'').trim()));
+  return (arts && sci) ? {arts, sci} : null;
+}
+function aStreamFor(st, cls){
+  const drop = Array.isArray(st.dropSubjects) ? st.dropSubjects : [];
+  const taken = new Set(principalsFor(st, cls));
+  const term = DB.info.currentTerm, year = DB.info.currentYear;
+  const cats = new Set();
+  aOptionalList().forEach(sj=>{
+    if(drop.includes(sj)) return;
+    const cat = aSubjectCategory(sj); if(!cat) return;
+    if(taken.has(sj) || rawScores(st.id, sj, term, year).length>0) cats.add(cat);
+  });
+  if(cats.has('SCIENCES')) return 'SCIENCES';
+  return cats.size ? 'ARTS' : null;
+}
+var _aAutoBusy = false;
+function aAutoStreamCheck(){
+  if(_aAutoBusy || !CUR || CUR.role!=='admin' || !DB || !Array.isArray(DB.classes) || !Array.isArray(DB.students)) return;
+  let moved = 0;
+  DB.students.forEach(st=>{
+    if(st.status==='left') return;
+    const cls = DB.classes.find(c=>c.id===st.classId);
+    if(!cls || cls.level!=='A') return;
+    const pr = aStreamPair(cls); if(!pr) return;
+    const t = aStreamFor(st, cls); if(!t) return;
+    const dest = t==='SCIENCES' ? pr.sci : pr.arts;
+    if(dest.id!==st.classId){ st.classId = dest.id; moved++; }
+  });
+  if(moved){
+    _aAutoBusy = true; invalidateScoreLookupCache();
+    setTimeout(async()=>{ try{ await saveStudents(); }catch(e){ console.error(e); } _aAutoBusy = false; render(); }, 0);
+  }
+}
 function streamGroupIdsById(classId){ const c = DB.classes.find(x=>x.id===classId); return c ? streamGroupIds(c) : new Set([classId]); }
 // "All streams" for an A-Level class: a scope value 'allstr:<home class id>' stands for every stream of that class.
 var ALLSTR = 'allstr:';
@@ -6993,6 +7101,7 @@ function peersHaveScore(student, subject, term, year, kind, label, paper){
     byStudent = new Map(); // studentId -> Set of kinds they have ('*' = any)
     DB.students.forEach(st=>{
       if(!_pids.has(st.classId) || st.status==='left') return;
+      if(Array.isArray(st.dropSubjects) && st.dropSubjects.includes(subject)) return;   // removed by the admin: scores stay hidden
       const rows = rawScores(st.id, subject, term, year);
       if(!rows.length) return;
       const kinds = new Set(['*']); rows.forEach(r=>{ kinds.add(r.kind); { const _pk = (r.paper==null||r.paper==='') ? 'none' : String(r.paper); kinds.add('*|P|'+_pk); kinds.add(r.kind+'|P|'+_pk); } if(r.kind==='AOI'){ kinds.add('AOI|'+(r.label||'')); kinds.add('AOI|'+(r.label||'')+'|'+r.paper); } });
@@ -7031,7 +7140,8 @@ function peerPenaltyFlags(student, subject, term, year, paper){
     byStudent = new Map();
     DB.students.forEach(st=>{
       if(!_pids.has(st.classId) || st.status==='left') return;
-      const rows = rawScores(st.id, subject, term, year);
+      if(Array.isArray(st.dropSubjects) && st.dropSubjects.includes(subject)) return;   // removed by the admin: scores stay hidden
+      const rows = inUseRows(rawScores(st.id, subject, term, year), st.classId);
       if(!rows.length) return;
       const ks = new Set();
       rows.forEach(r=>{ ks.add(r.kind); ks.add(r.kind+'|'+String(r.paper)); });
@@ -7189,12 +7299,15 @@ function subjectBreakdown(studentId, subject, term, year){
 function _subjectBreakdownRaw(studentId, subject, term, year){
   const _st = DB.students.find(x=>x.id===studentId);
   const cls = _st ? classOf(_st) : null;
-  const cfg = examConfig(_st && _st.classId);
-  const rows = rawScores(studentId, subject, term, year);
+  const _cid = _st && _st.classId;
+  const cfg = calcExamConfig(_cid);   // only assessments switched on under ASSESSMENTS IN USE count
+  const allRows = rawScores(studentId, subject, term, year);
+  const rows = inUseRows(allRows, _cid);
   const eotScaled = cfg.eotEnabled ? rows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
   const aoiAvg = cfg.cwEnabled ? caAvgFromRows(rows.filter(r=>r.kind==='AOI'), cfg) : null;
   const eotAvg = eotScaled.length ? eotScaled.reduce((a,b)=>a+b,0)/eotScaled.length : null;
-  if(aoiAvg===null && eotAvg===null) return {aoiAvg:null, eotAvg:null, final:null};
+  const _sh = assessDisplayAvgs(allRows, _cid, aoiAvg, eotAvg);
+  if(aoiAvg===null && eotAvg===null) return {aoiAvg:null, eotAvg:null, final:null, aoiShow:_sh.aoi, eotShow:_sh.eot};
   // Final average rule: Course Work and End of Term always contribute equally (50/50),
   // regardless of the admin's configured cwPercent/eotPercent split — that split still
   // governs the scale marks are entered/displayed against (aoiAvg/eotAvg above, e.g.
@@ -7234,7 +7347,7 @@ function _subjectBreakdownRaw(studentId, subject, term, year){
   } else {
     final = combine(aoiAvg, eotAvg);
   }
-  return {aoiAvg, eotAvg, final};   // aoiAvg/eotAvg stay the real entered averages (shown on cards); final carries any hidden zeros
+  return {aoiAvg, eotAvg, final, aoiShow:_sh.aoi, eotShow:_sh.eot};   // aoiAvg/eotAvg stay the real entered averages (shown on cards); final carries any hidden zeros
 }
 function subjectAverage(studentId, subject, term, year){
   return subjectBreakdown(studentId, subject, term, year).final;
@@ -7267,15 +7380,18 @@ function subjectPapersFor(subject, cls){
 function subjectPaperBreakdown(studentId, subject, cls, term, year){
   const papers = subjectPapersFor(subject, cls);
   if(papers.length < 2) return null;
-  const cfg = examConfig(cls && cls.id);
-  const rows = rawScores(studentId, subject, term, year);
+  const cfg = calcExamConfig(cls && cls.id);
+  const allRows = rawScores(studentId, subject, term, year);
+  const rows = inUseRows(allRows, cls && cls.id);
   const perPaper = papers.map(p=>{
+    const apRows = allRows.filter(r=>String(r.paper)===String(p));
     const pRows = rows.filter(r=>String(r.paper)===String(p));
-    const hasAny = pRows.length>0;
+    const hasAny = apRows.length>0;
     const eotScaled = cfg.eotEnabled ? pRows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
     const aoiAvg = cfg.cwEnabled ? caAvgFromRows(pRows.filter(r=>r.kind==='AOI'), cfg) : null;
     const eotAvg = eotScaled.length ? eotScaled.reduce((a,b)=>a+b,0)/eotScaled.length : null;
-    return {paper:p, hasAny, aoiAvg, eotAvg};
+    const _sh = assessDisplayAvgs(apRows, cls && cls.id, aoiAvg, eotAvg);
+    return {paper:p, hasAny, aoiAvg, eotAvg, aoiShow:_sh.aoi, eotShow:_sh.eot};
   });
   const allEntered = perPaper.every(p=>p.hasAny);
   return {papers: perPaper, allEntered};
@@ -7924,6 +8040,7 @@ function scrollPageToTop(){
 try{ if('scrollRestoration' in history) history.scrollRestoration = 'manual'; }catch(e){}
 
 function render(){
+  try{ aAutoStreamCheck(); }catch(e){ console.error(e); }
   try{
     setTimeout(window.__cteEnforceFit,0); setTimeout(window.__cteEnforceFit,400);
     // A different screen was opened (tap, open, back, next page...): land on it fitted to the screen, not zoomed.
@@ -8626,6 +8743,7 @@ function renderShell(){
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
 const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','staffaccounts','parentaccounts','students','oldstudents','assignsubjects','olevel','grading','examsetup','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems','databackup']);
 ADMIN_ONLY_VIEWS.add('subjectlists');
+ADMIN_ONLY_VIEWS.add('assessinuse');
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
 // designated Class Teacher (see classTeacherClasses()). A teacher who isn't a Class
@@ -8634,7 +8752,7 @@ ADMIN_ONLY_VIEWS.add('subjectlists');
 const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet','projects']);
 // Detail pages reached from a row action (not part of the sidebar nav) — kept on
 // screen instead of bouncing back to the dashboard when the shell re-renders.
-const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','attendancemarksheet','generalmarksheet','combinedmarksheet','reportcard','financestudent']);
+const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','attendancemarksheet','generalmarksheet','combinedmarksheet','reportcard','financestudent','assessinuse']);
 function renderView(view){
   try{
     if(FINANCE_ONLY && view!=='finance' && view!=='financestudent' && view!=='admingate' && !(FIN_EMBED && (view==='studentprofile' || view==='teacherprofile'))){
@@ -8664,6 +8782,7 @@ function renderView(view){
       case 'databackup': return dataBackupPlanView();
       case 'grading': return gradingView(VIEW.params.gcClassId);
       case 'examsetup': return examSetupView(VIEW.params.gcClassId);
+      case 'assessinuse': return assessInUseView(VIEW.params.gcClassId);
       case 'promote': return promoteView();
       case 'reports': return reportsListView();
       case 'finance': return financeRequirementsView();
@@ -13622,7 +13741,36 @@ function examSetupView(gcClassId){
         </form>
       </div>`;
     })()}
+  </div>
+  <div style="margin:18px 0;text-align:center;"><a href="#" class="aiu-btn" data-action="nav:assessinuse">Assessments in use</a></div>`;
+}
+
+function assessInUseView(classId){
+  classId = classId || '';
+  const gcAll = isAllStr(classId);
+  const gcls = classId ? (gcAll ? scopeClass(classId) : DB.classes.find(c=>c.id===classId)) : null;
+  const headId = gcls ? (gcAll ? classId.slice(ALLSTR.length) : gcls.id) : '';
+  const off = gcls ? assessOffSet(gcAll ? (allStrClasses(classId)[0]||{}).id : gcls.id) : null;
+  const list = gcls ? assessListFor(headId) : [];
+  const card = !gcls ? '' : `
+  <div class="auth-box aiu-card">
+    <h3 style="margin-top:0;text-align:center;">${esc(gcls.name)}</h3>
+    <p class="small" style="text-align:center;">Tick the assessments that count. Only these are used for averages, grades, rankings and report-card final averages. Others that have scores still appear on report cards but are not counted.</p>
+    ${list.length ? `<form data-form="saveAssessInUse" data-class="${esc(classId)}">
+      ${list.map(a=>`<label class="aiu-opt"><input type="checkbox" name="use" value="${esc(a.key)}" ${off && off.has(a.key)?'':'checked'}><span class="aiu-circ"></span><span><b>${esc(a.label)}</b><br><span class="small">${esc(a.sub)}</span></span></label>`).join('')}
+      <button class="btn" style="margin-top:14px;width:100%;">Submit — save assessments in use</button>
+    </form>` : `<p class="small">No assessment types are switched on in Exam Setup for this class yet.</p>`}
   </div>`;
+  return `
+  <div style="margin:6px 0 12px;"><a href="#" class="aiu-btn" data-action="nav:examsetup">◀ Back to Exam Setup</a></div>
+  <h2>Assessments in Use</h2>
+  <div class="card">
+    <label>Class</label>
+    <select data-csp onchange="setAnalysisParam('gcClassId', this.value)">
+      <option value="">-- choose a class --</option>
+      ${allStrOptions(classId, null, true)}${DB.classes.map(c=>`<option value="${c.id}" ${c.id===classId?'selected':''}>${esc(c.name)} (${esc(levelLabel(c))})</option>`).join('')}
+    </select>
+  </div>${card}`;
 }
 
 function termSettingsCardHTML(){
@@ -15146,8 +15294,8 @@ function subjectLevelStats(level, subject, term, year){
 // marks combined with the same rule the report card uses (see subjectBreakdown). null = nothing scored.
 function paperAverage(studentId, subject, paper, term, year){
   const st = DB.students.find(x=>x.id===studentId);
-  const cfg = examConfig(st && st.classId);
-  const rows = rawScores(studentId, subject, term, year).filter(r=>String(r.paper)===String(paper));
+  const cfg = calcExamConfig(st && st.classId);
+  const rows = inUseRows(rawScores(studentId, subject, term, year), st && st.classId).filter(r=>String(r.paper)===String(paper));
   if(!rows.length) return null;
   const eot = cfg.eotEnabled ? rows.filter(r=>r.kind==='EOT').map(r=>scaleRow(r, cfg.eotPercent)) : [];
   const aoiAvg = cfg.cwEnabled ? caAvgFromRows(rows.filter(r=>r.kind==='AOI'), cfg) : null;
@@ -15818,7 +15966,7 @@ function masterMarkSheetViewCore(forExport){
           const row = pb ? pb.papers.find(x=>String(x.paper)===String(p)) : null;
           const pGap = (_enrolled.has(sm.subject) && peersHaveScore(s, sm.subject, term, year, raPeerKind(), undefined, p)) ? 'x' : '';
           if(!row || !row.hasAny) return pGap;
-          const val = combinePaper(row.aoiAvg, row.eotAvg, cfg, peerPenaltyFlags(s, sm.subject, term, year, p));
+          const val = combinePaper(row.aoiAvg, row.eotAvg, calcExamConfig(cls.id), peerPenaltyFlags(s, sm.subject, term, year, p));
           return val===null ? pGap : zp(val.toFixed(1));
         });
       }
@@ -15965,60 +16113,120 @@ function slEnrolled(cls, subject){ return slClassStudents(cls).filter(s=>student
 function subjectListView(){
   const p = VIEW.params || {};
   const cls = DB.classes.find(c=>c.id===p.slClassId) || null;
-  const subjects = cls ? analysisSubjectsFor(cls).sort((a,b)=>a.localeCompare(b)) : [];
-  const subject = (cls && subjects.includes(p.slSubject)) ? p.slSubject : '';
-  let head = `<h2>EDIT SUBJECT LIST</h2>
+  const head = `<h2>EDIT SUBJECT LIST</h2>
   <div class="card">
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
-      <div style="flex:1 1 220px;min-width:0;"><label>1. Class</label>
+      <div style="flex:1 1 220px;min-width:0;"><label>Class</label>
         <select onchange="setSubjectListParam('slClassId', this.value)">
           <option value="" ${cls?'':'selected'}>— Select class —</option>
           ${DB.classes.map(c=>`<option value="${esc(c.id)}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-        </select></div>
-      <div style="flex:1 1 220px;min-width:0;"><label>2. Subject</label>
-        <select id="slSubjectSel" ${cls?'':'disabled'} onchange="setSubjectListParam('slSubject', this.value)">
-          <option value="" ${subject?'':'selected'}>— Select subject —</option>
-          ${subjects.map(sj=>`<option value="${esc(sj)}" ${sj===subject?'selected':''}>${esc(sj)}</option>`).join('')}
         </select></div>
       <div><button type="button" class="btn-outline" data-action="nav:mastermarksheet">◀ General Marksheets</button></div>
     </div>
   </div>`;
   if(!DB.classes.length) return head + `<div class="card"><p>No classes yet — add a class first.</p></div>`;
-  if(!cls) return head + `<div class="card"><p class="small">Choose a class, then a subject, to see every student taking that subject.</p></div>`;
-  if(!subject) return head + `<div class="card"><p class="small">Now choose a subject${subjects.length?'':' — no subject has students or a teacher in this class yet'}.</p></div>`;
-  const list = slEnrolled(cls, subject);
-  const compulsory = isCompulsorySubjectFor(subject, cls);
+  if(!cls) return head + `<div class="card"><p class="small">Choose a class to see every student with the optional subjects they take.</p></div>`;
+  const students = slClassStudents(cls);
   const multiCls = streamGroupClasses(cls).length>1;
-  const rows = list.map((s,i)=>{
-    const c = DB.classes.find(x=>x.id===s.classId);
-    return `<tr><td style="width:34px;">${compulsory?'':`<input type="checkbox" class="slPick" data-sid="${esc(s.id)}" style="width:auto;">`}</td>
-      <td>${i+1}</td><td>${esc(s.admNo||'')}</td><td style="text-align:left;">${esc(s.name)}</td>
-      <td style="text-align:left;">${slOptionalSubjectsHtml(s, cls, subject)}</td>
-      ${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}
-      <td>${compulsory?'':`<button type="button" class="btn-outline" style="color:var(--danger);border-color:var(--danger);" data-action="slRemove:${esc(s.id)}">Remove</button>`}</td></tr>`;
+  const optsOf = st=>{ const c = aOwnClass(st, cls) || cls; return studentSubjects(st, c).filter(sj=>!isCompulsorySubjectFor(sj, c)).sort((a,b)=>a.localeCompare(b)); };
+  const droppedOf = st=>{ const c = aOwnClass(st, cls) || cls; return (Array.isArray(st.dropSubjects)?st.dropSubjects:[]).filter(sj=>!isCompulsorySubjectFor(sj, c)); };
+  const data = students.map(s=>{
+    const on = optsOf(s), off = droppedOf(s).filter(sj=>!on.includes(sj));
+    const all = [...on.map(sj=>({sj, off:false})), ...off.map(sj=>({sj, off:true}))].sort((a,b)=>a.sj.localeCompare(b.sj));
+    return {s, opts: all};
+  });
+  const nOpt = Math.max(1, ...data.map(d=>d.opts.length));
+  const rows = data.map((d,i)=>{
+    const c = DB.classes.find(x=>x.id===d.s.classId);
+    let cells = '';
+    for(let k=0;k<nOpt;k++){
+      const o = d.opts[k];
+      cells += o ? `<td style="text-align:left;white-space:nowrap;"><label style="display:flex;align-items:center;gap:6px;margin:0;font-weight:600;${o.off?'color:#a33;':''}"><input type="checkbox" class="slPick" data-sid="${esc(d.s.id)}" data-sub="${esc(o.sj)}" data-off="${o.off?1:0}" style="width:auto;margin:0;"><span${o.off?' style="text-decoration:line-through;"':''}>${esc(o.sj)}</span>${o.off?'<span class="small">(removed)</span>':''}</label></td>` : `<td></td>`;
+    }
+    return `<tr><td>${i+1}</td><td>${esc(d.s.admNo||'')}</td><td style="text-align:left;">${esc(d.s.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}${cells}</tr>`;
   }).join('');
-  const notIn = slClassStudents(cls).filter(s=>!list.some(x=>x.id===s.id));
-  const hasAsn = DB.assignments.some(a=>streamGroupIds(cls).has(a.classId) && a.subject===subject && Array.isArray(a.studentIds));
-  const canAdd = !compulsory && notIn.length && hasAsn;
+  const optHead = Array.from({length:nOpt},(_,k)=>`<th>OPT${k+1}</th>`).join('');
+  // Add back: pick a subject, then a student who is not on its list.
+  const gids = streamGroupIds(cls);
+  const addSubs = [...new Set(DB.assignments.filter(a=>gids.has(a.classId) && Array.isArray(a.studentIds) && !isCompulsorySubjectFor(a.subject, cls)).map(a=>a.subject))].sort((x,y)=>x.localeCompare(y))
+    .filter(sj=>students.some(s=>!studentSubjects(s, aOwnClass(s, cls)||cls).includes(sj)));
+  const addSub = addSubs.includes(p.slAddSubject) ? p.slAddSubject : '';
+  const addStu = addSub ? students.filter(s=>!studentSubjects(s, aOwnClass(s, cls)||cls).includes(addSub)) : [];
+  const tb = `<div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-outline" data-action="slPickAll">Tick / untick all</button>
+        <button type="button" class="btn" style="background:var(--danger);" data-action="slTickRemove">REMOVE ALL TICKED</button>
+        <button type="button" class="btn" data-action="slTickAdd">ADD ALL TICKED</button>
+      </div>`;
   return head + `<div class="card">
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
-      <div><b>${esc(subject)}</b> — ${esc(cls.name)}<br><span class="small">${list.length} student${list.length===1?'':'s'} taking this subject${compulsory?' (compulsory subject)':''}</span></div>
-      ${compulsory?'':`<div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" class="btn-outline" data-action="slPickAll">Tick / untick all</button>
-        <button type="button" class="btn" style="background:var(--danger);" data-action="slRemoveSelected">Remove ticked</button>
-      </div>`}
+      <div><b>${esc(cls.name)}</b><br><span class="small">${students.length} student${students.length===1?'':'s'} · optional subjects each student takes</span></div>
+      ${tb}
     </div>
     <div style="overflow-x:auto;margin-top:10px;">
-    ${list.length?`<table><thead><tr><th></th><th>#</th><th>Adm No</th><th style="text-align:left;">Name</th><th style="text-align:left;">Optional subjects (all)</th>${multiCls?'<th>Class</th>':''}<th></th></tr></thead><tbody>${rows}</tbody></table>`
-      :`<p class="small">No student is taking ${esc(subject)} in this class.</p>`}
+    ${students.length?`<table><thead><tr><th>#</th><th>Adm No</th><th style="text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
     </div>
-    ${compulsory?`<p class="small" style="margin-top:10px;"><b>${esc(subject)} is a compulsory subject</b> — every student in the class stays on its list, so nobody can be removed.</p>`:''}
-    ${compulsory?'':`<p class="small" style="margin-top:10px;">Tick any number of students, then tap <b>Remove ticked</b> once and enter your password once. This works even for students who already have scores. Removing a student takes ${esc(subject)} off their report card and out of every list, mark sheet, rank list and analysis. Their saved scores are kept and return if you add them back.</p>`}
+    ${students.length?`<div style="margin-top:10px;">${tb}</div>`:''}
+    <p class="small" style="margin-top:10px;">Tick any subjects you want to take off a student, then tap <b>Remove ticked</b> once and enter your password once. Removing a subject takes it off their report card and out of every list, mark sheet, rank list and analysis; averages, points and positions are worked out without it. Removed subjects stay in the table (struck through): a teacher may put the student back on their marking list and enter scores, but those scores stay hidden and affect nothing until you tick the subject and tap <b>ADD ALL TICKED</b>. Compulsory subjects are not listed because nobody can be removed from them.</p>
   </div>
-  ${canAdd?`<div class="card"><label>Add a student back to ${esc(subject)}</label>
+  ${addSubs.length?`<div class="card"><label>Add a subject back to a student</label>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-      <select id="slAddSel" style="flex:1 1 240px;min-width:0;">${notIn.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.admNo?' ('+esc(s.admNo)+')':''}</option>`).join('')}</select>
-      <button type="button" class="btn" data-action="slAdd">Add back</button></div></div>`:''}`;
+      <select style="flex:1 1 200px;min-width:0;" onchange="setSubjectListParam('slAddSubject', this.value)"><option value="">— Subject —</option>${addSubs.map(sj=>`<option value="${esc(sj)}" ${sj===addSub?'selected':''}>${esc(sj)}</option>`).join('')}</select>
+      ${addSub?`<select id="slAddSel" style="flex:1 1 240px;min-width:0;">${addStu.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.admNo?' ('+esc(s.admNo)+')':''}</option>`).join('')}</select>
+      <button type="button" class="btn" data-action="slAdd">Add back</button>`:''}</div></div>`:''}`;
+}
+// Removes the ticked (student, subject) pairs: one password confirmation for the whole batch; each subject is
+// taken off exactly as before (assignment roster for optional subjects).
+async function slApplyRemovalPairs(pairs){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId);
+  if(!cls || !pairs.length) return;
+  const nm = id=>{ const st=DB.students.find(x=>x.id===id); return st?st.name:'a student'; };
+  const preview = pairs.slice(0,5).map(x=>`${nm(x.id)} – ${x.sub}`);
+  const sure = await askPasswordConfirm({
+    title:`REMOVE ${pairs.length} SUBJECT${pairs.length===1?'':'S'}`,
+    action:`You are about to REMOVE: ${preview.join('; ')}${pairs.length>5?` and ${pairs.length-5} more`:''} (${cls.name}).`,
+    effects:[
+      `Each subject is removed from that student everywhere: Enter Scores, mark sheets, rank lists, Result Analysis and report cards.`,
+      `The subject disappears from their report card, and their average / points and class position are worked out without it.`,
+      `Saved scores are kept safely (hidden). Use "Add back" on this page to restore them.`],
+    confirmLabel:`Yes, remove ${pairs.length}`});
+  if(!sure) return;
+  const bySub = new Map();
+  pairs.forEach(x=>{ if(!bySub.has(x.sub)) bySub.set(x.sub, new Set()); bySub.get(x.sub).add(x.id); });
+  const gids = streamGroupIds(cls);
+  for(const [subject, gone] of bySub){
+    const asns = DB.assignments.filter(a=>gids.has(a.classId) && a.subject===subject && Array.isArray(a.studentIds));
+    for(const a of asns){
+      const hit = a.studentIds.filter(i=>gone.has(i));
+      if(!hit.length) continue;
+      if(!(await binGuard('roster', `${hit.length} student${hit.length===1?'':'s'} removed from ${subject} list`, cls.name, {assignId:a.id, studentIds:hit, peers:[]}))) return;
+    }
+    asns.forEach(a=>{
+      a.studentIds = a.studentIds.filter(i=>!gone.has(i));
+      if(a.pending && Array.isArray(a.pending.ids)) a.pending = Object.assign({}, a.pending, {ids:a.pending.ids.filter(i=>!gone.has(i))});
+    });
+  }
+  bySub.forEach((gone, subject)=>{
+    DB.students.forEach(st=>{ if(gone.has(st.id)){ const d = Array.isArray(st.dropSubjects) ? st.dropSubjects : []; if(!d.includes(subject)) st.dropSubjects = [...d, subject]; } });
+  });
+  await saveAssignments(); await saveStudents(); invalidateScoreLookupCache();
+  render();
+}
+// Adds the ticked (student, subject) pairs back: the subject returns to the student and any hidden scores come back with it.
+async function slApplyAddPairs(pairs){
+  const p = VIEW.params || {};
+  const cls = DB.classes.find(c=>c.id===p.slClassId);
+  if(!cls || !pairs.length) return;
+  const gids = streamGroupIds(cls);
+  pairs.forEach(x=>{
+    const st = DB.students.find(y=>y.id===x.id); if(!st) return;
+    st.dropSubjects = (st.dropSubjects||[]).filter(z=>z!==x.sub);
+    if(isCompulsorySubjectFor(x.sub, cls)) return;
+    const asn = DB.assignments.find(a=>gids.has(a.classId) && a.subject===x.sub && Array.isArray(a.studentIds));
+    if(asn && !asn.studentIds.includes(x.id)) asn.studentIds = [...asn.studentIds, x.id];
+  });
+  await saveStudents(); await saveAssignments(); invalidateScoreLookupCache();
+  render();
 }
 function setSubjectListParam(key, value){
   const cascade = key==='slClassId' ? {slSubject:''} : {};
@@ -16080,22 +16288,9 @@ async function slApplyRemoval(ids){
 }
 async function slApplyAdd(id){
   const p = VIEW.params || {};
-  const cls = DB.classes.find(c=>c.id===p.slClassId);
-  const subject = p.slSubject;
-  const st = DB.students.find(x=>x.id===id);
-  if(!cls || !subject || !st) return;
-  if(isCompulsorySubjectFor(subject, cls)){
-    st.dropSubjects = (st.dropSubjects||[]).filter(x=>x!==subject);
-    await saveStudents();
-    invalidateScoreLookupCache();
-  } else {
-    const gids = streamGroupIds(cls);
-    const asn = DB.assignments.find(a=>gids.has(a.classId) && a.subject===subject && Array.isArray(a.studentIds));
-    if(!asn){ alert('No teacher has a marking list for this subject in this class yet.'); return; }
-    if(!asn.studentIds.includes(id)) asn.studentIds = [...asn.studentIds, id];
-    await saveAssignments();
-  }
-  render();
+  const subject = p.slAddSubject || p.slSubject;
+  if(!subject){ return; }
+  await slApplyAddPairs([{id, sub:subject}]);
 }
 function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, forExport, selectorsHtml, assessLabelMM}){
   const isLevel = mode==='level';
@@ -16924,8 +17119,9 @@ function rcSumTotals(s, cls, term, year, rows, breakdowns, cwTests, useCwTestCol
   const tSum = tests.map(()=>0), tN = tests.map(()=>0);
   rows.forEach((r,i)=>{
     const bd = breakdowns[i] || {};
-    if(bd.aoiAvg!=null){ cw += bd.aoiAvg; cwN++; }
-    if(bd.eotAvg!=null){ eot += bd.eotAvg; eotN++; }
+    const _ca = useCwTestCols ? bd.aoiAvg : (bd.aoiShow!==undefined ? bd.aoiShow : bd.aoiAvg), _ea = bd.eotShow!==undefined ? bd.eotShow : bd.eotAvg;
+    if(_ca!=null){ cw += _ca; cwN++; }
+    if(_ea!=null){ eot += _ea; eotN++; }
     if(useCwTestCols && tests.length){
       const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
       const entered = pb ? pb.papers.filter(p=>p.hasAny) : [];
@@ -17125,7 +17321,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     const _pl = reportPaperLabels(s.id, r.subject, cls, term, year);
     const singleLabel = _pl.entered.length ? _pl.entered.join(', ') : (_pl.assigned.length ? _pl.assigned.join(', ') : '');
     const singleLookup = _pl.entered.length===1 ? _pl.entered[0] : (papersList.length===1 ? papersList[0] : null);
-    const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg}];
+    const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg, aoiShow:bd.aoiShow, eotShow:bd.eotShow}];
     const spanCount = paperRows.length;
 
     return paperRows.map((p, idx)=>{
@@ -17137,7 +17333,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // around this cell and in the header row.
       const papersTxt = useSubrows ? esc(String(p.paper)) : (singleLabel ? esc(singleLabel) : (peersHaveScore(s, r.subject, term, year) ? '—' : '&nbsp;'));
       const papersTd = isP ? '' : `<td>${papersTxt}</td>`;
-      const cwHtml = cwCellsFor(paperForLookup, p.aoiAvg, useSubrows ? p.paper : null);
+      const cwHtml = cwCellsFor(paperForLookup, (useCwTestCols ? p.aoiAvg : rcShow(p,'aoi')), useSubrows ? p.paper : null);
       let eotHtml = '';
       if(showEOT){
         if(canEditScore(r.subject, paperForLookup, 'EOT')){
@@ -17149,7 +17345,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
           // 55 became 44 once scaled onto /80), throwing off Paper Avg and Final Average.
           eotHtml = `<td>${scoreInputHtml(r.subject, paperForLookup, 'EOT', '', (eotRow&&eotRow.max)?eotRow.max:cfg.eotPercent, eotRow?eotRow.marks:null)}</td>`;
         } else {
-          eotHtml = `<td>${(p.eotAvg===null||p.eotAvg===undefined)?dashFor(r.subject,'EOT',undefined,useSubrows ? p.paper : null):zr(p.eotAvg.toFixed(1))}</td>`;
+          eotHtml = `<td>${(rcShow(p,'eot')===null||rcShow(p,'eot')===undefined)?dashFor(r.subject,'EOT',undefined,useSubrows ? p.paper : null):zr(rcShow(p,'eot').toFixed(1))}</td>`;
         }
       }
       // This paper's own average out of 100 (Course Work + End of Term, or whichever one
@@ -17157,7 +17353,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       // combinePaper() helper — the exact same math used for the subject's overall Final
       // Average, so this column and Final Average always agree. Shown for single-paper
       // subjects too (paperRows has one entry in that case), not just multi-paper ones.
-      const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
+      const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, calcExamConfig(cls.id), peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       const paperFinalHtml = `<td>${paperFinal===null?dashFor(r.subject,undefined,undefined,useSubrows ? p.paper : null):zr(paperFinal.toFixed(1))}</td>`;
       // Cells that apply to the WHOLE subject (Subject name, Final Average, Grade,
@@ -17434,6 +17630,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
 
     ${assessmentsAddDirectly(cfg) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
+    ${(()=>{ const _n = assessNoteFor(cls && cls.id); return _n ? `<div class="rc-scoring-note">${esc(_n)}</div>` : ''; })()}
     </div>
   </div>${bareCard ? '' : '</div>'}`;
 }
@@ -17546,7 +17743,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     const _pl = reportPaperLabels(s.id, r.subject, cls, term, year);
     const singleLabel = _pl.entered.length ? _pl.entered.join(', ') : (_pl.assigned.length ? _pl.assigned.join(', ') : '');
     const singleLookup = _pl.entered.length===1 ? _pl.entered[0] : (papersList.length===1 ? papersList[0] : null);
-    const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg}];
+    const paperRows = useSubrows ? enteredPapers : [{paper:null, aoiAvg:bd.aoiAvg, eotAvg:bd.eotAvg, aoiShow:bd.aoiShow, eotShow:bd.eotShow}];
 
     const rowsOut = paperRows.map(p=>{
       const paperForLookup = useSubrows ? p.paper : singleLookup;
@@ -17556,7 +17753,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       let cwTestVals = [];
       let cwAvgTxt = '';
       if(showCW){
-        cwAvgTxt = (p.aoiAvg===null || p.aoiAvg===undefined) ? dashFor('AOI',undefined,useSubrows ? p.paper : null) : zr(p.aoiAvg.toFixed(1));
+        { const _av = useCwTestCols ? p.aoiAvg : rcShow(p,'aoi'); cwAvgTxt = (_av===null || _av===undefined) ? dashFor('AOI',undefined,useSubrows ? p.paper : null) : zr(_av.toFixed(1)); }
         if(useCwTestCols){
           cwTestVals = cwTests.map(t=>{
             const row = cwTestScore(s.id, r.subject, t.name, paperForLookup, term, year);
@@ -17568,8 +17765,8 @@ function buildReportCardData(studentId, viewTerm, viewYear){
         }
       }
       let eotTxt = '';
-      if(showEOT) eotTxt = (p.eotAvg===null||p.eotAvg===undefined) ? dashFor('EOT',undefined,useSubrows ? p.paper : null) : zr(p.eotAvg.toFixed(1));
-      const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, cfg, peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
+      if(showEOT){ const _ev = rcShow(p,'eot'); eotTxt = (_ev===null||_ev===undefined) ? dashFor('EOT',undefined,useSubrows ? p.paper : null) : zr(_ev.toFixed(1)); }
+      const paperFinal = useSubrows ? ((p.hasAny===false) ? null : combinePaper(p.aoiAvg, p.eotAvg, calcExamConfig(cls.id), peerPenaltyFlags(s, r.subject, term, year, p.paper))) : bd.final;
       if(paperFinal!==null) allPaperFinals.push(paperFinal);
       return { papersTxt, cwTestVals, cwAvgTxt, eotTxt, paperFinalTxt: paperFinal===null?dashFor(undefined,undefined,useSubrows ? p.paper : null):zr(paperFinal.toFixed(1)), teacherInitTxt: initTxt };
     });
@@ -17601,7 +17798,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
 
   return {
     student: s, cls, term, year, isA, isP, isO,
-    cfg, showCW, showEOT, cwTests, useCwTestCols,
+    cfg, showCW, showEOT, cwTests, useCwTestCols, assessNote: assessNoteFor(cls && cls.id),
     subjectEntries,
     // Project Work: same "only if this student has a score on file" rule as the
     // on-screen version (reportCardHTML) — an empty array here means the table
@@ -18260,6 +18457,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
   if(!assessmentsAddDirectly(data.cfg)) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
+  if(data.assessNote){ if(!assessmentsAddDirectly(data.cfg)) cy += 9; centerText(data.assessNote, contentX, contentW, cy, 6.5, 'italic', muted); }
 
   // Fit the finished content exactly between the top and bottom insets of the
   // A4 frame. This works for both short and very long report cards. The frame
@@ -19599,6 +19797,16 @@ Continue?`);
       break;
     }
     case 'slRemove': { await slApplyRemoval([arg]); break; }
+    case 'slTickRemove': {
+      const pairs = [...document.querySelectorAll('.slPick:checked')].filter(b=>b.dataset.off!=='1').map(b=>({id:b.dataset.sid, sub:b.dataset.sub}));
+      if(!pairs.length){ alert('Tick at least one subject that is still on a student\'s list.'); break; }
+      await slApplyRemovalPairs(pairs); break;
+    }
+    case 'slTickAdd': {
+      const pairs = [...document.querySelectorAll('.slPick:checked')].filter(b=>b.dataset.off==='1').map(b=>({id:b.dataset.sid, sub:b.dataset.sub}));
+      if(!pairs.length){ alert('Tick at least one removed (struck-through) subject first.'); break; }
+      await slApplyAddPairs(pairs); break;
+    }
     case 'slRemoveSelected': {
       { const _c = DB.classes.find(c=>c.id===(VIEW.params||{}).slClassId); if(_c && isCompulsorySubjectFor(VIEW.params.slSubject,_c)){ alert('This is a compulsory subject — every student in the class stays on the list.'); break; } }
       const ids = [...document.querySelectorAll('.slPick:checked')].map(b=>b.dataset.sid);
@@ -20473,7 +20681,7 @@ document.addEventListener('submit', async (e)=>{
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
-    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
+    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
     'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
@@ -21509,8 +21717,10 @@ document.addEventListener('submit', async (e)=>{
       if(!base){ alert('Enter a class name.'); return; }
       // New Primary classes: words only (e.g. "Primary One") - no digits or symbols. Existing classes are untouched.
       if((fd.get('level')==='P' || isSecondarySchool()) && !/^[A-Za-z]+(\s+[A-Za-z]+)*$/.test(base)){ alert(`Class names must be words only, e.g. ${fd.get('level')==='P'?'Primary One':'Senior One'} (no numbers or symbols).`); return; }
-      const names = fd.getAll('streamName').map(x=>(x||'').trim());
-      const teachers = fd.getAll('streamTeacher').map(x=>x||null);
+      let names = fd.getAll('streamName').map(x=>(x||'').trim());
+      let teachers = fd.getAll('streamTeacher').map(x=>x||null);
+      // A-Level with no streams given: the two initial streams ARTS and SCIENCES, sharing the class teacher by default.
+      if(fd.get('level')==='A' && !names.some(Boolean)){ names = ['ARTS','SCIENCES']; teachers = [teachers[0]||null, teachers[0]||null]; }
       const count = names.length || 1;
       if(count>1 && names.some(n=>!n)){ alert('Enter a name for every stream.'); return; }
       const lower = names.filter(Boolean).map(n=>n.toLowerCase());
@@ -22231,6 +22441,19 @@ document.addEventListener('submit', async (e)=>{
         VIEW.params = {...VIEW.params, editClassTestId: null};
         await saveClasses(); showDeliveredToast('Test updated'); render();
       }
+    }
+    else if(type==='saveAssessInUse'){
+      const classId = form.dataset.class;
+      const all = isAllStr(classId);
+      const targets = all ? (allStrClasses(classId)||[]) : [DB.classes.find(c=>c.id===classId)].filter(Boolean);
+      if(!targets.length){ alert('Class not found.'); return; }
+      const on = new Set(fd.getAll('use'));
+      const keys = assessListFor(all ? classId.slice(ALLSTR.length) : classId).map(a=>a.key);
+      if(!keys.some(k=>on.has(k))){ alert('Select at least one assessment to use.'); return; }
+      const off = keys.filter(k=>!on.has(k));
+      targets.forEach(c=>{ c.assessOff = off.slice(); });
+      await saveClasses(); invalidateScoreLookupCache(); _rankCache = {scoresRef:null, key:'', map:null}; _markedSubjCache = {ref:null,ver:-1,key:'',set:null};
+      showDeliveredToast('Assessments in use saved'); render();
     }
     else if(type==='promote'){
       const currYearRaw = fd.get('currYear');
