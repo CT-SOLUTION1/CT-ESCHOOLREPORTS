@@ -533,6 +533,8 @@ img{max-width:100%;height:auto;}
 .sl-nav-red{border:2px solid #B23A3A;background:#B23A3A;color:#fff;}
 /* Assign Subjects teacher box and Edit Student Subjects class box: as tall as the Username box on the sign-in page */
 #assignTeacherPick,#slClassPick{box-sizing:border-box;width:100%;}
+.sl-grid tfoot td{font-weight:800;background:#eef3f9;border-top:2px solid #333;padding:5px 4px;}
+.sl-grid tfoot td.sl-tot{text-align:left;font-size:14px;}
 .sl-cw{display:flex;align-items:center;gap:4px;cursor:pointer;}
 .sl-cw .sl-cell{flex:0 0 18px;width:18px;height:18px;min-width:18px;padding:0;font-size:12px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid #333;border-radius:3px;background:#fff;}
 .sl-cw .sl-nm{font-size:11px;font-weight:700;line-height:1.15;text-align:left;overflow-wrap:anywhere;color:#000;}
@@ -2260,6 +2262,7 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
 #maxScoreInput{border:3px solid var(--navy,#0A2A4A) !important;border-radius:10px !important;font-size:20px !important;font-weight:900 !important;color:var(--navy,#0A2A4A) !important;background:#fff !important;padding:12px 14px !important;min-height:52px;box-sizing:border-box;}
 #maxScoreInput{border-color:#0f7a3a !important;color:#0f7a3a !important;font-size:calc(17*var(--uk,1)) !important;min-height:calc(46*var(--uk,1));padding-top:calc(8*var(--uk,1)) !important;padding-bottom:calc(8*var(--uk,1)) !important;}
 #maxScoreInput::placeholder{font-size:calc(14*var(--uk,1));font-weight:700;color:#0f7a3a;opacity:1;}
+.max-out-label .fit-t{display:inline;white-space:normal;}
 .max-out-label{display:block;color:#0f7a3a !important;font-size:calc(17*var(--uk,1)) !important;font-weight:800 !important;line-height:1.3;margin-bottom:calc(6*var(--uk,1));}
 #maxScoreInput:focus{outline:none;border-color:#0b5c2b !important;box-shadow:0 0 0 3px rgba(15,122,58,.3);}
 .btn.btn-big{display:block;width:100%;box-sizing:border-box;min-height:calc(54*var(--uk));padding:calc(15*var(--uk)) calc(20*var(--uk));font-size:calc(19*var(--uk));font-weight:800;letter-spacing:.01em;border-radius:calc(10*var(--uk));margin:calc(16*var(--uk)) 0 0;}
@@ -13548,7 +13551,6 @@ function assignSubjectsView(){
   </div>
   <div style="margin-top:22px;display:flex;flex-direction:column;align-items:flex-start;gap:20px;">
     <button type="button" class="sl-nav-btn sl-nav-purple" id="asTeachersBtn" onclick="var l=document.getElementById('asTeachersList');var o=l.style.display==='none';l.style.display=o?'':'none';this.textContent=o?'HIDE TEACHERS LIST ▴':'TEACHERS LIST ▾';">TEACHERS LIST ▾</button>
-    <button type="button" class="sl-nav-btn sl-nav-red" data-action="nav:subjectlists" onclick="SL_FROM='assignsubjects'">EDIT STUDENT SUBJECTS</button>
   </div>
   <div class="card" id="asTeachersList" style="display:none;">
     <table class="data-table"><tr><th>Teacher</th><th>Class</th><th>Subject</th><th>Papers</th><th>Action</th></tr>
@@ -13559,7 +13561,8 @@ function assignSubjectsView(){
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="5">No assignments yet.</td></tr>'}
     </table>
-  </div>`;
+  </div>
+  <div style="margin-top:22px;"><button type="button" class="sl-nav-btn sl-nav-red" data-action="nav:subjectlists" onclick="SL_FROM='assignsubjects'">EDIT STUDENT SUBJECTS</button></div>`;
 }
 
 /* ---------- Admin: Edit Teacher Profile (subjects / classes / papers) ---------- */
@@ -15578,7 +15581,6 @@ function classAnalysisViewCore(){
   const levelWord = l => l==='P' ? 'Primary' : (l==='O' ? "O'-Level" : "A'-Level");
   const selectorsHtml = (showButtons)=>`
   <h2>RESULT ANALYSIS</h2>
-  ${isAdmin?`<button type="button" class="sl-nav-btn sl-nav-gold" data-action="nav:subjectlists" onclick="SL_FROM='classanalysis'">EDIT STUDENT SUBJECTS</button>`:''}
   <div class="card">
     <div class="ra-steps" style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
       <div style="flex:1 1 300px;min-width:0;"><label>1. Analysis form</label>
@@ -15613,7 +15615,8 @@ function classAnalysisViewCore(){
       <button class="btn-outline" data-action="dlClassAnalysisPdf:${cls.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>
       <button class="btn" onclick="printClassAnalysis()">Print</button>
     </div>`:''}
-  </div>`;
+  </div>
+  ${isAdmin?`<button type="button" class="sl-nav-btn sl-nav-gold" style="margin-top:14px;" data-action="nav:subjectlists" onclick="SL_FROM='classanalysis'">EDIT STUDENT SUBJECTS</button>`:''}`;
   if(!formKey) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Start by choosing an analysis form on the left: Student Performance, Subject Performance (Class-wise), Subject Performance (Level-wise), or all three at once. Then pick the assessment type (Course Work, End of Term or Integrated), and finally the class (or the level, for Level-wise).</p></div></div>`;
   if(!assessKey) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now choose the assessment type to analyse: Course Work only, End of Term only, or Integrated (both together).</p></div></div>`;
   if(!cls) return `<div class="center-stage">` + selectorsHtml(false) + `<div class="card"><p class="small">Now select ${isLevelForm?'a level':'a class'} to continue. Term and year are filled in with the school's current ones — change them if you need an earlier period.</p></div></div>`;
@@ -16308,7 +16311,7 @@ function subjectListView(){
   const head = `<h2>EDIT STUDENT SUBJECTS</h2>
   <div class="card">
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
-      <div style="flex:1 1 220px;min-width:0;"><label>Class</label>
+      <div style="flex:1 1 320px;min-width:0;"><label>Class</label>
         <select id="slClassPick" onchange="setSubjectListParam('slClassId', this.value)">
           <option value="" ${cls?'':'selected'}>Choose a class to edit students subjects</option>
           ${DB.classes.map(c=>`<option value="${esc(c.id)}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
@@ -16341,6 +16344,7 @@ function subjectListView(){
     }).join('');
     return `<tr><td>${i+1}</td><td>${esc(s.admNo||'')}</td><td style="text-align:left;">${esc(s.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}${cells}</tr>`;
   }).join('');
+  const totCells = cols.map(sj=>`<td class="sl-tot" data-sub="${esc(sj)}">${students.filter(st=>takes(st, sj)).length}</td>`).join('');
   const optHead = cols.map((sj,k)=>`<th title="${esc(sj)}">OPT${k+1}<div class="sl-ab">${esc(msAbbr(sj))}</div></th>`).join('');
   const bar = `<div class="sl-bar">
       <div class="sl-key" style="flex:1 1 100%;"><span><b class="k-on">✔</b> = student does this subject</span><span><b class="k-off">✘</b> = student does not do this subject</span></div>
@@ -16355,7 +16359,7 @@ function subjectListView(){
     <div><b>${esc(cls.name)}</b><br><span class="small">${students.length} student${students.length===1?'':'s'} · tap a ✔ or ✘ to change it, then tap Save changes</span></div>
     ${students.length ? bar : ''}
     <div class="sl-wrap" style="margin-top:4px;">
-    ${students.length?`<table class="sl-grid" style="min-width:${300+cols.length*84}px;"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
+    ${students.length?`<table class="sl-grid" style="min-width:${300+cols.length*84}px;"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody><tfoot><tr class="sl-totrow"><td colspan="${3+(multiCls?1:0)}" style="text-align:right;">TOTAL</td>${totCells}</tr></tfoot></table>`:`<p class="small">No students in this class.</p>`}
     </div>
     ${students.length ? bar : ''}
     <p class="small" style="margin:8px 0 0;">${legend}</p>
@@ -16386,6 +16390,12 @@ function slExportRows(cls){
       + cols.map(sj=>{ const on = sub.has(sj); return `<td style="text-align:left;white-space:nowrap;"><b style="color:${on?'#1a9a3a':'#d62828'};">${on?'✔':'✘'}</b> ${esc(msAbbr(sj))}</td>`; }).join('');
     return tr;
   });
+  if(students.length){
+    const tot = document.createElement('tr'); tot.className = 'keep-last';
+    tot.innerHTML = `<td></td><td></td><td style="text-align:left;font-weight:800;">TOTAL</td>${multiCls?'<td></td>':''}`
+      + cols.map(sj=>`<td style="text-align:left;font-weight:800;">${students.filter(st=>studentSubjects(st, ownC(st)).includes(sj)).length}</td>`).join('');
+    bodyRows.push(tot);
+  }
   return {students, cols, headRow, bodyRows};
 }
 async function slBuildSubjectsPdf(){
@@ -16400,7 +16410,7 @@ async function slBuildSubjectsPdf(){
     title: `${cls.name} — Student Optional Subjects`,
     subtitle: `${students.length} student${students.length===1?'':'s'} · ✔ = does the subject, ✘ = does not`,
     headRows: [headRow], bodyRows
-  }], `${cls.name.replace(/[^\w]+/g,'_')}_optional_subjects.pdf`, {orientation:'landscape', rowsPerPage:22});
+  }], `${cls.name.replace(/[^\w]+/g,'_')}_optional_subjects.pdf`, {orientation:'portrait', rowsPerPage:35});
 }
 async function runDownloadSubjectsPdf(btn){
   if(btn.disabled) return;
@@ -16409,12 +16419,18 @@ async function runDownloadSubjectsPdf(btn){
 async function printSubjectsCopy(){
   await withPdfPrint(()=>slBuildSubjectsPdf());
 }
+function slUpdateTotals(){
+  const m = {};
+  document.querySelectorAll('.sl-cell').forEach(b=>{ if(b.dataset.now==='1') m[b.dataset.sub] = (m[b.dataset.sub]||0)+1; });
+  document.querySelectorAll('.sl-tot').forEach(t=>{ t.textContent = m[t.dataset.sub]||0; });
+}
 function slToggleCell(b){
   const now = b.dataset.now==='1' ? '0' : '1';
   b.dataset.now = now;
   b.classList.toggle('on', now==='1'); b.classList.toggle('off', now!=='1');
   b.classList.toggle('chg', now!==b.dataset.orig);
   b.textContent = now==='1' ? '✔' : '✘';
+  slUpdateTotals();
   if(document.querySelector('.sl-savebtn.done, .sl-savebtn.err')) slSetSaveBtns('', 'SAVE CHANGES');
 }
 function slSetSaveBtns(state, text){
@@ -17248,7 +17264,7 @@ function scoresEntryView(mine){
       </div>
 ` : ''}
       <div class="pick-sec">
-      <label class="max-out-label"><span class="fit-t" data-fit>What was this test/exam marked out of?</span><br><span style="color:var(--danger);font-size:.8em;">*compulsory</span></label>
+      <label class="max-out-label"><span class="fit-t">What was this test/exam marked out of?</span><br><span style="color:var(--danger);font-size:.8em;">*compulsory</span></label>
       <input name="maxScore" id="maxScoreInput" type="number" min="1" step="1" value="" placeholder="Type the maximum mark here — required" required>
       </div>
 
@@ -24064,7 +24080,7 @@ async function renderTableSectionsAsPdf(sections, filename, opts={}){
     if(opts.rowsPerPage){
       // Fixed number of learners per page (e.g. 35). Full-width summary rows (a single
       // colspan cell — grade summary, "no students" notice) stay with the LAST page.
-      const isSummaryRow = r => r.cells && r.cells.length===1 && r.cells[0].colSpan>1;
+      const isSummaryRow = r => (r.cells && r.cells.length===1 && r.cells[0].colSpan>1) || (r.classList && r.classList.contains('keep-last'));
       const dataRows = bodyRows.filter(r=>!isSummaryRow(r));
       const sumRows = bodyRows.filter(isSummaryRow);
       for(let i=0;i<dataRows.length;i+=opts.rowsPerPage) chunks.push(dataRows.slice(i,i+opts.rowsPerPage));
@@ -25090,6 +25106,32 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   window.addEventListener('orientationchange',sched);
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(sched);
   document.addEventListener('DOMContentLoaded',sched);
+})();
+</script>
+<script id="cte-fit-select">
+/* Teacher box (Assign Subjects) and class box (Edit Student Subjects): shrink the shown text just enough to be seen in full. */
+(function(){
+  var q=0, cv=document.createElement('canvas').getContext('2d');
+  function fit(){
+    q=0;
+    var ss=document.querySelectorAll('#assignTeacherPick,#slClassPick');
+    for(var i=0;i<ss.length;i++){
+      var s=ss[i]; s.style.removeProperty('font-size');
+      var o=s.options[s.selectedIndex]; if(!o||!s.clientWidth) continue;
+      var cs=getComputedStyle(s), size=parseFloat(cs.fontSize)||14;
+      var avail=s.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0)-24, g=0;
+      while(size>8 && g++<60){
+        cv.font=cs.fontWeight+' '+size+'px '+cs.fontFamily;
+        if(cv.measureText(o.text).width<=avail) break;
+        size-=0.5;
+      }
+      if(size!==(parseFloat(cs.fontSize)||14)) s.style.setProperty('font-size',size+'px','important');
+    }
+  }
+  function sched(){ if(!q) q=requestAnimationFrame(fit); }
+  new MutationObserver(function(m){ for(var i=0;i<m.length;i++){ if(m[i].addedNodes.length){ sched(); return; } } }).observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('change',sched); window.addEventListener('resize',sched);
+  setTimeout(sched,500);
 })();
 </script>
 <script id="cte-score-sheets-name">
