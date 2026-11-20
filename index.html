@@ -504,12 +504,20 @@ img{max-width:100%;height:auto;}
 /* Pages other than the dashboard: the blue menu tucks away so the page can use the whole screen. Only one clear Dashboard bar
    stays; tapping it shows every option (as a grid), and choosing one re-renders the page with the menu tucked away again. */
 .sidebar a.nav-home{display:none;}
-.aiu-btn{display:inline-block;box-sizing:border-box;max-width:100%;text-align:center;padding:9px 16px;font-size:13px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;text-decoration:none;}
+.sl-grid{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;}
+.sl-grid th,.sl-grid td{border:1px solid #444;padding:3px 2px;text-align:center;overflow-wrap:anywhere;word-break:break-word;vertical-align:middle;}
+.sl-grid td:nth-child(3){text-align:left;}
+.sl-grid th{background:#e8eef7;}
+.sl-grid input[type=checkbox]{width:13px;height:13px;}
+.aiu-btn{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid #b91c1c;border-radius:8px;background:#dc2626;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;text-decoration:none;}
 .aiu-btn:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
-.aiu-card{margin:16px auto;width:min(460px,100%);box-sizing:border-box;}
-.aiu-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #d5dbe6;border-radius:10px;margin:8px 0;cursor:pointer;background:#fff;}
+.aiu-card{--aiu-k:1;margin:8px auto;width:100%;max-width:640px;box-sizing:border-box;padding:calc(28px*var(--aiu-k)) calc(22px*var(--aiu-k));display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
+.aiu-card h3{font-size:calc(24px*var(--aiu-k));margin-bottom:calc(6px*var(--aiu-k));}
+.aiu-card .small{font-size:calc(15px*var(--aiu-k));overflow-wrap:anywhere;}
+.aiu-card .btn{font-size:calc(18px*var(--aiu-k));padding:calc(14px*var(--aiu-k));}
+.aiu-opt{display:flex;align-items:center;gap:calc(14px*var(--aiu-k));padding:calc(14px*var(--aiu-k)) calc(16px*var(--aiu-k));font-size:calc(19px*var(--aiu-k));border:1px solid #d5dbe6;border-radius:12px;margin:calc(9px*var(--aiu-k)) 0;cursor:pointer;background:#fff;min-width:0;overflow-wrap:anywhere;}
 .aiu-opt input{position:absolute;opacity:0;width:0;height:0;}
-.aiu-circ{flex:0 0 auto;width:22px;height:22px;border-radius:50%;border:2px solid #1e6fd9;box-sizing:border-box;background:#fff;}
+.aiu-circ{flex:0 0 auto;width:calc(30px*var(--aiu-k));height:calc(30px*var(--aiu-k));border-radius:50%;border:2px solid #1e6fd9;box-sizing:border-box;background:#fff;}
 .aiu-opt input:checked + .aiu-circ{background:#1e6fd9;box-shadow:inset 0 0 0 4px #fff;}
 .layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
 .layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
@@ -13745,6 +13753,16 @@ function examSetupView(gcClassId){
   <div style="margin:18px 0;text-align:center;"><a href="#" class="aiu-btn" data-action="nav:assessinuse">Assessments in use</a></div>`;
 }
 
+// Shrinks the Assessments in Use card until all of it is visible: no sideways or downward scrolling.
+function aiuFit(){
+  const c = document.querySelector('.aiu-card'); if(!c) return;
+  const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  let k = 1; c.style.setProperty('--aiu-k', '1');
+  const top = c.getBoundingClientRect().top + (window.scrollY||0);
+  const avail = vh - top - 10;
+  while(k>0.3 && (c.offsetHeight>avail || c.scrollWidth>c.clientWidth+1)){ k = Math.round((k-0.05)*100)/100; c.style.setProperty('--aiu-k', String(k)); }
+}
+window.addEventListener('resize', ()=>{ try{ aiuFit(); }catch(e){} });
 function assessInUseView(classId){
   classId = classId || '';
   const gcAll = isAllStr(classId);
@@ -13760,7 +13778,7 @@ function assessInUseView(classId){
       ${list.map(a=>`<label class="aiu-opt"><input type="checkbox" name="use" value="${esc(a.key)}" ${off && off.has(a.key)?'':'checked'}><span class="aiu-circ"></span><span><b>${esc(a.label)}</b><br><span class="small">${esc(a.sub)}</span></span></label>`).join('')}
       <button class="btn" style="margin-top:14px;width:100%;">Submit — save assessments in use</button>
     </form>` : `<p class="small">No assessment types are switched on in Exam Setup for this class yet.</p>`}
-  </div>`;
+  </div><img alt="" width="1" height="1" style="position:absolute;opacity:0;pointer-events:none;" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="aiuFit();setTimeout(aiuFit,150)">`;
   return `
   <div style="margin:6px 0 12px;"><a href="#" class="aiu-btn" data-action="nav:examsetup">◀ Back to Exam Setup</a></div>
   <h2>Assessments in Use</h2>
@@ -16141,7 +16159,7 @@ function subjectListView(){
     let cells = '';
     for(let k=0;k<nOpt;k++){
       const o = d.opts[k];
-      cells += o ? `<td style="text-align:left;white-space:nowrap;"><label style="display:flex;align-items:center;gap:6px;margin:0;font-weight:600;${o.off?'color:#a33;':''}"><input type="checkbox" class="slPick" data-sid="${esc(d.s.id)}" data-sub="${esc(o.sj)}" data-off="${o.off?1:0}" style="width:auto;margin:0;"><span${o.off?' style="text-decoration:line-through;"':''}>${esc(o.sj)}</span>${o.off?'<span class="small">(removed)</span>':''}</label></td>` : `<td></td>`;
+      cells += o ? `<td><label style="display:flex;align-items:center;gap:3px;margin:0;font-weight:600;${o.off?'color:#a33;':''}"><input type="checkbox" class="slPick" data-sid="${esc(d.s.id)}" data-sub="${esc(o.sj)}" data-off="${o.off?1:0}" style="width:auto;min-width:0;margin:0;flex:0 0 auto;"><span title="${esc(o.sj)}"${o.off?' style="text-decoration:line-through;"':''}>${esc(msAbbr(o.sj))}</span></label></td>` : `<td></td>`;
     }
     return `<tr><td>${i+1}</td><td>${esc(d.s.admNo||'')}</td><td style="text-align:left;">${esc(d.s.name)}</td>${multiCls?`<td>${esc(c?c.name:'')}</td>`:''}${cells}</tr>`;
   }).join('');
@@ -16162,8 +16180,8 @@ function subjectListView(){
       <div><b>${esc(cls.name)}</b><br><span class="small">${students.length} student${students.length===1?'':'s'} · optional subjects each student takes</span></div>
       ${tb}
     </div>
-    <div style="overflow-x:auto;margin-top:10px;">
-    ${students.length?`<table><thead><tr><th>#</th><th>Adm No</th><th style="text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
+    <div style="margin-top:10px;">
+    ${students.length?`<table class="sl-grid"><thead><tr><th style="width:5%;">#</th><th style="width:13%;">Adm No</th><th style="width:24%;text-align:left;">Name</th>${multiCls?'<th>Class</th>':''}${optHead}</tr></thead><tbody>${rows}</tbody></table>`:`<p class="small">No students in this class.</p>`}
     </div>
     ${students.length?`<div style="margin-top:10px;">${tb}</div>`:''}
     <p class="small" style="margin-top:10px;">Tick any subjects you want to take off a student, then tap <b>Remove ticked</b> once and enter your password once. Removing a subject takes it off their report card and out of every list, mark sheet, rank list and analysis; averages, points and positions are worked out without it. Removed subjects stay in the table (struck through): a teacher may put the student back on their marking list and enter scores, but those scores stay hidden and affect nothing until you tick the subject and tap <b>ADD ALL TICKED</b>. Compulsory subjects are not listed because nobody can be removed from them.</p>
