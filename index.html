@@ -251,7 +251,7 @@
   }
   function fitFree(){
     try{
-      clearTimeout(window.__cteFitTimer);
+      clearTimeout(window.__cteFitTimer); window.__cteFitTimer = 0;
       var fit = fitValue(), meta = fitMeta(); if(!fit || !meta) return;
       meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale=5, user-scalable=yes');
     }catch(e){}
@@ -283,6 +283,8 @@
     if(e.touches && e.touches.length > 1){ window.__ctePinching = true; window.__cteUserPinchAt = Date.now(); fitFree(); }
   }, {passive:true, capture:true});
   function endPinch(e){ if(!e.touches || e.touches.length < 2) setTimeout(function(){ window.__ctePinching = false; }, 80); }
+  // Any finger touching down releases a pending fit-pin at once, so a pinch that is about to start is never blocked.
+  document.addEventListener('touchstart', function(){ try{ if(window.__cteFitTimer) fitFree(); }catch(_){} }, {passive:true, capture:true});
   document.addEventListener('touchend', endPinch, {passive:true, capture:true});
   document.addEventListener('touchcancel', endPinch, {passive:true, capture:true});
   // Taps on buttons, links, tabs, rows, labels and ticks (typing boxes are left alone so a manual zoom survives typing)
@@ -406,7 +408,9 @@
   --ink:#132436; --paper:#FFFFFF; --muted:#5A7189; --danger:#B23A3A; --good:#1E7A46;
 }
 *{box-sizing:border-box;}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;} /* stop phones inflating text on the scaled desktop layout */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:pan-x pan-y pinch-zoom;}
+/* Documents and lists (report cards, mark sheets, tables, previews) always allow pinch-zoom. */
+body,#app,.main,.card,table,#printArea,.report-card,.rc-wrap,[class*="report"],[class*="mark-sheet"],[class*="mm-"]{touch-action:pan-x pan-y pinch-zoom;} /* stop phones inflating text on the scaled desktop layout */
 body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--blue-light);color:var(--ink);}
 h1,h2,h3,.display{font-family:Georgia,'Playfair Display',serif;}
 button{font-family:inherit;cursor:pointer;}
@@ -2103,17 +2107,17 @@ table.data-table.se-table th .se-sh{font-size:calc(4*var(--uk));font-weight:700;
 /* Column headers: bold WHITE words on solid colour (blue for every column; green marks the column being entered now). */
 table.data-table.se-table th,table.data-table.se-table th a,table.data-table.se-table th .small,.se-table th .se-hmax{color:#fff !important;}
 table.data-table.se-table th{background:var(--blue,#1f5fa8) !important;font-weight:800;}
-table.data-table.se-table th:nth-last-child(2){background:#0f6b3a !important;}
+table.data-table.se-table th.se-cur{background:#0f6b3a !important;}
 .se-table td input{font-size:calc(12*var(--uk));line-height:1;height:calc(var(--se-row) - 3*var(--uk));min-height:0;padding:0 calc(4*var(--uk));box-sizing:border-box;width:100% !important;min-width:0;max-width:100% !important;margin:0 auto;display:block;text-align:center;}
 /* Only the action buttons (REMOVE / DELETE / Clear X) are tiny; headers and names keep their own sizes. The selector
    is written to win over the generic table.data-table rules. */
-table.data-table.se-table th:last-child,
+table.data-table.se-table th.se-acth,
 table.data-table.se-table td .btn-outline,table.data-table.se-table td .btn-danger{font-size:calc(5.5*var(--uk)) !important;}
 .se-table td .btn-outline,.se-table td .btn-danger{font-size:calc(5.5*var(--uk));padding:calc(2*var(--uk)) calc(2*var(--uk)) !important;line-height:1;white-space:nowrap;letter-spacing:-.02em;max-width:100%;box-sizing:border-box;}
 .se-table th:nth-child(2){width:45%;}
 .se-table th.small{width:min(13%,calc(var(--se-osh,56%) / var(--se-oc,1)));}
-.se-table th:last-child{width:12%;text-align:right;padding-right:calc(2*var(--uk));}
-.se-table th:nth-last-child(2){width:15%;}
+.se-table th.se-acth{width:12%;text-align:center;padding-right:calc(2*var(--uk));}
+.se-table th.se-cur{width:15%;}
 .se-table th.se-tk,.se-table td.se-tk{width:calc(11*var(--uk)) !important;min-width:calc(11*var(--uk)) !important;max-width:calc(11*var(--uk)) !important;padding:0 !important;text-align:center !important;white-space:nowrap !important;overflow:hidden;font-size:calc(8*var(--uk));line-height:1;}
 .se-table td.se-tk input{width:calc(10*var(--uk));height:calc(10*var(--uk));margin:0;padding:0;vertical-align:middle;}
 .se-table td.flex{display:table-cell;}
@@ -2300,12 +2304,15 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   .se-wrap.se-score .se-table th:not(:nth-child(2)) .se-en span{white-space:nowrap;}
   .se-wrap.se-score .se-table th.se-prevh{min-width:var(--se-pw,calc(44*var(--uk)));}
   .se-wrap.se-score .se-table th.se-prevh.se-more{min-width:calc(var(--se-pw,calc(44*var(--uk))) + 6*var(--uk));}
-  .se-wrap.se-score .se-table th:nth-last-child(2){min-width:calc(32*var(--uk));padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
-  .se-wrap.se-score .se-table td:nth-last-child(2){padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
-  .se-wrap.se-score .se-table th:last-child, .se-wrap.se-score .se-table td:last-child{padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
+  .se-wrap.se-score .se-table th.se-cur{min-width:calc(32*var(--uk));padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
+  .se-wrap.se-score .se-table td.se-curtd{padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
+  .se-wrap.se-score .se-table th.se-acth, .se-wrap.se-score .se-table td.se-actd{padding-left:calc(2*var(--uk)) !important;padding-right:calc(2*var(--uk)) !important;}
   /* ENTER SCORES actions: REMOVE STUDENT / DELETE SCORE / CLEAR X in one small tight line */
   .se-wrap.se-score td.flex{white-space:nowrap !important;text-align:center;}
-  .se-wrap.se-score td.flex .se-actstack{display:flex;flex-direction:column;align-items:stretch;gap:calc(1.2*var(--uk));}
+  .se-wrap.se-score td.flex .se-actstack{display:flex;flex-direction:row;align-items:stretch;justify-content:center;gap:0;}
+  .se-wrap.se-score td.flex .se-actc{display:flex;align-items:center;justify-content:center;padding:0 calc(2*var(--uk));min-width:calc(24*var(--uk));}
+  .se-wrap.se-score td.flex .se-actc + .se-actc{border-left:1px solid var(--blue,#1f5fa8);}
+  .se-wrap.se-score td.flex .se-act{white-space:normal !important;}
   .se-wrap.se-score td.flex .se-act{font-size:calc(3.6*var(--uk)) !important;font-weight:800 !important;letter-spacing:0 !important;padding:calc(1.2*var(--uk)) calc(2.2*var(--uk)) !important;min-height:0 !important;height:auto !important;line-height:1.15 !important;white-space:nowrap !important;margin:0 !important;width:100% !important;display:block;text-align:center;border-radius:calc(2.5*var(--uk));}
   /* RESULT ANALYSIS subject forms (class wise / level wise): a small gap at both ends shows that no column is cut */
   .layout .main.main-wide .card[data-orient]:has(table.ra-table:not(.sp-students)){padding-left:calc(6*var(--uk)) !important;padding-right:calc(6*var(--uk)) !important;}
@@ -4336,6 +4343,7 @@ async function _mergeScoreShardInner(schoolId, term, year, mutate){
 ------------------------------------------------------------- */
 const SCORE_OUTBOX_PREFIX = 'cte_score_outbox_';
 let _scoreFlushP = null;
+let _scoreOutboxStuck = false;   // true ONLY while queued scores could not be delivered (offline / send failed)
 function scoreOutboxKey(){ return SCORE_OUTBOX_PREFIX + (SCHOOL_ID||''); }
 function scoreOutboxRead(){ try{ const a = JSON.parse(localStorage.getItem(scoreOutboxKey())||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
 function scoreOutboxWrite(a){ try{ if(a.length) localStorage.setItem(scoreOutboxKey(), JSON.stringify(a)); else localStorage.removeItem(scoreOutboxKey()); }catch(e){ console.error(e); } scoreOutboxPill(); }
@@ -4343,7 +4351,7 @@ function scoreOutboxPill(){
   try{
     const n = SCHOOL_ID ? scoreOutboxRead().length : 0;
     let el = document.getElementById('scoreOutboxPill');
-    if(!n){ if(el) el.remove(); return; }
+    if(!n || !_scoreOutboxStuck){ if(el) el.remove(); return; }   // a save that is still being sent normally is NOT a warning
     if(!el){ el = document.createElement('div'); el.id='scoreOutboxPill';
       el.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:9998;background:#e67e00;color:#fff;font:700 14px Inter,sans-serif;padding:9px 16px;border-radius:22px;box-shadow:0 3px 12px rgba(0,0,0,.35);max-width:92vw;text-align:center;';
       document.body.appendChild(el); }
@@ -4373,14 +4381,14 @@ function flushScoreOutbox(){
     try{
       for(;;){
         const q = scoreOutboxRead(); if(!q.length) break;
-        if(!DEMO_MODE && navigator.onLine===false){ allSent = false; break; }
+        if(!DEMO_MODE && navigator.onLine===false){ allSent = false; _scoreOutboxStuck = true; scoreOutboxPill(); break; }
         const e = q[0];
         try{ await _withTimeout(_sendScoreRows(e.rows||[]), 25000); }
-        catch(err){ console.error('Score send failed — kept for retry', err); allSent = false; break; }
+        catch(err){ _scoreOutboxStuck = true; scoreOutboxPill(); console.error('Score send failed — kept for retry', err); allSent = false; break; }
         scoreOutboxWrite(scoreOutboxRead().filter(x=>x.qid!==e.qid));
         try{ scoreOutboxDelivered(e); }catch(_){}
       }
-    } finally { _scoreFlushP = null; }
+    } finally { _scoreFlushP = null; if(!scoreOutboxRead().length){ _scoreOutboxStuck = false; } scoreOutboxPill(); }
     return allSent;
   })();
   return _scoreFlushP;
@@ -6892,8 +6900,10 @@ function streamGroupIds(cls){ return new Set(streamGroupClasses(cls).map(c=>c.id
 // when every principal subject they take is ARTS. Students with no principal subject yet stay where they are.
 function aStreamPair(cls){
   const g = streamGroupClasses(cls);
-  const arts = g.find(c=>/^arts?$/i.test(String(c.stream||'').trim()));
-  const sci = g.find(c=>/^sciences?$/i.test(String(c.stream||'').trim()));
+  // Tolerant matching: "ARTS", "Arts", "Art", "S.5 ARTS", "SCIENCES", "Science" ... (stream field or class name)
+  const lbl = c=>String(c.stream||'').trim() || String(c.name||'').trim();
+  const arts = g.find(c=>/(^|[\s._-])arts?$/i.test(lbl(c)));
+  const sci = g.find(c=>/(^|[\s._-])sciences?$/i.test(lbl(c)));
   return (arts && sci) ? {arts, sci} : null;
 }
 function aStreamFor(st, cls){
@@ -6910,8 +6920,37 @@ function aStreamFor(st, cls){
   return cats.size ? 'ARTS' : null;
 }
 var _aAutoBusy = false;
+// An A-Level class that has NO streams at all gets ARTS and SCIENCES created for it automatically (once a student in it
+// can be classified). The original class record becomes ARTS (same id, so its assignments, scores and fees stay put);
+// SCIENCES is a new class that copies its teacher, exam settings, admission counter and class-level agreed fees.
+function aAutoCreateStreams(){
+  let made = 0, finCopied = false;
+  const seen = new Set();
+  DB.classes.slice().forEach(cls=>{
+    if(cls.level!=='A' || seen.has(cls.id)) return;
+    const g = streamGroupClasses(cls); g.forEach(c=>seen.add(c.id));
+    if(g.length!==1 || String(cls.stream||'').trim()) return;
+    const studs = DB.students.filter(s=>s.status!=='left' && s.classId===cls.id);
+    if(!studs.some(st=>aStreamFor(st, cls))) return;
+    const base = classBaseName(cls);
+    if(DB.classes.some(c=>c.id!==cls.id && c.level===cls.level && [base+' ARTS', base+' SCIENCES'].some(n=>classFullName(c).toLowerCase()===n.toLowerCase()))) return;
+    cls.name = base+' ARTS'; cls.stream = 'ARTS';
+    const sci = {id:uid('cls'), name:base+' SCIENCES', level:cls.level, form:cls.form||null, stream:'SCIENCES', classTeacher:cls.classTeacher||null, nextAdmSeq:cls.nextAdmSeq||0};
+    try{ if(cls.examConfig) sci.examConfig = JSON.parse(JSON.stringify(cls.examConfig)); }catch(e){ console.error(e); }
+    DB.classes.push(sci); made++;
+    try{
+      const fd_ = financeData();
+      (fd_.classAgreed||[]).filter(r=>r.classId===cls.id).forEach(r=>{ fd_.classAgreed.push({...r, id:uid('cagree'), classId:sci.id}); finCopied = true; });
+      const sel_ = fd_.classReqSelections || {};
+      if(sel_[cls.id]!==undefined && sel_[sci.id]===undefined){ sel_[sci.id] = Array.isArray(sel_[cls.id]) ? sel_[cls.id].slice() : sel_[cls.id]; finCopied = true; }
+    }catch(e){ console.error(e); }
+  });
+  return {made, finCopied};
+}
 function aAutoStreamCheck(){
-  if(_aAutoBusy || !CUR || CUR.role!=='admin' || !DB || !Array.isArray(DB.classes) || !Array.isArray(DB.students)) return;
+  if(_aAutoBusy || !CUR || CUR.role!=='admin' || !DB || !Array.isArray(DB.classes) || !Array.isArray(DB.students) || !DB.info) return;
+  let created = {made:0, finCopied:false};
+  try{ created = aAutoCreateStreams(); }catch(e){ console.error(e); }
   let moved = 0;
   DB.students.forEach(st=>{
     if(st.status==='left') return;
@@ -6920,11 +6959,24 @@ function aAutoStreamCheck(){
     const pr = aStreamPair(cls); if(!pr) return;
     const t = aStreamFor(st, cls); if(!t) return;
     const dest = t==='SCIENCES' ? pr.sci : pr.arts;
-    if(dest.id!==st.classId){ st.classId = dest.id; moved++; }
+    if(dest.id!==st.classId){
+      // a student with no placement history is first recorded in the class they were in all along, so earlier terms still resolve
+      if(!Array.isArray(st.classHistory) || !st.classHistory.length) noteClassPlacement(st, st.classId, 'Term 1', 0);
+      try{ projectData().scores.forEach(r=>{ if(r.studentId===st.id && r.classId===st.classId) r.classId = dest.id; }); }catch(e){ console.error(e); }
+      st.classId = dest.id; moved++;
+      // record the placement (as promotion / manual edits do) so report cards and past-term lists follow the new stream
+      try{ noteClassPlacement(st, dest.id, DB.info.currentTerm, DB.info.currentYear); }catch(e){ console.error(e); }
+    }
   });
-  if(moved){
+  if(moved || created.made){
     _aAutoBusy = true; invalidateScoreLookupCache();
-    setTimeout(async()=>{ try{ await saveStudents(); }catch(e){ console.error(e); } _aAutoBusy = false; render(); }, 0);
+    setTimeout(async()=>{
+      try{
+        if(created.made){ await saveClasses(); if(created.finCopied){ try{ await saveInfo(); }catch(e){ console.error(e); } } }
+        if(moved) await saveStudents();
+      }catch(e){ console.error(e); }
+      _aAutoBusy = false; render();
+    }, 0);
   }
 }
 function streamGroupIdsById(classId){ const c = DB.classes.find(x=>x.id===classId); return c ? streamGroupIds(c) : new Set([classId]); }
@@ -8113,15 +8165,26 @@ function render(){
 // or nobody — so the only honest, safe thing to show is who we are and how to
 // reach us, never a form that assumes a particular kind of visitor.
 function renderConnectionTrouble(){
+  // Same card (size, centring, stacked sections) as the sign-in page.
   return `
-  <div class="auth-wrap"><div class="auth-box" style="text-align:center;">
-    <div class="display" style="font-size:26px;font-weight:800;color:var(--navy);">CT-E <span style="color:var(--gold)">SOLUTIONS</span></div>
-    <div class="small" style="margin-top:2px;">School Report System</div>
-    <div class="note" style="margin-top:16px;text-align:left;">We couldn't reach the database right now. This usually means the internet connection is down, or is having trouble.</div>
-    <p class="small" style="margin-top:14px;">Check your internet connection or data and try again. If this keeps happening, reach out to us:</p>
-    <div style="margin-top:6px;font-weight:700;">Call : TONTE CHARLES or help lines</div>
-    <div style="font-weight:700;">${esc(FOUNDER_CONTACT)}</div>
-    <button class="btn" style="width:100%;margin-top:18px;padding:12px;" data-action="retryConnection">Try again</button>
+  <div class="auth-wrap"><div class="auth-box platform-login-box">
+    <div style="text-align:center;margin-bottom:6px;">
+      <div class="school-name-big" style="font-size:22px;">CT-E <span style="color:var(--gold)">SOLUTIONS</span></div>
+      <div class="small">School Report System</div>
+    </div>
+    <div class="login-body">
+      <div class="login-section">
+        <div class="note" style="text-align:center;">We couldn't reach the database right now. This usually means the internet connection is down, or is having trouble.</div>
+      </div>
+      <div class="login-section">
+        <p class="small" style="text-align:center;margin:0;">Check your internet connection or data and try again. If this keeps happening, reach out to us:</p>
+        <div class="small" style="margin-top:8px;font-weight:700;text-align:center;">Call : CEO CT-E SOLUTIONS or help lines</div>
+        <div class="small" style="font-weight:700;text-align:center;">${esc(FOUNDER_CONTACT)}</div>
+      </div>
+      <div class="login-section login-section-fill">
+        <button class="btn" style="width:100%;margin-top:6px;padding:12px;" data-action="retryConnection">Try again</button>
+      </div>
+    </div>
   </div></div>`;
 }
 function renderFounderSetup(){
@@ -16816,6 +16879,8 @@ function scoresEntryView(mine){
         </table>
       </div>`;
       } else {
+      // Actions column only when there is something to act on: a saved score to delete, or an X flag to clear.
+      const showAct = students.some(st=>existingScoreFor(st.id)) || students.some(st=>missSet.has(st.id));
       studentRows = `
       ${scoresLocked? `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>The ${esc(sel.kind==='AOI'?cfgHere.cwLabel:cfgHere.eotLabel)} submission deadline (${fmtDateTime(scoreDeadlineFor(sel.kind).deadline)}) has passed.</b> You can still see everything below, but scores can't be submitted, edited, or deleted until your admin reopens entry for you.</div>` : ''}
       <div class="card">
@@ -16841,12 +16906,12 @@ function scoresEntryView(mine){
               <button type="button" class="btn-danger" data-action="removeAllFromRoster:${a.id}">REMOVE ALL FROM LIST</button>
             </div>
             <div class="small" style="margin-top:6px;text-transform:none;">Tick the small box before a student's name, then press REMOVE SELECTED FROM LIST — or remove everyone. Saved scores are not deleted, but the student leaves every list of this subject, whoever entered the marks.</div>
-          </div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th class="se-tk" title="Tick the small box before a name to select that student">☑</th><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th><th>Actions</th></tr>
+          </div>` : ''}<div class="se-wrap se-score" style="--se-oc:${Math.max(otherCols.length,1)};--se-cw:calc(var(--se-pw,calc(44*var(--uk)))/3);"><table class="data-table se-table"><tr><th class="se-tk" title="Tick the small box before a name to select that student">☑</th><th>Student</th>${otherCols.length?`<th class="se-prevh${otherCols.length>3?' se-more':''}"><div class="se-ph-title">ALREADY SCORED</div><div class="se-prev"><div class="se-pr-in">${otherColHeaders}</div></div></th>`:''}<th class="se-cur" style="background:#eaf3ff;" title="${currentColLabel} -- entering now">${currentColShort}<span class="se-en"><span>(entering</span><span>now, /${sel.maxScore||100})</span></span></th>${showAct?'<th class="se-acth">Actions</th>':''}</tr>
           ${students.map(s=>{
             let existing = '';
             const existingRow = existingScoreFor(s.id);
             existing = existingRow ? existingRow.marks : '';
-            const delScoreBtn = existingRow ? `<button type="button" class="btn-danger se-act" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE SCORE</button>` : '';
+            const delScoreBtn = existingRow ? `<button type="button" class="btn-danger se-act" data-action="deleteScore:${existingRow.id}" ${scoresLocked?'disabled':''}>DELETE<br>SCORE</button>` : '';
             const otherCells = otherCols.map(c=>{
               const row = scoreCellFor(s.id, a.subject, c, term, year);
               return row ? `<span class="se-pc">${esc(zp(row.marks))}</span>` : `<span class="se-pc se-nil">—</span>`;
@@ -16856,8 +16921,8 @@ function scoresEntryView(mine){
             const conflict = SUBSIDIARIES.includes(a.subject) && hasSubsidiaryConflict(s, cls);
             const conflictBadge = conflict ? ` <span class="pill" style="background:var(--danger);color:#fff;" title="This student is ticked into BOTH Subsidiary Mathematics and Subsidiary Computer rosters — a student can only take one, so NEITHER shows on their report card right now, even though scores may be saved here. Remove them from whichever roster is wrong to fix this — nothing is auto-picked for you.">⚠ dual subsidiary — hidden from report card</span>` : '';
             const pickBox = (existingRow || !compulsoryAll) ? `<input type="checkbox" class="se-pick" data-sid="${s.id}" ${existingRow?`data-rowid="${existingRow.id}"`:''} title="Tick to select this student">` : '';
-            return `<tr><td class="se-tk">${pickBox}</td><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="text" inputmode="decimal" autocomplete="off" min="0" max="${sel.maxScore||100}" value="${esc(zp(existing))}" placeholder="${isMissing?'X':''}" class="zp-in ${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td><td class="flex" style="justify-content:center;"><div class="se-actstack">${delScoreBtn}${clearMissingBtn}${compulsoryAll ? '' : `<button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE STUDENT</button>`}</div></td></tr>`;
-          }).join('') || `<tr><td colspan="${otherCols.length?5:4}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
+            return `<tr><td class="se-tk">${pickBox}</td><td style="text-align:left;"><div class="se-name"><span class="se-nm">${esc(s.name)}${conflictBadge}</span></div></td>${otherCols.length?`<td class="se-prevtd${otherCols.length>3?' se-more':''}"><div class="se-prev"><div class="se-pr-in">${otherCells}</div></div></td>`:''}<td class="se-curtd" style="background:#f6fbff;"><input name="m_${s.id}" data-student="${esc(s.name)}" type="text" inputmode="decimal" autocomplete="off" min="0" max="${sel.maxScore||100}" value="${esc(zp(existing))}" placeholder="${isMissing?'X':''}" class="zp-in ${isMissing?'missing-mark':''}" style="width:80px;background:#dcf5dc;${isMissing?'border-color:var(--danger);':''}" ${scoresLocked?'disabled':''}></td>${showAct?`<td class="flex se-actd" style="justify-content:center;"><div class="se-actstack">${compulsoryAll ? '' : `<div class="se-actc"><button type="button" class="btn-outline se-act" data-action="removeFromRoster:${a.id}:${s.id}">REMOVE<br>STUDENT</button></div>`}<div class="se-actc">${delScoreBtn}${clearMissingBtn}</div></div></td>`:''}</tr>`;
+          }).join('') || `<tr><td colspan="${(otherCols.length?4:3)+(showAct?1:0)}">No students on your list yet. Use "Edit my student list" below.</td></tr>`}
           </table></div>
           ${compulsoryAll ? `<div class="note" style="margin-top:10px;">This is a compulsory subject, so <b>every student in ${esc(clsLabel)}</b> is listed automatically — including students added to the class later.
             <div class="flex" style="margin-top:10px;"><button type="button" class="btn-outline" data-action="refreshRoster:${a.id}:${sel.paper}:${sel.kind}:${labelBit}:${sel.maxScore||100}">ADD MY MISSING STUDENTS</button></div>
@@ -21427,7 +21492,7 @@ document.addEventListener('submit', async (e)=>{
       if(err){ /* disconnected or waiting/locked: keep as is */ }
       else if(finErr) err=finErr;
       else if(wrongPwMsg) err=wrongPwMsg;
-      else if(!foundAcc && (DATA_LOAD_FAILED || navigator.onLine===false)) err='Could not sign you in. Check your internet connection or data, then try again. Call : TONTE CHARLES or help lines — '+FOUNDER_CONTACT;
+      else if(!foundAcc && (DATA_LOAD_FAILED || navigator.onLine===false)) err='Could not sign you in. Check your internet connection or data, then try again. Call : CEO CT-E SOLUTIONS or help lines — '+FOUNDER_CONTACT;
       else if(!foundAcc) err=finLogin?'Invalid username or Finance password.':'Invalid username, password, or role.';
       else if(foundAcc.status==='pending') err='This account is awaiting owner approval.';
       else if(foundAcc.status==='closed') err='This account has been closed.';
@@ -24153,7 +24218,7 @@ function classifyDbError(e){
   return 'unknown';
 }
 function dbErrorMessage(e, action){
-  const generic = `Could not ${action||'reach the database'} right now. Check your internet connection or data and try again in a moment. Call : TONTE CHARLES or help lines — ${FOUNDER_CONTACT}`;
+  const generic = `Could not ${action||'reach the database'} right now. Check your internet connection or data and try again in a moment. Call : CEO CT-E SOLUTIONS or help lines — ${FOUNDER_CONTACT}`;
   if(!CUR || CUR.role!=='founder') return generic;
   switch(classifyDbError(e)){
     case 'quota': return `Founder-only diagnosis: Firestore's daily read/write/delete quota appears to be exhausted (resource-exhausted). This affects every school on the platform until it resets, or until the project is upgraded off the Spark (free) plan to remove the daily cap.`;
