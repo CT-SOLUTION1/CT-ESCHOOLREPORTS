@@ -532,11 +532,11 @@ img{max-width:100%;height:auto;}
 .sl-nav-purple{border:2px solid #7B3FA0;background:#7B3FA0;color:#fff;}
 .sl-nav-red{border:2px solid #B23A3A;background:#B23A3A;color:#fff;}
 /* Assign Subjects teacher box and Edit Student Subjects class box: as tall as the Username box on the sign-in page */
-#assignTeacherPick,#slClassPick{box-sizing:border-box;width:100%;padding:calc(16*var(--uk)) calc(16*var(--uk)) !important;font-size:calc(21*var(--uk)) !important;border:calc(1.5*var(--uk)) solid #b9c9da;border-radius:calc(8*var(--uk));}
-.sl-cw{display:flex;align-items:center;gap:6px;cursor:pointer;}
-.sl-cw .sl-cell{flex:0 0 28px;width:28px;min-width:28px;padding:3px 0;font-size:18px;}
-.sl-cw .sl-nm{font-size:11px;font-weight:700;line-height:1.15;text-align:left;overflow-wrap:anywhere;color:#0a2a4a;}
-.sl-cw .sl-cell.off + .sl-nm{color:#8a3a3a;}
+#assignTeacherPick,#slClassPick{box-sizing:border-box;width:100%;}
+.sl-cw{display:flex;align-items:center;gap:4px;cursor:pointer;}
+.sl-cw .sl-cell{flex:0 0 18px;width:18px;height:18px;min-width:18px;padding:0;font-size:12px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid #333;border-radius:3px;background:#fff;}
+.sl-cw .sl-nm{font-size:11px;font-weight:700;line-height:1.15;text-align:left;overflow-wrap:anywhere;color:#000;}
+.sl-cw .sl-cell.off + .sl-nm{color:#000;}
 .sl-actions{display:flex;flex-wrap:nowrap;gap:8px;width:100%;}
 .sl-actions>button.sl-ab-btn{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;font-size:clamp(11px,3.2vw,15px);padding:13px 6px;border-radius:8px;font-weight:800;border:2px solid transparent;color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1.2;}
 .sl-actions>button.sl-ab-btn.sl-dl:not(.dl-ready-btn):not(.host-busy){background:#7B3FA0;border-color:#7B3FA0;}
@@ -1704,7 +1704,7 @@ sup.ord-sup{font-size:.62em;line-height:0;vertical-align:baseline;position:relat
 .td-dates>div{padding:calc(4*var(--uk)) 0;font-size:calc(12*var(--uk));}
 form[data-form="setTerm"] input,form[data-form="setTerm"] select{min-height:0 !important;height:52px !important;padding:10px 12px !important;font-size:16px !important;font-weight:600;box-sizing:border-box;}
 /* Year, Term & Promotion: Term, Year, Term ends and Next term begins boxes are 3px shorter */
-select[onchange^="filterClass"],#rcSearch{min-height:calc(40*var(--uk)) !important;padding:calc(9*var(--uk)) calc(10*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
+select[onchange^="filterClass"],#assignTeacherPick,#slClassPick,#rcSearch{min-height:calc(40*var(--uk)) !important;padding:calc(9*var(--uk)) calc(10*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .score-pick select,.score-pick input:not([type="checkbox"]):not([type="hidden"]){min-height:calc(42*var(--uk)) !important;padding-top:calc(9*var(--uk)) !important;padding-bottom:calc(9*var(--uk)) !important;font-size:calc(14*var(--uk)) !important;box-sizing:border-box;}
 .ad-enrol table tr{height:calc(24*var(--uk)*var(--es,1)) !important;}
 .ad-enrol table td{padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
@@ -2380,7 +2380,7 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   .rc-filter-card .rc-gap{margin-top:calc(31*var(--uk)) !important;}
   .rc-filter-card .rc-dd-btn{min-height:calc(31*var(--uk));padding-top:calc(5*var(--uk));padding-bottom:calc(5*var(--uk));font-size:calc(13*var(--uk));}
   .rc-filter-card .rc-dd-btn .rc-dd-arrow{font-size:calc(19*var(--uk));}
-  select[onchange^="filterClass"], #rcSearch{font-size:calc(13*var(--uk)) !important;min-height:calc(31*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
+  select[onchange^="filterClass"], #assignTeacherPick, #slClassPick, #rcSearch{font-size:calc(13*var(--uk)) !important;min-height:calc(31*var(--uk)) !important;padding-top:calc(5*var(--uk)) !important;padding-bottom:calc(5*var(--uk)) !important;}
 }
 @media print{table.sp-students tr{height:auto !important;}}
 /* PRINTED / DOWNLOADED LISTS (everything except report cards): light 0.5px rules.
@@ -13540,7 +13540,7 @@ function assignSubjectsView(){
     <form data-form="assignBulk" autocomplete="off">
       <label>Teacher <span class="small">(select first)</span></label>
       <select name="teacherUsername" id="assignTeacherPick" required>
-        <option value="">-- select teacher --</option>
+        <option value="">Choose a teacher to assign subjects</option>
         ${teachers.map(t=>`<option value="${esc(t.username)}" ${t.username===ASSIGN_TEACHER?'selected':''}>${esc(t.name)}</option>`).join('')}
       </select>
       ${pickerHtml}
@@ -16310,7 +16310,7 @@ function subjectListView(){
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
       <div style="flex:1 1 220px;min-width:0;"><label>Class</label>
         <select id="slClassPick" onchange="setSubjectListParam('slClassId', this.value)">
-          <option value="" ${cls?'':'selected'}>— Select class —</option>
+          <option value="" ${cls?'':'selected'}>Choose a class to edit students subjects</option>
           ${DB.classes.map(c=>`<option value="${esc(c.id)}" ${cls&&c.id===cls.id?'selected':''}>${esc(c.name)}</option>`).join('')}
         </select></div>
       <div><button type="button" class="btn-outline" data-action="nav:${SL_BACK[1]}">◀ ${SL_BACK[0]}</button></div>
@@ -20794,7 +20794,7 @@ document.addEventListener('change', (e)=>{
       const teachSel = form ? form.querySelector('#assignTeacherSel') : null;
       if(teachSel){
         const teachers = teachersForLevel(level);
-        teachSel.innerHTML = teachers.length ? '<option value="">-- select teacher --</option>' + teachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') : '<option value="">-- no matching teacher yet --</option>';
+        teachSel.innerHTML = teachers.length ? '<option value="">Choose a teacher to assign subjects</option>' + teachers.map(t=>`<option value="${t.username}">${esc(t.name)}</option>`).join('') : '<option value="">-- no matching teacher yet --</option>';
         teachSel.disabled = teachers.length === 0;
       }
     }
