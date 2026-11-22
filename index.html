@@ -562,6 +562,7 @@ img{max-width:100%;height:auto;}
 .layout.nav-collapsed{flex-direction:column;flex-wrap:nowrap;}
 .layout.nav-collapsed .sidebar{width:100%;padding:0;display:block;}
 .layout.nav-collapsed .sidebar a.nav-home{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid var(--gold);border-radius:8px;background:var(--gold);color:#2f2600;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
+.layout.nav-collapsed .sidebar a.nav-home.nav-promo{border-color:#c62828;background:#c62828;color:#fff;}
 .layout.nav-collapsed .sidebar a.nav-home:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .layout.nav-collapsed:not(.nav-open) .sidebar a:not(.nav-home){display:none;}
 .layout.nav-collapsed.nav-open .sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(3*var(--uk));padding:0 0 calc(6*var(--uk));}
@@ -8547,7 +8548,7 @@ function promoRowHTML(level, i, r, used){
             <option value="">${r.cond ? '-- not used --' : '-- choose a condition --'}</option>
             ${keys.map(k=>`<option value="${k}" ${k===r.cond?'selected':''} ${(k!==r.cond && used.includes(k))?'disabled':''}>${promoCondLabel(k, level)}</option>`).join('')}
           </select></td>
-          <td><select name="op_${i}" data-role="op" ${r.cond?'':'disabled'}>${r.cond?promoOpOptions(r.op):'<option value="">—</option>'}</select></td>
+          <td><select name="op_${i}" data-role="op" onchange="promoOpChange(this)" ${r.cond?'':'disabled'}>${r.cond?promoOpOptions(r.op):'<option value="">—</option>'}</select></td>
           <td><select name="val_${i}" data-role="val" ${r.cond?'':'disabled'}>${r.cond?promoValOptions(r.cond, r.val, level):'<option value="">—</option>'}</select></td>
         </tr>`;
 }
@@ -8572,20 +8573,18 @@ function promoRulesCardHTML(level){
     </form>
   </div>`;
 }
-var PROMO_OPEN = false;
-// One PROMOTION CONDITIONS button; it opens (and closes) the conditions tables of every level this school has.
-function promoToggle(){
-  PROMO_OPEN = !PROMO_OPEN;
-  const w = document.getElementById('promoWrap'), b = document.getElementById('promoBtn');
-  if(w) w.style.display = PROMO_OPEN ? '' : 'none';
-  if(b){ b.setAttribute('aria-expanded', PROMO_OPEN ? 'true' : 'false'); b.innerHTML = '<b>PROMOTION CONDITIONS ' + (PROMO_OPEN ? '▲' : '▼') + '</b>'; }
-}
+var PROMO_ONLY = false;   // true while the red PROMOTION CONDITIONS button is showing the conditions tables on their own
+// The red PROMOTION CONDITIONS button (beside Go back to menu on Grading Setup) swaps the page to just these tables.
 function promoRulesCardsHTML(showSecondary, showPrimary){
-  const tables = (showSecondary ? promoRulesCardHTML('O') + promoRulesCardHTML('A') : '') + (showPrimary ? promoRulesCardHTML('P') : '');
-  if(!tables) return '';
-  return `<div style="margin:14px 0 8px;"><button type="button" id="promoBtn" class="btn" aria-expanded="${PROMO_OPEN?'true':'false'}" onclick="promoToggle()"><b>PROMOTION CONDITIONS ${PROMO_OPEN?'▲':'▼'}</b></button></div>
-  <div id="promoWrap" style="${PROMO_OPEN?'':'display:none;'}">${tables}</div>`;
+  return (showSecondary ? promoRulesCardHTML('O') + promoRulesCardHTML('A') : '') + (showPrimary ? promoRulesCardHTML('P') : '');
 }
+// Opens a drop-down by itself (the list of choices appears without a second tap). Falls back to just focusing it.
+function promoAutoOpen(el){
+  if(!el || el.disabled) return;
+  setTimeout(()=>{ try{ el.focus({preventScroll:false}); }catch(e){ try{ el.focus(); }catch(_){} }
+    try{ if(typeof el.showPicker==='function') el.showPicker(); }catch(e){} }, 60);
+}
+function promoOpChange(sel){ const tr = sel.closest('tr'); if(tr) promoAutoOpen(tr.querySelector('select[data-role="val"]')); }
 // Greys out a condition in every row once another row uses it (each condition can be used once).
 function promoSyncCondOptions(tbl){
   const conds = [...tbl.querySelectorAll('select[data-role="cond"]')], taken = conds.map(s=>s.value).filter(Boolean);
@@ -8609,6 +8608,7 @@ function promoCondChange(sel){
   }
   tbl.querySelectorAll('select[data-role="cond"]').forEach(s=>{ if(s.value && s.options[0]) s.options[0].textContent = '-- not used --'; });
   promoSyncCondOptions(tbl);
+  if(key) promoAutoOpen(opS);   // condition chosen: the limit list opens by itself, then the figures list after it
 }
 // Subjects a learner MISSED: no score in a subject that classmates (who take it) already have scores in — the same rule
 // that gives RESULT 2 on the O-Level report card. Returns [] for Primary / A-Level, or when the learner has no score at all.
@@ -9727,7 +9727,7 @@ function renderShell(){
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
   <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
-    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${nav.filter(([k])=>!(CUR.role==='admin' && k==='subjectlists')).map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
+    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${(view==='grading' && CUR.role==='admin') ? `<a href="#" class="nav-home nav-promo" data-action="promoOpen">${PROMO_ONLY ? '◀ Grading Setup' : 'Promotion Conditions'}</a>` : ''}${nav.filter(([k])=>!(CUR.role==='admin' && k==='subjectlists')).map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
     <div class="main${view==='classanalysis'?' main-wide':''}${(view==='reportcard'||view==='preport')?' main-rc':''}" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
@@ -14543,6 +14543,7 @@ function gradingView(gcClassId){
   const b = DB.bands||DEFAULT_A_BANDS, ob = DB.obands||DEFAULT_O_BANDS, pb = DB.pbands||DEFAULT_P_BANDS;
   const showSecondary = !isPrimarySchool();
   const showPrimary = !isSecondarySchool();
+  if(PROMO_ONLY) return `<h2>Promotion Conditions</h2>${promoRulesCardsHTML(showSecondary, showPrimary)}`;
   return `
   <h2>Grading Setup</h2>
   <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper and the two subsidiaries are graded from their own level table below (it starts with 50% and above = Pass, 1 point; below 50% = Fail, 0 points) — the grades, points and descriptors you save in the tables are what the whole system uses. O-Level has no points, only A–E descriptors. `:''}${showPrimary?`Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects). `:''}
@@ -14631,7 +14632,7 @@ function gradingView(gcClassId){
     <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
     <tr>${PLE_GRADES.map(g=>`<td>${PLE_GRADE_COMMENT[g]}</td>`).join('')}</tr></table>
   </div>`}
-  ${promoRulesCardsHTML(showSecondary, showPrimary)}`;
+  `;
 }
 
 /* ---------- Admin: Exam setup (assessment weighting, tests, per-class overrides) ---------- */
@@ -18704,18 +18705,19 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         const _cwCols = showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0;
         const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (isP?0:1) + 1 + 1 + (isA?1:0) + 1 + 1;
         const _st = 'text-align:center;font-weight:900;text-transform:uppercase;color:#000;border-top:2.4px solid var(--blue);';
+        const _lblc = 'color:#0a7d2c;-webkit-text-stroke:0.6px #0a7d2c;', _valc = 'color:#8a0303;';   // labels: very bold green; the result / decision itself: bold red
         const _promo = promotionDecisionFor(s, cls, term, {avgPct, totalPoints, pAggregate, result:_res, rows, overallGrade});
         if(_res===null){
           if(!_promo) return '';
           const _l = Math.max(1, Math.round(_colCount*0.3)), _r = Math.max(1, _colCount-_l);
-          return `<tr class="rc-result"><td colspan="${_l}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">DECISION :</td><td colspan="${_r}" style="${_st}font-size:15px;padding:1px 4px;line-height:1.1;">${esc(_promo.text)}</td></tr>`;
+          return `<tr class="rc-result"><td colspan="${_l}" style="${_st}${_lblc}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">DECISION :</td><td colspan="${_r}" style="${_st}${_valc}font-size:15px;padding:1px 4px;line-height:1.1;">${esc(_promo.text)}</td></tr>`;
         }
         if(_promo){
           const _a = Math.max(1, Math.round(_colCount*0.3)), _b = Math.max(1, Math.round(_colCount*0.2)), _c = Math.max(1, _colCount-_a-_b);
-          return `<tr class="rc-result"><td colspan="${_a}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_b}" style="${_st}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td><td colspan="${_c}" style="${_st}font-size:14px;letter-spacing:.5px;padding:1px 4px;line-height:1.1;">${esc(_promo.text)}</td></tr>`;
+          return `<tr class="rc-result"><td colspan="${_a}" style="${_st}${_lblc}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_b}" style="${_st}${_valc}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td><td colspan="${_c}" style="${_st}${_valc}font-size:14px;letter-spacing:.5px;padding:1px 4px;line-height:1.1;">${esc(_promo.text)}</td></tr>`;
         }
         const _lbl = Math.floor(_colCount/2), _val = _colCount-_lbl;
-        return `<tr class="rc-result"><td colspan="${_lbl}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_val}" style="${_st}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td></tr>`;
+        return `<tr class="rc-result"><td colspan="${_lbl}" style="${_st}${_lblc}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_val}" style="${_st}${_valc}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td></tr>`;
       })()}
     </table>
     </div>
@@ -18738,7 +18740,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </tr>
       <tr>
         <td class="lbl">${isP?'Division':'Level'}</td><td class="val">${isP?(pDivision||'—'):(overallDesc||'—')}</td>
-        <td class="lbl">${termLbl} Position</td><td class="val">${ordSup(position)} / ${size}</td>
+        <td class="lbl">${termLbl} Position</td><td class="val" style="color:#8a0303;font-weight:800;">${ordSup(position)} / ${size}</td>
         <td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'}</td>
       </tr>
     </table>
@@ -19392,17 +19394,19 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     const w1 = hasRes ? (promo ? contentW*0.3 : contentW/2) : contentW*0.3;
     const w2 = hasRes ? (promo ? contentW*0.2 : contentW/2) : contentW-w1;
     const w3 = (hasRes && promo) ? contentW-w1-w2 : 0;
-    const ink2 = _shade.custom ? _shade.ink : [0,0,0];
+    const GREEN = [10,125,44], RED = [138,3,3];   // labels: very bold green; result / decision itself: bold red
     setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
     pdf.rect(contentX, cy, contentW, resH, 'F');
     pdf.setLineWidth(0.9); pdf.rect(contentX, cy, w1, resH); pdf.rect(contentX+w1, cy, w2, resH); if(w3>0) pdf.rect(contentX+w1+w2, cy, w3, resH);
-    const fitText = (txt, x, w, size)=>{ let fs=size; pdf.setFont('helvetica','bold'); pdf.setFontSize(fs); while(fs>6 && pdf.getTextWidth(txt) > w-6){ fs -= 0.5; pdf.setFontSize(fs); } centerText(txt, x, w, cy+resH-4.5, fs, 'bold', ink2); };
+    // very bold green: the same text drawn with a thin green outline (jsPDF stroke+fill render mode) on top of bold
+    const boldLabel = (txt, x, w, y, size)=>{ pdf.setFont('helvetica','bold'); pdf.setFontSize(size); setC(GREEN); try{ pdf.setDrawColor(GREEN[0],GREEN[1],GREEN[2]); pdf.setLineWidth(0.5); pdf.text(String(txt), x + w/2, y, {align:'center', renderingMode:'fillThenStroke'}); }catch(e){ pdf.text(String(txt), x + w/2, y, {align:'center'}); } pdf.setLineWidth(0.9); setDrawC([29,78,137]); };
+    const fitText = (txt, x, w, size)=>{ let fs=size; pdf.setFont('helvetica','bold'); pdf.setFontSize(fs); while(fs>6 && pdf.getTextWidth(txt) > w-6){ fs -= 0.5; pdf.setFontSize(fs); } centerText(txt, x, w, cy+resH-4.5, fs, 'bold', RED); };
     if(hasRes){
-      centerText('RESULT :', contentX, w1, cy+resH-4.5, bodySize+2, 'bold', ink2);
-      centerText(String(data.result), contentX+w1, w2, cy+resH-4, bodySize+4, 'bold', ink2);
+      boldLabel('RESULT :', contentX, w1, cy+resH-4.5, bodySize+2);
+      centerText(String(data.result), contentX+w1, w2, cy+resH-4, bodySize+4, 'bold', RED);
       if(promo) fitText(promo.text, contentX+w1+w2, w3, bodySize+2);
     } else {
-      centerText('DECISION :', contentX, w1, cy+resH-4.5, bodySize+2, 'bold', ink2);
+      boldLabel('DECISION :', contentX, w1, cy+resH-4.5, bodySize+2);
       fitText(promo.text, contentX+w1, w2, bodySize+3);
     }
     cy += resH;
@@ -19461,8 +19465,9 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       if(isLbl){ pdf.rect(rx, ry, sumColW, sumRowH, 'F'); pdf.rect(rx, ry, sumColW, sumRowH); }
       const val = row[ci];
       const lines = wrap(String(val), sumColW-6, isLbl?6.5:8, isLbl?'bold':'normal');
-      if(!isLbl && /\u0001/.test(String(val))){ pdf.setFont('helvetica','normal'); pdf.setFontSize(8); setC(ink); supText(String(val), rx+sumColW/2, ry+sumRowH-5, 'center'); }
-      else centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, isLbl?'bold':'normal', isLbl?shadeInk:ink);
+      const isPos = (ri===1 && ci===3);   // the learner's position / rank: bold blood red
+      if(!isLbl && /\u0001/.test(String(val))){ pdf.setFont('helvetica', isPos?'bold':'normal'); pdf.setFontSize(8); setC(isPos ? [138,3,3] : ink); supText(String(val), rx+sumColW/2, ry+sumRowH-5, 'center'); }
+      else centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, (isLbl||isPos)?'bold':'normal', isLbl?shadeInk:(isPos ? [138,3,3] : ink));
     }
   });
   cy += sumRowH*2 + 14 + gapBoost;
@@ -19948,6 +19953,7 @@ document.addEventListener('click', async (e)=>{
     }
     case 'retryConnection': await loadAll(); render(); break;
     case 'toggleVoice': setVoiceEnabled(!VOICE_ENABLED); render(); break;
+    case 'promoOpen': PROMO_ONLY = !PROMO_ONLY; render(); try{ window.scrollTo(0,0); }catch(e){} break;
     case 'toggleVoiceSettings': {
       setVoiceEnabled(!VOICE_ENABLED);
       playUISound(VOICE_ENABLED?'open':'close');
@@ -20006,6 +20012,7 @@ document.addEventListener('click', async (e)=>{
       // still in flight are waited for, and they land straight on the page they tapped.
       if(updateOnNavigate(arg)) break;
       if(arg==='flocked' && CUR && CUR.role==='founder'){ VIEW={name:'flocked', params:{}}; FOUNDER_LOCKED=null; render(); await loadFounderLockedSchools(); if(VIEW.name==='flocked') render(); break; }
+      PROMO_ONLY = false;
       VIEW = {name:arg, params:{}};
       // Render immediately with whatever's already in memory — DB.scores is
       // kept fresh locally on every save via upsertScores/deleteScores, so
