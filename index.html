@@ -8539,44 +8539,76 @@ function promotionDecisionFor(st, cls, term, ctx){
   return {promoted:ok, text: ok ? (next ? 'PROMOTED TO '+next : 'COMPLETED') : 'ADVISED TO RESIT '+cur};
 }
 // Grading Setup: one conditions table per level this school has.
-function promoRulesCardHTML(level){
+function promoRowHTML(level, i, r, used){
+  r = r || {cond:'',op:'gte',val:''}; used = used || [];
   const keys = promoCondKeysFor(level);
-  const saved = promoRules(level);
-  const rows = keys.map((_,i)=> saved[i] || {cond:'',op:'gte',val:''});
-  const used = rows.map(r=>r.cond).filter(Boolean);
-  return `
-  <div class="card" id="promoRulesCard_${level}">
-    <h3>${PROMO_LEVEL_NAMES[level]} — Promoted or Advised to resit</h3>
-    <p class="small">Pick a condition in the first column — its row switches on and the limit boxes fill with the figures that suit that condition. A learner is <b>Promoted</b> to the next class only when <b>every</b> condition set here is met; otherwise the card says <b>Advised to resit</b> the current class. This decision is printed on <b>Term 3</b> ${PROMO_LEVEL_NAMES[level]} report cards only — Term 1 and Term 2 cards stay as they are. With no condition set, nothing extra is shown.</p>
-    <form data-form="savePromoRules">
-      <input type="hidden" name="level" value="${level}">
-      <table class="data-table" style="width:100%;" data-level="${level}">
-        <tr><th>CONDITION</th><th>LIMIT</th><th>FOR BEING PROMOTED</th></tr>
-        ${rows.map((r,i)=>`<tr>
+  return `<tr>
           <td><select name="cond_${i}" data-role="cond" onchange="promoCondChange(this)">
-            <option value="">-- not used --</option>
+            <option value="">${r.cond ? '-- not used --' : '-- choose a condition --'}</option>
             ${keys.map(k=>`<option value="${k}" ${k===r.cond?'selected':''} ${(k!==r.cond && used.includes(k))?'disabled':''}>${promoCondLabel(k, level)}</option>`).join('')}
           </select></td>
           <td><select name="op_${i}" data-role="op" ${r.cond?'':'disabled'}>${r.cond?promoOpOptions(r.op):'<option value="">—</option>'}</select></td>
           <td><select name="val_${i}" data-role="val" ${r.cond?'':'disabled'}>${r.cond?promoValOptions(r.cond, r.val, level):'<option value="">—</option>'}</select></td>
-        </tr>`).join('')}
+        </tr>`;
+}
+function promoRulesCardHTML(level){
+  const keys = promoCondKeysFor(level);
+  const saved = promoRules(level);
+  const rows = saved.slice();
+  if(rows.length < keys.length) rows.push(null);   // one empty row at the end: choosing a condition in it adds the next
+  const used = saved.map(r=>r.cond);
+  return `
+  <div class="card" id="promoRulesCard_${level}">
+    <h3>${PROMO_LEVEL_NAMES[level]} — Promoted or Advised to resit</h3>
+    <p class="small">Choose a condition — the other two columns switch on and fill with the limits and figures that suit it, and a new empty row appears so you can keep adding conditions. A learner is <b>Promoted</b> to the next class only when <b>every</b> condition listed is met; otherwise the card says <b>Advised to resit</b> the current class. This decision is printed on <b>Term 3</b> ${PROMO_LEVEL_NAMES[level]} report cards only — Term 1 and Term 2 cards stay as they are. With no condition set, nothing extra is shown.</p>
+    <form data-form="savePromoRules">
+      <input type="hidden" name="level" value="${level}">
+      <table class="data-table promo-table" style="width:100%;" data-level="${level}">
+        <tr><th>CONDITION</th><th>LIMIT</th><th>FOR BEING PROMOTED</th></tr>
+        ${rows.map((r,i)=>promoRowHTML(level, i, r, used)).join('')}
       </table>
-      <p class="small" style="margin-top:8px;">Each condition can be used once. Discipline is set per learner on <b>Edit profile</b> (Good, Fair or Poor; blank counts as Good).${level==='P' ? ' Aggregates is the report card\'s Total Aggregates (lower is better).' : (level==='O' ? ' Aggregates add up each subject\'s grade points (A=1, B=2, C=3, D=4, E=5), so a lower figure is better.' : ' Overall Total is the learner\'s total Points.')}</p>
+      <p class="small" style="margin-top:8px;">Each condition can be used once. To remove one, set its first box back to <b>-- not used --</b>. Discipline is set per learner on <b>Edit profile</b> (Good, Fair or Poor; blank counts as Good).${level==='P' ? ' Aggregates is the report card\'s Total Aggregates (lower is better).' : (level==='O' ? ' Aggregates add up each subject\'s grade points (A=1, B=2, C=3, D=4, E=5), so a lower figure is better.' : ' Overall Total is the learner\'s total Points.')}</p>
       <button class="btn" style="margin-top:10px;">Submit — save ${PROMO_LEVEL_NAMES[level]} conditions</button>
     </form>
   </div>`;
 }
+var PROMO_OPEN = false;
+// One PROMOTION CONDITIONS button; it opens (and closes) the conditions tables of every level this school has.
+function promoToggle(){
+  PROMO_OPEN = !PROMO_OPEN;
+  const w = document.getElementById('promoWrap'), b = document.getElementById('promoBtn');
+  if(w) w.style.display = PROMO_OPEN ? '' : 'none';
+  if(b){ b.setAttribute('aria-expanded', PROMO_OPEN ? 'true' : 'false'); b.innerHTML = '<b>PROMOTION CONDITIONS ' + (PROMO_OPEN ? '▲' : '▼') + '</b>'; }
+}
 function promoRulesCardsHTML(showSecondary, showPrimary){
-  return (showSecondary ? promoRulesCardHTML('O') + promoRulesCardHTML('A') : '') + (showPrimary ? promoRulesCardHTML('P') : '');
+  const tables = (showSecondary ? promoRulesCardHTML('O') + promoRulesCardHTML('A') : '') + (showPrimary ? promoRulesCardHTML('P') : '');
+  if(!tables) return '';
+  return `<div style="margin:14px 0 8px;"><button type="button" id="promoBtn" class="btn" aria-expanded="${PROMO_OPEN?'true':'false'}" onclick="promoToggle()"><b>PROMOTION CONDITIONS ${PROMO_OPEN?'▲':'▼'}</b></button></div>
+  <div id="promoWrap" style="${PROMO_OPEN?'':'display:none;'}">${tables}</div>`;
+}
+// Greys out a condition in every row once another row uses it (each condition can be used once).
+function promoSyncCondOptions(tbl){
+  const conds = [...tbl.querySelectorAll('select[data-role="cond"]')], taken = conds.map(s=>s.value).filter(Boolean);
+  conds.forEach(s=>[...s.options].forEach(o=>{ o.disabled = !!o.value && o.value!==s.value && taken.includes(o.value); }));
 }
 function promoCondChange(sel){
   const tr = sel.closest('tr'), tbl = sel.closest('table'); if(!tr || !tbl) return;
-  const level = tbl.dataset.level || 'O';
+  const level = tbl.dataset.level || 'O', keys = promoCondKeysFor(level);
   const key = sel.value, opS = tr.querySelector('select[data-role="op"]'), valS = tr.querySelector('select[data-role="val"]');
   if(!key){ opS.innerHTML = '<option value="">—</option>'; valS.innerHTML = '<option value="">—</option>'; opS.disabled = valS.disabled = true; }
   else { opS.innerHTML = promoOpOptions('gte'); valS.innerHTML = promoValOptions(key,'',level); opS.disabled = valS.disabled = false; }
-  const conds = [...tbl.querySelectorAll('select[data-role="cond"]')], taken = conds.map(s=>s.value).filter(Boolean);
-  conds.forEach(s=>[...s.options].forEach(o=>{ o.disabled = !!o.value && o.value!==s.value && taken.includes(o.value); }));
+  const dataRows = [...tbl.querySelectorAll('tr')].slice(1);
+  const empties = dataRows.filter(r=>!r.querySelector('select[data-role="cond"]').value);
+  if(!key){
+    // A cleared row goes away (the list always keeps one empty row to add the next condition in).
+    if(empties.length>1) tr.remove(); else sel.options[0].textContent = '-- choose a condition --';
+  } else if(!empties.length && dataRows.length < keys.length){
+    // Every row is filled and more conditions exist: add the next empty row.
+    let n = 0; tbl.querySelectorAll('select[data-role="cond"]').forEach(s=>{ const m = /cond_(\d+)/.exec(s.name); if(m) n = Math.max(n, Number(m[1])+1); });
+    tbl.insertAdjacentHTML('beforeend', promoRowHTML(level, n, null));
+  }
+  tbl.querySelectorAll('select[data-role="cond"]').forEach(s=>{ if(s.value && s.options[0]) s.options[0].textContent = '-- not used --'; });
+  promoSyncCondOptions(tbl);
 }
 // Subjects a learner MISSED: no score in a subject that classmates (who take it) already have scores in — the same rule
 // that gives RESULT 2 on the O-Level report card. Returns [] for Primary / A-Level, or when the learner has no score at all.
@@ -23496,7 +23528,8 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='savePromoRules'){
       const level = ['O','A','P'].includes(fd.get('level')) ? fd.get('level') : 'O';
       const keys = promoCondKeysFor(level), out = [], seen = new Set();
-      for(let i=0;i<keys.length;i++){
+      const idxs = [...fd.keys()].map(k=>/^cond_(\d+)$/.exec(k)).filter(Boolean).map(m=>Number(m[1])).sort((a,b)=>a-b);
+      for(const i of idxs){
         const c = fd.get('cond_'+i) || ''; if(!c || !keys.includes(c) || seen.has(c)) continue;
         const v = fd.get('val_'+i) || '';
         if(v===''){ alert('Choose the limit for '+promoCondLabel(c, level)+', or set that condition back to "-- not used --".'); return; }
