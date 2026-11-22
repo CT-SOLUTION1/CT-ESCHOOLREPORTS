@@ -4993,6 +4993,7 @@ async function loadScoreScope(sc, opts){
   const need = scoreShardKeysForScope(sc).filter(k=>{ const at = scoreShardAge(k); return opts.force || !at || (opts.stale && now-at>SCORE_STALE_MS); });
   if(!need.length) return {changed:false, failed:false};
   const got = new Map();   // suffix -> rows | null (document does not exist)
+  const wasMissing = need.some(k=>!scoreShardAge(k));   // not in memory when we started (another caller may finish reading it first)
   try{
     if(!LEGACY_SCORES_GONE[sid]){
       // Not yet reorganised into class documents: read the whole period once (handles both formats), then group by class.
@@ -5019,6 +5020,7 @@ async function loadScoreScope(sc, opts){
   try{ scoreOutboxReapply(); }catch(_){}
   _scoresPartial = !_scoresFull;
   invalidateScoreLookupCache();
+  if(wasMissing) changed = true;
   return {changed, failed:false};
 }
 async function ensureScoreScopes(scopes, opts){
@@ -5104,7 +5106,11 @@ function scoreLoadPill(on){
     if(!on){ if(el) el.remove(); return; }
     if(el) return;
     el = document.createElement('div'); el.id = 'scoreLoadPill';
-    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:9997;background:#1f6feb;color:#fff;font:700 13px Inter,sans-serif;padding:7px 14px;border-radius:20px;box-shadow:0 3px 10px rgba(0,0,0,.3);';
+    const onCard = (typeof VIEW!=='undefined' && VIEW && (VIEW.name==='reportcard' || VIEW.name==='preport'));
+    // On a report card the message sits in the middle of the card itself; on other screens it stays a small pill at the top.
+    el.style.cssText = onCard
+      ? 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9997;background:#1f6feb;color:#fff;font:800 15px Inter,sans-serif;padding:12px 22px;border-radius:12px;box-shadow:0 6px 22px rgba(0,0,0,.35);text-align:center;'
+      : 'position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:9997;background:#1f6feb;color:#fff;font:700 13px Inter,sans-serif;padding:7px 14px;border-radius:20px;box-shadow:0 3px 10px rgba(0,0,0,.3);';
     el.textContent = 'Loading this class\u2019s scores\u2026';
     document.body.appendChild(el);
   }catch(e){}
@@ -8476,14 +8482,13 @@ function resultTextFor(st, cls, term, year){
 // ---- PROMOTION DECISION (Term 3 report cards only, every level) ----
 // Admin sets the conditions per level in Grading Setup -> "Promoted or Advised to resit". The decision is PROMOTED when EVERY
 // condition set for that level is met, otherwise ADVISED TO RESIT (the learner's current class).
-const PROMO_OPS = [['gte','At least'],['lte','At most'],['eq','Exactly']];
-const PROMO_DISC_RANK = {Good:3,Fair:2,Poor:1};
+const PROMO_OPS = [['gte','NOT BELOW'],['lt','BELOW']];   // BELOW = strictly under the limit (an older saved 'lte' is read as BELOW)
 const PROMO_LEVEL_NAMES = {O:"O-Level", A:"A-Level", P:"Primary"};
 const PROMO_CONDS = {
   total:      {label:'OVERALL TOTAL', levels:['O','A','P']},
   result:     {label:'RESULT', levels:['O']},
   subjects:   {label:'NUMBER OF SUBJECTS DONE', levels:['O','A','P']},
-  discipline: {label:'DISCIPLINE', levels:['O','A','P']},
+  position:   {label:'POSITION IN CLASS', levels:['O','A','P']},
   aggregates: {label:'AGGREGATES', levels:['O','P']},
   grade:      {label:'OVERALL GRADE', levels:['O','A','P']}
 };
@@ -8500,10 +8505,10 @@ function promoValueList(key, level){
   if(key==='subjects') return range(1,25);
   if(key==='aggregates') return level==='P' ? range(4,36) : range(1,125);
   if(key==='grade') return promoGradeOrder(level).map(g=>[g,g]);
-  if(key==='discipline') return ['Good','Fair','Poor'].map(g=>[g,g]);
+  if(key==='position') return range(1,100);
   return [];
 }
-function promoOpOptions(sel){ return PROMO_OPS.map(o=>`<option value="${o[0]}" ${o[0]===sel?'selected':''}>${o[1]}</option>`).join(''); }
+function promoOpOptions(sel){ if(sel==='lte') sel = 'lt'; return PROMO_OPS.map(o=>`<option value="${o[0]}" ${o[0]===sel?'selected':''}>${o[1]}</option>`).join(''); }
 function promoValOptions(key, sel, level){ return `<option value="">-- choose limit --</option>` + promoValueList(key, level).map(o=>`<option value="${esc(o[0])}" ${String(o[0])===String(sel)?'selected':''}>${esc(o[1])}</option>`).join(''); }
 function promoRules(level){
   level = level || 'O';
@@ -8533,16 +8538,20 @@ function promotionDecisionFor(st, cls, term, ctx){
     total: level==='A' ? (has(ctx.totalPoints) ? Number(ctx.totalPoints) : null) : (has(ctx.avgPct) && isFinite(Number(ctx.avgPct)) ? Math.round(Number(ctx.avgPct)) : null),
     result: has(ctx.result) ? Number(ctx.result) : null,
     subjects: scored.length,
-    discipline: PROMO_DISC_RANK[st.discipline] || PROMO_DISC_RANK.Good,
+    position: (()=>{ if(!rules.some(r=>r.cond==='position')) return null; try{ const y = (ctx && ctx.year) || Number((DB.info||{}).currentYear); const pp = classPosition(st, cls, term, y); return pp && has(pp.position) ? Number(pp.position) : null; }catch(e){ return null; } })(),
     aggregates: level==='P' ? (has(ctx.pAggregate) ? Number(ctx.pAggregate) : null)
       : scored.reduce((a,r)=>{ const g = String(gradeDisplay(r.subject, r.grade, cls.level, r.avg)||'').toUpperCase(); return a + ({A:1,B:2,C:3,D:4,E:5}[g]||5); }, 0),
     grade: promoGradeRank(level, ctx.overallGrade)
   };
-  const limitOf = (key, v)=> key==='grade' ? promoGradeRank(level, v) : (key==='discipline' ? PROMO_DISC_RANK[v] : Number(v));
+  const limitOf = (key, v)=> key==='grade' ? promoGradeRank(level, v) : Number(v);
   const ok = rules.every(rule=>{
     const a = actual[rule.cond], l = limitOf(rule.cond, rule.val);
     if(!has(a) || !has(l) || !isFinite(a) || !isFinite(l)) return false;
-    return rule.op==='lte' ? a<=l : (rule.op==='eq' ? a===l : a>=l);
+    const below = rule.op==='lt' || rule.op==='lte';
+    if(rule.cond==='position'){   // position 1 is the best: NOT BELOW 10 = position 10 or better (1-10); BELOW 10 = lower than 10th (11th and beyond)
+      return below ? a>l : a<=l;
+    }
+    return below ? a<l : a>=l;   // NOT BELOW limit: reached it or more; BELOW limit: under it
   });
   return {promoted:ok, text: ok ? (next ? 'PROMOTED TO '+next : 'COMPLETED') : 'ADVISED TO RESIT '+cur};
 }
@@ -8575,7 +8584,7 @@ function promoRulesCardHTML(level){
         <tr><th>CONDITION</th><th>LIMIT</th><th>FOR BEING PROMOTED</th></tr>
         ${rows.map((r,i)=>promoRowHTML(level, i, r, used)).join('')}
       </table>
-      <p class="small" style="margin-top:8px;">Each condition can be used once. To remove one, set its first box back to <b>-- not used --</b>. Discipline is set per learner on <b>Edit profile</b> (Good, Fair or Poor; blank counts as Good).${level==='P' ? ' Aggregates is the report card\'s Total Aggregates (lower is better).' : (level==='O' ? ' Aggregates add up each subject\'s grade points (A=1, B=2, C=3, D=4, E=5), so a lower figure is better.' : ' Overall Total is the learner\'s total Points.')}</p>
+      <p class="small" style="margin-top:8px;">Each condition can be used once. To remove one, set its first box back to <b>-- not used --</b>. Position in class: <b>NOT BELOW 10</b> means position 10 or better (1st to 10th); <b>BELOW 10</b> means lower than 10th (11th and beyond).${level==='P' ? ' Aggregates is the report card\'s Total Aggregates (lower is better).' : (level==='O' ? ' Aggregates add up each subject\'s grade points (A=1, B=2, C=3, D=4, E=5), so a lower figure is better.' : ' Overall Total is the learner\'s total Points.')}</p>
       <button class="btn" style="margin-top:10px;">Submit — save ${PROMO_LEVEL_NAMES[level]} conditions</button>
     </form>
   </div>`;
@@ -8602,7 +8611,7 @@ function promoCondChange(sel){
   const level = tbl.dataset.level || 'O', keys = promoCondKeysFor(level);
   const key = sel.value, opS = tr.querySelector('select[data-role="op"]'), valS = tr.querySelector('select[data-role="val"]');
   if(!key){ opS.innerHTML = '<option value="">—</option>'; valS.innerHTML = '<option value="">—</option>'; opS.disabled = valS.disabled = true; }
-  else { opS.innerHTML = promoOpOptions('gte'); valS.innerHTML = promoValOptions(key,'',level); opS.disabled = valS.disabled = false; }
+  else { opS.innerHTML = '<option value="" selected>-- choose --</option>' + PROMO_OPS.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join(''); valS.innerHTML = promoValOptions(key,'',level); opS.disabled = valS.disabled = false; }   // blank first option so picking even "At least" fires change and opens the limit list (blank saves as At least)
   const dataRows = [...tbl.querySelectorAll('tr')].slice(1);
   const empties = dataRows.filter(r=>!r.querySelector('select[data-role="cond"]').value);
   if(!key){
@@ -14518,7 +14527,7 @@ function studentProfileView(studentId){
         <div><label>House (optional)</label><input name="house" value="${esc(s.house||'')}"></div>
         <div><label>Home place (optional)</label><input name="homePlace" value="${esc(s.homePlace||'')}"></div>
       </div>
-      <label>Discipline (used for the Term 3 promotion decision)</label>
+      <label>Discipline</label>
       <select name="discipline">${['Good','Fair','Poor'].map(d=>`<option value="${d}" ${(s.discipline||'Good')===d?'selected':''}>${d}</option>`).join('')}</select>
       <label>Fees Code No. (optional)</label>
       <input name="feesCode" value="${esc(s.feesCode||'')}" placeholder="Leave blank if this school doesn't use fees codes">
@@ -18715,7 +18724,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (isP?0:1) + 1 + 1 + (isA?1:0) + 1 + 1;
         const _st = 'text-align:center;font-weight:900;text-transform:uppercase;color:#000;border-top:2.4px solid var(--blue);';
         const _lblc = 'color:#0a7d2c;-webkit-text-stroke:0.6px #0a7d2c;', _valc = 'color:#8a0303;';   // labels: very bold green; the result / decision itself: bold red
-        const _promo = promotionDecisionFor(s, cls, term, {avgPct, totalPoints, pAggregate, result:_res, rows, overallGrade});
+        const _promo = promotionDecisionFor(s, cls, term, {year, avgPct, totalPoints, pAggregate, result:_res, rows, overallGrade});
         if(_res===null){
           if(!_promo) return '';
           const _l = Math.max(1, Math.round(_colCount*0.3)), _r = Math.max(1, _colCount-_l);
@@ -18997,7 +19006,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     gradingKey: isP ? null : gradeKeyRows(cls.level),
     totals: { cwTotalTxt, eotTotalTxt, cwTestTotals: _sumT.testTotals, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
     result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year),
-    promotion: promotionDecisionFor(s, cls, term, {avgPct, totalPoints, pAggregate, rows, overallGrade, result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year)}),
+    promotion: promotionDecisionFor(s, cls, term, {year, avgPct, totalPoints, pAggregate, rows, overallGrade, result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year)}),
     summary: {
       maxP, avgPct, overallGrade, overallDesc, pAggregate, pDivision, position, size,
       prevPeriod, prevPosition, weakSubjects
@@ -20073,13 +20082,25 @@ document.addEventListener('click', async (e)=>{
       if(CUR.role==='parent' && !parentStudentIds(CUR).includes(arg)){ alert("You can only view your own child's report card."); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       VIEW = {name:'reportcard', params:{studentId:arg}};
-      render();
-      const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
-      ensureScoresForView('reportcard', VIEW.params, {stale:true}).then(r=>{
-        if(NAV_TOKEN!==myNavToken || !(r&&r.changed)) return; // user has since navigated elsewhere
-        render();
-        const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
-      }).catch(e=>console.error(e));
+      {
+        // If this learner's class scores are not in memory yet, wait for them (small "Loading" pill) and only then draw the
+        // card, so the first card opened is never shown empty.
+        let _needLoad = false;
+        try{ _needLoad = scoreScopesForView('reportcard', VIEW.params).some(sc=>scoreShardKeysForScope(sc).some(k=>!scoreShardIsLoaded(k))); }catch(e){}
+        const _finish = (r)=>{
+          if(NAV_TOKEN!==myNavToken) return;   // user has since navigated elsewhere
+          if(_needLoad || (r&&r.changed)){ render(); const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2); }
+        };
+        if(_needLoad){
+          render();   // draw the report card itself first, so the loading message appears in the middle of the card
+          scoreLoadPill(true);
+          ensureScoresForView('reportcard', VIEW.params, {stale:true}).then(r=>{ scoreLoadPill(false); _needLoad = true; if(NAV_TOKEN===myNavToken) render(); const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2); }).catch(e=>{ scoreLoadPill(false); console.error(e); render(); });
+        } else {
+          render();
+          const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
+          ensureScoresForView('reportcard', VIEW.params, {stale:true}).then(_finish).catch(e=>console.error(e));
+        }
+      }
       break;
     }
     case 'printReport': {
