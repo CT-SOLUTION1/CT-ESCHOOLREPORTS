@@ -256,9 +256,14 @@
       meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale=5, user-scalable=yes');
     }catch(e){}
   }
+  // Score sheets (teachers' and admins'): once the user has zoomed by hand, taps / saves / redraws on that same
+  // screen never snap it back to "fit"; it is released when they open another screen.
+  window.__cteScoreSheetView = function(){ try{ return typeof VIEW!=='undefined' && !!VIEW && (VIEW.name==='tscores' || VIEW.name==='ascores'); }catch(e){ return false; } };
+  window.__cteHoldZoom = function(){ try{ return !!(window.__cteScoreSheetView() && window.__cteHoldKey && window.__cteHoldKey===VIEW.name); }catch(e){ return false; } };
   window.__cteResetFit = function(){
     try{
       if(window.__ctePinching) return;               // never fight the user's own pinch
+      if(window.__cteHoldZoom()) return;             // zoomed by hand on a score sheet: keep it
       var fit = fitValue(), meta = fitMeta(); if(!fit || !meta) return;
       try{ document.documentElement.scrollLeft = 0; document.body.scrollLeft = 0; }catch(e){}
       // Already sitting at the fit size? Then there is nothing to snap back, and pinning the maximum zoom to the fit
@@ -283,7 +288,7 @@
   };
   // Two fingers down = the user is zooming on purpose: release the pin at once and stay out of the way.
   document.addEventListener('touchstart', function(e){
-    if(e.touches && e.touches.length > 1){ window.__ctePinching = true; window.__cteUserPinchAt = Date.now(); fitFree(); }
+    if(e.touches && e.touches.length > 1){ window.__ctePinching = true; window.__cteUserPinchAt = Date.now(); fitFree(); try{ window.__cteHoldKey = window.__cteScoreSheetView() ? VIEW.name : null; }catch(_){} }
   }, {passive:true, capture:true});
   function endPinch(e){ if(!e.touches || e.touches.length < 2) setTimeout(function(){ window.__ctePinching = false; }, 80); }
   // Any finger touching down releases a pending fit-pin at once, so a pinch that is about to start is never blocked.
@@ -5106,11 +5111,8 @@ function scoreLoadPill(on){
     if(!on){ if(el) el.remove(); return; }
     if(el) return;
     el = document.createElement('div'); el.id = 'scoreLoadPill';
-    const onCard = (typeof VIEW!=='undefined' && VIEW && (VIEW.name==='reportcard' || VIEW.name==='preport'));
-    // On a report card the message sits in the middle of the card itself; on other screens it stays a small pill at the top.
-    el.style.cssText = onCard
-      ? 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9997;background:#1f6feb;color:#fff;font:800 15px Inter,sans-serif;padding:12px 22px;border-radius:12px;box-shadow:0 6px 22px rgba(0,0,0,.35);text-align:center;'
-      : 'position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:9997;background:#1f6feb;color:#fff;font:700 13px Inter,sans-serif;padding:7px 14px;border-radius:20px;box-shadow:0 3px 10px rgba(0,0,0,.3);';
+    // Always in the middle of the screen (never the top margin), so the person can wait with it in plain view.
+    el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9997;background:#1f6feb;color:#fff;font:800 15px Inter,sans-serif;padding:12px 22px;border-radius:12px;box-shadow:0 6px 22px rgba(0,0,0,.35);text-align:center;max-width:80vw;';
     el.textContent = 'Loading this class\u2019s scores\u2026';
     document.body.appendChild(el);
   }catch(e){}
@@ -25658,6 +25660,23 @@ function clearReturnState(){ try{ localStorage.removeItem(RETURN_KEY); }catch(e)
   document.addEventListener('visibilitychange', function(){ if(document.hidden) saveReturnState(); });
   window.addEventListener('pagehide', function(){ saveReturnState(); });
 })();
+// Teachers: coming back to the app after being away (a minute or more) lands on the dashboard, so every visit starts with a
+// fresh selection. Never while a save is running, scores are typed but unsaved, or a file is open in another tab.
+(function(){
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', function(){
+    try{
+      if(document.hidden){ hiddenAt = Date.now(); return; }
+      const away = hiddenAt ? Date.now()-hiddenAt : 0; hiddenAt = 0;
+      if(away < 60000) return;
+      if(!CUR || CUR.role!=='teacher' || !SCHOOL_ID || !VIEW || VIEW.name==='dashboard') return;
+      if(Date.now() < FILE_GRACE_UNTIL || FORM_DIRTY || APP_BUSY>0) return;
+      if(typeof schoolGradeGateActive==='function' && schoolGradeGateActive()) return;
+      NAV_TOKEN++; VIEW = {name:'dashboard', params:{}}; render();
+      try{ window.scrollTo(0,0); }catch(e){}
+    }catch(e){}
+  });
+})();
 // Called once at start-up: if the page had to be reloaded while a file was open, go back to that exact screen.
 function restoreReturnState(){
   let r = null;
@@ -25665,6 +25684,7 @@ function restoreReturnState(){
   if(!r || !r.view || !r.view.name || Date.now()-r.t > 30*60*1000) return false;
   clearReturnState();
   if(!CUR || !SCHOOL_ID || CUR.role==='founder') return false;
+  if(CUR.role==='teacher') return false;   // teachers always start on the dashboard, wherever they left off
   if(r.s !== String(SCHOOL_ID) || r.u !== String(CUR.username||CUR.id||CUR.name||'')) return false;
   if(typeof schoolGradeGateActive==='function' && schoolGradeGateActive() && r.view.name!=='schoolinfo') return false;
   VIEW = {name:r.view.name, params:r.view.params||{}};
