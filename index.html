@@ -260,8 +260,11 @@
     try{
       if(window.__ctePinching) return;               // never fight the user's own pinch
       var fit = fitValue(), meta = fitMeta(); if(!fit || !meta) return;
-      meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale='+fit+', user-scalable=yes');
       try{ document.documentElement.scrollLeft = 0; document.body.scrollLeft = 0; }catch(e){}
+      // Already sitting at the fit size? Then there is nothing to snap back, and pinning the maximum zoom to the fit
+      // size (even briefly) is exactly what stopped the first pinch-zoom until something was tapped. Leave zoom free.
+      try{ var vv0 = window.visualViewport; if(vv0 && Math.abs(vv0.scale - parseFloat(fit)) <= parseFloat(fit)*0.04){ fitFree(); return; } }catch(e){}
+      meta.setAttribute('content','width=1280, initial-scale='+fit+', minimum-scale='+fit+', maximum-scale='+fit+', user-scalable=yes');
       clearTimeout(window.__cteFitTimer);
       window.__cteFitTimer = setTimeout(fitFree, 400);
     }catch(e){}
@@ -5172,7 +5175,7 @@ async function loadAll(){
     const reg = REGISTRY.find(r=>r.id===sess.schoolId);
     if(reg && reg.status==='closed'){ DISCONNECT_NOTICE = disconnectMessage(reg.closedReason); }
     if(reg && reg.status==='active'){
-      await loadSchoolData(sess.schoolId);
+      { const _h = roleHintFor(sess.schoolId, sess.username); await loadSchoolData(sess.schoolId, _h==='teacher' || _h===null); }
       const acc = (DB.accounts||[]).find(a=>a.username===sess.username);
       if(!acc && sess.cred){
         // This username no longer exists (it was changed or removed): do not resume.
@@ -5272,18 +5275,35 @@ function adminHousekeepingOnce(view){
     setTimeout(()=>{ if(CUR && CUR.role==='admin'){ financeRetentionSweep().catch(()=>{}); binPurgeExpired().catch(()=>{}); } }, 1500);
   }catch(e){}
 }
-async function loadSchoolData(id){
-  // Sign-in reads ONLY these three documents (in parallel). Everything else is read when a screen needs it (see ensureData).
-  const [info, accounts, classes] = await Promise.all([
+// Remembers (on this device only) which role last signed in, so a resumed session knows whether to read the assignments early.
+function roleHintSet(schoolId, username, role){ try{ localStorage.setItem('cte_rolehint', JSON.stringify({s:schoolId,u:String(username||'').toLowerCase(),r:role})); }catch(e){} }
+function roleHintFor(schoolId, username){ try{ const h = JSON.parse(localStorage.getItem('cte_rolehint')||'null'); return (h && h.s===schoolId && h.u===String(username||'').toLowerCase()) ? h.r : null; }catch(e){ return null; } }
+// Once the first screen is up, quietly read the lists the person will open next, so Students / Subjects / marks lists appear
+// at once. Uses the same guarded reads as opening a screen (nothing unread is ever written back), and never blocks a screen.
+function prefetchListsSoon(){
+  try{
+    if(!CUR || CUR.role==='founder' || !DB_SCHOOL || navigator.onLine===false) return;
+    const need = CUR.role==='parent' ? ['students'] : ['assignments','students','bands'];
+    const go = ()=>{ try{ if(CUR && DB_SCHOOL) ensureData(need).catch(()=>{}); }catch(e){} };
+    if(window.requestIdleCallback) window.requestIdleCallback(go, {timeout:1200}); else setTimeout(go, 500);
+  }catch(e){}
+}
+async function loadSchoolData(id, earlyAssignments){
+  // Sign-in reads these three documents (in parallel). A teacher's first screen also needs the subject assignments, so
+  // that one document is read in the SAME round trip (earlyAssignments) instead of after the first screen has drawn.
+  // Everything else is read when a screen needs it (see ensureData) or quietly in the background (see prefetchListsSoon).
+  const [info, accounts, classes, earlyAssign] = await Promise.all([
     getShared(`sch_${id}_info`, null),
     getShared(`sch_${id}_accounts`, []),
     getShared(`sch_${id}_classes`, []),
+    earlyAssignments ? getShared(`sch_${id}_assignments`, null) : Promise.resolve(null),
   ]);
   DB_SCHOOL = id; DB_LOADED.students = DB_LOADED.assignments = DB_LOADED.bands = DB_LOADED.autosnaps = false; _gateFail = null;
   Object.keys(_dataInflight).forEach(k=>{ delete _dataInflight[k]; });
   DB.info = info; DB.accounts = accounts; DB.classes = classes;
   DB.students = []; DB.assignments = []; DB.scores = []; DB.autoSnapshots = [];
   DB.bands = DEFAULT_A_BANDS; DB.obands = DEFAULT_O_BANDS; DB.pbands = DEFAULT_P_BANDS;
+  if(earlyAssign){ DB.assignments = earlyAssign; DB_LOADED.assignments = true; }   // only ever set from a real read of the document
   resetScoreCache();   // no class documents in memory yet: each screen reads just the class it shows
   try{ scoreOutboxReapply(); setTimeout(()=>{ flushScoreOutbox(); scoreOutboxPill(); }, 1500); }catch(_){}
   invalidateScoreLookupCache();
@@ -8446,6 +8466,117 @@ function resultTextFor(st, cls, term, year){
   const d = computeSubjectRows(st, cls, term, year);
   const r = reportResultFor(d.rows, null, cls, null, st, term, year);
   return (r===null || r==='' || r===undefined) ? '—' : String(r);
+}
+// ---- PROMOTION DECISION (Term 3 report cards only, every level) ----
+// Admin sets the conditions per level in Grading Setup -> "Promoted or Advised to resit". The decision is PROMOTED when EVERY
+// condition set for that level is met, otherwise ADVISED TO RESIT (the learner's current class).
+const PROMO_OPS = [['gte','At least'],['lte','At most'],['eq','Exactly']];
+const PROMO_DISC_RANK = {Good:3,Fair:2,Poor:1};
+const PROMO_LEVEL_NAMES = {O:"O-Level", A:"A-Level", P:"Primary"};
+const PROMO_CONDS = {
+  total:      {label:'OVERALL TOTAL', levels:['O','A','P']},
+  result:     {label:'RESULT', levels:['O']},
+  subjects:   {label:'NUMBER OF SUBJECTS DONE', levels:['O','A','P']},
+  discipline: {label:'DISCIPLINE', levels:['O','A','P']},
+  aggregates: {label:'AGGREGATES', levels:['O','P']},
+  grade:      {label:'OVERALL GRADE', levels:['O','A','P']}
+};
+const PROMO_COND_KEYS = Object.keys(PROMO_CONDS);
+function promoCondKeysFor(level){ return PROMO_COND_KEYS.filter(k=>PROMO_CONDS[k].levels.includes(level)); }
+function promoCondLabel(key, level){ return key==='total' && level==='A' ? 'OVERALL TOTAL (POINTS)' : PROMO_CONDS[key].label; }
+// Grades best first, per level.
+function promoGradeOrder(level){ return level==='A' ? aGradeOrder() : (level==='P' ? PLE_GRADES.slice() : ['A','B','C','D','E']); }
+function promoGradeRank(level, g){ const o = promoGradeOrder(level), i = o.indexOf(String(g||'').toUpperCase()); return i<0 ? null : o.length-i; }
+function promoValueList(key, level){
+  const range = (a,b,sfx)=>{ const o=[]; for(let i=a;i<=b;i++) o.push([String(i), i+(sfx||'')]); return o; };
+  if(key==='total') return level==='A' ? range(0,60) : range(0,100,'%');
+  if(key==='result') return [['1','1'],['2','2'],['3','3']];
+  if(key==='subjects') return range(1,25);
+  if(key==='aggregates') return level==='P' ? range(4,36) : range(1,125);
+  if(key==='grade') return promoGradeOrder(level).map(g=>[g,g]);
+  if(key==='discipline') return ['Good','Fair','Poor'].map(g=>[g,g]);
+  return [];
+}
+function promoOpOptions(sel){ return PROMO_OPS.map(o=>`<option value="${o[0]}" ${o[0]===sel?'selected':''}>${o[1]}</option>`).join(''); }
+function promoValOptions(key, sel, level){ return `<option value="">-- choose limit --</option>` + promoValueList(key, level).map(o=>`<option value="${esc(o[0])}" ${String(o[0])===String(sel)?'selected':''}>${esc(o[1])}</option>`).join(''); }
+function promoRules(level){
+  level = level || 'O';
+  const by = DB.info && DB.info.promoRulesByLevel;
+  let r = (by && Array.isArray(by[level])) ? by[level] : (level==='O' && DB.info && Array.isArray(DB.info.promoRules) ? DB.info.promoRules : []);
+  return r.filter(x=>x && PROMO_CONDS[x.cond] && PROMO_CONDS[x.cond].levels.includes(level) && x.val!=='' && x.val!=null);
+}
+// The class after this one: next form of the same level; O-Level S.4 goes on to S.5. null for the last class (P.7, S.6).
+function promoNextForm(cls){
+  if(!cls) return null;
+  const seq = cls.level==='P' ? PRIMARY_FORMS : SECONDARY_FORMS;
+  const i = seq.indexOf(cls.form);
+  return (i>=0 && i<seq.length-1) ? seq[i+1] : null;
+}
+// Returns {promoted, text} for a Term 3 report card (any level), or null (any other term, no conditions set for the level).
+function promotionDecisionFor(st, cls, term, ctx){
+  if(String(term||'').trim()!=='Term 3' || !cls || !st) return null;
+  const level = cls.level, rules = promoRules(level); if(!rules.length) return null;
+  const next = promoNextForm(cls);
+  const cur = cls.form || classBaseName(cls);
+  const has = v=> v!==null && v!==undefined;
+  const rows = (ctx && ctx.rows) || [];
+  const scored = rows.filter(r=>has(r.avg));
+  const actual = {
+    total: level==='A' ? (has(ctx.totalPoints) ? Number(ctx.totalPoints) : null) : (has(ctx.avgPct) && isFinite(Number(ctx.avgPct)) ? Math.round(Number(ctx.avgPct)) : null),
+    result: has(ctx.result) ? Number(ctx.result) : null,
+    subjects: scored.length,
+    discipline: PROMO_DISC_RANK[st.discipline] || PROMO_DISC_RANK.Good,
+    aggregates: level==='P' ? (has(ctx.pAggregate) ? Number(ctx.pAggregate) : null)
+      : scored.reduce((a,r)=>{ const g = String(gradeDisplay(r.subject, r.grade, cls.level, r.avg)||'').toUpperCase(); return a + ({A:1,B:2,C:3,D:4,E:5}[g]||5); }, 0),
+    grade: promoGradeRank(level, ctx.overallGrade)
+  };
+  const limitOf = (key, v)=> key==='grade' ? promoGradeRank(level, v) : (key==='discipline' ? PROMO_DISC_RANK[v] : Number(v));
+  const ok = rules.every(rule=>{
+    const a = actual[rule.cond], l = limitOf(rule.cond, rule.val);
+    if(!has(a) || !has(l) || !isFinite(a) || !isFinite(l)) return false;
+    return rule.op==='lte' ? a<=l : (rule.op==='eq' ? a===l : a>=l);
+  });
+  return {promoted:ok, text: ok ? (next ? 'PROMOTED TO '+next : 'COMPLETED') : 'ADVISED TO RESIT '+cur};
+}
+// Grading Setup: one conditions table per level this school has.
+function promoRulesCardHTML(level){
+  const keys = promoCondKeysFor(level);
+  const saved = promoRules(level);
+  const rows = keys.map((_,i)=> saved[i] || {cond:'',op:'gte',val:''});
+  const used = rows.map(r=>r.cond).filter(Boolean);
+  return `
+  <div class="card" id="promoRulesCard_${level}">
+    <h3>${PROMO_LEVEL_NAMES[level]} — Promoted or Advised to resit</h3>
+    <p class="small">Pick a condition in the first column — its row switches on and the limit boxes fill with the figures that suit that condition. A learner is <b>Promoted</b> to the next class only when <b>every</b> condition set here is met; otherwise the card says <b>Advised to resit</b> the current class. This decision is printed on <b>Term 3</b> ${PROMO_LEVEL_NAMES[level]} report cards only — Term 1 and Term 2 cards stay as they are. With no condition set, nothing extra is shown.</p>
+    <form data-form="savePromoRules">
+      <input type="hidden" name="level" value="${level}">
+      <table class="data-table" style="width:100%;" data-level="${level}">
+        <tr><th>CONDITION</th><th>LIMIT</th><th>FOR BEING PROMOTED</th></tr>
+        ${rows.map((r,i)=>`<tr>
+          <td><select name="cond_${i}" data-role="cond" onchange="promoCondChange(this)">
+            <option value="">-- not used --</option>
+            ${keys.map(k=>`<option value="${k}" ${k===r.cond?'selected':''} ${(k!==r.cond && used.includes(k))?'disabled':''}>${promoCondLabel(k, level)}</option>`).join('')}
+          </select></td>
+          <td><select name="op_${i}" data-role="op" ${r.cond?'':'disabled'}>${r.cond?promoOpOptions(r.op):'<option value="">—</option>'}</select></td>
+          <td><select name="val_${i}" data-role="val" ${r.cond?'':'disabled'}>${r.cond?promoValOptions(r.cond, r.val, level):'<option value="">—</option>'}</select></td>
+        </tr>`).join('')}
+      </table>
+      <p class="small" style="margin-top:8px;">Each condition can be used once. Discipline is set per learner on <b>Edit profile</b> (Good, Fair or Poor; blank counts as Good).${level==='P' ? ' Aggregates is the report card\'s Total Aggregates (lower is better).' : (level==='O' ? ' Aggregates add up each subject\'s grade points (A=1, B=2, C=3, D=4, E=5), so a lower figure is better.' : ' Overall Total is the learner\'s total Points.')}</p>
+      <button class="btn" style="margin-top:10px;">Submit — save ${PROMO_LEVEL_NAMES[level]} conditions</button>
+    </form>
+  </div>`;
+}
+function promoRulesCardsHTML(showSecondary, showPrimary){
+  return (showSecondary ? promoRulesCardHTML('O') + promoRulesCardHTML('A') : '') + (showPrimary ? promoRulesCardHTML('P') : '');
+}
+function promoCondChange(sel){
+  const tr = sel.closest('tr'), tbl = sel.closest('table'); if(!tr || !tbl) return;
+  const level = tbl.dataset.level || 'O';
+  const key = sel.value, opS = tr.querySelector('select[data-role="op"]'), valS = tr.querySelector('select[data-role="val"]');
+  if(!key){ opS.innerHTML = '<option value="">—</option>'; valS.innerHTML = '<option value="">—</option>'; opS.disabled = valS.disabled = true; }
+  else { opS.innerHTML = promoOpOptions('gte'); valS.innerHTML = promoValOptions(key,'',level); opS.disabled = valS.disabled = false; }
+  const conds = [...tbl.querySelectorAll('select[data-role="cond"]')], taken = conds.map(s=>s.value).filter(Boolean);
+  conds.forEach(s=>[...s.options].forEach(o=>{ o.disabled = !!o.value && o.value!==s.value && taken.includes(o.value); }));
 }
 // Subjects a learner MISSED: no score in a subject that classmates (who take it) already have scores in — the same rule
 // that gives RESULT 2 on the O-Level report card. Returns [] for Primary / A-Level, or when the learner has no score at all.
@@ -14348,6 +14479,8 @@ function studentProfileView(studentId){
         <div><label>House (optional)</label><input name="house" value="${esc(s.house||'')}"></div>
         <div><label>Home place (optional)</label><input name="homePlace" value="${esc(s.homePlace||'')}"></div>
       </div>
+      <label>Discipline (used for the Term 3 promotion decision)</label>
+      <select name="discipline">${['Good','Fair','Poor'].map(d=>`<option value="${d}" ${(s.discipline||'Good')===d?'selected':''}>${d}</option>`).join('')}</select>
       <label>Fees Code No. (optional)</label>
       <input name="feesCode" value="${esc(s.feesCode||'')}" placeholder="Leave blank if this school doesn't use fees codes">
       <p class="small" style="margin-top:4px;">Entirely optional — not every school uses one. Handy for a student uploaded in bulk that didn't get one at the time. When set, it shows right alongside the admission number wherever that's displayed (student list, report card, etc.); when left blank, nothing extra shows at all.</p>
@@ -14465,7 +14598,8 @@ function gradingView(gcClassId){
   <div class="card"><h3>Primary (PLE) comment key</h3>
     <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
     <tr>${PLE_GRADES.map(g=>`<td>${PLE_GRADE_COMMENT[g]}</td>`).join('')}</tr></table>
-  </div>`}`;
+  </div>`}
+  ${promoRulesCardsHTML(showSecondary, showPrimary)}`;
 }
 
 /* ---------- Admin: Exam setup (assessment weighting, tests, per-class overrides) ---------- */
@@ -18535,11 +18669,20 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${isP?'':`<td>${totalPaperAvgTxt}</td>`}<td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
       ${(()=>{
         const _res = reportResultFor(rows, breakdowns, cls, showEOT, s, term, year);
-        if(_res===null) return '';
         const _cwCols = showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0;
         const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (isP?0:1) + 1 + 1 + (isA?1:0) + 1 + 1;
-        const _lbl = Math.floor(_colCount/2), _val = _colCount-_lbl;
         const _st = 'text-align:center;font-weight:900;text-transform:uppercase;color:#000;border-top:2.4px solid var(--blue);';
+        const _promo = promotionDecisionFor(s, cls, term, {avgPct, totalPoints, pAggregate, result:_res, rows, overallGrade});
+        if(_res===null){
+          if(!_promo) return '';
+          const _l = Math.max(1, Math.round(_colCount*0.3)), _r = Math.max(1, _colCount-_l);
+          return `<tr class="rc-result"><td colspan="${_l}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">DECISION :</td><td colspan="${_r}" style="${_st}font-size:15px;padding:1px 4px;line-height:1.1;">${esc(_promo.text)}</td></tr>`;
+        }
+        if(_promo){
+          const _a = Math.max(1, Math.round(_colCount*0.3)), _b = Math.max(1, Math.round(_colCount*0.2)), _c = Math.max(1, _colCount-_a-_b);
+          return `<tr class="rc-result"><td colspan="${_a}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_b}" style="${_st}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td><td colspan="${_c}" style="${_st}font-size:14px;letter-spacing:.5px;padding:1px 4px;line-height:1.1;">${esc(_promo.text)}</td></tr>`;
+        }
+        const _lbl = Math.floor(_colCount/2), _val = _colCount-_lbl;
         return `<tr class="rc-result"><td colspan="${_lbl}" style="${_st}font-size:14px;letter-spacing:1px;padding:1px 4px;line-height:1.1;">RESULT :</td><td colspan="${_val}" style="${_st}font-size:17px;padding:1px 4px;line-height:1.1;">${_res}</td></tr>`;
       })()}
     </table>
@@ -18811,6 +18954,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     gradingKey: isP ? null : gradeKeyRows(cls.level),
     totals: { cwTotalTxt, eotTotalTxt, cwTestTotals: _sumT.testTotals, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
     result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year),
+    promotion: promotionDecisionFor(s, cls, term, {avgPct, totalPoints, pAggregate, rows, overallGrade, result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year)}),
     summary: {
       maxP, avgPct, overallGrade, overallDesc, pAggregate, pDivision, position, size,
       prevPeriod, prevPosition, weakSubjects
@@ -19209,16 +19353,28 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
   { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize, 'normal', _shade.custom ? _shade.ink : null); }
   cy += totRowH;
-  // ---- RESULT row: two merged cells — the word RESULT : and the result itself (1 or 2) ----
-  if(data.result!==null && data.result!==undefined){
-    const resH = 16, half = contentW/2;
+  // ---- RESULT row (O-Level): RESULT : | the result | Promoted / Advised to resit (Term 3 only). Primary / A-Level: DECISION : | Promoted / Advised to resit (Term 3 only). ----
+  { const promo = data.promotion, hasRes = data.result!==null && data.result!==undefined;
+  if(hasRes || promo){
+    const resH = 16;
+    const w1 = hasRes ? (promo ? contentW*0.3 : contentW/2) : contentW*0.3;
+    const w2 = hasRes ? (promo ? contentW*0.2 : contentW/2) : contentW-w1;
+    const w3 = (hasRes && promo) ? contentW-w1-w2 : 0;
+    const ink2 = _shade.custom ? _shade.ink : [0,0,0];
     setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
     pdf.rect(contentX, cy, contentW, resH, 'F');
-    pdf.setLineWidth(0.9); pdf.rect(contentX, cy, half, resH); pdf.rect(contentX+half, cy, half, resH);
-    centerText('RESULT :', contentX, half, cy+resH-4.5, bodySize+2, 'bold', _shade.custom ? _shade.ink : [0,0,0]);
-    centerText(String(data.result), contentX+half, half, cy+resH-4, bodySize+4, 'bold', _shade.custom ? _shade.ink : [0,0,0]);
+    pdf.setLineWidth(0.9); pdf.rect(contentX, cy, w1, resH); pdf.rect(contentX+w1, cy, w2, resH); if(w3>0) pdf.rect(contentX+w1+w2, cy, w3, resH);
+    const fitText = (txt, x, w, size)=>{ let fs=size; pdf.setFont('helvetica','bold'); pdf.setFontSize(fs); while(fs>6 && pdf.getTextWidth(txt) > w-6){ fs -= 0.5; pdf.setFontSize(fs); } centerText(txt, x, w, cy+resH-4.5, fs, 'bold', ink2); };
+    if(hasRes){
+      centerText('RESULT :', contentX, w1, cy+resH-4.5, bodySize+2, 'bold', ink2);
+      centerText(String(data.result), contentX+w1, w2, cy+resH-4, bodySize+4, 'bold', ink2);
+      if(promo) fitText(promo.text, contentX+w1+w2, w3, bodySize+2);
+    } else {
+      centerText('DECISION :', contentX, w1, cy+resH-4.5, bodySize+2, 'bold', ink2);
+      fitText(promo.text, contentX+w1, w2, bodySize+3);
+    }
     cy += resH;
-  }
+  } }
   cy += 14 + gapBoost;
 
   // ---- 6b. Project Work table — only drawn when this student has at least one
@@ -21688,7 +21844,7 @@ document.addEventListener('submit', async (e)=>{
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
-    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
+    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','savePromoRules','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
     'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
@@ -22438,7 +22594,7 @@ document.addEventListener('submit', async (e)=>{
         // loadSchoolData finishes.
         const schoolEmail = (REGISTRY.find(r=>r.id===foundSchoolId)||{}).email;
         await Promise.all([
-          loadSchoolData(foundSchoolId),
+          loadSchoolData(foundSchoolId, role==='teacher'),
           switchToSchoolAuthIdentity(foundSchoolId, schoolEmail)
         ]);
         CUR=foundAcc; SCHOOL_ID=foundSchoolId;
@@ -22447,9 +22603,10 @@ document.addEventListener('submit', async (e)=>{
         FINANCE_UNLOCKED = !!finLogin; finSubReset();
         FINANCE_ONLY = !!finLogin;
         if(finLogin) VIEW = {name:'finance', params:{}};
-        await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u, financeOnly:!!finLogin});
-        // First person from this school to open the system today? Take the daily snapshot now.
-        render();
+        roleHintSet(foundSchoolId, u, role);
+        render();        // first screen goes up immediately; saving the session record and the background reads follow it
+        prefetchListsSoon();
+        try{ await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u, financeOnly:!!finLogin}); }catch(e){ console.error(e); }
       }
     }
     else if(type==='schoolRecovery'){
@@ -23258,6 +23415,7 @@ document.addEventListener('submit', async (e)=>{
       if(s.feesBalance===null){ delete s.feesBalLocked; delete s.feesBalCur; }      // blank = hand this figure back to Account Section
       if(s.nextTermFees===null){ delete s.nextFeesLocked; delete s.nextFeesCur; }
       s.feesCode = (fd.get('feesCode')||'').trim() || null;
+      s.discipline = ['Good','Fair','Poor'].includes(fd.get('discipline')) ? fd.get('discipline') : 'Good';
       s.religion = (fd.get('religion')||'').trim() || null; s.house = (fd.get('house')||'').trim() || null; s.homePlace = (fd.get('homePlace')||'').trim() || null;
       // Subjects are never edited here — they stay whatever each subject teacher's own
       // roster says, including after a class change (the student simply won't appear on
@@ -23334,6 +23492,19 @@ document.addEventListener('submit', async (e)=>{
         await saveInfo();
       }
       await saveBands(); render();
+    }
+    else if(type==='savePromoRules'){
+      const level = ['O','A','P'].includes(fd.get('level')) ? fd.get('level') : 'O';
+      const keys = promoCondKeysFor(level), out = [], seen = new Set();
+      for(let i=0;i<keys.length;i++){
+        const c = fd.get('cond_'+i) || ''; if(!c || !keys.includes(c) || seen.has(c)) continue;
+        const v = fd.get('val_'+i) || '';
+        if(v===''){ alert('Choose the limit for '+promoCondLabel(c, level)+', or set that condition back to "-- not used --".'); return; }
+        seen.add(c); out.push({cond:c, op:fd.get('op_'+i)||'gte', val:v});
+      }
+      DB.info.promoRulesByLevel = {...(DB.info.promoRulesByLevel||{}), [level]: out};
+      if(level==='O') delete DB.info.promoRules;   // older single set of conditions now lives under O-Level
+      await saveInfo(); alertOk(PROMO_LEVEL_NAMES[level]+' promotion conditions saved.'); render();
     }
     else if(type==='saveOBands'){
       const b={...(DB.obands||DEFAULT_O_BANDS)}; ['A','B','C','D','E'].forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
@@ -24108,7 +24279,10 @@ function printPdfDocument(pdf, filename){
   const safari = /safari/i.test(ua) && !/chrome|chromium|crios|fxios|edg|android/i.test(ua);
   // Browsers with a built-in PDF viewer (desktop Chrome / Edge / Firefox) print the PDF straight from a hidden frame.
   // Phones, tablets and Safari cannot reliably do that, so there the PDF is opened and printed from the viewer — still the same file.
-  if(mobile || safari || navigator.pdfViewerEnabled===false){ showPdfReadyToPrint(url); return; }
+  // Printing a PDF from a hidden frame makes some browsers print THIS PAGE instead (system link in the header/footer,
+  // content pushed down the sheet). So the finished PDF is always opened on its own and printed from the viewer -
+  // the printout is then exactly the PDF, nothing added.
+  showPdfReadyToPrint(url); return;
   const fr = document.createElement('iframe');
   fr.setAttribute('aria-hidden','true');
   fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;';
@@ -25740,7 +25914,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 
 /* ---------- Boot ---------- */
 (async function(){
-  try{ await loadAll(); render(); resumeAfterUpdate(); preloadHeavyLibsWhenIdle(); }
+  try{ await loadAll(); render(); prefetchListsSoon(); resumeAfterUpdate(); preloadHeavyLibsWhenIdle(); }
   catch(e){ showFatal(e.message); document.getElementById('app').innerHTML='<div style="padding:40px;">Could not start. See error above.</div>'; }
 })();
 </script>
@@ -26125,7 +26299,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 })();
 </script>
 <style id="ctUiOverrides">
-.rc-tog.rc-mode{background:#1f3a5f;padding:6px 4px;display:flex;flex-direction:column;gap:4px;align-items:stretch;touch-action:pan-y;}
+.rc-tog.rc-mode{background:#1f3a5f;padding:6px 4px;display:flex;flex-direction:column;gap:4px;align-items:stretch;touch-action:pan-y pinch-zoom;}
 .rc-mode-cap{font-size:11px;font-weight:800;}
 .rc-mode-track{position:relative;display:flex;border-radius:999px;background:rgba(255,255,255,.18);overflow:hidden;}
 .rc-mode-thumb{position:absolute;top:0;bottom:0;left:0;width:50%;border-radius:999px;background:#0f7a3a;transition:left .2s;}
