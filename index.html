@@ -983,7 +983,7 @@ table.rc-perf td:first-child{text-align:left;font-weight:900;white-space:normal;
 /* Grade column data cells: left uncoloured (normal cell look); only the header is tinted. */
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 /* Promotion Conditions button now sits at the bottom of Grading Setup (red) */
-.btn.promo-open-btn{background:#c62828;border-color:#c62828;color:#fff;font-weight:800;letter-spacing:.03em;text-transform:uppercase;}
+.btn.promo-open-btn{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid #c62828;border-radius:8px;background:#c62828;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
 /* Report card: TOTAL / OVERALL row in bold red, learner's name in very bold blue */
 table.rc-perf tr.total td, #printArea .rc-card table.rc-perf tr.total td{color:#d50000 !important;font-weight:900 !important;}
 table.rc-info-table td.val.rc-stu-name, #printArea .rc-card table.rc-info-table td.val.rc-stu-name{color:#0a2fd6 !important;font-weight:900 !important;font-size:13px;-webkit-text-stroke:.35px #0a2fd6;}
@@ -8521,9 +8521,11 @@ function promoNextForm(cls){
 // Returns {promoted, text} for a Term 3 report card (any level), or null (any other term, no conditions set for the level).
 function promotionDecisionFor(st, cls, term, ctx){
   if(String(term||'').trim()!=='Term 3' || !cls || !st) return null;
-  const level = cls.level, rules = promoRules(level); if(!rules.length) return null;
+  const level = cls.level, rules = promoRules(level);
   const next = promoNextForm(cls);
   const cur = cls.form || classBaseName(cls);
+  // No condition chosen yet under PROMOTION CONDITIONS for this level: every learner is promoted by default (Term 3).
+  if(!rules.length) return {promoted:true, text: next ? 'PROMOTED TO '+next : 'COMPLETED'};
   const has = v=> v!==null && v!==undefined;
   const rows = (ctx && ctx.rows) || [];
   const scored = rows.filter(r=>has(r.avg));
@@ -24284,6 +24286,50 @@ async function printReportClean(studentId, term, year){
   let _t=null;
   window.addEventListener('beforeprint', ()=>{ if(_t===null){ _t=document.title; document.title=' '; } });
   window.addEventListener('afterprint', ()=>{ if(_t!==null){ document.title=_t; _t=null; } });
+})();
+// ---- Report card + the browser's OWN Print command (Ctrl/Cmd+P, browser menu) ----
+// Ctrl/Cmd+P on a report card is redirected to the same PDF the Print button builds (identical layout, one page).
+document.addEventListener('keydown', function(e){
+  try{
+    if(!((e.ctrlKey||e.metaKey) && (e.key==='p'||e.key==='P'))) return;
+    if(!VIEW || VIEW.name!=='reportcard' || !VIEW.params || !VIEW.params.studentId) return;
+    if(!CUR || CUR.role!=='admin' || !document.querySelector('#printArea .rc-card')) return;
+    e.preventDefault(); e.stopPropagation();
+    printReportClean(VIEW.params.studentId);
+  }catch(err){}
+}, true);
+// A browser menu Print cannot be redirected, so the on-screen card is at least printed cleanly: no address/title
+// header or footer (zero page margin), nothing but the card, and scaled so one report card = ONE A4 page.
+(function(){
+  let st=null, card=null, prevW='', prevZoom='';
+  window.addEventListener('beforeprint', function(){
+    try{
+      card = document.querySelector('#printArea .rc-card');
+      if(!card || !VIEW || VIEW.name!=='reportcard' || document.body.classList.contains('print-frame')){ card=null; return; }
+      prevW = card.style.width; prevZoom = card.style.zoom;
+      card.style.zoom = ''; card.style.width = '194mm'; card.style.margin = '0 auto';
+      const availH = 281 * 96 / 25.4;                       // A4 height minus 8mm top/bottom, in CSS px
+      const h = card.offsetHeight || 0;
+      if(h > availH) card.style.zoom = String(Math.max(0.3, availH / h));
+      st = document.createElement('style'); st.id = 'rcNativePrintFix';
+      st.textContent = '@media print{'
+        + '@page{size:A4 portrait;margin:0;}'
+        + 'html,body{margin:0 !important;padding:0 !important;height:296mm !important;max-height:296mm !important;overflow:hidden !important;background:#fff !important;}'
+        + 'body *{visibility:hidden !important;}'
+        + '#printArea, #printArea *{visibility:visible !important;}'
+        + '#printArea{position:absolute !important;left:0 !important;top:0 !important;width:210mm !important;max-width:210mm !important;margin:0 !important;padding:8mm !important;box-sizing:border-box !important;}'
+        + '#printArea .rc-card{break-inside:avoid;page-break-inside:avoid;page-break-after:avoid;box-shadow:none !important;}'
+        + 'body::before{display:none !important;}'
+        + '}';
+      document.head.appendChild(st);
+    }catch(e){}
+  });
+  window.addEventListener('afterprint', function(){
+    try{
+      if(st){ st.remove(); st=null; }
+      if(card){ card.style.width = prevW; card.style.zoom = prevZoom; card = null; }
+    }catch(e){}
+  });
 })();
 function printFramed(thin){
   // Documents printed with the default page margin: drop the margin to 0 (this removes the
