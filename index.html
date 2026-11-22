@@ -991,7 +991,7 @@ table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
 .btn.promo-open-btn{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid #c62828;border-radius:8px;background:#c62828;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;}
 /* Report card: TOTAL / OVERALL row in bold red, learner's name in very bold blue */
 table.rc-perf tr.total td, #printArea .rc-card table.rc-perf tr.total td{color:#d50000 !important;font-weight:900 !important;}
-table.rc-info-table td.val.rc-stu-name, #printArea .rc-card table.rc-info-table td.val.rc-stu-name{color:#0a2fd6 !important;font-weight:900 !important;font-size:13px;-webkit-text-stroke:.35px #0a2fd6;}
+table.rc-info-table td.val.rc-stu-name, #printArea .rc-card table.rc-info-table td.val.rc-stu-name, #pdfCaptureHolder .pdf-report-card table.rc-info-table td.val.rc-stu-name{color:#0a2fd6 !important;font-weight:900 !important;font-size:14px !important;font-family:Georgia,'Palatino Linotype','Book Antiqua',Palatino,'Times New Roman',serif !important;letter-spacing:.4px;-webkit-text-stroke:.7px #0a2fd6;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);color:var(--shade-ink,var(--ink));border-top:2.4px solid var(--shade-line,var(--blue));}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
@@ -5031,10 +5031,8 @@ async function loadScoreScope(sc, opts){
 async function ensureScoreScopes(scopes, opts){
   let changed = false, failed = false;
   if((scopes||[]).length && CUR && (CUR.role==='admin'||CUR.role==='teacher')){ try{ ensureScoresMigrated(); }catch(e){} }
-  for(const sc of (scopes||[])){
-    const r = await loadScoreScope(sc, opts);
-    if(r.changed) changed = true; if(r.failed) failed = true;
-  }
+  const results = await Promise.all((scopes||[]).map(sc=>loadScoreScope(sc, opts)));   // scopes are read side by side, not one after another
+  results.forEach(r=>{ if(r.changed) changed = true; if(r.failed) failed = true; });
   return {changed, failed};
 }
 // What each screen needs, from its own selections. Screens that show no marks (empty / attendance sheets, pickers) need nothing.
@@ -5132,7 +5130,9 @@ function scoresAutoLoad(){
   const pending = scopes.some(sc=>scoreShardKeysForScope(sc).some(k=>{ const at = scoreShardAge(k); return !at || (freshNav && now-at>SCORE_STALE_MS); }));
   if(!pending || _scoreAutoBusy===vkey) return;
   if(_scoreAutoFail[vkey] && now-_scoreAutoFail[vkey]<15000) return;
-  _scoreAutoBusy = vkey; scoreLoadPill(true);
+  _scoreAutoBusy = vkey;
+  // Marks already on the device are shown at once and refreshed quietly; the loading pill is only for classes never read yet.
+  if(scopes.some(sc=>scoreShardKeysForScope(sc).some(k=>!scoreShardAge(k)))) scoreLoadPill(true);
   const tok = NAV_TOKEN;
   ensureScoreScopes(scopes, {stale:freshNav}).then(r=>{
     if(_scoreAutoBusy===vkey) _scoreAutoBusy = '';
@@ -5294,11 +5294,37 @@ function roleHintSet(schoolId, username, role){ try{ localStorage.setItem('cte_r
 function roleHintFor(schoolId, username){ try{ const h = JSON.parse(localStorage.getItem('cte_rolehint')||'null'); return (h && h.s===schoolId && h.u===String(username||'').toLowerCase()) ? h.r : null; }catch(e){ return null; } }
 // Once the first screen is up, quietly read the lists the person will open next, so Students / Subjects / marks lists appear
 // at once. Uses the same guarded reads as opening a screen (nothing unread is ever written back), and never blocks a screen.
+// Reads (quietly, no redraw) the marks of the classes a screen is about to show, so they are already in memory when it opens.
+function prefetchScoresFor(name, p){
+  try{
+    if(!SCHOOL_ID || !CUR || !DB.info || navigator.onLine===false) return;
+    if(!(CUR.role==='admin' || CUR.role==='teacher')) return;
+    const scopes = scoreScopesForView(name, p||{}); if(!scopes.length) return;
+    ensureScoreScopes(scopes, {stale:true}).catch(()=>{});
+  }catch(e){}
+}
+// Step-by-step screens (mark sheets, master mark sheet / rank lists, class analysis, general & combined mark sheets, integrated
+// sheet) ask for the class first and the kind of sheet after. As soon as the class is chosen, start reading its marks, so they are
+// already there by the time the sheet is opened.
+let _prefetchSelSig = '';
+function prefetchSelectedScores(){
+  try{
+    if(!SCHOOL_ID || !CUR || typeof VIEW==='undefined' || !VIEW || !DB.info) return;
+    const name = VIEW.name, p = VIEW.params||{};
+    if(!['marksheets','mastermarksheet','classanalysis','generalmarksheet','combinedmarksheet','integratedmarksheet'].includes(name)) return;
+    const sig = SCHOOL_ID+'|'+name+'|'+JSON.stringify(p);
+    if(sig===_prefetchSelSig) return; _prefetchSelSig = sig;
+    const q = Object.assign({}, p);
+    if(name==='marksheets') q.msMode = 'filled';
+    if(name==='generalmarksheet' || name==='combinedmarksheet') q.mode = 'filled';
+    prefetchScoresFor(name, q);
+  }catch(e){}
+}
 function prefetchListsSoon(){
   try{
     if(!CUR || CUR.role==='founder' || !DB_SCHOOL || navigator.onLine===false) return;
     const need = CUR.role==='parent' ? ['students'] : ['assignments','students','bands'];
-    const go = ()=>{ try{ if(CUR && DB_SCHOOL) ensureData(need).catch(()=>{}); }catch(e){} };
+    const go = ()=>{ try{ if(CUR && DB_SCHOOL) ensureData(need).then(ok=>{ if(ok && CUR && CUR.role==='teacher') prefetchScoresFor('tscores', {}); }).catch(()=>{}); }catch(e){} };
     if(window.requestIdleCallback) window.requestIdleCallback(go, {timeout:1200}); else setTimeout(go, 500);
   }catch(e){}
 }
@@ -9072,7 +9098,24 @@ function render(){
   else nextHtml = banner + navWrapAuth(renderPlatformAuth());
   // Avoid destroying and rebuilding an unchanged screen. This preserves browser work
   // and makes repeated state notifications cheaper, while real data/view changes still render normally.
-  if(app.innerHTML !== nextHtml) app.innerHTML = nextHtml;
+  // Enter Scores picker: a background redraw (scores finishing loading, Back-button catch-up, etc.) must never wipe
+  // what the teacher has already chosen. If the picker on screen has a subject/class chosen and the SAME screen is being
+  // redrawn, keep the live form (its choices, paper list, hidden/shown fields) and put it back after the redraw.
+  let _keepPick = null;
+  try{
+    const _vkNow = JSON.stringify([SCHOOL_ID, CUR && (CUR.username||CUR.id), VIEW && VIEW.name, VIEW && VIEW.params]);
+    const _oldPick = app.querySelector('form[data-form="pickPaper"]');
+    const _oldSel = _oldPick && _oldPick.querySelector('#assignSel');
+    if(_oldPick && _oldPick.__pickViewKey===_vkNow && _oldSel && String(_oldSel.value||'')!=='') _keepPick = _oldPick;
+  }catch(e){}
+  if(app.innerHTML !== nextHtml || _keepPick) app.innerHTML = nextHtml;
+  try{
+    const _newPick = app.querySelector('form[data-form="pickPaper"]');
+    if(_newPick){
+      if(_keepPick) _newPick.replaceWith(_keepPick);
+      else _newPick.__pickViewKey = JSON.stringify([SCHOOL_ID, CUR && (CUR.username||CUR.id), VIEW && VIEW.name, VIEW && VIEW.params]);
+    }
+  }catch(e){ console.error(e); }
   // Land on the TOP of any newly opened page. Without this, the browser keeps the previous
   // page's scroll offset, so after a save / submit / open the new page appears already
   // scrolled down to its lower part and looks empty until the user scrolls up. Only a real
@@ -9094,6 +9137,7 @@ function render(){
   try{ stuRestoreAnchor(); }catch(e){}
   try{ maybeShowFirstLoginPwSticker(); }catch(e){}
   try{ scoresAutoLoad(); }catch(e){ console.error(e); }   // read only the class(es) this screen shows, if not already in memory
+  try{ prefetchSelectedScores(); }catch(e){}   // a class picked but the sheet not opened yet: start reading its marks now
 }
 
 /* ============================================================
@@ -21762,6 +21806,7 @@ document.addEventListener('change', (e)=>{
   }
   if(e.target.name==='assignId'){
     const form = e.target.closest('form');
+    try{ if(e.target.value && form && form.matches('form[data-form="pickPaper"]')){ const vp = (typeof VIEW!=='undefined' && VIEW && VIEW.params) || {}; prefetchScoresFor('tscores', {assignId:e.target.value, pTerm:vp.pTerm, pYear:vp.pYear}); } }catch(_){}
     const mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(a=>a.teacherUsername===CUR.username);
     const a = mine.find(x=>x.id===e.target.value);
     const paperSel = form.querySelector('#paperSelect');
