@@ -982,6 +982,11 @@ table.rc-perf td{border:1.4px solid var(--blue);padding:6px 8px;font-size:12px;t
 table.rc-perf td:first-child{text-align:left;font-weight:900;white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.15;font-size:12px;}
 /* Grade column data cells: left uncoloured (normal cell look); only the header is tinted. */
 table.rc-perf tbody tr:nth-child(even){background:#F7FAFD;}
+/* Promotion Conditions button now sits at the bottom of Grading Setup (red) */
+.btn.promo-open-btn{background:#c62828;border-color:#c62828;color:#fff;font-weight:800;letter-spacing:.03em;text-transform:uppercase;}
+/* Report card: TOTAL / OVERALL row in bold red, learner's name in very bold blue */
+table.rc-perf tr.total td, #printArea .rc-card table.rc-perf tr.total td{color:#d50000 !important;font-weight:900 !important;}
+table.rc-info-table td.val.rc-stu-name, #printArea .rc-card table.rc-info-table td.val.rc-stu-name{color:#0a2fd6 !important;font-weight:900 !important;font-size:13px;-webkit-text-stroke:.35px #0a2fd6;}
 table.rc-perf tr.total td{font-weight:800;background:var(--blue-light);color:var(--shade-ink,var(--ink));border-top:2.4px solid var(--shade-line,var(--blue));}
 table.rc-perf tr.subrow td{font-size:11px;color:var(--muted);background:#FBFDFF;}
 table.rc-perf tr.subrow td:first-child{font-weight:400;font-style:italic;padding-left:22px;}
@@ -9727,7 +9732,7 @@ function renderShell(){
     <button class="btn-outline" style="padding:6px 12px;" data-action="logout">Log out</button></div>
   </div>
   <div class="layout${view===nav[0][0]?'':' nav-collapsed'}">
-    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${(view==='grading' && CUR.role==='admin') ? `<a href="#" class="nav-home nav-promo" data-action="promoOpen">${PROMO_ONLY ? '◀ Grading Setup' : 'Promotion Conditions'}</a>` : ''}${nav.filter(([k])=>!(CUR.role==='admin' && k==='subjectlists')).map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
+    <div class="sidebar"><a href="#" class="nav-home" data-action="nav:${nav[0][0]}" aria-label="Go back to menu">◀ Go back to menu</a>${nav.filter(([k])=>!(CUR.role==='admin' && k==='subjectlists')).map(([k,l])=>`<a href="#" class="${view===k?'active':''}" data-action="nav:${k}">${l}</a>`).join('')}</div>
     <div class="main${view==='classanalysis'?' main-wide':''}${(view==='reportcard'||view==='preport')?' main-rc':''}" id="mainArea">${navBackBar()}${renderView(view)}</div>
   </div>`;
 }
@@ -14543,7 +14548,8 @@ function gradingView(gcClassId){
   const b = DB.bands||DEFAULT_A_BANDS, ob = DB.obands||DEFAULT_O_BANDS, pb = DB.pbands||DEFAULT_P_BANDS;
   const showSecondary = !isPrimarySchool();
   const showPrimary = !isSecondarySchool();
-  if(PROMO_ONLY) return `<h2>Promotion Conditions</h2>${promoRulesCardsHTML(showSecondary, showPrimary)}`;
+  if(PROMO_ONLY) return `<h2>Promotion Conditions</h2>${promoRulesCardsHTML(showSecondary, showPrimary)}
+  <div style="margin:18px 0 8px;text-align:center;"><button type="button" class="btn promo-open-btn" data-action="promoOpen">◀ Back to Grading Setup</button></div>`;
   return `
   <h2>Grading Setup</h2>
   <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper and the two subsidiaries are graded from their own level table below (it starts with 50% and above = Pass, 1 point; below 50% = Fail, 0 points) — the grades, points and descriptors you save in the tables are what the whole system uses. O-Level has no points, only A–E descriptors. `:''}${showPrimary?`Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects). `:''}
@@ -14632,6 +14638,7 @@ function gradingView(gcClassId){
     <table class="data-table"><tr>${PLE_GRADES.map(g=>`<th>${g}</th>`).join('')}</tr>
     <tr>${PLE_GRADES.map(g=>`<td>${PLE_GRADE_COMMENT[g]}</td>`).join('')}</tr></table>
   </div>`}
+  ${CUR.role==='admin' ? `<div style="margin:18px 0 8px;text-align:center;"><button type="button" class="btn promo-open-btn" data-action="promoOpen">Promotion Conditions</button></div>` : ''}
   `;
 }
 
@@ -18664,7 +18671,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         ? '<col style="width:18%"><col style="width:27%"><col style="width:18%"><col style="width:27%"><col style="width:10%">'
         : '<col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%">'}</colgroup>
       <tr>
-        <td class="lbl">Name</td><td class="val">${esc(s.name)}</td>
+        <td class="lbl">Name</td><td class="val rc-stu-name">${esc(s.name)}</td>
         <td class="lbl">Class</td><td class="val">${esc(classFullName(cls))}</td>
         ${s.photo?`<td class="photo-cell" rowspan="3"><img loading="lazy" decoding="async" src="${s.photo}" class="rc-bio-photo"></td>`:''}
       </tr>
@@ -19211,6 +19218,14 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.rect(contentX, ry, lblW, infoRowH, 'F'); pdf.rect(contentX, ry, lblW, infoRowH);
     pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH, 'F'); pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH);
     leftText(infoRows[i][0], contentX+4, ry+infoRowH-5, 7.5, 'bold', shadeInk);
+    if(i===0){
+      // learner's name: very bold blue (bold + a thin stroke of the same colour)
+      const _nb=[10,47,214];
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(9.5); setC(_nb);
+      try{ pdf.setDrawColor(_nb[0],_nb[1],_nb[2]); pdf.setLineWidth(0.35); pdf.text(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5, {renderingMode:'fillThenStroke'}); }
+      catch(e){ pdf.text(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5); }
+      setDrawC([29,78,137]); pdf.setLineWidth(0.7);
+    } else
     leftText(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5, 8.5, 'bold', ink);
     leftText(infoRows[i][2], contentX+lblW+valW+4, ry+infoRowH-5, 7.5, 'bold', shadeInk);
     leftText(String(infoRows[i][3]), contentX+lblW*2+valW+4, ry+infoRowH-5, 8.5, 'bold', ink);
@@ -19368,24 +19383,24 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   });
 
   // ---- TOTAL / OVERALL row ----
-  const totRowH = 16;
+  const totRowH = 16; const totRed = [213,0,0];
   setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
   pdf.rect(contentX, cy, contentW, totRowH, 'F');
   cols.forEach(c=>{ pdf.setLineWidth(0.6); pdf.rect(c.x, cy, c.width, totRowH); });
   const labelSpanCols = data.isP ? ['subject'] : ['subject','papers'];
   const labelW = labelSpanCols.reduce((a,k)=>a + (colX(k)?colX(k).width:0), 0);
-  leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', shadeInk);
+  leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', totRed);
   if(data.showCW){
-    if(data.useCwTestCols){ data.cwTests.forEach((t,ti)=>{ const c=colX('cw_'+t.name); centerText((data.totals.cwTestTotals&&data.totals.cwTestTotals[ti])||'', c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }); }
-    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null);
+    if(data.useCwTestCols){ data.cwTests.forEach((t,ti)=>{ const c=colX('cw_'+t.name); centerText((data.totals.cwTestTotals&&data.totals.cwTestTotals[ti])||'', c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }); }
+    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed);
   }
-  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
-  if(!data.isP){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
-  { const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
-  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
-  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
-  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold', _shade.custom ? _shade.ink : null); }
-  { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize, 'normal', _shade.custom ? _shade.ink : null); }
+  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  if(!data.isP){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  { const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
   cy += totRowH;
   // ---- RESULT row (O-Level): RESULT : | the result | Promoted / Advised to resit (Term 3 only). Primary / A-Level: DECISION : | Promoted / Advised to resit (Term 3 only). ----
   { const promo = data.promotion, hasRes = data.result!==null && data.result!==undefined;
