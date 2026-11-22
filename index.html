@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-20-1800'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-22-1400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -3193,7 +3193,7 @@ function subjectsForLevel(level){
 // must still be selectable the first time). A teacher who so far only teaches other
 // levels is hidden, since assigning them here would almost always be a mistake.
 function teachersForLevel(level){
-  const allTeachers = DB.accounts.filter(a=>a.role==='teacher');
+  const allTeachers = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending');
   // O-Level and A-Level are taught within the same secondary school, so their
   // teachers share one assignment pool. Primary remains completely separate.
   if(level==='P'){
@@ -3385,6 +3385,7 @@ let DB = { info:null, accounts:[], classes:[], students:[], assignments:[], scor
 let KNOWN_SCORE_SHARDS = {};
 // Fast in-memory score index for large schools.
 let SCORE_DATA_VERSION = 0;
+let _partialPeriodKey = null;  // 'year_Term' of the single period held while _scoresPartial is true
 let _scoresPartial = false;   // true while DB.scores holds only ONE period (loaded for a mark sheet / analysis)
 // Speed: the per-student result calculations (subject averages, subject lists, rows/points/average) are worked out once and reused by
 // every list that needs them. The memory is wiped whenever scores, rosters, classes, students, grading bands or settings are saved.
@@ -3671,9 +3672,9 @@ function navGoBack(){
   // mark sheet reached via Back is as fresh as one opened normally.
   if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet','reportcard'].includes(name)){
     const token = NAV_TOKEN;
-    const p = (name==='mastermarksheet'||name==='classanalysis') ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
-    Promise.resolve(p).then(()=>{
-      if(NAV_TOKEN!==token || FORM_DIRTY) return;
+    const p = ensureScoresForView(name, VIEW.params, {stale:true});   // only the class(es) this screen shows
+    Promise.resolve(p).then(r=>{
+      if(NAV_TOKEN!==token || FORM_DIRTY || !(r&&r.changed)) return;
       render(); fit();
     }).catch(e=>console.error(e));
   }
@@ -3941,12 +3942,161 @@ let FOUNDER_IMPERSONATING_SCHOOL = null;
    "Personal" data → localStorage (only the current device's login session —
    that one SHOULD stay local, so each device can be logged in separately).
    ============================================================ */
+
+/* ============================================================
+   800 KB DOCUMENT LIMIT FOR EVERYTHING STORED THROUGH getShared / setShared / deleteShared
+   Firestore refuses any document over 1 MiB. Settings + Account Section records + logo/stamp (the "info" document),
+   the students list (with photos), accounts, classes, automatic snapshots and the Recycle Bin were each ONE document,
+   so a big school would eventually be unable to save at all. Now a value whose JSON is over DOC_BUDGET_BYTES is stored
+   as a small "base" document {chunks, sigs} plus chunk documents  <key>~0, <key>~1 ...  each holding at most ~780 KB.
+   - A value that fits (the normal case) is still ONE document, one read, one write - exactly as before.
+   - A big object/array is cut along its own structure (keys / elements), never in the middle of a record, and put
+     back together exactly on read. Only chunks whose content changed are rewritten (checked against the server inside a
+     transaction), and a chunked value is read in one consistent transaction so no one ever sees half old / half new data.
+   - Everything else in the app keeps reading and writing the same values through the same functions.
+   ============================================================ */
+const DOC_MAX_BYTES = 800000;           // hard ceiling per stored document
+const DOC_BUDGET_BYTES = 780000;        // what one chunk may hold (leaves room for the small wrapper around it)
+const CHUNKED_KEYS = new Map();         // key -> number of chunk documents last seen / written (0 = single document)
+const _utf8 = (typeof TextEncoder!=='undefined') ? new TextEncoder() : null;
+function _stableStr(v){
+  if(v===null || typeof v!=='object') return JSON.stringify(v)===undefined ? 'null' : JSON.stringify(v);
+  if(Array.isArray(v)) return '['+v.map(_stableStr).join(',')+']';
+  return '{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+_stableStr(v[k])).join(',')+'}';
+}
+function _docSig(v){
+  const s=_stableStr(v); let h1=5381, h2=0;
+  for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); h1=((h1<<5)+h1+c)|0; h2=(Math.imul(h2,31)+c+0x9e3779b9)|0; }
+  return s.length+':'+(h1>>>0).toString(36)+':'+(h2>>>0).toString(36);
+}
+function _termNo(t){ const m=/(\d+)/.exec(String(t||'')); return m ? Number(m[1]) : 0; }
+const _HIER = [
+  el=>{ const y=el&&el.year, t=el&&el.term; return (y===undefined||t===undefined) ? '' : String(Number(y)||0).padStart(5,'0')+'_'+String(_termNo(t)); },
+  el=>String((el&&(el.classId||el.finClassId))||''),
+  el=>String((el&&(el.subject||el.subjectId))||''),
+  el=>String((el&&(el.kind||el.label))||'')
+];
+// Groups items {items,size} so each group is <= budget: whole terms first; an oversize term by class; then subject; then assessment; then by size.
+function packByHierarchy(items, budget, sizeOf, lv){
+  lv = lv||0;
+  const sizes = items.map(sizeOf), total = sizes.reduce((a,b)=>a+b,0);
+  if(total<=budget) return [{items, size:total}];
+  const mk = arr=>({items:arr, size:arr.reduce((n,x)=>n+sizeOf(x),0)});
+  if(lv>=_HIER.length){
+    const out=[]; let cur=[], cs=0;
+    items.forEach((x,i)=>{ if(cs+sizes[i]>budget && cur.length){ out.push({items:cur,size:cs}); cur=[]; cs=0; } cur.push(x); cs+=sizes[i]; });
+    if(cur.length) out.push({items:cur,size:cs});
+    return out;
+  }
+  const buckets=new Map(); items.forEach(x=>{ const k=_HIER[lv](x); if(!buckets.has(k)) buckets.set(k,[]); buckets.get(k).push(x); });
+  if(buckets.size===1) return packByHierarchy(items, budget, sizeOf, lv+1);
+  const out=[]; let cur=[], cs=0;
+  const flush=()=>{ if(cur.length){ out.push({items:cur,size:cs}); cur=[]; cs=0; } };
+  [...buckets.keys()].sort().forEach(k=>{
+    const g=mk(buckets.get(k));
+    if(g.size>budget){ flush(); packByHierarchy(g.items, budget, sizeOf, lv+1).forEach(x=>out.push(x)); }
+    else { if(cs+g.size>budget) flush(); g.items.forEach(x=>cur.push(x)); cs+=g.size; }
+  });
+  flush();
+  return out;
+}
+// Cuts a too-big value into documents (arrays of {p:path, t:'o'|'a', v:part}). Returns null when it fits in one document.
+function shredValue(val){
+  if(val===null || typeof val!=='object') return null;
+  const whole = JSON.stringify(val); if(whole===undefined) return null;
+  if(whole.length*3 <= DOC_MAX_BYTES) return null;                                   // certainly fits (even if every character took 3 bytes)
+  if((_utf8 ? _utf8.encode(whole).length : whole.length*3) <= DOC_MAX_BYTES) return null; // measured exactly
+  const docs=[]; let cur=[], size=0;
+  const flush=()=>{ if(cur.length){ docs.push(cur); cur=[]; size=0; } };
+  const add=(part,n)=>{ if(size+n>DOC_BUDGET_BYTES && cur.length) flush(); cur.push(part); size+=n; };
+  const bytes=v=>{ const s=JSON.stringify(v); return s===undefined ? 0 : (_utf8 ? _utf8.encode(s).length : s.length*3); };
+  const walk=(node,path)=>{
+    if(Array.isArray(node)){
+      // Records that carry a term/year (payments, installments, expenses...) are kept together term by term; a term that is too big for
+      // one document is divided by class, then subject, then assessment (when the records have those) - any rest is cut by size.
+      packByHierarchy(node, DOC_BUDGET_BYTES-64, el=>bytes(el)+1).forEach(g=>{ add({p:path,t:'a',v:g.items}, g.size+64); });
+    } else {
+      let grp={}, gs=0, cnt=0;
+      const emit=()=>{ if(cnt){ add({p:path,t:'o',v:grp}, gs+64); grp={}; gs=0; cnt=0; } };
+      Object.keys(node).forEach(k=>{
+        const v=node[k]; if(v===undefined) return;
+        const n=bytes(v)+_utf8.encode(k).length+4;
+        if(n>DOC_BUDGET_BYTES && v && typeof v==='object'){ emit(); walk(v, path.concat(k)); }
+        else { if(gs+n>DOC_BUDGET_BYTES) emit(); grp[k]=v; gs+=n; cnt++; }
+      });
+      emit();
+    }
+  };
+  walk(val, []);
+  flush();
+  return docs;
+}
+// Exact inverse of shredValue().
+function unshredValue(docs){
+  let root;
+  docs.forEach(parts=>(parts||[]).forEach(pt=>{
+    const isArr = pt.t==='a';
+    if(pt.p.length===0){ if(root===undefined) root = isArr ? [] : {}; if(isArr) pt.v.forEach(x=>root.push(x)); else Object.assign(root, pt.v); return; }
+    if(root===undefined) root = {};
+    let c=root;
+    for(let i=0;i<pt.p.length-1;i++){ const k=pt.p[i]; if(c[k]===undefined) c[k]={}; c=c[k]; }
+    const last=pt.p[pt.p.length-1];
+    if(c[last]===undefined) c[last] = isArr ? [] : {};
+    if(isArr) pt.v.forEach(x=>c[last].push(x)); else Object.assign(c[last], pt.v);
+  }));
+  return root;
+}
+// Reads one stored value. {exists, value}. A chunked value is read in ONE consistent transaction.
+async function readSharedDoc(key){
+  const col = db.collection(COLLECTION), snap = await col.doc(key).get();
+  if(!snap.exists){ CHUNKED_KEYS.set(key, 0); return {exists:false}; }
+  const d = snap.data() || {};
+  if(!d.chunks){ CHUNKED_KEYS.set(key, 0); return {exists:true, value:d.value}; }
+  for(let attempt=0; attempt<3; attempt++){
+    const r = await db.runTransaction(async tx=>{
+      const b = await tx.get(col.doc(key)), bd = b.exists ? (b.data()||{}) : {}, n = bd.chunks||0;
+      if(!n) return {n:0, value:bd.value, exists:b.exists};
+      const got = await Promise.all(Array.from({length:n}, (_,i)=>tx.get(col.doc(key+'~'+i))));
+      return {n, parts:got.map(x=>x.exists ? (x.data().value||[]) : null), exists:true};
+    });
+    if(!r.n){ CHUNKED_KEYS.set(key, 0); return {exists:r.exists, value:r.value}; }
+    if(r.parts.every(x=>x!==null)){ CHUNKED_KEYS.set(key, r.n); return {exists:true, value:unshredValue(r.parts)}; }
+  }
+  throw new Error('A stored document is missing one of its parts ('+key+')');
+}
+async function writeSharedDoc(key, val){
+  const col = db.collection(COLLECTION), ref = col.doc(key), parts = shredValue(val);
+  if(!parts){
+    await ref.set({value: val, updatedAt: Date.now()});
+    const was = CHUNKED_KEYS.get(key)||0;
+    if(was>0){ const b=db.batch(); for(let i=0;i<was;i++) b.delete(col.doc(key+'~'+i)); try{ await b.commit(); }catch(e){ console.error(e); } }
+    CHUNKED_KEYS.set(key, 0); return;
+  }
+  const sigs = parts.map(_docSig);
+  await db.runTransaction(async tx=>{
+    const b = await tx.get(ref), d = b.exists ? (b.data()||{}) : {}, oldSigs = Array.isArray(d.sigs) ? d.sigs : [], oldN = d.chunks||0;
+    parts.forEach((pt,i)=>{ if(i>=oldN || oldSigs[i]!==sigs[i]) tx.set(col.doc(key+'~'+i), {value: pt, updatedAt: Date.now()}); });
+    for(let i=parts.length;i<oldN;i++) tx.delete(col.doc(key+'~'+i));
+    tx.set(ref, {chunks: parts.length, sigs, updatedAt: Date.now()});
+  });
+  CHUNKED_KEYS.set(key, parts.length);
+}
+async function deleteSharedDoc(key){
+  const col = db.collection(COLLECTION), ref = col.doc(key);
+  let n = CHUNKED_KEYS.get(key);
+  if(n===undefined){
+    if(/_hist_|_cscores_|_scores_|_gates$/.test(key)) n = 0;
+    else { const s = await ref.get(); n = (s.exists && s.data() && s.data().chunks) || 0; }
+  }
+  const b = db.batch(); for(let i=0;i<n;i++) b.delete(col.doc(key+'~'+i)); b.delete(ref);
+  await b.commit(); CHUNKED_KEYS.delete(key);
+}
 async function getShared(key, fallback){
   if(DEMO_MODE){ try{ const raw = localStorage.getItem('cte_demo_'+key); return raw!==null? JSON.parse(raw): fallback; }catch(e){ return fallback; } }
   try{
     if(AUTH_READY) await AUTH_READY;
-    const snap = await db.collection(COLLECTION).doc(key).get();
-    return snap.exists ? snap.data().value : fallback;
+    const r = await readSharedDoc(key);
+    return r.exists ? r.value : fallback;
   }catch(e){
     console.error(e);
     DATA_LOAD_FAILED = true;
@@ -3960,7 +4110,7 @@ async function deleteShared(key){
     setAppBusy(true); // an auto-update reload must never land while this write is in flight
     try{
       if(AUTH_READY) await AUTH_READY;
-      await db.collection(COLLECTION).doc(key).delete();
+      await deleteSharedDoc(key);
     } finally { setAppBusy(false); }
   }catch(e){
     console.error(e);
@@ -3973,7 +4123,7 @@ async function setShared(key, val){
     setAppBusy(true); // an auto-update reload must never land while this write is in flight
     try{
       if(AUTH_READY) await AUTH_READY;
-      await db.collection(COLLECTION).doc(key).set({ value: val, updatedAt: Date.now() });
+      await writeSharedDoc(key, val);
     } finally { setAppBusy(false); }
   }catch(e){
     console.error(e);
@@ -3991,7 +4141,217 @@ async function setShared(key, val){
    pile up, while the app still reads/writes DB.scores as one in-memory
    array everywhere else — only the load/save layer changed.
 ------------------------------------------------------------- */
-function scoreShardKey(term, year){ return `${year}_${term}`; }
+/* ---- CLASS-SHARDED SCORES -------------------------------------------------
+   One small document per term + year + CLASS:  sch_{id}_cscores_{year}_{Term}~{classId}
+   (only a class too big for one document spills its biggest SUBJECTS into ...~{classId}~{subjectKey} - see SUBJECT OVERFLOW below)
+   A row's class (row.classId) is fixed when the mark is first saved and never follows the student afterwards, so
+   promotion / transfer / leaving never moves old marks: last term's marks stay in the class the student was in.
+   Whole-period reads (report cards, mark sheets, exports) read every class shard of that period, so they stay
+   complete whatever happened to the student's class later. Old per-term shards (sch_{id}_scores_*) are still read
+   until migrateScoresToClassShards() has copied them across and verified the copy. ------------------------- */
+const LEGACY_SCORES_GONE = {}, SCORE_MIG_P = {}, SCORE_SIG = {};
+const scoreDocPrefix = sid => `sch_${sid}_cscores_`;
+const scoreLegacyPrefix = sid => `sch_${sid}_scores_`;
+function scoreClsKey(c){ return String(c||'x').replace(/[^A-Za-z0-9_-]/g,'_'); }
+function scorePeriodKey(term, year){ return `${year}_${term}`; }
+function scoreShardKey(term, year, classId){ return `${year}_${term}~${scoreClsKey(classId)}`; }
+function scoreRowShard(r){ return scoreShardKey(r.term, r.year, r.classId); }
+function scoreShardPeriod(k){ const m=/^(\d+)_(Term \d)~/.exec(k); return m?{year:+m[1],term:m[2]}:null; }
+function shardSig(rows){ const s=JSON.stringify((rows||[]).slice().sort((a,b)=>a.id<b.id?-1:1)); let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return s.length+':'+h; }
+function dedupeScores(rows){ const ids=new Set(), nk=new Set(), out=[]; rows.forEach(r=>{ const k=scoreNaturalKey(r); if(ids.has(r.id)||nk.has(k)) return; ids.add(r.id); nk.add(k); out.push(r); }); return out; }
+// Which class a mark belongs to. Writing in the CURRENT period = the student's class now. Anything older (or a legacy row
+// with no class yet) = where the student's placement history says they were then; unknown -> 'x' (still fully retrievable).
+function scoreClassResolver(students, writeMode){
+  const m=new Map((students||[]).map(s=>[s.id,s]));
+  const cur = DB.info ? {t:DB.info.currentTerm, y:Number(DB.info.currentYear)} : null;
+  return r=>{
+    if(r.classId) return r.classId;
+    const s=m.get(r.studentId); if(!s) return 'x';
+    if(writeMode && cur && r.term===cur.t && Number(r.year)===cur.y) return s.classId||'x';
+    return historicalClassFor(s, r.term, r.year) || 'x';
+  };
+}
+function stampScoreRows(rows, students, writeMode){ const f=scoreClassResolver(students||DB.students, writeMode); rows.forEach(r=>{ if(!r.classId) r.classId=f(r); }); return rows; }
+async function listShardDocs(prefix){
+  const out=[];
+  if(DEMO_MODE){ const lp='cte_demo_'+prefix; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.indexOf(lp)===0){ try{ out.push({id:k.slice(lp.length), rows:JSON.parse(localStorage.getItem(k))||[]}); }catch(e){} } } return out; }
+  if(AUTH_READY) await AUTH_READY;
+  const snap=await db.collection(COLLECTION).where(firebase.firestore.FieldPath.documentId(),'>=',prefix).where(firebase.firestore.FieldPath.documentId(),'<=',prefix+'\uf8ff').get();
+  snap.forEach(d=>out.push({id:d.id.slice(prefix.length), rows:d.data().value||[], split:d.data().split||[]}));
+  return out;
+}
+async function txMergeDoc(fullKey, mutate){
+  if(DEMO_MODE){ const fresh=await getShared(fullKey,[]); const m=mutate((fresh||[]).slice()); await setShared(fullKey,m); return m; }
+  if(AUTH_READY) await AUTH_READY;
+  return db.runTransaction(async tx=>{ const ref=db.collection(COLLECTION).doc(fullKey); const snap=await tx.get(ref); const fresh=snap.exists?(snap.data().value||[]):[]; const r=mutate(fresh.slice()); tx.set(ref,{value:r,updatedAt:Date.now()}); return r; });
+}
+/* ---- ONE DOCUMENT PER TERM FIRST; SPLIT FURTHER ONLY WHEN A DOCUMENT PASSES ~800 KB -----------------------------
+   Layout of one term's marks (year + Term = "period"):
+     sch_{id}_cscores_{period}                              the TERM document: every class, subject and assessment of the term
+     sch_{id}_cscores_{period}~{class}                      a CLASS document   (only for classes moved out of the term document)
+     sch_{id}_cscores_{period}~{class}~{subject}            a SUBJECT document (only for subjects moved out of a class document)
+     sch_{id}_cscores_{period}~{class}~{subject}~{assess}   an ASSESSMENT document (only when one subject is itself too big)
+   A document that grows past SCORE_DOC_SOFT_LIMIT moves its biggest children (classes, then subjects, then assessments) into their
+   own documents until it is back under SCORE_DOC_TARGET; the parent lists them in "split". A split is never undone. The rest of the app
+   still works with one logical shard per term + class: reading, merging and deleting it is handled here. A small school therefore
+   costs ONE read and ONE write per save for the whole term. Terms stored the old way (one document per class) are folded into
+   the term layout the first time marks are saved in them; they stay readable until then. ------------------------------------- */
+const SCORE_DOC_SOFT_LIMIT = 790000;   // bytes - a score document is split before it passes this (Firestore's cap is 1,048,576)
+const SCORE_DOC_TARGET = 500000;       // bytes - what a document is brought back under when it splits
+const PERIOD_LAY = new Map();          // 'schoolId|period' -> 2 once that term is known to use the term layout
+const SCORE_TXQ = new Map();           // 'schoolId|period' -> queue, so this device never makes two saves of one term fight each other
+function scoreSubjKey(s){ return String(s||'x').replace(/[^A-Za-z0-9_-]/g,'_').slice(0,60) || 'x'; }
+function scoreAssessKey(r){ return (String((r.kind||'x')+'_'+(r.label||'')).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,60)) || 'x'; }
+const SCORE_LEVEL_KEYS = [ r=>scoreClsKey(r.classId), r=>scoreSubjKey(r.subject), scoreAssessKey ];   // term doc splits by class, class doc by subject, subject doc by assessment
+function _rowBytes(r){ const s=JSON.stringify(r); return (_utf8 ? _utf8.encode(s).length : s.length*3)+1; }
+function _sameList(a,b){ return JSON.stringify(a||[])===JSON.stringify(b||[]); }
+const _docPath = (pre, period, path)=> pre+period+path.map(s=>'~'+s).join('');
+// Spreads one document's rows over its children. level 0 = term document, 1 = class document, 2 = subject document.
+function scoreDistribute(rows, level, split){
+  const keyFn = SCORE_LEVEL_KEYS[level], kids = new Map(); let own = [];
+  split.forEach(k=>kids.set(k, []));
+  rows.forEach(r=>{ const k=keyFn(r); (kids.has(k) ? kids.get(k) : own).push(r); });
+  const sp = split.slice(); let size = own.reduce((n,r)=>n+_rowBytes(r), 0);
+  if(size > SCORE_DOC_SOFT_LIMIT){
+    const by = new Map(); own.forEach(r=>{ const k=keyFn(r); by.set(k, (by.get(k)||0)+_rowBytes(r)); });
+    for(const [k,n] of [...by.entries()].sort((a,b)=>b[1]-a[1])){
+      if(size <= SCORE_DOC_TARGET) break;
+      sp.push(k); kids.set(k, own.filter(r=>keyFn(r)===k)); size -= n;
+    }
+    const moved = new Set(sp); own = own.filter(r=>!moved.has(keyFn(r)));
+  }
+  return {own, kids, split: sp};
+}
+// Plans the documents of one node and (recursively) everything that has to move out of it.
+function scoreBuildNode(rows, level, path, ctx, out){
+  const key = path.join('~'), had = ctx.known.get(key) || [];
+  const d = level<3 ? scoreDistribute(rows, level, had) : {own:rows, kids:new Map(), split:[]};
+  out.push({path, rows:d.own, split:d.split});
+  d.kids.forEach((kidRows,k)=>{
+    const kp = path.concat(k);
+    if(had.includes(k) && !ctx.oldRows.has(kp.join('~'))) return;   // an existing document nobody read in this save: left exactly as it is
+    scoreBuildNode(kidRows, level+1, kp, ctx, out);
+  });
+}
+// Atomic read-merge-write of one logical shard (one class in one term). Only the documents that hold that class are read/written.
+function txMergeScoreShard(sid, suffix, mutate){
+  if(DEMO_MODE) return txMergeDoc(scoreDocPrefix(sid)+suffix, mutate);
+  const i = suffix.indexOf('~'), cls = suffix.slice(i+1);
+  return txMergeScorePeriod(sid, suffix.slice(0,i), {[cls]: mutate}).then(res=>res[cls]);
+}
+// ONE read-merge-write transaction for one term and ANY NUMBER of its classes. edits = { classKey: mutate(currentClassRows) -> newRows }.
+// The term document is read once and written once, however many classes changed; only a class that was already moved out of the
+// term document (too big) has its own documents read as well. Returns { classKey: mergedRows }.
+function txMergeScorePeriod(sid, period, edits){
+  const qk = sid+'|'+period, prev = SCORE_TXQ.get(qk) || Promise.resolve();
+  const run = prev.catch(()=>{}).then(()=>_txMergeScorePeriod(sid, period, edits));
+  SCORE_TXQ.set(qk, run.catch(()=>{}));
+  return run;
+}
+async function _txMergeScorePeriod(sid, period, edits){
+  if(AUTH_READY) await AUTH_READY;
+  const pre = scoreDocPrefix(sid), classes = Object.keys(edits), aff = new Set(classes);
+  const col = db.collection(COLLECTION), idOf = path=>_docPath(pre, period, path), rootRef = col.doc(idOf([]));
+  const inAff = r=>aff.has(scoreClsKey(r.classId));
+  let legacyIds = null;
+  if(PERIOD_LAY.get(qkey(sid,period))!==2){
+    const r0 = await rootRef.get();
+    if(r0.exists && (r0.data()||{}).lay===2) PERIOD_LAY.set(qkey(sid,period), 2);
+    else legacyIds = (await listShardDocs(pre+period)).filter(d=>d.id==='' || d.id.charAt(0)==='~').map(d=>pre+period+d.id);
+  }
+  _rootCache.delete(qkey(sid,period));
+  const merged = await db.runTransaction(async tx=>{
+    const rs = await tx.get(rootRef), rd = rs.exists ? (rs.data()||{}) : null, now = Date.now();
+    const ctx = {known:new Map(), oldRows:new Map()}, plan = [], result = {}, curBy = {};
+    classes.forEach(c=>{ curBy[c] = []; });
+    let rest, ids = [];
+    if(!(rd && rd.lay===2)){
+      // New term, or a term still stored one-document-per-class: gather the whole term, apply the changes, lay it out afresh.
+      ids = (legacyIds||[]).filter(id=>id!==rootRef.id);
+      const snaps = await Promise.all(ids.map(id=>tx.get(col.doc(id))));
+      let all = []; snaps.forEach(s=>{ if(s.exists) all = all.concat((s.data()||{}).value||[]); });
+      all = dedupeScores(all);
+      all.forEach(r=>{ const c = scoreClsKey(r.classId); if(aff.has(c)) curBy[c].push(r); });
+      rest = all.filter(r=>!inAff(r));
+    } else {
+      const rootRows = rd.value||[], rootSplit = Array.isArray(rd.split) ? rd.split : [];
+      ctx.oldRows.set('', rootRows); ctx.known.set('', rootSplit);
+      rootRows.forEach(r=>{ const c = scoreClsKey(r.classId); if(aff.has(c)) curBy[c].push(r); });
+      rest = rootRows.filter(r=>!inAff(r));
+      const readNode = async (path, c)=>{
+        const s = await tx.get(col.doc(idOf(path))), d = s.exists ? (s.data()||{}) : {};
+        const rows = d.value||[], spl = Array.isArray(d.split) ? d.split : [], key = path.join('~');
+        ctx.oldRows.set(key, rows); ctx.known.set(key, spl); curBy[c] = curBy[c].concat(rows);
+        await Promise.all(spl.map(k=>readNode(path.concat(k), c)));
+      };
+      await Promise.all(classes.filter(c=>rootSplit.includes(c)).map(c=>readNode([c], c)));
+    }
+    let out = rest;
+    classes.forEach(c=>{ const r = edits[c](curBy[c].slice()); result[c] = r; out = out.concat(r); });
+    scoreBuildNode(out, 0, [], ctx, plan);
+    if(ids.length){ const keep = new Set(plan.map(n=>idOf(n.path))); ids.forEach(id=>{ if(!keep.has(id)) tx.delete(col.doc(id)); }); }
+    plan.forEach(n=>{
+      const key = n.path.join('~'), was = ctx.oldRows.get(key);
+      if(was && shardSig(was)===shardSig(n.rows) && _sameList(ctx.known.get(key), n.split)) return;   // unchanged: no write
+      const d = {value:n.rows, split:n.split, updatedAt:now}; if(n.path.length===0) d.lay = 2;
+      tx.set(col.doc(idOf(n.path)), d);
+    });
+    return result;
+  });
+  PERIOD_LAY.set(qkey(sid,period), 2); _rootCache.delete(qkey(sid,period));
+  return merged;
+}
+// Replaces several classes of ONE term with exactly these rows ({classKey: rows}) in a single save.
+async function setScorePeriodShards(sid, period, map){
+  try{
+    setAppBusy(true);
+    try{
+      if(DEMO_MODE) await Promise.all(Object.keys(map).map(c=>txMergeScoreShard(sid, period+'~'+c, ()=>map[c].slice())));
+      else { const e={}; Object.keys(map).forEach(c=>{ e[c]=()=>map[c].slice(); }); await txMergeScorePeriod(sid, period, e); }
+    } finally { setAppBusy(false); }
+  }catch(e){
+    console.error(e);
+    if(navigator.onLine===false || classifyDbError(e)==='network') showConnectionModal('save your change'); else
+    showFatal(dbErrorMessage(e, 'save your change'));
+  }
+}
+function qkey(sid, period){ return sid+'|'+period; }
+// Replaces a logical shard (one class in one term) with exactly these rows (bulk saves).
+async function setScoreShard(sid, suffix, rows){
+  try{
+    setAppBusy(true);
+    try{ await txMergeScoreShard(sid, suffix, ()=>rows.slice()); } finally { setAppBusy(false); }
+  }catch(e){
+    console.error(e);
+    if(navigator.onLine===false || classifyDbError(e)==='network') showConnectionModal('save your change'); else
+    showFatal(dbErrorMessage(e, 'save your change'));
+  }
+}
+// Empties a logical shard (one class in one term).
+async function deleteScoreShard(sid, suffix){
+  try{
+    setAppBusy(true);
+    try{ await txMergeScoreShard(sid, suffix, ()=>[]); } finally { setAppBusy(false); }
+  }catch(e){ console.error(e); showFatal(dbErrorMessage(e, 'delete some data')); }
+}
+// Removes a whole term: the term document and every class / subject / assessment document split out of it (and old-style class documents).
+async function deleteScorePeriod(sid, pk){
+  const pre = scoreDocPrefix(sid);
+  const docs = (await listShardDocs(pre+pk)).filter(d=>d.id==='' || d.id.charAt(0)==='~');
+  if(DEMO_MODE){ docs.forEach(d=>{ try{ localStorage.removeItem('cte_demo_'+pre+pk+d.id); }catch(e){} }); PERIOD_LAY.delete(qkey(sid,pk)); return; }
+  if(AUTH_READY) await AUTH_READY;
+  for(let i=0;i<docs.length;i+=400){
+    const b = db.batch(); docs.slice(i,i+400).forEach(d=>b.delete(db.collection(COLLECTION).doc(pre+pk+d.id)));
+    await b.commit();
+  }
+  PERIOD_LAY.delete(qkey(sid,pk));
+}
+async function clearPeriodShards(sid, term, year){
+  const pk = scorePeriodKey(term,year);
+  await deleteScorePeriod(sid, pk);
+  const known = KNOWN_SCORE_SHARDS[sid];
+  if(known) [...known].forEach(k=>{ if(k.startsWith(pk+'~')){ known.delete(k); delete SCORE_SIG[sid+'|'+k]; } });
+}
 // Converts a term/year into a single increasing number so "how far back is this
 // term" is a simple subtraction — Term 1 2025 < Term 2 2025 < Term 1 2026, etc.
 function termIndex(term, year){
@@ -4044,26 +4404,18 @@ function historicalClassFor(s, term, year){
 // deleted from Firestore when the current period advances.
 // Moving the current period backward never deletes future-period data.
 async function pruneOldScores(){
-  if(!SCHOOL_ID || !DB.info) return;
-  const keep = [], dropKeys = new Set();
-  DB.scores.forEach(r=>{
-    const dist = termsBehindCurrent(r.term, r.year);
-    // Only drop a shard once it's genuinely older than the retention window
-    // (dist > MAX_TERMS_BEHIND). A NEGATIVE dist means the score's term is
-    // AFTER the school's current term — that happens if an admin moves the
-    // current term backward (typo, wrong dropdown pick, undoing an accidental
-    // advance, etc.). That data isn't "old", it's just ahead of where the
-    // term pointer currently sits, so it must never be treated as expired and
-    // deleted — doing so used to permanently wipe out already-entered scores
-    // the moment the term was reverted, with no way to recover them.
-    if(dist<=MAX_TERMS_BEHIND) keep.push(r); else dropKeys.add(scoreShardKey(r.term, r.year));
-  });
-  if(!dropKeys.size) return;
-  DB.scores = keep;
-  await Promise.all([...dropKeys].map(k=>setShared(`sch_${SCHOOL_ID}_scores_${k}`, [])));
-  const known = KNOWN_SCORE_SHARDS[SCHOOL_ID] || new Set();
-  dropKeys.forEach(k=>known.delete(k));
-  KNOWN_SCORE_SHARDS[SCHOOL_ID] = known;
+  if(!SCHOOL_ID || !DB.info || !(await ensureScoresMigrated())) return;
+  const pre=scoreDocPrefix(SCHOOL_ID), known=KNOWN_SCORE_SHARDS[SCHOOL_ID]||(KNOWN_SCORE_SHARDS[SCHOOL_ID]=new Set()), drop=new Set();
+  // Only periods genuinely older than the window (current + MAX_TERMS_BEHIND) are dropped. A NEGATIVE distance
+  // (term after the school's current term, e.g. the pointer was moved back) is never treated as expired.
+  const old=(t,y)=>termsBehindCurrent(t,y)>MAX_TERMS_BEHIND;
+  DB.scores.forEach(r=>{ if(old(r.term,r.year)) drop.add(scoreRowShard(r)); });
+  known.forEach(k=>{ const p=scoreShardPeriod(k); if(p && old(p.term,p.year)) drop.add(k); });
+  if(!drop.size) return;
+  DB.scores=DB.scores.filter(r=>!old(r.term,r.year));
+  const periods = new Set([...drop].map(k=>k.split('~')[0]));
+  await Promise.all([...periods].map(pk=>deleteScorePeriod(SCHOOL_ID, pk)));   // whole terms go: term document + everything split out of it
+  drop.forEach(k=>{ known.delete(k); delete SCORE_SIG[SCHOOL_ID+'|'+k]; });
 }
 // Automatic migration that brings an existing school onto the admission-number
 // scheme with look-back admission years: every class gets a nextAdmSeq counter, and
@@ -4203,82 +4555,95 @@ async function pruneOldStudents(){
   toPurge.forEach(s=>{ if(s.photo) deletePhotoFromStorage(s.photo); });
 }
 async function loadAllScores(schoolId){
-  const prefix = `sch_${schoolId}_scores_`;
-  let rows = [];
-  const shardKeys = new Set();
-  if(DEMO_MODE){
-    const localPrefix = 'cte_demo_'+prefix;
-    for(let i=0;i<localStorage.length;i++){
-      const k = localStorage.key(i);
-      if(k && k.indexOf(localPrefix)===0){
-        shardKeys.add(k.slice(localPrefix.length));
-        try{ rows = rows.concat(JSON.parse(localStorage.getItem(k))||[]); }catch(e){}
-      }
-    }
-  } else {
-    try{
-      if(AUTH_READY) await AUTH_READY;
-      const end = prefix + '\uf8ff';
-      const snap = await db.collection(COLLECTION)
-        .where(firebase.firestore.FieldPath.documentId(), '>=', prefix)
-        .where(firebase.firestore.FieldPath.documentId(), '<=', end)
-        .get();
-      snap.forEach(doc=>{
-        shardKeys.add(doc.id.slice(prefix.length));
-        rows = rows.concat((doc.data().value)||[]);
-      });
-    }catch(e){
-      console.error(e);
-      DATA_LOAD_FAILED = true;
-      showFatal('Could not reach the database. Check your internet connection and Firestore setup.');
-    }
+  let docs=[], legacy=[], single=null;
+  try{
+    const gone=!!LEGACY_SCORES_GONE[schoolId];
+    [docs, legacy, single] = await Promise.all([
+      listShardDocs(scoreDocPrefix(schoolId)),
+      gone ? [] : listShardDocs(scoreLegacyPrefix(schoolId)),
+      gone ? null : getShared(`sch_${schoolId}_scores`, null)
+    ]);
+  }catch(e){
+    console.error(e);
+    DATA_LOAD_FAILED = true;
+    showFatal('Could not reach the database. Check your internet connection and Firestore setup.');
   }
-  KNOWN_SCORE_SHARDS[schoolId] = shardKeys;
-  // One-time migration: scores created before sharding all lived in one
-  // sch_{id}_scores document. Fold any of those in, then saveScores() will
-  // write them out into proper shards and this legacy doc gets cleaned up.
-  const legacy = await getShared(`sch_${schoolId}_scores`, null);
-  if(legacy && legacy.length){
-    const seen = new Set(rows.map(r=>r.id));
-    legacy.forEach(r=>{ if(!seen.has(r.id)) rows.push(r); });
-  }
+  let rows=[];
+  docs.forEach(d=>{ rows=rows.concat(d.rows||[]); });   // term documents plus anything split out of them: every row, whatever document holds it
+  // Not yet migrated: fold the old per-term rows in (new-format rows win), giving each a class so saves go to class shards.
+  const old=[]; legacy.forEach(d=>(d.rows||[]).forEach(r=>old.push(r))); if(Array.isArray(single)) single.forEach(r=>old.push(r));
+  if(!old.length && !legacy.length && !(Array.isArray(single)&&single.length) && !DATA_LOAD_FAILED) LEGACY_SCORES_GONE[schoolId]=true;
+  if(old.length){ const f=(schoolId===SCHOOL_ID)?scoreClassResolver(DB.students,false):null; old.forEach(r=>{ if(f && !r.classId) r=Object.assign({},r,{classId:f(r)}); rows.push(r); }); }
+  rows = dedupeScores(rows);
+  const known=new Set(), grp={};
+  rows.forEach(r=>{ const k=scoreRowShard(r); (grp[k]=grp[k]||[]).push(r); });
+  Object.keys(grp).forEach(k=>{ known.add(k); SCORE_SIG[schoolId+'|'+k]=shardSig(grp[k]); });
+  KNOWN_SCORE_SHARDS[schoolId] = known;
   return rows;
 }
 async function purgeScoreShards(schoolId){
-  const prefix = `sch_${schoolId}_scores_`;
-  if(DEMO_MODE){
-    const localPrefix = 'cte_demo_'+prefix;
-    const toRemove = [];
-    for(let i=0;i<localStorage.length;i++){
-      const k = localStorage.key(i);
-      if(k && k.indexOf(localPrefix)===0) toRemove.push(k);
-    }
-    toRemove.forEach(k=>localStorage.removeItem(k));
-    return;
-  }
   try{
-    if(AUTH_READY) await AUTH_READY;
-    const end = prefix + '\uf8ff';
-    const snap = await db.collection(COLLECTION)
-      .where(firebase.firestore.FieldPath.documentId(), '>=', prefix)
-      .where(firebase.firestore.FieldPath.documentId(), '<=', end)
-      .get();
-    await Promise.all(snap.docs.map(d=>d.ref.delete()));
+    for(const p of [scoreDocPrefix(schoolId), scoreLegacyPrefix(schoolId)]){
+      const docs=await listShardDocs(p); await Promise.all(docs.map(d=>deleteShared(p+d.id)));
+    }
+    await deleteShared(`sch_${schoolId}_scores`);
+    LEGACY_SCORES_GONE[schoolId]=true; KNOWN_SCORE_SHARDS[schoolId]=new Set();
+    Object.keys(SCORE_SIG).forEach(k=>{ if(k.startsWith(schoolId+'|')) delete SCORE_SIG[k]; });
   }catch(e){ console.error(e); }
 }
-async function saveScoresShardedFor(schoolId, scores){
-  const groups = {};
-  (scores||[]).forEach(r=>{ const k=scoreShardKey(r.term, r.year); (groups[k]=groups[k]||[]).push(r); });
-  const keys = new Set(Object.keys(groups));
-  const known = KNOWN_SCORE_SHARDS[schoolId] || new Set();
-  const writes = [];
-  keys.forEach(k=> writes.push(setShared(`sch_${schoolId}_scores_${k}`, groups[k])) );
-  // A term/year that used to have scores but has none now (e.g. last row for
-  // that term was deleted) — clear its shard instead of leaving stale data.
-  known.forEach(k=>{ if(!keys.has(k)) writes.push(setShared(`sch_${schoolId}_scores_${k}`, [])); });
+// Writes only the class shards whose content changed (a school with many classes must not rewrite every document on
+// each bulk save). While only ONE period is loaded (_scoresPartial) other periods' shards are never touched or cleared.
+async function saveScoresShardedFor(schoolId, scores, students){
+  const f=scoreClassResolver(students || (schoolId===SCHOOL_ID?DB.students:[]), true);
+  const groups={};
+  (scores||[]).forEach(r=>{ if(!r.classId) r.classId=f(r); const k=scoreRowShard(r); (groups[k]=groups[k]||[]).push(r); });
+  const keys=new Set(Object.keys(groups)), known=KNOWN_SCORE_SHARDS[schoolId]||new Set(), pre=scoreDocPrefix(schoolId), writes=[], cleared=new Set();
+  const partialOnly = schoolId===SCHOOL_ID && _scoresPartial;
+  // While only some classes are in memory, a shard that has NOT been loaded is never written or cleared: its rows in memory
+  // (if any) are not the whole document, and writing them would overwrite the real one.
+  const byPeriod = {};   // term -> { classKey: rows }  (one transaction per TERM, not one per class)
+  const addEdit = (k, rows)=>{ const i=k.indexOf('~'); (byPeriod[k.slice(0,i)] = byPeriod[k.slice(0,i)] || {})[k.slice(i+1)] = rows; };
+  keys.forEach(k=>{ if(partialOnly && !scoreShardIsLoaded(k)) return; if(SCORE_SIG[schoolId+'|'+k]!==shardSig(groups[k])) addEdit(k, groups[k]); });
+  known.forEach(k=>{
+    if(keys.has(k)) return;
+    if(partialOnly && !scoreShardIsLoaded(k)) return;
+    cleared.add(k); addEdit(k, []); delete SCORE_SIG[schoolId+'|'+k];
+  });
+  Object.keys(byPeriod).forEach(p=>writes.push(setScorePeriodShards(schoolId, p, byPeriod[p])));
   await Promise.all(writes);
-  await deleteShared(`sch_${schoolId}_scores`); // one-time cleanup of the old single-doc format
-  KNOWN_SCORE_SHARDS[schoolId] = keys;
+  const next=new Set([...known].filter(k=>!cleared.has(k))); keys.forEach(k=>next.add(k));
+  KNOWN_SCORE_SHARDS[schoolId]=next;
+}
+// One-time, idempotent, verified copy of the old per-term shards into class shards. Old documents are deleted ONLY
+// after every old row is confirmed present in the new shards. Existing new-format rows always win over old copies.
+function ensureScoresMigrated(){
+  const sid=SCHOOL_ID; if(!sid || LEGACY_SCORES_GONE[sid]) return Promise.resolve(true);
+  return SCORE_MIG_P[sid] || (SCORE_MIG_P[sid]=migrateScoresToClassShards(sid).then(ok=>{ if(!ok) delete SCORE_MIG_P[sid]; return ok; }, e=>{ console.error('Score migration failed', e); delete SCORE_MIG_P[sid]; return false; }));
+}
+async function migrateScoresToClassShards(sid){
+  if(LEGACY_SCORES_GONE[sid]) return true;
+  if(sid!==SCHOOL_ID || !DB.students) return false;
+  const lp=scoreLegacyPrefix(sid), pre=scoreDocPrefix(sid);
+  const [ldocs, single] = await Promise.all([listShardDocs(lp), getShared(`sch_${sid}_scores`, null)]);
+  let rows=[]; ldocs.forEach(d=>{ rows=rows.concat(d.rows||[]); }); if(Array.isArray(single)) rows=rows.concat(single);
+  const uniq=dedupeScores(rows);
+  if(uniq.length){
+    const f=scoreClassResolver(DB.students,false), groups={};
+    uniq.forEach(r=>{ const c=r.classId||f(r), k=scoreShardKey(r.term,r.year,c); (groups[k]=groups[k]||[]).push(Object.assign({},r,{classId:c})); });
+    for(const k of Object.keys(groups)){
+      await txMergeScoreShard(sid, k, fresh=>{
+        groups[k].forEach(r=>{ if(!fresh.some(x=>x.id===r.id || scoreNaturalKey(x)===scoreNaturalKey(r))) fresh.push(r); });
+        return fresh;
+      });
+    }
+    const have=await listShardDocs(pre), ids=new Set(), nk=new Set();
+    have.forEach(d=>(d.rows||[]).forEach(r=>{ ids.add(r.id); nk.add(scoreNaturalKey(r)); }));
+    if(!uniq.every(r=>ids.has(r.id)||nk.has(scoreNaturalKey(r)))){ console.error('Score migration verification failed — old data kept'); return false; }
+  }
+  await Promise.all(ldocs.map(d=>deleteShared(lp+d.id)));
+  await deleteShared(`sch_${sid}_scores`);
+  LEGACY_SCORES_GONE[sid]=true;
+  return true;
 }
 
 /* ------------------------------------------------------------
@@ -4326,39 +4691,22 @@ function mergeRowIntoShard(fresh, row){
 // Marks are shown on screen instantly (optimistic) and saved to the database in the
 // background, AFTER the form's "unsaved" flag has already been cleared. Holding APP_BUSY for
 // the whole save means an update can never reload the page while marks are still being sent.
-async function mergeScoreShard(schoolId, term, year, mutate){
+async function mergeScoreShard(schoolId, term, year, classId, mutate){
   setAppBusy(true);
-  try{ return await _mergeScoreShardInner(schoolId, term, year, mutate); }
+  try{ return await _mergeScoreShardInner(schoolId, term, year, classId, mutate); }
   finally{ setAppBusy(false); }
 }
-async function _mergeScoreShardInner(schoolId, term, year, mutate){
-  const shardSuffix = scoreShardKey(term, year);
-  const shardKey = `sch_${schoolId}_scores_${shardSuffix}`;
-  let merged;
-  if(DEMO_MODE){
-    // Single device — no real concurrent writers, so a plain read-merge-write
-    // (via localStorage) is safe and there's no transaction API to use here.
-    const fresh = await getShared(shardKey, []);
-    merged = mutate(fresh.slice());
-    await setShared(shardKey, merged);
-  } else {
-    if(AUTH_READY) await AUTH_READY;
-    merged = await db.runTransaction(async tx=>{
-      const ref = db.collection(COLLECTION).doc(shardKey);
-      const snap = await tx.get(ref);
-      const fresh = snap.exists ? (snap.data().value||[]) : [];
-      const result = mutate(fresh.slice());
-      tx.set(ref, { value: result, updatedAt: Date.now() });
-      return result;
-    });
-  }
+async function _mergeScoreShardInner(schoolId, term, year, classId, mutate){
+  const shardSuffix = scoreShardKey(term, year, classId);
+  const wrap = fresh=>{ const r=mutate(fresh); r.forEach(x=>{ if(!x.classId) x.classId=classId; }); return r; };
+  const merged = await txMergeScoreShard(schoolId, shardSuffix, wrap);   // transaction: concurrent teachers can't overwrite each other
+  SCORE_SIG[schoolId+'|'+shardSuffix]=shardSig(merged);
   const known = KNOWN_SCORE_SHARDS[schoolId] = KNOWN_SCORE_SHARDS[schoolId] || new Set();
   known.add(shardSuffix);
   if(schoolId===SCHOOL_ID){
-    // Reconcile with the authoritative, transaction-merged server truth —
-    // this folds in anything another teacher saved to this same shard in
-    // the meantime too, not just this tab's own change.
-    DB.scores = DB.scores.filter(r=>scoreShardKey(r.term,r.year)!==shardSuffix).concat(merged);
+    SCORE_LOADED.set(shardSuffix, Date.now());   // the transaction returned the whole, current shard
+    // Reconcile with the authoritative, transaction-merged server truth for THIS class shard.
+    DB.scores = dedupeScores(DB.scores.filter(r=>scoreRowShard(r)!==shardSuffix).concat(merged));
     try{ scoreOutboxReapply(); }catch(_){}
     invalidateScoreLookupCache();
   }
@@ -4399,15 +4747,16 @@ function scoreOutboxPill(){
 function scoreOutboxReapply(){
   if(!SCHOOL_ID) return;
   const q = scoreOutboxRead(); if(!q.length) return;
-  q.forEach(e=>(e.rows||[]).forEach(r=>mergeRowIntoShard(DB.scores, r)));
+  q.forEach(e=>{ stampScoreRows(e.rows||[], DB.students, true); (e.rows||[]).forEach(r=>mergeRowIntoShard(DB.scores, r)); });
   invalidateScoreLookupCache();
 }
 function _withTimeout(p, ms){ return new Promise((res,rej)=>{ const t=setTimeout(()=>rej(new Error('timeout')), ms); p.then(v=>{clearTimeout(t);res(v);}, e=>{clearTimeout(t);rej(e);}); }); }
 function _sendScoreRows(rows){
-  const byShard = {};
-  rows.forEach(r=>{ const k = scoreShardKey(r.term, r.year); (byShard[k] = byShard[k] || {term:r.term, year:r.year, rows:[]}).rows.push(r); });
-  return Promise.all(Object.values(byShard).map(({term,year,rows})=>
-    mergeScoreShard(SCHOOL_ID, term, year, fresh=>{ rows.forEach(row=>{ mergeRowIntoShard(fresh, row); }); return fresh; })
+  stampScoreRows(rows, DB.students, true);
+  const by = {};
+  rows.forEach(r=>{ const k = scoreRowShard(r); (by[k] = by[k] || {term:r.term, year:r.year, cls:r.classId, rows:[]}).rows.push(r); });
+  return Promise.all(Object.values(by).map(g=>
+    mergeScoreShard(SCHOOL_ID, g.term, g.year, g.cls, fresh=>{ g.rows.forEach(row=>{ mergeRowIntoShard(fresh, row); }); return fresh; })
   ));
 }
 function flushScoreOutbox(){
@@ -4451,6 +4800,10 @@ setInterval(()=>{ if(SCHOOL_ID && scoreOutboxRead().length) flushScoreOutbox(); 
 function upsertScores(rows, syncKey){
   rows = Array.isArray(rows) ? rows : [rows];
   if(!rows.length) return Promise.resolve('saved');
+  // Class shard of a mark: an existing mark keeps its class forever (edits after a transfer/promotion stay in the original
+  // class shard); a brand-new mark takes the student's class for that period.
+  rows.forEach(row=>{ if(!row.classId){ const ex=DB.scores.find(x=>x.id===row.id) || DB.scores.find(x=>scoreNaturalKey(x)===scoreNaturalKey(row)); if(ex && ex.classId) row.classId=ex.classId; } });
+  stampScoreRows(rows, DB.students, true);
   rows.forEach(row=>{ mergeRowIntoShard(DB.scores, row); }); // optimistic local update
   invalidateScoreLookupCache();
   const entry = {qid:uid('q'), at:Date.now(), syncKey:syncKey||'', rows:JSON.parse(JSON.stringify(rows))};
@@ -4468,13 +4821,14 @@ function deleteScores(rows){
   DB.scores = DB.scores.filter(x=>!idsToRemove.has(x.id)); // optimistic local update
   invalidateScoreLookupCache();
   const byShard = {};
+  stampScoreRows(rows, DB.students, false);
   rows.forEach(r=>{
-    const k = scoreShardKey(r.term, r.year);
-    (byShard[k] = byShard[k] || {term:r.term, year:r.year, ids:new Set()}).ids.add(r.id);
+    const k = scoreRowShard(r);
+    (byShard[k] = byShard[k] || {term:r.term, year:r.year, cls:r.classId, ids:new Set()}).ids.add(r.id);
   });
   // Recycle Bin first: the scores are only erased from the database once a copy is safely in the bin.
   return (async()=>{
-    const stashed = await binStashScores(snapshot);
+    const stashed = (await binStashScores(snapshot)) && (await ensureScoresMigrated());
     if(!stashed){
       snapshot.forEach(r=>{ mergeRowIntoShard(DB.scores, r); });   // put them back on screen — nothing was deleted
       invalidateScoreLookupCache();
@@ -4482,8 +4836,8 @@ function deleteScores(rows){
       try{ render(); }catch(e){}
       return false;
     }
-    await Promise.all(Object.values(byShard).map(({term,year,ids})=>
-      mergeScoreShard(SCHOOL_ID, term, year, fresh=>fresh.filter(x=>!ids.has(x.id)))
+    await Promise.all(Object.values(byShard).map(({term,year,cls,ids})=>
+      mergeScoreShard(SCHOOL_ID, term, year, cls, fresh=>fresh.filter(x=>!ids.has(x.id)))
     ));
     return true;
   })();
@@ -4495,30 +4849,280 @@ function deleteScores(rows){
 // it always reflects every teacher's latest saved marks.
 async function refreshScores(){
   if(!SCHOOL_ID) return;
-  try{ DB.scores = await loadAllScores(SCHOOL_ID); _scoresPartial = false; invalidateScoreLookupCache(); }catch(e){ console.error(e); }
+  try{ DB.scores = await loadAllScores(SCHOOL_ID); markScoresFull(); invalidateScoreLookupCache(); }catch(e){ console.error(e); }
 }
 // Master Mark Sheet only needs ONE term/year. Loading every historical score shard
 // just to display one sheet was the biggest remaining source of delay for large schools.
 async function loadScoresForPeriod(schoolId, term, year){
-  const key=scoreShardKey(term,year);
-  const raw=await getShared(`sch_${schoolId}_scores_${key}`, []);
-  // Older schools may still have scores in the pre-sharding document. Only read that
-  // legacy document when the requested shard is empty, avoiding a second large read
-  // for schools that are already fully migrated to sharding.
-  const legacy=(Array.isArray(raw) && raw.length) ? null : await getShared(`sch_${schoolId}_scores`, null);
-  const rows=Array.isArray(raw) ? raw.slice() : [];
-  if(Array.isArray(legacy) && legacy.length){
-    const seen=new Set(rows.map(r=>r.id));
-    legacy.forEach(r=>{ if(!seen.has(r.id) && r.term===term && Number(r.year)===Number(year)) rows.push(r); });
+  const pk=scorePeriodKey(term,year), pre=scoreDocPrefix(schoolId);
+  const docs=(await listShardDocs(pre+pk)).filter(d=>d.id==='' || d.id.charAt(0)==='~');   // the term document + anything split out of it (or, in an old-style term, its class documents)
+  let rows=[]; const known=KNOWN_SCORE_SHARDS[schoolId]=KNOWN_SCORE_SHARDS[schoolId]||new Set();
+  [...known].forEach(k=>{ if(k.startsWith(pk+'~')) known.delete(k); });
+  docs.forEach(d=>{ rows=rows.concat(d.rows||[]); });
+  if(!LEGACY_SCORES_GONE[schoolId]){     // not migrated yet: also read the old per-term shard / old single document
+    const [raw, single] = await Promise.all([getShared(`sch_${schoolId}_scores_${pk}`, []), getShared(`sch_${schoolId}_scores`, null)]);
+    const f=(schoolId===SCHOOL_ID)?scoreClassResolver(DB.students,false):null;
+    (Array.isArray(raw)?raw:[]).concat((Array.isArray(single)?single:[]).filter(r=>r.term===term && Number(r.year)===Number(year)))
+      .forEach(r=>{ if(f && !r.classId) r=Object.assign({},r,{classId:f(r)}); rows.push(r); });
   }
-  KNOWN_SCORE_SHARDS[schoolId]=KNOWN_SCORE_SHARDS[schoolId]||new Set();
-  KNOWN_SCORE_SHARDS[schoolId].add(key);
+  rows = dedupeScores(rows);
+  const grp={}; rows.forEach(r=>{ const k=scoreRowShard(r); (grp[k]=grp[k]||[]).push(r); });
+  Object.keys(grp).forEach(k=>{ known.add(k); SCORE_SIG[schoolId+'|'+k]=shardSig(grp[k]); });
   return rows;
 }
+// Reads EVERY class of one term+year (used only where a whole period is really needed, e.g. moving a period's marks).
+// Additive: marks of other periods already in memory are kept.
 async function refreshScoresForPeriod(term, year){
   if(!SCHOOL_ID || !term || !year) return;
-  try{ DB.scores=await loadScoresForPeriod(SCHOOL_ID,term,year); _scoresPartial = true; invalidateScoreLookupCache(); }
+  try{
+    const rows=await loadScoresForPeriod(SCHOOL_ID,term,year), now=Date.now();
+    DB.scores=dedupeScores(DB.scores.filter(r=>!(r.term===term && Number(r.year)===Number(year))).concat(rows));
+    SCORE_PERIOD_FULL.set(scorePeriodKey(term,year), now);
+    rows.forEach(r=>SCORE_LOADED.set(scoreRowShard(r), now));
+    try{ scoreOutboxReapply(); }catch(_){}
+    _scoresPartial = !_scoresFull; _partialPeriodKey = null; invalidateScoreLookupCache();
+  }
   catch(e){ console.error(e); }
+}
+
+/* ============================================================================================
+   CLASS-SCOPED SCORE LOADING
+   Marks live in one small Firestore document per term + year + CLASS (see scoreShardKey). Nothing loads the whole school
+   any more: a screen asks for the class it is showing, for the term/year it is showing, and only those class documents are
+   read (one read each, once, then remembered in memory).  More is read only when the user asks for it:
+     - another term/year or another class  -> that class's document for that period is fetched;
+     - a whole-level screen (Level-wise analysis, General Rank List, whole-level score sheets) -> every class of the level;
+     - a previous class -> where the learners of the chosen class were in that period (their class history).
+   Writes are unchanged and already minimal: one transaction on the one class document that changed.
+   ============================================================================================ */
+const SCORE_STALE_MS = 120000;       // a class document already read is re-read only when the screen is re-opened after this long
+let SCORE_LOADED = new Map();        // shard suffix -> when it was last read from / confirmed with the database
+const SCORE_PERIOD_FULL = new Map(); // 'year_Term' -> when every class of that period was read
+let _scoresFull = false, _scoresFullAt = 0;   // true after one explicit whole-school read (backup / export)
+const _shardInflight = new Map();    // suffix -> pending read, so two callers never read the same document twice
+function markScoresFull(){ _scoresFull = true; _scoresFullAt = Date.now(); _scoresPartial = false; _partialPeriodKey = null; }
+function resetScoreCache(){ SCORE_LOADED = new Map(); SCORE_PERIOD_FULL.clear(); _shardInflight.clear(); _scoresFull = false; _scoresFullAt = 0; _scoresPartial = true; _partialPeriodKey = null; }
+function scoreShardAge(k){
+  const pk = String(k).split('~')[0];
+  return Math.max(SCORE_LOADED.get(k)||0, SCORE_PERIOD_FULL.get(pk)||0, _scoresFull ? _scoresFullAt : 0);
+}
+function scoreShardIsLoaded(k){ return scoreShardAge(k)>0; }
+// One read of a term's top document, shared by every class of that term being loaded at the same moment.
+const _rootInflight = new Map(), _rootCache = new Map();
+function readRootOnce(sid, period){
+  const id = sid+'|'+period; let p = _rootInflight.get(id);
+  const hit = _rootCache.get(id); if(!p && hit && Date.now()-hit.t < 15000) return Promise.resolve(hit.v);
+  if(!p){
+    p = (async()=>{
+      if(AUTH_READY) await AUTH_READY;
+      const s = await db.collection(COLLECTION).doc(scoreDocPrefix(sid)+period).get(), d = s.exists ? (s.data()||{}) : null;
+      const v = {exists:!!d, lay2:!!(d && d.lay===2), rows:(d && d.value)||[], split:(d && Array.isArray(d.split)) ? d.split : []};
+      _rootCache.set(id, {t:Date.now(), v}); return v;
+    })().finally(()=>{ _rootInflight.delete(id); });
+    _rootInflight.set(id, p);
+  }
+  return p;
+}
+// The rows of ONE class in ONE term (key = 'year_Term~classId'), wherever they are stored.
+async function fetchScoreShard(key){
+  const sid = SCHOOL_ID;
+  if(DEMO_MODE){ try{ const raw = localStorage.getItem('cte_demo_'+scoreDocPrefix(sid)+key); return raw!==null ? (JSON.parse(raw)||[]) : null; }catch(e){ return null; } }
+  const sp = key.split('~'), period = sp[0], cls = sp[1], pre = scoreDocPrefix(sid), col = db.collection(COLLECTION);
+  const readNode = async path=>{      // a document of this class plus everything split out of it; null if it does not exist
+    const s = await col.doc(_docPath(pre, period, path)).get(); if(!s.exists) return null;
+    const d = s.data()||{}; let rows = d.value||[];
+    if(Array.isArray(d.split) && d.split.length){ const more = await Promise.all(d.split.map(k=>readNode(path.concat(k)))); more.forEach(m=>{ rows = rows.concat(m||[]); }); }
+    return rows;
+  };
+  const root = await readRootOnce(sid, period);
+  if(root.lay2){
+    PERIOD_LAY.set(qkey(sid,period), 2);
+    let rows = root.rows.filter(r=>scoreClsKey(r.classId)===cls);
+    if(root.split.includes(cls)) rows = rows.concat((await readNode([cls]))||[]);
+    else if(!rows.length) return null;
+    return rows;
+  }
+  return await readNode([cls]);       // term not reorganised yet: the class's own document (and any subjects moved out of it)
+}
+function fetchScoreShardOnce(key){
+  const id = SCHOOL_ID+'|'+key;
+  let p = _shardInflight.get(id);
+  if(!p){ p = fetchScoreShard(key).finally(()=>{ _shardInflight.delete(id); }); _shardInflight.set(id, p); }
+  return p;
+}
+function scoreCurPeriod(){ return {t:DB.info.currentTerm, y:Number(DB.info.currentYear)}; }
+function mkScoreScope(term, year){ const c = scoreCurPeriod(); return {term:term||c.t, year:Number(year||c.y), classIds:new Set()}; }
+// A class = every stream of it (they are ranked and listed together).
+function scopeAddClass(sc, id){
+  if(!id) return sc;
+  const raw = (typeof isAllStr==='function' && isAllStr(id)) ? id.slice(ALLSTR.length) : id;
+  const c = DB.classes.find(x=>x.id===raw);
+  if(c) streamGroupClasses(c).forEach(k=>sc.classIds.add(k.id)); else sc.classIds.add(raw);
+  return sc;
+}
+function scopeAddLevel(sc, level){ DB.classes.forEach(c=>{ if(c.level===level) sc.classIds.add(c.id); }); return sc; }
+function scopeAddStudents(sc, list){ (list||[]).forEach(s=>{ if(s) scopeAddClass(sc, s.classId); }); return sc; }
+// The document names to read for a scope: the chosen classes, plus - for a past period - the class each of their current
+// learners was in then (marks stay in the class they were entered in), plus the small 'unknown class' document.
+function scoreShardKeysForScope(sc){
+  const t = sc.term, y = Number(sc.year), idx = termIndex(t,y), ids = new Set(sc.classIds);
+  if(sc.classIds.size){
+    DB.students.forEach(s=>{
+      if(s.status==='left' || !sc.classIds.has(s.classId)) return;
+      const h = historicalClassFor(s, t, y); if(h) ids.add(h);
+      (s.classHistory||[]).forEach(e=>{ if(e && e.classId && termIndex(e.term,e.year)===idx) ids.add(e.classId); });
+    });
+  }
+  ids.add('x');
+  return [...ids].map(c=>scoreShardKey(t,y,c));
+}
+// Reads the class documents of one scope that are not in memory yet. Resolves {changed, failed}.
+async function loadScoreScope(sc, opts){
+  const sid = SCHOOL_ID; opts = opts||{};
+  if(!sid || !sc || !DB.info || !sc.classIds.size) return {changed:false, failed:false};
+  const now = Date.now();
+  const need = scoreShardKeysForScope(sc).filter(k=>{ const at = scoreShardAge(k); return opts.force || !at || (opts.stale && now-at>SCORE_STALE_MS); });
+  if(!need.length) return {changed:false, failed:false};
+  const got = new Map();   // suffix -> rows | null (document does not exist)
+  try{
+    if(!LEGACY_SCORES_GONE[sid]){
+      // Not yet reorganised into class documents: read the whole period once (handles both formats), then group by class.
+      const rows = await loadScoresForPeriod(sid, sc.term, sc.year);
+      need.forEach(k=>got.set(k, null));
+      rows.forEach(r=>{ const k = scoreRowShard(r); if(!got.get(k)) got.set(k, []); got.get(k).push(r); });
+      SCORE_PERIOD_FULL.set(scorePeriodKey(sc.term, sc.year), Date.now());
+    } else {
+      const docs = await Promise.all(need.map(k=>fetchScoreShardOnce(k)));
+      need.forEach((k,i)=>got.set(k, docs[i]));
+    }
+  }catch(e){ console.error('Could not read class scores', e); return {changed:false, failed:true}; }
+  if(sid!==SCHOOL_ID) return {changed:false, failed:false};
+  let changed = false;
+  const known = KNOWN_SCORE_SHARDS[sid] || (KNOWN_SCORE_SHARDS[sid] = new Set()), all = [], t = Date.now();
+  got.forEach((rows,k)=>{
+    const sig = shardSig(rows||[]);
+    if(!SCORE_LOADED.has(k) || SCORE_SIG[sid+'|'+k]!==sig) changed = true;
+    if(rows){ known.add(k); SCORE_SIG[sid+'|'+k] = sig; rows.forEach(r=>all.push(r)); }
+    else { known.delete(k); delete SCORE_SIG[sid+'|'+k]; }
+    SCORE_LOADED.set(k, t);
+  });
+  DB.scores = dedupeScores(DB.scores.filter(r=>!got.has(scoreRowShard(r))).concat(all));
+  try{ scoreOutboxReapply(); }catch(_){}
+  _scoresPartial = !_scoresFull;
+  invalidateScoreLookupCache();
+  return {changed, failed:false};
+}
+async function ensureScoreScopes(scopes, opts){
+  let changed = false, failed = false;
+  if((scopes||[]).length && CUR && (CUR.role==='admin'||CUR.role==='teacher')){ try{ ensureScoresMigrated(); }catch(e){} }
+  for(const sc of (scopes||[])){
+    const r = await loadScoreScope(sc, opts);
+    if(r.changed) changed = true; if(r.failed) failed = true;
+  }
+  return {changed, failed};
+}
+// What each screen needs, from its own selections. Screens that show no marks (empty / attendance sheets, pickers) need nothing.
+function scoreScopesForView(name, p){
+  const out = []; if(!DB.info) return out; p = p||{};
+  const cur = scoreCurPeriod();
+  const one = (t,y)=>{ const sc = mkScoreScope(t,y); out.push(sc); return sc; };
+  switch(name){
+    case 'tscores': case 'ascores': {
+      const isAdmin = CUR && CUR.role==='admin';
+      const t = (isAdmin && p.pTerm) ? p.pTerm : cur.t, y = (isAdmin && p.pYear) ? Number(p.pYear) : cur.y;
+      if(p.assignId){ const a = DB.assignments.find(x=>x.id===p.assignId); if(a) scopeAddClass(one(t,y), a.classId); }
+      else if(CUR && CUR.role==='teacher'){ const sc = one(t,y); DB.assignments.filter(a=>a.teacherUsername===CUR.username).forEach(a=>scopeAddClass(sc, a.classId)); }
+      break; }
+    case 'marksheets': {
+      if(p.msMode!=='filled' || !p.msClassId) break;
+      const sc = one();
+      if(String(p.msClassId).indexOf('LEVEL_')===0) scopeAddLevel(sc, String(p.msClassId).slice(6)); else scopeAddClass(sc, p.msClassId);
+      break; }
+    case 'integratedmarksheet': if(p.classId) scopeAddClass(one(), p.classId); break;
+    case 'assessinuse': if(p.gcClassId) scopeAddClass(one(), p.gcClassId); break;
+    case 'combinedmarksheet': if(p.mode==='filled' && p.classId) scopeAddClass(one(), p.classId); break;
+    case 'generalmarksheet': {
+      if(p.mode!=='filled' || !p.scope) break;
+      const sc = one(), g = String(p.scope);
+      if(g.indexOf('LEVEL_')===0) scopeAddLevel(sc, g.slice(6));
+      else if(g.indexOf('ALL|')===0) scopeAddClass(sc, g.slice(4));
+      else if(g.indexOf('S|')===0) g.slice(2).split('|').forEach(id=>scopeAddClass(sc, id));
+      else scopeAddClass(sc, g);
+      break; }
+    case 'mastermarksheet': {
+      const sc = mkScoreScope(p.mmTerm, p.mmYear);
+      if(['lscores','lgrades','level'].includes(p.mmMode)){ if(p.mmLevel) scopeAddLevel(sc, p.mmLevel); }
+      else if(p.mmClassId) scopeAddClass(sc, p.mmClassId);
+      if(sc.classIds.size) out.push(sc);
+      break; }
+    case 'classanalysis': {
+      const sc = mkScoreScope(p.term, p.year);
+      if(p.form==='levelwise'){ if(p.level) scopeAddLevel(sc, p.level); }
+      else if(p.classId){ scopeAddClass(sc, p.classId); if(p.form==='all'){ const c = DB.classes.find(x=>x.id===p.classId); if(c) scopeAddLevel(sc, c.level); } }
+      if(sc.classIds.size) out.push(sc);
+      break; }
+    case 'reports': case 'treports': {
+      const ids = (typeof rcAppliedIds==='function') ? rcAppliedIds() : [];
+      if(ids.length || String(typeof RC_QUERY!=='undefined' ? RC_QUERY : '').trim()) scopeAddStudents(one(), rcListedStudents(ids));
+      break; }
+    case 'reportcard': { const st = DB.students.find(x=>x.id===p.studentId); if(st) scopeAddClass(one(p.viewTerm, p.viewYear), st.classId); break; }
+    case 'preport': case 'pdash': {
+      if(!(CUR && CUR.role==='parent')) break;
+      const kids = parentChildren(CUR); if(!kids.length) break;
+      const st = DB.students.find(x=>x.id===activeParentChildId(kids)); if(st) scopeAddClass(one(), st.classId);
+      break; }
+  }
+  return out.filter(sc=>sc.classIds.size);
+}
+// Every class of ONE period (a term change / moving a period's marks genuinely needs all of them) - skipped when already read.
+async function ensurePeriodFull(term, year){
+  const pk = scorePeriodKey(term, year);
+  if(_scoresFull || (Date.now()-(SCORE_PERIOD_FULL.get(pk)||0) < SCORE_STALE_MS)) return;
+  await refreshScoresForPeriod(term, year);
+}
+function ensureScoresForView(name, p, opts){
+  let scopes = []; try{ scopes = scoreScopesForView(name, p); }catch(e){ console.error(e); }
+  return ensureScoreScopes(scopes, opts);
+}
+// Report cards / PDFs: just the classes of the learners being printed, for the term+year being printed.
+function ensureScoresForStudents(list, term, year, opts){
+  const sc = scopeAddStudents(mkScoreScope(term, year), list);
+  return ensureScoreScopes(sc.classIds.size ? [sc] : [], opts);
+}
+function scoreLoadPill(on){
+  try{
+    let el = document.getElementById('scoreLoadPill');
+    if(!on){ if(el) el.remove(); return; }
+    if(el) return;
+    el = document.createElement('div'); el.id = 'scoreLoadPill';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:9997;background:#1f6feb;color:#fff;font:700 13px Inter,sans-serif;padding:7px 14px;border-radius:20px;box-shadow:0 3px 10px rgba(0,0,0,.3);';
+    el.textContent = 'Loading this class\u2019s scores\u2026';
+    document.body.appendChild(el);
+  }catch(e){}
+}
+let _scoreAutoSig = '', _scoreAutoBusy = '';
+const _scoreAutoFail = {};
+// Called after every render(): if the screen on display needs class documents that are not in memory, read just those, then
+// redraw once. A screen that needs nothing (or whose classes are already loaded) costs nothing.
+function scoresAutoLoad(){
+  if(!SCHOOL_ID || !CUR || !DB.info || typeof VIEW==='undefined' || !VIEW) return;
+  const name = VIEW.name, p = VIEW.params||{};
+  const scopes = scoreScopesForView(name, p);
+  if(!scopes.length){ if(!_scoreAutoBusy) scoreLoadPill(false); return; }
+  const vkey = JSON.stringify([SCHOOL_ID, name, p]);
+  const freshNav = vkey!==_scoreAutoSig; _scoreAutoSig = vkey;
+  const now = Date.now();
+  const pending = scopes.some(sc=>scoreShardKeysForScope(sc).some(k=>{ const at = scoreShardAge(k); return !at || (freshNav && now-at>SCORE_STALE_MS); }));
+  if(!pending || _scoreAutoBusy===vkey) return;
+  if(_scoreAutoFail[vkey] && now-_scoreAutoFail[vkey]<15000) return;
+  _scoreAutoBusy = vkey; scoreLoadPill(true);
+  const tok = NAV_TOKEN;
+  ensureScoreScopes(scopes, {stale:freshNav}).then(r=>{
+    if(_scoreAutoBusy===vkey) _scoreAutoBusy = '';
+    scoreLoadPill(false);
+    if(r.failed){ _scoreAutoFail[vkey] = Date.now(); return; }
+    if(r.changed && NAV_TOKEN===tok && !FORM_DIRTY && JSON.stringify([SCHOOL_ID, VIEW.name, VIEW.params||{}])===vkey) render();
+  }).catch(e=>{ _scoreAutoBusy = ''; scoreLoadPill(false); _scoreAutoFail[vkey] = Date.now(); console.error(e); });
 }
 
 async function getPersonal(key, fallback){
@@ -4590,42 +5194,101 @@ async function loadAll(){
   // First open of the day for this school (or 6+ hours since its last snapshot)? Capture the
   // snapshot right now — before the migration below or anything else can change the data. The data copy is taken instantly;
   // the rest happens quietly in the background, so it never blocks the first screen.
-  if(SCHOOL_ID && CUR){ maybeTakeAutoSnapshot().catch(e=>console.error(e)); }
   // Repair old admission numbers after the first screen is rendered so a large
   // school's sign-in is not held up by rewriting its entire student list.
-  if(SCHOOL_ID && CUR && (DB.info.admSchemaVersion||0) < ADM_SCHEMA_VERSION){
-    const migrationSchoolId=SCHOOL_ID;
-    migrateAdmissionSystem().then(()=>{ if(SCHOOL_ID===migrationSchoolId) render(); })
-      .catch(e=>console.error('Admission-number migration failed',e));
+}
+/* ============================================================
+   NOTHING BUT THE SIGN-IN ESSENTIALS IS READ AT LOGIN
+   Login reads only the school's settings, accounts and classes (needed to show the screen and to know what this person may open).
+   Students, subject assignments, grading bands, the backup list and every score are read only when a screen that shows them is
+   opened (see viewDataNeeds / ensureData). A list that has not been read yet is NEVER written back: every save of one first reads
+   the real one (so an empty, not-yet-loaded list can never overwrite a school's records).
+   ============================================================ */
+const DB_LOADED = {students:false, assignments:false, bands:false, autosnaps:false};
+let DB_SCHOOL = null, _admMigFor = null, _housekeptFor = null;
+const _dataInflight = {};
+const LAZY_DOCS = {students:['students'], assignments:['assignments'], bands:['bands','obands','pbands'], autosnaps:['autosnaps_index']};
+function markDataLoaded(){ (arguments.length ? [].slice.call(arguments) : Object.keys(DB_LOADED)).forEach(n=>{ DB_LOADED[n] = true; }); }
+async function _lazyRead(key, fallback){
+  if(DEMO_MODE) return await getShared(key, fallback);
+  if(AUTH_READY) await AUTH_READY;
+  const r = await readSharedDoc(key);
+  return r.exists ? r.value : fallback;
+}
+async function _loadLazy(id, n){
+  try{
+    const docs = LAZY_DOCS[n], fb = {students:[], assignments:[], bands:DEFAULT_A_BANDS, obands:DEFAULT_O_BANDS, pbands:DEFAULT_P_BANDS, autosnaps_index:[]};
+    const vals = await Promise.all(docs.map(d=>_lazyRead(`sch_${id}_${d}`, fb[d])));
+    if(DB_SCHOOL!==id) return false;      // another school was opened meanwhile
+    if(n==='students'){ DB.students = vals[0]; invalidateCalcMemo(); UNDO.shadow.students = undoJson(DB.students); }
+    else if(n==='assignments'){ DB.assignments = vals[0]; invalidateScoreLookupCache(); UNDO.shadow.assignments = undoJson(DB.assignments); }
+    else if(n==='bands'){ DB.bands = vals[0]; DB.obands = vals[1]; DB.pbands = vals[2]; invalidateCalcMemo(); UNDO.shadow.bands = undoJson(DB.bands); UNDO.shadow.obands = undoJson(DB.obands); UNDO.shadow.pbands = undoJson(DB.pbands); }
+    else if(n==='autosnaps'){ DB.autoSnapshots = vals[0]; }
+    DB_LOADED[n] = true;
+    if(n==='students' && SCHOOL_ID===id && CUR && DB.info && (DB.info.admSchemaVersion||0) < ADM_SCHEMA_VERSION && _admMigFor!==id){
+      _admMigFor = id;   // old admission numbers are repaired the first time the student list is opened, never at sign-in
+      migrateAdmissionSystem().then(()=>{ if(SCHOOL_ID===id) render(); }).catch(e=>console.error('Admission-number migration failed',e));
+    }
+    return true;
+  }catch(e){
+    console.error(e);
+    try{ showFatal(dbErrorMessage(e, 'load data')); }catch(_){}
+    return false;
   }
 }
+// Reads whichever of these lists are not in memory yet (one read each, in parallel). Resolves true when all are available.
+async function ensureData(names){
+  const id = DB_SCHOOL; if(!id) return false;
+  const list = [...new Set(names||[])].filter(n=>LAZY_DOCS[n] && !DB_LOADED[n]);
+  if(!list.length) return true;
+  const res = await Promise.all(list.map(n=>{ const k=id+'|'+n; return _dataInflight[k] || (_dataInflight[k] = _loadLazy(id, n).finally(()=>{ delete _dataInflight[k]; })); }));
+  return res.every(Boolean);
+}
+// What each screen needs before it is drawn. Screens that show none of it (start page, school settings, password) read nothing.
+function viewDataNeeds(view){
+  if(!CUR || CUR.role==='founder') return [];
+  switch(view){
+    case 'dashboard': case 'schoolinfo': case 'password': case 'admingate': return [];
+    case 'tdash': return ['assignments'];
+    case 'pdash': case 'pfinance': return ['students'];
+    case 'databackup': case 'restoreitems': return ['students','assignments','bands','autosnaps'];
+    default: return ['students','assignments','bands'];
+  }
+}
+let _gateFail = null;
+function dataGateFor(view){
+  const miss = viewDataNeeds(view).filter(n=>!DB_LOADED[n]);
+  if(!miss.length) return null;
+  if(_gateFail===view+'|'+DB_SCHOOL) return '<div class="card"><p>The data for this page could not be loaded. Check your connection, then reload.</p><button type="button" class="btn" onclick="location.reload()">Reload</button></div>';
+  ensureData(miss).then(ok=>{ if(ok){ if(VIEW && VIEW.name===view) render(); } else { _gateFail = view+'|'+DB_SCHOOL; if(VIEW && VIEW.name===view) render(); } });
+  return '<div class="card"><p class="small">Loading\u2026</p></div>';
+}
+// Once per sign-in, the first time an Admin opens a screen that deals with finance records or the Recycle Bin.
+function adminHousekeepingOnce(view){
+  try{
+    if(!CUR || CUR.role!=='admin' || _housekeptFor===SCHOOL_ID) return;
+    if(!['finance','restoreitems','databackup'].includes(view)) return;
+    _housekeptFor = SCHOOL_ID;
+    setTimeout(()=>{ if(CUR && CUR.role==='admin'){ financeRetentionSweep().catch(()=>{}); binPurgeExpired().catch(()=>{}); } }, 1500);
+  }catch(e){}
+}
 async function loadSchoolData(id){
-  // These 9 reads are all independent documents — awaiting them one at a time
-  // (the old code) meant paying a full network round trip for each, back to
-  // back, which is what made logging in and loading a school feel slow.
-  // Firing them together and waiting on the whole batch cuts load time down
-  // to roughly the time of the single slowest read instead of the sum of all
-  // of them.
-  const [info, accounts, classes, students, assignments, scores, bands, obands, pbands, autoSnapshots] = await Promise.all([
+  // Sign-in reads ONLY these three documents (in parallel). Everything else is read when a screen needs it (see ensureData).
+  const [info, accounts, classes] = await Promise.all([
     getShared(`sch_${id}_info`, null),
     getShared(`sch_${id}_accounts`, []),
     getShared(`sch_${id}_classes`, []),
-    getShared(`sch_${id}_students`, []),
-    getShared(`sch_${id}_assignments`, []),
-    Promise.resolve([]),
-    getShared(`sch_${id}_bands`, DEFAULT_A_BANDS),
-    getShared(`sch_${id}_obands`, DEFAULT_O_BANDS),
-    getShared(`sch_${id}_pbands`, DEFAULT_P_BANDS),
-    getShared(`sch_${id}_autosnaps_index`, []),
   ]);
-  DB.info = info; DB.accounts = accounts; DB.classes = classes; DB.students = students;
-  DB.assignments = assignments; DB.scores = scores; DB.bands = bands; DB.obands = obands;
+  DB_SCHOOL = id; DB_LOADED.students = DB_LOADED.assignments = DB_LOADED.bands = DB_LOADED.autosnaps = false; _gateFail = null;
+  Object.keys(_dataInflight).forEach(k=>{ delete _dataInflight[k]; });
+  DB.info = info; DB.accounts = accounts; DB.classes = classes;
+  DB.students = []; DB.assignments = []; DB.scores = []; DB.autoSnapshots = [];
+  DB.bands = DEFAULT_A_BANDS; DB.obands = DEFAULT_O_BANDS; DB.pbands = DEFAULT_P_BANDS;
+  resetScoreCache();   // no class documents in memory yet: each screen reads just the class it shows
   try{ scoreOutboxReapply(); setTimeout(()=>{ flushScoreOutbox(); scoreOutboxPill(); }, 1500); }catch(_){}
   invalidateScoreLookupCache();
-  DB.pbands = pbands; DB.autoSnapshots = autoSnapshots;
   undoResetShadow();
-  try{ histEnsure(); }catch(e){}
-  try{ BIN.idx = null; setTimeout(()=>{ if(CUR && CUR.role==='admin'){ financeRetentionSweep().catch(()=>{}); binPurgeExpired().catch(()=>{}); } }, 5000); }catch(e){}
+  try{ BIN.idx = null; }catch(e){}
 }
 /* ---- Global credential uniqueness (no two accounts anywhere may share a
    username, and no two accounts anywhere may share a password) ---- */
@@ -4815,7 +5478,7 @@ async function founderRestoreSchoolBackup(schoolId, rawData){
   await setShared(`sch_${schoolId}_students`, data.students);
   await setShared(`sch_${schoolId}_assignments`, data.assignments);
   await purgeScoreShards(schoolId); // clear any existing shards first so a restore fully replaces old data
-  await saveScoresShardedFor(schoolId, data.scores);
+  await saveScoresShardedFor(schoolId, data.scores, data.students);
   await setShared(`sch_${schoolId}_bands`, data.bands);
   await setShared(`sch_${schoolId}_obands`, data.obands);
   await setShared(`sch_${schoolId}_pbands`, data.pbands);
@@ -4947,12 +5610,12 @@ async function saveInfo(){ invalidateCalcMemo(); try{ stampFinanceCapture(); }ca
 }
 async function saveAccounts(){ await undoTracked('accounts', ()=>setShared(`sch_${SCHOOL_ID}_accounts`, DB.accounts)); try{ await syncUsernameIndexForSchool(SCHOOL_ID, DB.accounts); }catch(e){ console.error('Username index sync failed (accounts were saved):', e); } }
 async function saveClasses(){ invalidateCalcMemo(); await undoTracked('classes', ()=>setShared(`sch_${SCHOOL_ID}_classes`, DB.classes)); }
-async function saveStudents(){ invalidateCalcMemo(); await undoTracked('students', ()=>setShared(`sch_${SCHOOL_ID}_students`, DB.students)); }
-async function saveAssignments(){ invalidateScoreLookupCache(); await undoTracked('assignments', ()=>setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments)); }
+async function saveStudents(){ if(!DB_LOADED.students && !(await ensureData(['students']))) return; invalidateCalcMemo(); await undoTracked('students', ()=>setShared(`sch_${SCHOOL_ID}_students`, DB.students)); }
+async function saveAssignments(){ if(!DB_LOADED.assignments && !(await ensureData(['assignments']))) return; invalidateScoreLookupCache(); await undoTracked('assignments', ()=>setShared(`sch_${SCHOOL_ID}_assignments`, DB.assignments)); }
 async function saveScores(){ await saveScoresShardedFor(SCHOOL_ID, DB.scores); }
-async function saveBands(){ invalidateCalcMemo(); await undoTracked('bands', ()=>setShared(`sch_${SCHOOL_ID}_bands`, DB.bands)); }
-async function saveOBands(){ invalidateCalcMemo(); await undoTracked('obands', ()=>setShared(`sch_${SCHOOL_ID}_obands`, DB.obands)); }
-async function savePBands(){ invalidateCalcMemo(); await undoTracked('pbands', ()=>setShared(`sch_${SCHOOL_ID}_pbands`, DB.pbands)); }
+async function saveBands(){ if(!DB_LOADED.bands && !(await ensureData(['bands']))) return; invalidateCalcMemo(); await undoTracked('bands', ()=>setShared(`sch_${SCHOOL_ID}_bands`, DB.bands)); }
+async function saveOBands(){ if(!DB_LOADED.bands && !(await ensureData(['bands']))) return; invalidateCalcMemo(); await undoTracked('obands', ()=>setShared(`sch_${SCHOOL_ID}_obands`, DB.obands)); }
+async function savePBands(){ if(!DB_LOADED.bands && !(await ensureData(['bands']))) return; invalidateCalcMemo(); await undoTracked('pbands', ()=>setShared(`sch_${SCHOOL_ID}_pbands`, DB.pbands)); }
 
 /* ============================================================
    UNDO / REDO  (Owner/Admin only)
@@ -5417,18 +6080,18 @@ function binItemKey(id, sid){ return `sch_${sid||SCHOOL_ID}_bin_${id}`; }
 async function binRawGet(key){
   if(DEMO_MODE){ try{ const raw = localStorage.getItem('cte_demo_'+key); return raw!==null ? JSON.parse(raw) : null; }catch(e){ return null; } }
   if(AUTH_READY) await AUTH_READY;
-  const snap = await db.collection(COLLECTION).doc(key).get();
-  return snap.exists ? snap.data().value : null;
+  const r = await readSharedDoc(key);
+  return r.exists ? r.value : null;
 }
 async function binRawSet(key, val){
   if(DEMO_MODE){ localStorage.setItem('cte_demo_'+key, JSON.stringify(val)); return; }
   if(AUTH_READY) await AUTH_READY;
-  await db.collection(COLLECTION).doc(key).set({value: val, updatedAt: Date.now()});
+  await writeSharedDoc(key, val);
 }
 async function binRawDel(key){
   if(DEMO_MODE){ localStorage.removeItem('cte_demo_'+key); return; }
   if(AUTH_READY) await AUTH_READY;
-  await db.collection(COLLECTION).doc(key).delete();
+  await deleteSharedDoc(key);
 }
 async function binLoad(force){
   if(!SCHOOL_ID) return [];
@@ -5885,7 +6548,7 @@ async function deleteSharedQuiet(key){
   try{
     if(DEMO_MODE){ localStorage.removeItem('cte_demo_'+key); return true; }
     if(AUTH_READY) await AUTH_READY;
-    await db.collection(COLLECTION).doc(key).delete();
+    await deleteSharedDoc(key);
     return true;
   }catch(e){ console.error('Snapshot cleanup: could not delete', key, e); return false; }
 }
@@ -5907,7 +6570,7 @@ async function listAutoSnapshotKeys(schoolId){
     .where(firebase.firestore.FieldPath.documentId(), '>=', prefix)
     .where(firebase.firestore.FieldPath.documentId(), '<=', prefix + '\uf8ff')
     .get();
-  snap.forEach(doc=>keys.push(doc.id));
+  snap.forEach(doc=>{ if(doc.id.indexOf('~')<0) keys.push(doc.id); });   // chunk parts (key~0, key~1...) belong to their snapshot and go with it
   return keys;
 }
 // Permanently removes every expired automatic snapshot from storage, leaving only the
@@ -5994,7 +6657,7 @@ async function takeAutoSnapshotNow(allScores, frozen){
 let AUTO_SNAPSHOT_RUNNING = false;
 let AUTO_SNAPSHOT_PURGED_FOR = null; // school whose expired snapshots were cleaned up this session
 async function maybeTakeAutoSnapshot(){
-  if(!SCHOOL_ID || !DB.info || AUTO_SNAPSHOT_RUNNING) return;
+  if(!SCHOOL_ID || !DB.info || AUTO_SNAPSHOT_RUNNING || !CUR || CUR.role!=='admin') return;   // never at sign-in: an Admin's open session takes it in the background
   const schoolAtStart = SCHOOL_ID;
   const gapMs = AUTO_SNAPSHOT_MIN_GAP_HOURS * 3600000;
   // A snapshot at `ts` means none is due right now if it is from today AND younger than the gap.
@@ -6008,6 +6671,8 @@ async function maybeTakeAutoSnapshot(){
     let tookNew = false;
     if(dueByClock){
       // Freeze the data FIRST, before any await, so the snapshot is the state at the moment it was due.
+      if(!(await ensureData(['students','assignments','bands']))) return;   // a backup must hold the real lists, never empty ones
+      if(SCHOOL_ID !== schoolAtStart) return;
       const frozen = freezeSchoolDataForSnapshot();
       const idx = await getShared(`sch_${schoolAtStart}_autosnaps_index`, []);
       const idxTs = (Array.isArray(idx) && idx.length) ? Number(idx[0].ts)||0 : 0;
@@ -6057,8 +6722,8 @@ async function restoreAutoSnapshot(ts){
   undoMarkIrreversible();
   const _prevGrade = schoolGrade();
   DB.info = data.info; keepLockedGrade(_prevGrade); DB.accounts = data.accounts; DB.classes = data.classes;
-  DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores;
-  DB.bands = data.bands; DB.obands = data.obands; DB.pbands = data.pbands;
+  DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores; markScoresFull();
+  DB.bands = data.bands; DB.obands = data.obands; DB.pbands = data.pbands; markDataLoaded('students','assignments','bands');
   await Promise.all([saveInfo(), saveAccounts(), saveClasses(), saveStudents(), saveAssignments(), saveScores(), saveBands(), saveOBands(), savePBands()]);
   alert('Restore complete.'); render();
 }
@@ -6424,8 +7089,8 @@ async function quietGetShared(key){   // like getShared, but a failed read is si
   if(DEMO_MODE){ try{ const raw = localStorage.getItem('cte_demo_'+key); return raw!==null ? JSON.parse(raw) : null; }catch(e){ return null; } }
   try{
     if(AUTH_READY) await AUTH_READY;
-    const snap = await db.collection(COLLECTION).doc(key).get();
-    return snap.exists ? snap.data().value : null;
+    const r = await readSharedDoc(key);
+    return r.exists ? r.value : null;
   }catch(e){ return null; }
 }
 // Which kind of signed-in session (if any) must be kept in step with the stored credentials.
@@ -6507,10 +7172,11 @@ function syncSessionWatch(){
     SESSION_WATCH = {sig:'', unsubs:[]};
     if(!keys.length) return;
     SESSION_WATCH.sig = sig;
+    const W = SESSION_WATCH; W.live = 0;
     keys.forEach(key=>{
       let first = true;
       SESSION_WATCH.unsubs.push(db.collection(COLLECTION).doc(key).onSnapshot(snap=>{
-        if(first){ first=false; return; }
+        if(first){ first=false; W.live++; return; }
         if(snap.metadata && snap.metadata.hasPendingWrites) return;   // our own unsent write
         ensureSessionValid(true);
       }, ()=>{ SESSION_WATCH.sig=''; SESSION_WATCH_RETRY_AT = Date.now()+30000; }));
@@ -6519,10 +7185,22 @@ function syncSessionWatch(){
 }
 setInterval(syncSessionWatch, 3000);
 window.addEventListener('storage', e=>{ try{ if(e.key && e.key.indexOf('cte_demo_')===0 && sessionWatched()) ensureSessionValid(true); }catch(_){} });   // demo mode: another tab changed the data
-document.addEventListener('click', ()=>{ try{ if(sessionCheckDue()) ensureSessionValid(); }catch(e){} }, true);
-document.addEventListener('visibilitychange', ()=>{ try{ if(!document.hidden && sessionWatched()) ensureSessionValid(true); }catch(e){} });
+// DATA SAVING: while the live listener above is connected, a changed sign-in reaches this device instantly, so re-downloading the whole
+// accounts document every few seconds / on every tap is wasted data. The re-read stays as a safety net: every 15 s only when the
+// listener is NOT connected, otherwise every 5 minutes (2 minutes after coming back to the tab).
+let _sessPollAt = 0;
+function sessionHealthy(){ try{ const n = sessionWatchKeys().length; return n>0 && !!SESSION_WATCH.sig && (SESSION_WATCH.live||0)>=n; }catch(e){ return false; } }
+function sessionPoll(healthyGapMs){
+  try{
+    if(!sessionWatched()) return;
+    if(Date.now()-_sessPollAt < (sessionHealthy() ? healthyGapMs : 15000)) return;
+    _sessPollAt = Date.now(); ensureSessionValid(true);
+  }catch(e){}
+}
+document.addEventListener('click', ()=>{ sessionPoll(300000); }, true);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) sessionPoll(120000); });
 window.addEventListener('online', ()=>{ try{ if(sessionWatched()) ensureSessionValid(true); }catch(e){} });
-setInterval(()=>{ try{ if(!document.hidden && sessionWatched()) ensureSessionValid(true); }catch(e){} }, 15000);
+setInterval(()=>{ if(!document.hidden) sessionPoll(300000); }, 15000);
 function isDisconnectLikeMsg(m){ return !!m && (m.includes('incorrect password many times') || m.includes('DEMO period for your school') || m.includes('need to clear with CT-E') || m.includes('violated our agreed rules') || m.includes('under maintenance') || m.includes('currently disconnected')); }
 // Founder ticks the reason (instead of typing a number). Resolves to a reason key, or null if cancelled.
 function pickDisconnectReason(){
@@ -7024,7 +7702,7 @@ function aAutoCreateStreams(){
   return {made, finCopied};
 }
 function aAutoStreamCheck(){
-  if(_aAutoBusy || !CUR || CUR.role!=='admin' || !DB || !Array.isArray(DB.classes) || !Array.isArray(DB.students) || !DB.info) return;
+  if(_aAutoBusy || !CUR || CUR.role!=='admin' || !DB || !DB_LOADED.students || !Array.isArray(DB.classes) || !Array.isArray(DB.students) || !DB.info) return;
   let created = {made:0, finCopied:false};
   try{ created = aAutoCreateStreams(); }catch(e){ console.error(e); }
   let moved = 0;
@@ -7327,14 +8005,18 @@ function availableTermYears(studentId){
 // relies on it to avoid showing a fabricated position for an empty term.
 function reportCardPeriods(studentId){
   const years = new Set(availableTermYears(studentId).map(p=>Number(p.year)));
-  years.add(Number(DB.info.currentYear));
+  // Class documents are read on demand, so offer every year the retention window can reach, not only years already in memory.
+  years.add(Number(DB.info.currentYear)); years.add(Number(DB.info.currentYear)-1); years.add(Number(DB.info.currentYear)-2);
   const hasScore = new Set(liveScores().filter(sc=>sc.studentId===studentId).map(sc=>`${sc.term}||${sc.year}`));
+  const _stu = DB.students.find(x=>x.id===studentId);
   const termOrder = ['Term 1','Term 2','Term 3'];
   const list = [];
   years.forEach(y=>{
     termOrder.forEach(t=>{
       if(termsBehindCurrent(t, y) > MAX_TERMS_BEHIND) return; // outside retention window
-      list.push({term:t, year:y, hasData:hasScore.has(`${t}||${y}`)});
+      // A period whose class document has not been read yet is unknown, not empty: do not label it "no scores yet".
+      const unread = !!_stu && !scoreShardIsLoaded(scoreShardKey(t, y, historicalClassFor(_stu, t, y) || _stu.classId));
+      list.push({term:t, year:y, hasData:hasScore.has(`${t}||${y}`) || unread});
     });
   });
   list.sort((a,b)=> b.year-a.year || (termOrder.indexOf(b.term)-termOrder.indexOf(a.term)));
@@ -8230,6 +8912,7 @@ function render(){
   updatePWAInstallState();
   try{ stuRestoreAnchor(); }catch(e){}
   try{ maybeShowFirstLoginPwSticker(); }catch(e){}
+  try{ scoresAutoLoad(); }catch(e){ console.error(e); }   // read only the class(es) this screen shows, if not already in memory
 }
 
 /* ============================================================
@@ -8373,7 +9056,7 @@ async function founderEnterSchool(schoolId){
     FOUNDER_IMPERSONATING_SCHOOL = schoolId;
     VIEW = {name:'dashboard', params:{}};
     render();
-    if(typeof refreshScores==='function') refreshScores().then(()=>render()).catch(e=>console.error(e));
+    // Scores are read per class by the screens that show them - no whole-school read here.
   }catch(e){
     console.error(e);
     CUR = {role:'founder', name:'Founder', username:SYSTEM_OWNER.username};
@@ -8642,8 +9325,9 @@ function renderPlatformAuth(){
       <div class="login-section" style="text-align:center;font-size:13px;">
         <div class="login-section-label" style="margin-bottom:12px;">New Here?</div>
         <div class="flex" style="justify-content:center;">
-          <a href="#" data-action="gotoTeacherSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Teacher sign-up</a>
-          <a href="#" data-action="gotoParentSignup" class="btn-outline" style="padding:8px 12px;text-decoration:none;font-size:12px;">Parent sign-up</a>
+          <a href="#" data-action="gotoTeacherSignup" style="color:var(--blue);text-decoration:underline;font-weight:600;font-size:13px;padding:6px 8px;background:none;border:0;">Teacher sign-up</a>
+          <span style="color:var(--muted);align-self:center;">|</span>
+          <a href="#" data-action="gotoParentSignup" style="color:var(--blue);text-decoration:underline;font-weight:600;font-size:13px;padding:6px 8px;background:none;border:0;">Parent sign-up</a>
         </div>
         <a href="#" data-action="gotoFounderLogin" class="founder-secret-access" aria-hidden="true" tabindex="0"></a>
       </div>
@@ -8736,7 +9420,7 @@ function renderTeacherSignupSlot(){
   const activeSchools = REGISTRY.filter(r=>r.status==='active');
   return `
   <div class="auth-wrap"><div class="auth-box platform-login-box">
-    <div style="margin-bottom:12px;"><button type="button" class="btn-outline" data-action="gotoLogin" style="width:100%;">← Back to login</button></div>
+    <div style="margin-bottom:12px;"><button type="button" data-action="gotoLogin" style="background:none;border:0;box-shadow:none;padding:10px 12px;color:var(--blue);text-decoration:underline;font-weight:700;font-size:16px;cursor:pointer;">← Back to login</button></div>
     <div class="school-name-big" style="font-size:20px;text-align:center;">Teacher Sign-Up</div>
     <div class="note">Your account will be pending until your school's owner approves it.</div>
     <form data-form="signupTeacher" novalidate style="margin-top:12px;">
@@ -8746,16 +9430,16 @@ function renderTeacherSignupSlot(){
       <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" placeholder="4-6 letters and/or figures">
       <label>Recovery code (optional)</label><input name="recovery">
       <p class="small">Set this so you can reset your own password later if you forget it, without waiting on your school owner.</p>
-      <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
+      <div style="text-align:center;margin-top:16px;"><button style="background:none;border:0;box-shadow:none;padding:10px 12px;color:var(--blue);text-decoration:underline;font-weight:700;font-size:17px;cursor:pointer;">Submit sign-up request</button></div>
     </form>
-    <button type="button" class="btn-outline" data-action="gotoLogin" style="width:100%;margin-top:12px;">← Back to login</button>
+    <div style="text-align:center;margin-top:8px;"><button type="button" data-action="gotoLogin" style="background:none;border:0;box-shadow:none;padding:10px 12px;color:var(--blue);text-decoration:underline;font-weight:700;font-size:16px;cursor:pointer;">← Back to login</button></div>
   </div></div>`;
 }
 function renderParentSignupSlot(){
   const activeSchools = REGISTRY.filter(r=>r.status==='active');
   return `
   <div class="auth-wrap"><div class="auth-box platform-login-box">
-    <div style="margin-bottom:12px;"><button type="button" class="btn-outline" data-action="gotoLogin" style="width:100%;">← Back to login</button></div>
+    <div style="margin-bottom:12px;"><button type="button" data-action="gotoLogin" style="background:none;border:0;box-shadow:none;padding:10px 12px;color:var(--blue);text-decoration:underline;font-weight:700;font-size:16px;cursor:pointer;">← Back to login</button></div>
     <div class="school-name-big" style="font-size:20px;text-align:center;">Parent Sign-Up</div>
     <div class="note">Your account will be pending until the school owner approves it.</div>
     <form data-form="signupParent" novalidate style="margin-top:12px;">
@@ -8765,9 +9449,9 @@ function renderParentSignupSlot(){
       <p class="small" style="margin:2px 0 12px;">Have more than one child at this school? Separate each admission number with a comma — they'll all be linked to this one account once approved.</p>
       <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces">
       <label>Password</label><input name="password" type="password" required minlength="4">
-      <button class="btn" style="width:100%;margin-top:16px;padding:12px;">Submit sign-up request</button>
+      <div style="text-align:center;margin-top:16px;"><button style="background:none;border:0;box-shadow:none;padding:10px 12px;color:var(--blue);text-decoration:underline;font-weight:700;font-size:17px;cursor:pointer;">Submit sign-up request</button></div>
     </form>
-    <button type="button" class="btn-outline" data-action="gotoLogin" style="width:100%;margin-top:12px;">← Back to login</button>
+    <div style="text-align:center;margin-top:8px;"><button type="button" data-action="gotoLogin" style="background:none;border:0;box-shadow:none;padding:10px 12px;color:var(--blue);text-decoration:underline;font-weight:700;font-size:16px;cursor:pointer;">← Back to login</button></div>
   </div></div>`;
 }
 
@@ -8902,6 +9586,7 @@ const CLASS_TEACHER_VIEWS = new Set(['classanalysis','mastermarksheet','projects
 const DETAIL_VIEWS = new Set(['teacherprofile','studentprofile','classedit','restoreitems','integratedmarksheet','blankmarksheet','attendancemarksheet','generalmarksheet','combinedmarksheet','reportcard','financestudent','assessinuse']);
 function renderView(view){
   try{
+    { const _g = dataGateFor(view); if(_g) return _g; adminHousekeepingOnce(view); }
     if(FINANCE_ONLY && view!=='finance' && view!=='financestudent' && view!=='admingate' && !(FIN_EMBED && (view==='studentprofile' || view==='teacherprofile'))){
       return '<p>You don\'t have permission to view this page. This sign-in can only use Account Section.</p>';
     }
@@ -9072,9 +9757,8 @@ function payerRelationshipOptions(sel){ return PAYER_RELATIONSHIPS.map(r=>`<opti
    ACCOUNT SECTION — data helpers
    ----------------------------------------------------------------------
    Everything here reads/writes DB.info.financeData (fees, payments,
-   requirements, reqStatus) — stored inline in the shared "info" document
-   alongside the rest of the school's settings, so a single school-wide
-   read gets everything. To keep that document well under Firestore's
+   requirements, reqStatus) — kept inside the "info" value alongside the rest of the school's settings; the
+   storage layer stores it as several documents of at most ~780 KB each once it outgrows one (see 800 KB DOCUMENT LIMIT). To keep that document well under Firestore's
    1MB-per-document limit, payment and requirement-submission records
    older than MAX_TERMS_BEHIND terms are pruned every time the school's
    term is advanced (see pruneOldFinanceRecords, called from the
@@ -10074,7 +10758,7 @@ function staffPaymentsCardsHTML(d, lists, p){
 function setSalaryView(key, value){ VIEW.params = {...VIEW.params, [key]: value}; render(); }
 // Everyone who can be put on the pay roll: every teacher account, and every account saved as non teaching staff.
 function salaryStaffList(){
-  const teachers = DB.accounts.filter(a=>a.role==='teacher').map(a=>({username:a.username, name:a.name||a.username, personType:'teacher', closed:a.status==='closed'}));
+  const teachers = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending').map(a=>({username:a.username, name:a.name||a.username, personType:'teacher', closed:a.status==='closed'}));
   const staff = DB.accounts.filter(a=>a.role==='parent' && a.status!=='pending' && accCategory(a)==='nonteaching').map(a=>({username:a.username, name:a.name||a.username, personType:'nonteaching', closed:a.status==='closed'}));
   return {teachers: teachers.sort((x,y)=>x.name.localeCompare(y.name)), staff: staff.sort((x,y)=>x.name.localeCompare(y.name))};
 }
@@ -12006,6 +12690,7 @@ function adminDashboard(){
       <h3>Enrollment by class</h3>
       <div class="ad-scroll">
       ${DB.classes.length ? (()=>{
+        if(!DB_LOADED.students) return '<p class="small">Enrollment figures are read from the database only when you ask for them.</p><button type="button" class="btn-outline" data-action="loadEnrollment">Show enrollment</button>';
         const cur = DB.students.filter(s=>s.status!=='left');
         let tb=0, tg=0, tt=0;
         const rows = DB.classes.map(c=>{
@@ -12022,7 +12707,7 @@ function adminDashboard(){
     <div class="ad-side">
       <div class="ad-counts">
         <div class="card"><div class="small"><span class="fit-t" data-fit>CLASSES</span></div><h1><span class="fit-t" data-fit>${DB.classes.length}</span></h1></div>
-        <div class="card"><div class="small"><span class="fit-t" data-fit>STUDENTS TOTAL</span></div><h1><span class="fit-t" data-fit>${DB.students.filter(s=>s.status!=='left').length}</span></h1></div>
+        <div class="card"><div class="small"><span class="fit-t" data-fit>STUDENTS TOTAL</span></div><h1><span class="fit-t" data-fit>${DB_LOADED.students ? DB.students.filter(s=>s.status!=='left').length : '\u2014'}</span></h1></div>
         <div class="card"><div class="small"><span class="fit-t" data-fit>TERM &amp; YEAR</span></div><h1 class="ad-ty"><span class="fit-t" data-fit>${esc(i.currentTerm||'—')}</span><br><span class="fit-t" data-fit>${esc(String(i.currentYear||'—'))}</span></h1></div>
       </div>
       <div class="card ad-term ad-dates">
@@ -12178,7 +12863,7 @@ function classBaseName(c){
   return n;
 }
 function streamTeacherOptions(selected){
-  return `<option value="">-- none yet --</option>` + DB.accounts.filter(a=>a.role==='teacher')
+  return `<option value="">-- none yet --</option>` + DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending')
     .map(t=>`<option value="${esc(t.username)}" ${t.username===selected?'selected':''}>${esc(t.name)}</option>`).join('');
 }
 // Rows for "add more streams" on the Edit Class page.
@@ -12283,7 +12968,7 @@ function classEditView(classId){
       <div class="grid2">
         <div><label>Stream (optional)</label><input name="stream" value="${esc(cls.stream||'')}" placeholder="e.g. East"></div>
         <div><label>Class teacher</label><select name="classTeacher"><option value="">-- none yet --</option>
-          ${DB.accounts.filter(a=>a.role==='teacher').map(t=>`<option value="${esc(t.username)}" ${t.username===cls.classTeacher?'selected':''}>${esc(t.name)}</option>`).join('')}
+          ${DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending').map(t=>`<option value="${esc(t.username)}" ${t.username===cls.classTeacher?'selected':''}>${esc(t.name)}</option>`).join('')}
         </select></div>
       </div>
       <p class="small" style="margin-top:6px;">${count} student${count===1?'':'s'} currently in this class.</p>
@@ -12478,6 +13163,7 @@ async function downloadAccountsPdf(kind){
   } finally { setAppBusy(false); }
 }
 function isCorruptTeacher(a){
+  if(a && a.status==='pending') return false;   // a new sign-up is judged at approval time, never listed as a garbled staff entry
   if(a.role!=='teacher') return false;
   const n=String(a.name===undefined||a.name===null?'':a.name), u=String(a.username===undefined||a.username===null?'':a.username);
   return /[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(n+u) || u.length>60 || n.length>80 || (u==='' && n==='');
@@ -13491,7 +14177,7 @@ function assignSubjectsView(){
   // Teacher first -> tick the subjects they teach -> tick the classes for each subject
   // -> one save. Anything already assigned shows ticked and locked, so a teacher can
   // be topped up with more subjects/classes in later rounds without creating duplicates.
-  const teachers = DB.accounts.filter(a=>a.role==='teacher').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const teachers = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   if(ASSIGN_TEACHER && !teachers.some(t=>t.username===ASSIGN_TEACHER)) ASSIGN_TEACHER = '';
   const tch = teachers.find(t=>t.username===ASSIGN_TEACHER) || null;
   let pickerHtml = '';
@@ -13554,7 +14240,7 @@ function assignSubjectsView(){
   </div>
   <div class="card" id="asTeachersList" style="display:none;">
     <table class="data-table"><tr><th>Teacher</th><th>Class</th><th>Subject</th><th>Papers</th><th>Action</th></tr>
-    ${DB.assignments.map(a=>{
+    ${DB.assignments.filter(a=>{ const t0 = DB.accounts.find(x=>x.username===a.teacherUsername); return !(t0 && t0.status==='pending'); }).map(a=>{
       const t = DB.accounts.find(x=>x.username===a.teacherUsername); const c = DB.classes.find(x=>x.id===a.classId);
       const isP = c && c.level==='P';
       return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(a.papers.join(', '))}</td>
@@ -13964,7 +14650,7 @@ function scoreDeadlineCardsHTML(){
     if(!dl.deadline) return '';
     const label = kind==='AOI' ? examConfig().cwLabel : examConfig().eotLabel;
     const passed = scoreDeadlinePassed(kind);
-    const teachers = DB.accounts.filter(a=>a.role==='teacher');
+    const teachers = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending');
     const allReopened = teachers.length>0 && teachers.every(t=>(dl.reopenedFor||[]).includes(t.username));
     return `
     <div class="card">
@@ -14000,7 +14686,7 @@ function scoreDeadlineCardsHTML(){
 // anything else is a teacher username to set as the next class's class teacher.
 function promoTeacherOptions(sel){
   return `<option value="">-- leave unchanged --</option><option value="__MOVE__"${sel==='__MOVE__'?' selected':''}>↗ Move up with the class (same class teacher)</option>`
-    + DB.accounts.filter(a=>a.role==='teacher').sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(t=>`<option value="${esc(t.username)}">${esc(t.name)}</option>`).join('');
+    + DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending').sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(t=>`<option value="${esc(t.username)}">${esc(t.name)}</option>`).join('');
 }
 // Applies the class-teacher choices of a promotion. Snapshots every class's teacher first so
 // the order of moves never matters (a class can be both a source and a destination).
@@ -14405,7 +15091,7 @@ async function downloadSelectedReportsPdf(onProgress){
   const tickedOnScreen = new Set([...document.querySelectorAll('input.rc-row-cb:checked')].map(cb=>cb.getAttribute('data-id')));
   const students = rcByClassOrder(sortByName(DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && tickedOnScreen.has(s.id) && s.status!=='left')));
   if(!students.length){ alert('Tick at least one student first.'); return; }
-  try{ await refreshScores(); }
+  try{ await ensureScoresForStudents(students, DB.info.currentTerm, DB.info.currentYear, {stale:true}); }   // only the ticked learners' classes
   catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
   const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_selected_reports`;
   await pdfBatched(students, baseName, onProgress);
@@ -14429,7 +15115,7 @@ async function downloadReportCardPdf(studentId, term, year){
   try{
     try{ await loadJsPdfOnly(); }catch(e){ alert(e.message); return; }
     const { jsPDF } = window.jspdf;
-    try{ await refreshScores(); }
+    try{ const _s0 = DB.students.find(x=>x.id===studentId); await ensureScoresForStudents(_s0?[_s0]:[], term||DB.info.currentTerm, year||DB.info.currentYear, {stale:true}); }
     catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
     const data = buildReportCardData(studentId, term, year);
     if(!data){ alert('This student has no class assigned or could not be found.'); return; }
@@ -14867,7 +15553,7 @@ async function runGeneralSheetPdf(mode, scope){
   mode = mode==='filled' ? 'filled' : (mode==='attendance' ? 'attendance' : 'empty');
   const g = gsScope(scope);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
-  if(mode==='filled'){ try{ await refreshScores(); }catch(e){ console.warn('Score refresh failed; using current local data.', e); } }
+  if(mode==='filled'){ try{ await ensureScoresForView('generalmarksheet', {mode, scope}, {stale:true}); }catch(e){ console.warn('Score refresh failed; using current local data.', e); } }
   // Built from the FULL student list (this view is never paginated), whichever page is showing.
   document.getElementById('app').innerHTML = renderShellWithContent(generalSheetView(mode, scope));
   try{
@@ -14942,7 +15628,7 @@ async function runCombinedSheetPdf(mode, classId){
   const cls = DB.classes.find(c=>c.id===classId);
   const term = DB.info.currentTerm, year = DB.info.currentYear;
   const kind = mode==='filled' ? 'filled' : (mode==='empty' ? 'blank' : 'attendance');
-  if(mode==='filled'){ try{ await refreshScores(); }catch(e){ console.warn('Score refresh failed; using current local data.', e); } }
+  if(mode==='filled'){ try{ await ensureScoresForView('combinedmarksheet', {mode, classId}, {stale:true}); }catch(e){ console.warn('Score refresh failed; using current local data.', e); } }
   // Built from the FULL student lists (never paginated), whichever page is showing.
   document.getElementById('app').innerHTML = renderShellWithContent(combinedSheetView(mode, classId));
   try{
@@ -15416,7 +16102,7 @@ function analysisSubjectsFor(cls){
   const set = new Set(classSubjectsFor(cls));
   DB.assignments.forEach(a=>{
     if(a.classId!==cls.id || !a.subject) return;
-    if(!DB.accounts.some(x=>x.username===a.teacherUsername)) return;
+    if(!DB.accounts.some(x=>x.username===a.teacherUsername && x.status!=='pending')) return;
     set.add(a.subject);
   });
   return [...set];
@@ -15856,7 +16542,7 @@ function setAnalysisParam(key, value, _go){
     const p = VIEW.params, tok = NAV_TOKEN, vw = VIEW;
     const sig = a=>Array.isArray(a)?(a.length+':'+(a.length?a[a.length-1].id:'')):'';
     const before = sig(DB.scores);
-    refreshScoresForPeriod(p.term || DB.info.currentTerm, p.year || DB.info.currentYear)
+    ensureScoresForView('classanalysis', p, {stale:true})
       .then(()=>{ if(VIEW===vw && NAV_TOKEN===tok && !FORM_DIRTY && sig(DB.scores)!==before) render(); }).catch(e=>console.error(e));
   }
 }
@@ -16759,7 +17445,7 @@ function setMasterMarkSheetParam(key, value){
     if(!mmOpenNextDropdown(key)) setTimeout(()=>mmOpenNextDropdown(key), 60);
   }
   if(key==='mmTerm' || key==='mmYear'){
-    refreshScoresForPeriod(params.mmTerm||DB.info.currentTerm, params.mmYear||DB.info.currentYear)
+    ensureScoresForView('mastermarksheet', params, {stale:true})
       .then(()=>{ if(VIEW.name==='mastermarksheet' && (VIEW.params.mmTerm||DB.info.currentTerm)===(params.mmTerm||DB.info.currentTerm) && String(VIEW.params.mmYear||DB.info.currentYear)===String(params.mmYear||DB.info.currentYear)) render(); })
       .catch(e=>console.error(e));
   }
@@ -17170,7 +17856,7 @@ function scoresEntryView(mine){
             </div>
           </div>`}
 
-          <button class="btn btn-big" style="margin-top:18px;min-height:calc(64*var(--uk));font-size:calc(21*var(--uk));" ${scoresLocked?'disabled title="Deadline has passed — ask your admin to reopen entry for you"':''}>SUBMIT AND SAVE SCORES</button>
+          <button class="btn btn-big" style="margin-top:18px;min-height:calc(64*var(--uk));font-size:calc(21*var(--uk));" ${scoresLocked?'disabled title="Deadline has passed — ask your admin to reopen entry for you"':''}>SUBMIT TO SAVE SCORES</button>
           ${syncStatusBanner(scoreSyncKey(a.id, sel.paper, sel.kind, sel.label||''))}
         </form>
       </div>
@@ -19042,6 +19728,7 @@ document.addEventListener('click', async (e)=>{
       break;
     }
     case 'gotoCreateSchool': AUTH_VIEW='createSchool'; render(); break;
+    case 'loadEnrollment': ensureData(['students']).then(()=>render()); break;
     case 'gotoTeacherSignup': AUTH_VIEW='signupTeacher'; render(); break;
     case 'gotoParentSignup': AUTH_VIEW='signupParent'; render(); break;
     case 'gotoFounderLogin': AUTH_VIEW='founderLogin'; render(); break;
@@ -19150,11 +19837,11 @@ document.addEventListener('click', async (e)=>{
         const rcRoot = document.getElementById('mainArea'); if(rcRoot) fitOnePage(rcRoot);
       }
       if(['reports','treports','pdash','preport','marksheets','ascores','tscores','classanalysis','mastermarksheet'].includes(arg)){
-        const scoreRefresh = (arg==='mastermarksheet'||arg==='classanalysis')
-          ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear)
-          : refreshScores();
-        scoreRefresh.then(()=>{
-          if(NAV_TOKEN!==myNavToken) return;
+        // Only the class(es) the screen is showing are read (none at all until one is picked); more is read when the user
+        // picks another class, a previous term/year, or a whole level.
+        const scoreRefresh = ensureScoresForView(arg, VIEW.params, {stale:true});
+        scoreRefresh.then(r=>{
+          if(NAV_TOKEN!==myNavToken || !(r&&r.changed)) return;
           // Result Analysis picker screen shows no scores: skip the pointless second render.
           if(arg==='classanalysis' && !(VIEW.params&&(VIEW.params.classId||VIEW.params.level))) return;
           render();
@@ -19176,8 +19863,8 @@ document.addEventListener('click', async (e)=>{
       VIEW = {name:'reportcard', params:{studentId:arg}};
       render();
       const root = document.getElementById('mainArea'); if(root) fitOnePage(root);
-      refreshScores().then(()=>{
-        if(NAV_TOKEN!==myNavToken) return; // user has since navigated elsewhere
+      ensureScoresForView('reportcard', VIEW.params, {stale:true}).then(r=>{
+        if(NAV_TOKEN!==myNavToken || !(r&&r.changed)) return; // user has since navigated elsewhere
         render();
         const root2 = document.getElementById('mainArea'); if(root2) fitOnePage(root2);
       }).catch(e=>console.error(e));
@@ -19463,7 +20150,7 @@ Continue?`);
       const kind = arg;
       const sd = {...(DB.info.scoreDeadlines||{})};
       const cur = sd[kind] || {deadline:null, reopenedFor:[]};
-      const allUsernames = DB.accounts.filter(a=>a.role==='teacher').map(t=>t.username);
+      const allUsernames = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending').map(t=>t.username);
       sd[kind] = {...cur, reopenedFor: allUsernames};
       DB.info.scoreDeadlines = sd;
       await saveInfo(); showActionSuccess('Reopened for all teachers', el); render(); break;
@@ -20583,8 +21270,9 @@ async function viewReportPeriod(studentId, value){
   const year = Number(parts[1] || DB.info.currentYear);
 
   // Read-only historical viewing: refresh saved score shards, then keep
-  // the SAME student's report card open. No score data is written/moved.
-  await refreshScores();
+  // the SAME student's report card open. No score data is written/moved. Only that student's class (and where
+  // the class's learners were then) is read for the chosen term/year.
+  { const _s0 = DB.students.find(x=>x.id===studentId); await ensureScoresForStudents(_s0?[_s0]:[], term, year, {stale:true}); }
 
   // Setting VIEW.name explicitly (not just VIEW.params) matters: render() picks
   // which page to show based on VIEW.name, so without this the report card would
@@ -20918,35 +21606,29 @@ document.addEventListener('change', (e)=>{
    ============================================================ */
 
 async function moveCurrentPeriodScoresTo(prevTerm, prevYear, newTerm, newYear){
-  const oldKey=scoreShardKey(prevTerm,prevYear);
-  const newKey=scoreShardKey(newTerm,newYear);
-  if(oldKey===newKey) return;
+  if(scorePeriodKey(prevTerm,prevYear)===scorePeriodKey(newTerm,newYear)) return;
+  if(!(await ensureScoresMigrated())){ alert('Scores are still being reorganised. Please try the term change again in a moment.'); return; }
+  await ensurePeriodFull(prevTerm, prevYear);   // every class of the period being moved must be in memory
   const rows=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
   if(!rows.length) return;
-
-  // Merge into destination shard, then explicitly clear the source shard.
-  // This is a MOVE, never a copy.
-  await mergeScoreShard(SCHOOL_ID,newTerm,newYear,fresh=>{
-    rows.forEach(r=>mergeRowIntoShard(fresh,{...r,term:newTerm,year:Number(newYear)}));
-    return fresh;
-  });
-  await setShared(`sch_${SCHOOL_ID}_scores_${oldKey}`,[]);
-
-  DB.scores=DB.scores
-    .filter(r=>!(r.term===prevTerm && Number(r.year)===Number(prevYear)))
-    .map(r=>r);
-  KNOWN_SCORE_SHARDS[SCHOOL_ID]=KNOWN_SCORE_SHARDS[SCHOOL_ID]||new Set();
-  KNOWN_SCORE_SHARDS[SCHOOL_ID].add(newKey);
-  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(oldKey);
-  DB.scores=await loadAllScores(SCHOOL_ID);
+  stampScoreRows(rows, DB.students, false);
+  // MOVE, never copy: every row keeps its own class, lands in that class's shard of the new period, then the old period's shards are removed.
+  const byCls={}; rows.forEach(r=>{ (byCls[r.classId]=byCls[r.classId]||[]).push(r); });
+  await Promise.all(Object.keys(byCls).map(c=>mergeScoreShard(SCHOOL_ID,newTerm,newYear,c,fresh=>{
+    byCls[c].forEach(r=>mergeRowIntoShard(fresh,{...r,term:newTerm,year:Number(newYear)})); return fresh;
+  })));
+  await clearPeriodShards(SCHOOL_ID, prevTerm, prevYear);
+  // The old period is gone from the database: drop it from memory too (no whole-school re-read needed).
+  const _pk = scorePeriodKey(prevTerm, prevYear);
+  DB.scores = DB.scores.filter(r=>!(r.term===prevTerm && Number(r.year)===Number(prevYear)));
+  SCORE_PERIOD_FULL.delete(_pk); [...SCORE_LOADED.keys()].forEach(k=>{ if(k.startsWith(_pk+'~')) SCORE_LOADED.delete(k); });
+  invalidateScoreLookupCache();
 }
 
 async function deleteCurrentPeriodScores(term,year){
-  const key=scoreShardKey(term,year);
-  await setShared(`sch_${SCHOOL_ID}_scores_${key}`,[]);
+  if(!(await ensureScoresMigrated())){ alert('Scores are still being reorganised. Nothing was deleted; please try again in a moment.'); return; }
+  await clearPeriodShards(SCHOOL_ID, term, year);
   DB.scores=DB.scores.filter(r=>!(r.term===term && Number(r.year)===Number(year)));
-  KNOWN_SCORE_SHARDS[SCHOOL_ID]=KNOWN_SCORE_SHARDS[SCHOOL_ID]||new Set();
-  KNOWN_SCORE_SHARDS[SCHOOL_ID].delete(key);
 }
 
 function termChangeSafetyBanner(prevTerm, prevYear, newTerm, newYear, currentPeriodScoreCount){
@@ -21611,7 +22293,7 @@ document.addEventListener('submit', async (e)=>{
         motto:fd.get('motto')||'', headteacher:fd.get('headteacher'), logo:null, currentTerm:'Term 1', currentYear:new Date().getFullYear(),
         ownerCode:fd.get('ownerCode'), oExtraSubjects:[], pExtraSubjects:[], aExtraSubjects:[], termEndDate:'', nextTermBeginDate:'' };
       DB.accounts = [{username:fd.get('username'), password:fd.get('password'), role:'admin', name:'School Owner', status:'active', recovery: (fd.get('recovery')||'').trim()||null}];
-      DB.classes=[]; DB.students=[]; DB.assignments=[]; DB.scores=[]; DB.bands=DEFAULT_A_BANDS; DB.obands=DEFAULT_O_BANDS;
+      DB.classes=[]; DB.students=[]; DB.assignments=[]; DB.scores=[]; markScoresFull(); markDataLoaded('students','assignments','bands'); DB.bands=DEFAULT_A_BANDS; DB.obands=DEFAULT_O_BANDS;
       await Promise.all([
         saveInfo(),saveAccounts(),saveClasses(),saveStudents(),saveAssignments(),saveScores(),saveBands(),saveOBands(),
         ensureSchoolAuthIdentity(id, email) // independent of the writes above — run alongside them, not after
@@ -21767,7 +22449,6 @@ document.addEventListener('submit', async (e)=>{
         if(finLogin) VIEW = {name:'finance', params:{}};
         await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u, financeOnly:!!finLogin});
         // First person from this school to open the system today? Take the daily snapshot now.
-        maybeTakeAutoSnapshot().catch(e=>console.error(e));
         render();
       }
     }
@@ -21824,7 +22505,6 @@ document.addEventListener('submit', async (e)=>{
       ]);
       CUR = foundAcc; SCHOOL_ID = foundSchoolId; FINANCE_ONLY = false;
       await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u});
-      maybeTakeAutoSnapshot().catch(e=>console.error(e));
       alert('Password has been reset. You are now signed in.');
       render();
     }
@@ -21837,6 +22517,7 @@ document.addEventListener('submit', async (e)=>{
       const termChanged=(newTerm!==prevTerm || Number(newYear)!==Number(prevYear));
       let termChangeDecision='leave';
       if(termChanged){
+        try{ await ensurePeriodFull(prevTerm, prevYear); }catch(e){ console.error(e); }   // the count below must cover EVERY class of the old period
         const oldPeriodScores=DB.scores.filter(r=>r.term===prevTerm && Number(r.year)===Number(prevYear));
         termChangeDecision=await termChangeSafetyBanner(prevTerm,prevYear,newTerm,newYear,oldPeriodScores.length);
         if(termChangeDecision==='cancel') return;
@@ -21872,7 +22553,7 @@ document.addEventListener('submit', async (e)=>{
       await saveInfo();
       // The three explicit choices control the previous period's scores. Do not
       // run automatic retention pruning during a term/year switch.
-      if(termChanged) await refreshScores();
+      if(termChanged){ resetScoreCache(); DB.scores = []; try{ scoreOutboxReapply(); }catch(_){} invalidateScoreLookupCache(); }   // the screens read the new period's class(es) on demand
       render();
     }
     else if(type==='restoreBackup'){
@@ -21890,8 +22571,8 @@ document.addEventListener('submit', async (e)=>{
       undoMarkIrreversible();
       const _prevGrade = schoolGrade();
       DB.info = data.info; keepLockedGrade(_prevGrade); DB.accounts = data.accounts; DB.classes = data.classes;
-      DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores;
-      DB.bands = data.bands; DB.obands = data.obands; DB.pbands = data.pbands;
+      DB.students = data.students; DB.assignments = data.assignments; DB.scores = data.scores; markScoresFull();
+      DB.bands = data.bands; DB.obands = data.obands; DB.pbands = data.pbands; markDataLoaded('students','assignments','bands');
       await Promise.all([saveInfo(), saveAccounts(), saveClasses(), saveStudents(), saveAssignments(), saveScores(), saveBands(), saveOBands(), savePBands()]);
       alert('Restore complete.'); render();
     }
@@ -22449,6 +23130,7 @@ document.addEventListener('submit', async (e)=>{
     else if(type==='assignBulk'){
       const tUser = (fd.get('teacherUsername')||'').trim();
       if(!tUser){ alert('Please select a teacher.'); return; }
+      { const _ta = DB.accounts.find(a=>a.username===tUser); if(_ta && _ta.status==='pending'){ alert('This teacher has not been approved yet.'); return; } }
       const subjTicked = new Set(fd.getAll('subj'));
       const clsTicked = fd.getAll('cls').map(v=>v.split('||')); // [subject, classId]
       const papTicked = fd.getAll('pap').map(v=>v.split('||')); // [subject, classId, paper]
@@ -23134,8 +23816,13 @@ document.addEventListener('submit', async (e)=>{
         });
         if(colHasSaved && !changed && !conflictExcluded.length){
           if(prevMissNow) MISSING_MARKERS[missKeyNow] = prevMissNow; else delete MISSING_MARKERS[missKeyNow];
-          scoreBtnState('already');
-          try{ showDeliveredToast('All scores already saved'); }catch(_){}
+          if(scoreOutboxRead().length){
+            scoreBtnState('saving');
+            flushScoreOutbox().then(()=>{ const q=scoreOutboxRead().length; scoreBtnState(q?'queued':'saved'); if(!q){ try{ showDeliveredToast('All scores saved'); }catch(_){} } });
+          } else {
+            scoreBtnState('already');
+            try{ showDeliveredToast('All scores saved'); }catch(_){}
+          }
           // Nothing new to save, so nothing is at risk: clear the "unsaved" flag and the on-device draft,
           // otherwise leaving the page wrongly warns that scores are not saved.
           FORM_DIRTY = false; try{ localStorage.removeItem(seDraftKey(form)); }catch(_){}
@@ -23343,7 +24030,12 @@ async function runMasterMarkSheetPdf(arg, el, forPrint){
   setAppBusy(true);
   const exportTerm = termEnc?decodeURIComponent(termEnc):DB.info.currentTerm;
   const exportYear = year || DB.info.currentYear;
-  try{ await refreshScoresForPeriod(exportTerm, exportYear); } finally { setAppBusy(false); }
+  try{
+    // The class (or, for the whole-level forms, every class of its level) for the chosen term/year - nothing else.
+    const _sc = mkScoreScope(exportTerm, exportYear), _raw = isAllStr(classId) ? classId.slice(ALLSTR.length) : classId, _c0 = DB.classes.find(c=>c.id===_raw);
+    if(_c0){ if(['lscores','lgrades','level'].includes(modeArg)) scopeAddLevel(_sc, _c0.level); else scopeAddClass(_sc, classId); }
+    await ensureScoreScopes(_sc.classIds.size ? [_sc] : [], {stale:true});
+  } finally { setAppBusy(false); }
   const cls = DB.classes.find(c=>c.id===classId);
   const term = termEnc?decodeURIComponent(termEnc):'';
   const modeLabel = ['grades','rank','level','lscores','lgrades'].includes(modeArg) ? modeArg : 'scores';
@@ -24421,9 +25113,10 @@ async function pdfForStudents(students, filename, opts={}){
 // before, even though each page is now sharper.
 const BULK_BATCH_SIZE = 60;
 async function bulkPdf(classId, onProgress){
-  await refreshScores(); // make sure every teacher's latest marks are in this export
   const ids = Array.isArray(classId) ? classId : (classId ? [classId] : []);
   let students = DB.students.filter(s=>s.status!=='left' && (!ids.length || ids.includes(s.classId)));
+  // make sure every teacher's latest marks are in this export - read just the exported class(es)
+  try{ await ensureScoresForStudents(students, DB.info.currentTerm, DB.info.currentYear, {stale:true}); }catch(e){ console.warn('Score refresh failed; using current local data.', e); }
   if(ids.length>1) students = rcByClassOrder(sortByName(students));
   const baseName = `${(DB.info.schoolName||'school').replace(/\s+/g,'_')}_reports`;
   await pdfBatched(students, baseName, onProgress);
@@ -24447,7 +25140,8 @@ async function pdfBatched(students, baseName, onProgress){
 }
 async function singleStudentPdf(studentId){
   try{
-    await refreshScores();
+    const _s0 = DB.students.find(x=>x.id===studentId);
+    await ensureScoresForStudents(_s0?[_s0]:[], DB.info.currentTerm, DB.info.currentYear, {stale:true});
   }catch(e){
     console.warn('Score refresh failed; generating report from the current local data.', e);
   }
@@ -24685,7 +25379,7 @@ function restoreReturnState(){
   try{
     if(RESUME_SCORE_VIEWS.includes(r.view.name)){
       const tok = NAV_TOKEN;
-      const p = (r.view.name==='mastermarksheet'||r.view.name==='classanalysis') ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
+      const p = ensureScoresForView(r.view.name, VIEW.params, {stale:true});
       Promise.resolve(p).then(()=>{ if(NAV_TOKEN===tok){ render(); [0,150,500].forEach(ms=>setTimeout(()=>{ try{ window.scrollTo(0, y); }catch(e){} }, ms)); } }).catch(e=>console.error(e));
     }
   }catch(e){}
@@ -24838,6 +25532,49 @@ function seApplyDraft(){
     else localStorage.removeItem(k);   // everything typed is already saved
   }catch(e){}
 }
+/* ---- SAVE IN BATCHES OF 10 ----
+   Typed marks stay on screen (and in the on-device draft). Each time 10 typed marks are waiting, they are saved together
+   in ONE save (one database transaction per class instead of one per mark), which keeps data use low. Fewer than 10 left
+   are saved by SUBMIT TO SAVE SCORES, or automatically when the teacher leaves the page. Same checks, offline outbox and
+   per-class transaction as Submit; blank boxes are left alone; no re-draw, so the cursor never moves. */
+const SE_BATCH = 20;
+function seMark(inp, st){ inp.style.boxShadow = st ? '0 0 0 2px '+({pend:'#2f6fd0',sav:'#e67e00',ok:'#0f6b3a',bad:'#b3261e'}[st]) : ''; }
+// null = nothing to save for this box; {err} = rejected; {row,inp} = ready to save
+function seBuildRow(inp){
+  const f = inp.closest && inp.closest('form[data-form="saveScores"]'); if(!f || !CUR || inp.disabled) return null;
+  const val = inp.value.trim(); if(val==='' || inp.value===inp.defaultValue) return null;
+  const d = f.dataset, subject = d.subject, kind = d.kind, label = d.label||'', paper = d.paper, assignId = d.assign;
+  const term = d.term || DB.info.currentTerm, year = d.year ? Number(d.year) : DB.info.currentYear;
+  const max = Math.max(1, Number(d.max)||100), num = Number(val);
+  if((term!==DB.info.currentTerm || Number(year)!==Number(DB.info.currentYear)) && CUR.role!=='admin') return {err:'Only an Admin can enter or edit scores for a past term/year.'};
+  if(CUR.role!=='admin' && teacherLockedByDeadline(CUR.username, kind)) return {err:'The score deadline has passed, so this mark cannot be saved.'};
+  if(!isFinite(num) || num<0 || num>max) return {err:'Marks must be between 0 and '+max+'.'};
+  const studentId = inp.name.slice(2), a = DB.assignments.find(x=>x.id===assignId), cls = a ? DB.classes.find(c=>c.id===a.classId) : null;
+  if(SUBSIDIARIES.includes(subject) && cls){ const st = DB.students.find(x=>x.id===studentId); if(st && hasSubsidiaryConflict(st, cls)) return {err:st.name+' is ticked into BOTH Subsidiary rosters, so this mark was not saved. Fix the roster first.'}; }
+  const old = DB.scores.find(sc=>sc.studentId===studentId && sc.subject===subject && samePaper(sc.paper,paper) && sc.kind===kind && sc.term===term && sc.year==year && (kind==='EOT' || scoreLabelEq(sc.label,label,(a||{}).classId)));
+  if(old && Number(old.marks)===num && Number(old.max)===max) return null;
+  return {inp, row:{id: old?old.id:uid('sc'), studentId, subject, paper, kind, label: kind==='EOT'?'':label, term, year, marks:num, max, teacher:CUR.username}};
+}
+function seSaveBatch(f, items){
+  // Silent by design: no messages, colours or status changes. The teacher always finishes with SUBMIT TO SAVE SCORES.
+  const d = f.dataset, mk = missingMarkersKey(d.assign, d.paper, d.kind, d.label||'');
+  const prev = items.map(x=>x.inp.defaultValue);
+  items.forEach(x=>{ if(MISSING_MARKERS[mk]) MISSING_MARKERS[mk].delete(x.row.studentId); x.inp.defaultValue = x.inp.value; });
+  const p = upsertScores(items.map(x=>x.row), '');   // DB.scores is updated synchronously inside this call; '' = no status line to flip
+  if(!seReallyDirty()){ FORM_DIRTY = false; try{ localStorage.removeItem(seDraftKey(f)); }catch(_){} }
+  p.catch(err=>{ console.error(err); items.forEach((x,i)=>{ x.inp.defaultValue = prev[i]; }); FORM_DIRTY = true; });   // not saved -> Submit will send them
+}
+function seAutoSaveInput(inp){
+  const f = inp.closest && inp.closest('form[data-form="saveScores"]'); if(!f || !CUR || inp.disabled) return;
+  const first = seBuildRow(inp);
+  if(first && first.err){ seMark(inp,'bad'); seNote(first.err); return; }
+  seMark(inp,''); if(!first) return;
+  const items = [];
+  f.querySelectorAll('input[name^="m_"]').forEach(i=>{ const b = seBuildRow(i); if(b && !b.err) items.push(b); });
+  if(items.length >= SE_BATCH) seSaveBatch(f, items);
+}
+document.addEventListener('change', e=>{ const t=e.target; if(t && t.name && t.name.indexOf('m_')===0) seAutoSaveInput(t); }, true);
+document.addEventListener('input', e=>{ const t=e.target; if(t && t.name && t.name.indexOf('m_')===0 && t.style) seMark(t,''); }, true);
 // Re-apply a saved draft every time the score form is drawn.
 (function(){
   const _render = render;
@@ -24920,7 +25657,7 @@ function resumeAfterUpdate(){
   render();
   if(RESUME_SCORE_VIEWS.includes(r.v)){
     const tok = NAV_TOKEN;
-    const p = (r.v==='mastermarksheet'||r.v==='classanalysis') ? refreshScoresForPeriod(DB.info.currentTerm,DB.info.currentYear) : refreshScores();
+    const p = ensureScoresForView(r.v, VIEW.params, {stale:true});
     Promise.resolve(p).then(()=>{ if(NAV_TOKEN===tok) render(); }).catch(e=>console.error(e));
   }
 }
@@ -24928,19 +25665,30 @@ function resumeAfterUpdate(){
 // the first few KB, where BUILD_ID lives, then cancels the download. So it is
 // cheap enough to run every 15 seconds, needs no ETag/Last-Modified headers from the host,
 // and an open tab notices a deploy within seconds.
-let _checking = false, _lastCheck = 0;
+let _checking = false, _lastCheck = 0, _rangeBroken = false, _lastAct = Date.now();
+(function(){ const IDLE = 180000, mark = ()=>{ const idle = Date.now()-_lastAct > IDLE; _lastAct = Date.now(); if(idle && !document.hidden) { try{ checkForNewBuild(true); }catch(e){} } };
+  ['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev, mark, {passive:true, capture:true})); })();
 async function checkForNewBuild(force){
   if(updatePending || _checking) return;
   if(Date.now() < FILE_GRACE_UNTIL) return;   // coming back from viewing a file: never reload the app
   const now = Date.now();
-  if(now - _lastCheck < (force===true ? 4000 : 15000)) return;
+  if(now - _lastCheck < (force===true ? 4000 : (now-_lastAct > 180000 ? 60000 : 15000))) return;   // 15 s while in use, 60 s when nobody has touched it for 3 min (a touch checks at once)
   _lastCheck = now; _checking = true;
   try{
     const url = location.pathname + location.search + (location.search?'&':'?') + '_v=' + now;
-    const res = await fetch(url, {cache:'no-store', headers:{'Cache-Control':'no-cache'}});
-    if(!res.ok) return;
-    let head = '';
-    if(res.body && res.body.getReader){
+    let res = null, head = '', ranged = false;
+    if(!_rangeBroken){
+      try{
+        res = await fetch(url, {cache:'no-store', headers:{'Cache-Control':'no-cache', 'Range':'bytes=0-8191'}});
+        if(res.status===206){ head = (await res.text()).slice(0, 12000); ranged = true; }
+        else if(!res.ok) return;
+        else _rangeBroken = true;   // host answered 200 (ignores Range): reuse this response below and stop asking for a range
+      }catch(e){ res = null; }
+      if(ranged && !/BUILD_ID\s*=\s*['"][^'"]+['"]/.test(head)){ _rangeBroken = true; ranged = false; head = ''; res = null; }   // host mangled the range: use the full method from now on
+    }
+    if(!ranged && !(res && res.ok && res.status===200 && !res.bodyUsed)){ res = await fetch(url, {cache:'no-store', headers:{'Cache-Control':'no-cache'}}); if(!res.ok) return; head = ''; }
+    if(ranged){ /* head already holds the first 8 KB */ }
+    else if(res.body && res.body.getReader){
       const reader = res.body.getReader(), dec = new TextDecoder();
       while(head.length < 8192){
         const {done, value} = await reader.read();
@@ -24972,7 +25720,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
     navigator.serviceWorker.register('./sw.snippet.js').then(reg=>{
       // Actively re-check for a new service worker (not just on next full navigation)
       // so an already-open tab notices a deploy without needing to be closed/reopened.
-      setInterval(()=>reg.update().catch(()=>{}), 15*1000);
+      setInterval(()=>{ if(!document.hidden) reg.update().catch(()=>{}); }, 5*60*1000);
       document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) reg.update().catch(()=>{}); });
     }).catch((e)=>console.warn('Service worker not registered:', e));
   });
