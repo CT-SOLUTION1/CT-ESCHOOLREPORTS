@@ -2331,6 +2331,8 @@ label.rc-pick-all{margin-top:8px;padding:9px 10px;border:1px solid #cfd9e3;borde
   table.rc-list th.rc-combo{white-space:normal !important;width:1%;line-height:1.1;}
   table.rc-list td.rc-combo{white-space:nowrap !important;width:1%;}
 .dl-loading{opacity:.85 !important;pointer-events:none !important;cursor:progress !important;}
+.cte-center{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9997;margin:0;}
+.ra-loading.cte-center{background:#fff;border:2px solid var(--blue,#0A5BA8);padding:12px 22px;border-radius:12px;box-shadow:0 6px 22px rgba(0,0,0,.35);text-align:center;font-size:15px;z-index:99998;}
 #mmLoadingOverlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(10,42,74,.55);}
 #mmLoadingOverlay .mm-load-box{background:#fff;color:#0A2A4A;border:4px solid #0A2A4A;border-radius:14px;padding:22px 34px;font-size:30px;font-weight:900;letter-spacing:.03em;box-shadow:0 8px 30px rgba(0,0,0,.35);display:flex;align-items:baseline;}
 #mmLoadingOverlay .mm-dot{display:inline-block;width:.6em;text-align:center;animation:mmDotJump 1s infinite ease-in-out;}
@@ -4998,6 +5000,7 @@ async function loadScoreScope(sc, opts){
   const need = scoreShardKeysForScope(sc).filter(k=>{ const at = scoreShardAge(k); return opts.force || !at || (opts.stale && now-at>SCORE_STALE_MS); });
   if(!need.length) return {changed:false, failed:false};
   const got = new Map();   // suffix -> rows | null (document does not exist)
+  let _badShards = 0;
   const wasMissing = need.some(k=>!scoreShardAge(k));   // not in memory when we started (another caller may finish reading it first)
   try{
     if(!LEGACY_SCORES_GONE[sid]){
@@ -5007,8 +5010,9 @@ async function loadScoreScope(sc, opts){
       rows.forEach(r=>{ const k = scoreRowShard(r); if(!got.get(k)) got.set(k, []); got.get(k).push(r); });
       SCORE_PERIOD_FULL.set(scorePeriodKey(sc.term, sc.year), Date.now());
     } else {
-      const docs = await Promise.all(need.map(k=>fetchScoreShardOnce(k)));
-      need.forEach((k,i)=>got.set(k, docs[i]));
+      const docs = await Promise.allSettled(need.map(k=>fetchScoreShardOnce(k)));
+      docs.forEach((d,i)=>{ if(d.status==='fulfilled') got.set(need[i], d.value); else { _badShards++; console.error('Could not read class scores document', need[i], d.reason); } });
+      if(_badShards && !got.size) return {changed:false, failed:true};
     }
   }catch(e){ console.error('Could not read class scores', e); return {changed:false, failed:true}; }
   if(sid!==SCHOOL_ID) return {changed:false, failed:false};
@@ -5026,14 +5030,14 @@ async function loadScoreScope(sc, opts){
   _scoresPartial = !_scoresFull;
   invalidateScoreLookupCache();
   if(wasMissing) changed = true;
-  return {changed, failed:false};
+  return {changed, failed:false, partial:_badShards};
 }
 async function ensureScoreScopes(scopes, opts){
-  let changed = false, failed = false;
+  let changed = false, failed = false, partial = 0;
   if((scopes||[]).length && CUR && (CUR.role==='admin'||CUR.role==='teacher')){ try{ ensureScoresMigrated(); }catch(e){} }
   const results = await Promise.all((scopes||[]).map(sc=>loadScoreScope(sc, opts)));   // scopes are read side by side, not one after another
-  results.forEach(r=>{ if(r.changed) changed = true; if(r.failed) failed = true; });
-  return {changed, failed};
+  results.forEach(r=>{ if(r.changed) changed = true; if(r.failed) failed = true; if(r.partial) partial += r.partial; });
+  return {changed, failed, partial};
 }
 // What each screen needs, from its own selections. Screens that show no marks (empty / attendance sheets, pickers) need nothing.
 function scoreScopesForView(name, p){
@@ -5103,17 +5107,51 @@ function ensureScoresForStudents(list, term, year, opts){
   const sc = scopeAddStudents(mkScoreScope(term, year), list);
   return ensureScoreScopes(sc.classIds.size ? [sc] : [], opts);
 }
+// Keeps every loading message (class="cte-center") in the middle of what the person is LOOKING at - the visible part of the
+// screen - even when the page is zoomed out/in or panned, never in the top margin. Text size is kept readable at any zoom.
+function cteCenterAll(){
+  try{
+    const els = document.querySelectorAll('.cte-center'); if(!els.length) return;
+    const vv = window.visualViewport, sc = (vv && vv.scale) || 1;
+    const cx = vv ? (vv.offsetLeft + vv.width/2) : window.innerWidth/2, cy = vv ? (vv.offsetTop + vv.height/2) : window.innerHeight/2;
+    const vw = vv ? vv.width : window.innerWidth;
+    els.forEach(el=>{
+      el.style.left = cx+'px'; el.style.top = cy+'px';
+      el.style.maxWidth = Math.max(160, vw*sc*0.82)+'px';
+      el.style.transform = 'translate(-50%,-50%) scale('+(1/sc)+')';
+    });
+  }catch(e){}
+}
+try{
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize', cteCenterAll); window.visualViewport.addEventListener('scroll', cteCenterAll); }
+  window.addEventListener('resize', cteCenterAll); window.addEventListener('scroll', cteCenterAll, {passive:true});
+}catch(e){}
 function scoreLoadPill(on){
   try{
     let el = document.getElementById('scoreLoadPill');
     if(!on){ if(el) el.remove(); return; }
     if(el) return;
-    el = document.createElement('div'); el.id = 'scoreLoadPill';
+    el = document.createElement('div'); el.id = 'scoreLoadPill'; el.className = 'cte-center';
     // Always in the middle of the screen (never the top margin), so the person can wait with it in plain view.
     el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9997;background:#1f6feb;color:#fff;font:800 15px Inter,sans-serif;padding:12px 22px;border-radius:12px;box-shadow:0 6px 22px rgba(0,0,0,.35);text-align:center;max-width:80vw;';
     el.textContent = 'Loading this class\u2019s scores\u2026';
-    document.body.appendChild(el);
+    document.body.appendChild(el); cteCenterAll();
   }catch(e){}
+}
+// A visible message (with Retry) - used whenever marks cannot be read or a sheet cannot be built, so the screen never just stops.
+function scoreLoadProblem(msg){
+  try{
+    scoreLoadPill(false);
+    let el = document.getElementById('scoreLoadProblem');
+    if(!msg){ if(el) el.remove(); return; }
+    if(!el){ el = document.createElement('div'); el.id = 'scoreLoadProblem'; el.className = 'cte-center'; el.setAttribute('role','alert');
+      el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9998;background:#fff;color:#7a1f1f;border:2px solid #b42318;font:700 14px Inter,sans-serif;padding:16px 20px;border-radius:12px;box-shadow:0 6px 22px rgba(0,0,0,.35);text-align:center;max-width:86vw;';
+      document.body.appendChild(el); }
+    el.innerHTML = '<div style="margin-bottom:10px;"></div><button type="button" class="btn" id="scoreLoadRetry">Retry</button> <button type="button" class="btn-outline" id="scoreLoadClose">Close</button>';
+    el.firstChild.textContent = msg; cteCenterAll();
+    document.getElementById('scoreLoadClose').onclick = ()=>scoreLoadProblem('');
+    document.getElementById('scoreLoadRetry').onclick = ()=>{ scoreLoadProblem(''); try{ Object.keys(_scoreAutoFail).forEach(k=>delete _scoreAutoFail[k]); _scoreAutoBusy = ''; _scoreAutoSig = ''; scoresAutoLoad(); }catch(e){ console.error(e); } };
+  }catch(e){ console.error(e); }
 }
 let _scoreAutoSig = '', _scoreAutoBusy = '';
 const _scoreAutoFail = {};
@@ -5134,12 +5172,16 @@ function scoresAutoLoad(){
   // Marks already on the device are shown at once and refreshed quietly; the loading pill is only for classes never read yet.
   if(scopes.some(sc=>scoreShardKeysForScope(sc).some(k=>!scoreShardAge(k)))) scoreLoadPill(true);
   const tok = NAV_TOKEN;
+  scoreLoadProblem('');
+  const _wd = setTimeout(()=>{ if(_scoreAutoBusy===vkey) scoreLoadProblem('Still loading the marks for this class\u2026 this is taking longer than usual (slow connection?). You can keep waiting or tap Retry.'); }, 25000);
   ensureScoreScopes(scopes, {stale:freshNav}).then(r=>{
+    clearTimeout(_wd);
     if(_scoreAutoBusy===vkey) _scoreAutoBusy = '';
     scoreLoadPill(false);
-    if(r.failed){ _scoreAutoFail[vkey] = Date.now(); return; }
+    if(r.failed){ _scoreAutoFail[vkey] = Date.now(); scoreLoadProblem('Could not load the marks for this class. Check the internet connection and tap Retry.'); return; }
+    if(r.partial) scoreLoadProblem('Some class marks could not be loaded, so this sheet may be incomplete. Tap Retry to try again.');
     if(r.changed && NAV_TOKEN===tok && !FORM_DIRTY && JSON.stringify([SCHOOL_ID, VIEW.name, VIEW.params||{}])===vkey) render();
-  }).catch(e=>{ _scoreAutoBusy = ''; scoreLoadPill(false); _scoreAutoFail[vkey] = Date.now(); console.error(e); });
+  }).catch(e=>{ clearTimeout(_wd); _scoreAutoBusy = ''; scoreLoadPill(false); _scoreAutoFail[vkey] = Date.now(); console.error(e); scoreLoadProblem('Could not load the marks for this class. Tap Retry.'); });
 }
 
 async function getPersonal(key, fallback){
@@ -5278,7 +5320,7 @@ function dataGateFor(view){
   if(!miss.length) return null;
   if(_gateFail===view+'|'+DB_SCHOOL) return '<div class="card"><p>The data for this page could not be loaded. Check your connection, then reload.</p><button type="button" class="btn" onclick="location.reload()">Reload</button></div>';
   ensureData(miss).then(ok=>{ if(ok){ if(VIEW && VIEW.name===view) render(); } else { _gateFail = view+'|'+DB_SCHOOL; if(VIEW && VIEW.name===view) render(); } });
-  return '<div class="card"><p class="small">Loading\u2026</p></div>';
+  return '<div class="card cte-center" style="padding:14px 26px;z-index:9997;"><p class="small" style="margin:0;font-weight:800;">Loading\u2026</p></div>';
 }
 // Once per sign-in, the first time an Admin opens a screen that deals with finance records or the Recycle Bin.
 function adminHousekeepingOnce(view){
@@ -7761,8 +7803,16 @@ function aAutoCreateStreams(){
   });
   return {made, finCopied};
 }
+// Screens that read or show marks. The automatic ARTS/SCIENCES placement must NEVER run (and move students, save and redraw)
+// while one of these is being built - it made Result Analysis / General Marksheets stall for A-Level classes with auto streams.
+const AUTO_STREAM_SKIP_VIEWS = new Set(['classanalysis','mastermarksheet','marksheets','generalmarksheet','combinedmarksheet','integratedmarksheet','blankmarksheet','attendancemarksheet','reports','treports','reportcard','tscores','ascores','assessinuse']);
+let _aAutoLastRun = 0;
 function aAutoStreamCheck(){
   if(_aAutoBusy || !CUR || CUR.role!=='admin' || !DB || !DB_LOADED.students || !Array.isArray(DB.classes) || !Array.isArray(DB.students) || !DB.info) return;
+  try{ if(window._skelPass || (typeof VIEW!=='undefined' && VIEW && AUTO_STREAM_SKIP_VIEWS.has(VIEW.name)) || _scoreAutoBusy) return; }catch(e){}
+  // Not on every redraw: at most once every 4 seconds (the check walks every A-Level student and subject).
+  if(Date.now()-_aAutoLastRun < 4000) return;
+  _aAutoLastRun = Date.now();
   let created = {made:0, finCopied:false};
   try{ created = aAutoCreateStreams(); }catch(e){ console.error(e); }
   let moved = 0;
@@ -8763,7 +8813,9 @@ let _rankCache = {scoresRef:null, key:'', map:null};
 function computeClassRankings(cls, term, year){
   const _sm = rankMode()==='stream';
   const key = (_sm ? 'S:'+cls.id : [...rankGroupIds(cls)].sort().join(','))+'|'+term+'|'+year+'|'+(subjectCountRanks()?1:0);
-  if(_rankCache.scoresRef===DB.scores && _rankCache.key===key) return _rankCache.map;
+  if(_rankCache.scoresRef!==DB.scores) _rankCache = {scoresRef:DB.scores, key:'', map:null, all:new Map()};
+  if(!_rankCache.all) _rankCache.all = new Map();
+  { const _hit = _rankCache.all.get(key); if(_hit) return _hit; }
   // Every level: every stream of the class is ranked together, so position and class size are the combined ones.
   const peers = _sm ? DB.students.filter(s=>s.status!=='left' && s.classId===cls.id) : rankRosterStudents(cls);
   const scored = peers.map(s=>({id:s.id, k:metricFor(s, aOwnClass(s, cls), term, year)})).sort((a,b)=>rankCmp(a.k,b.k));
@@ -8773,7 +8825,8 @@ function computeClassRankings(cls, term, year){
     if(i===0 || !rankTie(scored[i].k, scored[i-1].k)) position = i+1;
     map.set(scored[i].id, {position, size:peers.length});
   }
-  _rankCache = {scoresRef:DB.scores, key, map};
+  if(_rankCache.all.size>12) _rankCache.all.clear();
+  _rankCache.all.set(key, map); _rankCache.key = key; _rankCache.map = map;
   return map;
 }
 function classPosition(student, cls, term, year){
@@ -9137,6 +9190,7 @@ function render(){
   try{ stuRestoreAnchor(); }catch(e){}
   try{ maybeShowFirstLoginPwSticker(); }catch(e){}
   try{ scoresAutoLoad(); }catch(e){ console.error(e); }   // read only the class(es) this screen shows, if not already in memory
+  try{ cteCenterAll(); }catch(e){}
   try{ prefetchSelectedScores(); }catch(e){}   // a class picked but the sheet not opened yet: start reading its marks now
 }
 
@@ -16752,9 +16806,9 @@ function setAnalysisParam(key, value, _go){
     if(sel && !sel.dataset.raBusy){
       sel.dataset.raBusy = '1';                       // the chosen class/level simply stays shown in the box
       document.querySelectorAll('.center-stage select, .center-stage button').forEach(x=>{ if(x!==sel) x.disabled = true; });
-      const msg = document.createElement('div'); msg.className = 'ra-loading'; msg.setAttribute('role','status');
+      const msg = document.createElement('div'); msg.className = 'ra-loading cte-center'; msg.setAttribute('role','status');
       msg.innerHTML = 'LOADING FORM<span class="ra-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
-      sel.insertAdjacentElement('afterend', msg);
+      sel.insertAdjacentElement('afterend', msg); cteCenterAll();
       const vw = VIEW;
       // let the browser paint the message first, then do the heavy work
       requestAnimationFrame(()=>setTimeout(()=>{ if(VIEW===vw) setAnalysisParam(key, value, true); }, 80));
@@ -17646,15 +17700,15 @@ function skeletonThenRender(){
   const vw = VIEW, tok = NAV_TOKEN;
   window._skelPass = true;
   try{ render(); } finally { window._skelPass = false; }
-  setTimeout(()=>{ if(VIEW===vw && NAV_TOKEN===tok){ try{ render(); }catch(e){ console.error(e); } } }, 60);
+  setTimeout(()=>{ if(VIEW===vw && NAV_TOKEN===tok){ try{ render(); }catch(e){ console.error(e); scoreLoadProblem('This page could not be built: '+(e&&e.message?e.message:e)+'. Tap Retry.'); } } }, 60);
 }
 // Big, clear "Loading..." box with moving dots, shown while a General Marksheet / Rank List is being built.
 let _mmLoadT0 = 0;
 function mmShowLoading(){
   if(document.getElementById('mmLoadingOverlay')) return;
   const d = document.createElement('div'); d.id = 'mmLoadingOverlay'; d.setAttribute('role','status'); d.setAttribute('aria-live','polite');
-  d.innerHTML = '<div class="mm-load-box">Loading<span class="mm-dot">.</span><span class="mm-dot">.</span><span class="mm-dot">.</span></div>';
-  document.body.appendChild(d); _mmLoadT0 = Date.now();
+  d.innerHTML = '<div class="mm-load-box cte-center">Loading<span class="mm-dot">.</span><span class="mm-dot">.</span><span class="mm-dot">.</span></div>';
+  document.body.appendChild(d); _mmLoadT0 = Date.now(); cteCenterAll();
 }
 function mmHideLoading(){
   const d = document.getElementById('mmLoadingOverlay'); if(!d) return;
