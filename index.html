@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-23-1400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-23-1300'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -7318,6 +7318,42 @@ document.addEventListener('click', ()=>{ sessionPoll(300000); }, true);
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) sessionPoll(120000); });
 window.addEventListener('online', ()=>{ try{ if(sessionWatched()) ensureSessionValid(true); }catch(e){} });
 setInterval(()=>{ if(!document.hidden) sessionPoll(300000); }, 15000);
+// FOUNDER CHANGES REACH ACTIVE USERS WITHIN ~30 SECONDS: every 30 s (and the moment a hidden tab comes back) a signed-in school
+// user re-reads the school registry — one small document. If the Founder has disconnected (or deleted) the school, the user is
+// signed out on the spot with the disconnection message; if the Founder switched report printing/downloading on or off, the
+// screen updates without a reload. Founders working inside a school are never signed out by this, only kept in step.
+let _regWatchBusy = false;
+async function registryWatchTick(){
+  try{
+    if(_regWatchBusy || !CUR || CUR.role==='founder' && !FOUNDER_IMPERSONATING_SCHOOL) return;
+    const sid = SCHOOL_ID || FOUNDER_IMPERSONATING_SCHOOL; if(!sid) return;
+    if(navigator.onLine===false) return;
+    _regWatchBusy = true;
+    const fresh = await quietGetShared('schools_registry');
+    if(!Array.isArray(fresh)) return;                       // unreadable / offline: never act on a guess
+    if((SCHOOL_ID || FOUNDER_IMPERSONATING_SCHOOL)!==sid || !CUR) return;
+    const reg = fresh.find(r=>r.id===sid);
+    const old = REGISTRY.find(r=>r.id===sid);
+    const wasBlocked = !!(old && old.noReportOutput);
+    const founderInside = CUR.role==='founder' || !!FOUNDER_IMPERSONATING_SCHOOL;
+    if(!founderInside){ REGISTRY = fresh; }                 // school users never write the registry, so adopting the fresh copy is safe
+    if(!founderInside && (!reg || reg.status==='closed')){
+      const msg = reg ? disconnectMessage(reg.closedReason) : disconnectMessage('generic');
+      try{ const o = document.getElementById('firstPwSticker'); if(o) o.remove(); }catch(e){}
+      CUR=null; SCHOOL_ID=null; SESSION_FP=null; FINANCE_UNLOCKED=false; try{ finSubReset(); }catch(e){} FINANCE_RESET_SKIPPED=false; FINANCE_ONLY=false;
+      await setPersonal('session', null);
+      try{ syncSessionWatch(); }catch(e){}
+      render();
+      showDisconnectSticker(msg, 'SCHOOL DISCONNECTED');
+      return;
+    }
+    if(founderInside && reg && old){ old.noReportOutput = reg.noReportOutput; if(!reg.noReportOutput) delete old.noReportOutput; }
+    if(!!(reg && reg.noReportOutput)!==wasBlocked && CUR){ render(); }
+  }catch(e){ console.error(e); }
+  finally{ _regWatchBusy = false; }
+}
+setInterval(()=>{ if(!document.hidden) registryWatchTick(); }, 30000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) registryWatchTick(); });
 function isDisconnectLikeMsg(m){ return !!m && (m.includes('incorrect password many times') || m.includes('DEMO period for your school') || m.includes('need to clear with CT-E') || m.includes('violated our agreed rules') || m.includes('under maintenance') || m.includes('currently disconnected')); }
 // Founder ticks the reason (instead of typing a number). Resolves to a reason key, or null if cancelled.
 function pickDisconnectReason(){
@@ -9408,15 +9444,16 @@ function renderFounderView(view){
   }
   if(view==='fschools'){
     return `<h2>All Schools</h2>
-    <div class="note">Closing a school here disconnects it immediately — the school does not need to agree, and its own owner code cannot override you. <b>Enter School</b> lets the Founder open an active school's normal Admin interface directly using the Founder Code, without needing the school's Admin username or password. "View logins" shows the school's account details for support and recovery.</div>
+    <div class="note"><b>Block report print/download</b> switches off printing and downloading of report cards for that school only (cards can still be viewed on screen). Closing a school here disconnects it immediately — the school does not need to agree, and its own owner code cannot override you. <b>Enter School</b> lets the Founder open an active school's normal Admin interface directly using the Founder Code, without needing the school's Admin username or password. "View logins" shows the school's account details for support and recovery.</div>
     <div class="card" style="margin-top:14px;"><table class="data-table"><tr><th>School</th><th>Owner</th><th>Status</th><th>Action</th></tr>
     ${others.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.ownerUsername)}</td>
-      <td>${r.status==='closed'?'<span style="color:var(--danger);font-weight:700;">disconnected</span><div class="small" style="margin:2px 0 0;">'+esc(disconnectLabel(r.closedReason))+'</div>':'<span style="color:var(--good);font-weight:700;">active</span>'}${founderIsLocked(r.id)?'<div class="small" style="margin:2px 0 0;color:var(--danger);font-weight:700;">locked — wrong password</div>':''}</td>
+      <td>${r.status==='closed'?'<span style="color:var(--danger);font-weight:700;">disconnected</span><div class="small" style="margin:2px 0 0;">'+esc(disconnectLabel(r.closedReason))+'</div>':'<span style="color:var(--good);font-weight:700;">active</span>'}${founderIsLocked(r.id)?'<div class="small" style="margin:2px 0 0;color:var(--danger);font-weight:700;">locked — wrong password</div>':''}${r.noReportOutput?'<div class="small" style="margin:2px 0 0;color:var(--danger);font-weight:700;">report print/download off</div>':''}</td>
       <td class="flex">
         <button class="btn" data-action="foundEnterSchool:${r.id}">Enter School</button>
         ${founderIsLocked(r.id)?`<button class="btn" data-action="foundUnlockSchool:${r.id}" style="background:var(--danger);">Unlock</button>`:''}
         <button class="btn-outline" data-action="foundViewLogins:${r.id}">View logins</button>
         <button class="btn-outline" data-action="foundBackupSchool:${r.id}">Download backup</button>
+        <button class="btn-outline" data-action="foundToggleReportOutput:${r.id}">${r.noReportOutput?'Allow report print/download':'Block report print/download'}</button>
         ${r.status==='closed'
           ? `<button class="btn-outline" data-action="foundReopen:${r.id}">Reconnect</button>`
           : `<button class="btn-danger" data-action="foundClose:${r.id}">Disconnect</button>`}
@@ -9766,6 +9803,10 @@ function renderParentSignupSlot(){
 // its own full wording, since schoolGrade() is read per-school from DB.info.
 // Admin decides whether teachers can open report cards at all (default: allowed, as before).
 function teachersMayViewReports(){ return !(DB.info && DB.info.teachersCanViewReports===false); }
+// Founder-only switch (Founder Panel > All Schools): when ON for a school, report cards can still be opened and
+// read on screen, but printing and downloading them is switched off for that school. Stored on the school's registry entry.
+function reportOutputBlocked(){ const id = SCHOOL_ID || FOUNDER_IMPERSONATING_SCHOOL; const r = id ? REGISTRY.find(x=>x.id===id) : null; return !!(r && r.noReportOutput); }
+function reportOutputBlockedAlert(){ alert('Printing and downloading report cards has been switched off for this school by the Founder.'); }
 function navByRole(role){
   if(FINANCE_ONLY && role==='admin') return [['finance','ACCOUNT SECTION','💰'],['admingate','Admin Dashboard','🏠']]; // Finance-slot sign-in: nothing else is offered
   if(role==='parent' && CUR && !parentMayViewReports(CUR)){
@@ -15152,6 +15193,8 @@ function promoteView(){
 function reportsListView(){
   const isTeacher = CUR.role==='teacher';
   const isAdmin = CUR.role==='admin';
+  const rcBlocked = reportOutputBlocked();
+  const rcOut = isAdmin && !rcBlocked;   // may print / download report cards
   const myAssignments = isTeacher ? DB.assignments.filter(a=>a.teacherUsername===CUR.username) : DB.assignments;
   const classIds = [...new Set(myAssignments.map(a=>a.classId))];
   const visibleClasses = isTeacher ? DB.classes.filter(c=>classIds.includes(c.id)) : DB.classes;
@@ -15171,10 +15214,10 @@ function reportsListView(){
   const rcCollapsed = rcIds.length>0;
   const rcNames = rcIds.map(id=>(visibleClasses.find(c=>c.id===id)||{}).name||'').filter(Boolean).join(', ');
   const rcIdsArg = rcIds.map(encodeURIComponent).join(',');
-  const _selN = (isAdmin && rcCollapsed) ? rcListedStudents(rcIds).filter(s=>SELECTED_REPORTS.has(s.id)).length : 0;
+  const _selN = (rcOut && rcCollapsed) ? rcListedStudents(rcIds).filter(s=>SELECTED_REPORTS.has(s.id)).length : 0;
   // ONE row holding all five buttons: Back, Download all, Print selected, Download selected, Clear selection.
-  const rcActionBar = (withBack, n) => `<div class="rc-actionbar">${withBack?`<button type="button" class="btn-outline rc-btn-back" onclick="rcBack()">◀ Back</button>`:''}${isAdmin?`${withBack?`<button type="button" class="btn-gold rc-btn-all" data-action="bulkPdf:${rcIdsArg}"><b>Download all as PDF</b></button>`:''}<button type="button" class="btn-outline rc-sel-print" ${n? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button><button type="button" class="btn-outline rc-sel-dl" ${n? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button><button type="button" class="btn-outline rc-sel-clear" style="${n?'':'display:none;'}" onclick="clearReportSelection()">Clear selection</button>`:''}</div>`;
-  const rcTopBar = `<div class="rc-topbar-names"><b>${esc(rcNames)}</b>${isAdmin?`<span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${_selN} selected</span>`:''}</div>${rcActionBar(true, _selN)}`;
+  const rcActionBar = (withBack, n) => `<div class="rc-actionbar">${withBack?`<button type="button" class="btn-outline rc-btn-back" onclick="rcBack()">◀ Back</button>`:''}${rcOut?`${withBack?`<button type="button" class="btn-gold rc-btn-all" data-action="bulkPdf:${rcIdsArg}"><b>Download all as PDF</b></button>`:''}<button type="button" class="btn-outline rc-sel-print" ${n? '' : 'disabled'} onclick="printSelectedReports()">Print selected</button><button type="button" class="btn-outline rc-sel-dl" ${n? '' : 'disabled'} onclick="runDownloadSelectedReportsPdf(this)">Download selected as PDF</button><button type="button" class="btn-outline rc-sel-clear" style="${n?'':'display:none;'}" onclick="clearReportSelection()">Clear selection</button>`:''}</div>`;
+  const rcTopBar = `<div class="rc-topbar-names"><b>${esc(rcNames)}</b>${rcOut?`<span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${_selN} selected</span>`:''}</div>${rcActionBar(true, _selN)}`;
   const pickedNow = visibleClasses.filter(c=>RC_PICK.has(c.id)).length;
   const stuCount = id => DB.students.filter(s=>s.status!=='left' && s.classId===id).length;
   return `
@@ -15187,7 +15230,7 @@ function reportsListView(){
       <input id="rcSearch" type="search" autocomplete="off" placeholder="Type a name — e.g. Mary" value="${esc(RC_QUERY)}" oninput="rcSearchInput(this.value)" style="flex:1;min-width:0;">
       ${RC_QUERY ? `<button type="button" class="btn-outline" onclick="rcSearchClear()" style="white-space:nowrap;">Clear</button>` : ''}
     </div>
-    ${isAdmin ? '' : `<p class="small" style="margin-top:12px;">Printing and downloading report cards is available to Admin only.</p>`}
+    ${rcOut ? '' : `<p class="small" style="margin-top:12px;">${rcBlocked ? 'Printing and downloading report cards has been switched off for this school by the Founder.' : 'Printing and downloading report cards is available to Admin only.'}</p>`}
   </div>
   ${togglesCard}
   ${isAdmin ? rcShadeCard() : ''}`}
@@ -15196,34 +15239,19 @@ function reportsListView(){
       const listStudents = rcListedStudents(rcIds);
       const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
-      // Pages: a long class is shown a page at a time so every row stays big and readable (page size is the person's choice).
-      const _sig = rcIds.join(',')+'|'+RC_QUERY.trim();
-      if(RC_PAGE_SIG!==_sig){ RC_PAGE_SIG=_sig; RC_PAGE=0; }
-      const _total = listStudents.length, _size = RC_PAGE_SIZE>0 ? RC_PAGE_SIZE : (_total||1);
-      const _pages = Math.max(1, Math.ceil(_total/_size));
-      if(RC_PAGE>=_pages) RC_PAGE=_pages-1; if(RC_PAGE<0) RC_PAGE=0;
-      const _off = RC_PAGE*_size, pageStudents = listStudents.slice(_off, _off+_size);
-      const pagerHTML = _total<=15 ? '' : `<div class="rc-pager"><span>${_off+1}–${Math.min(_off+_size,_total)} of ${_total}</span>
-        <span class="rc-pager-btns"><button type="button" class="btn-outline" ${RC_PAGE<=0?'disabled':''} onclick="rcGoPage(${RC_PAGE-1})">◀ Prev</button><b>Page ${RC_PAGE+1} / ${_pages}</b><button type="button" class="btn-outline" ${RC_PAGE>=_pages-1?'disabled':''} onclick="rcGoPage(${RC_PAGE+1})">Next ▶</button></span>
-        <label>Per page <select onchange="rcSetPageSize(this.value)">${[15,25,40,0].map(n=>`<option value="${n}" ${RC_PAGE_SIZE===n?'selected':''}>${n||'All'}</option>`).join('')}</select></label></div>`;
       return `
-    ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the "Download all" button above still exports every ticked class in full.</p>
+    ${rcOut ? `<p class="small">Tick individual students to print or download just those report cards — the "Download all" button above still exports every ticked class in full.</p>
     ${rcCollapsed ? '' : `<div style="margin:0 0 6px;"><span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span></div>${rcActionBar(false, selectedCount)}`}` : ''}
-    ${pagerHTML}
-    <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" class="rc-all-cb" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
-    ${pageStudents.map((s,i)=>{
+    <table class="data-table rc-list"><tr><th>No.</th>${rcOut?`<th><input type="checkbox" class="rc-all-cb" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
+    ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${_off+i+1}</td>${isAdmin?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
-      <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?`<button class="btn-outline" data-action="printReport:${s.id}">Print</button><button class="btn-outline rc-pdf-btn" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
-    }).join('') || `<tr><td colspan="${isAdmin?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
-    </table>
-    ${pagerHTML}`;
+      return `<tr><td>${i+1}</td>${rcOut?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
+      <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${rcOut?`<button class="btn-outline" data-action="printReport:${s.id}">Print</button><button class="btn-outline rc-pdf-btn" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
+    }).join('') || `<tr><td colspan="${rcOut?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
+    </table>`;
     })()}
   </div>`;
 }
-let RC_PAGE = 0, RC_PAGE_SIZE = 25, RC_PAGE_SIG = '';
-function rcGoPage(n){ RC_PAGE = Math.max(0, n|0); render(); try{ const e=document.querySelector('.rc-pager'); if(e) e.scrollIntoView({block:'start'}); }catch(err){} }
-function rcSetPageSize(v){ RC_PAGE_SIZE = Number(v)||0; RC_PAGE = 0; render(); }
 // ---- Class picker (tick several classes, then OK) ----
 // RC_PICK holds the ticks BEFORE OK is pressed; VIEW.params.classIds holds the classes actually loaded.
 const RC_PICK = new Set();
@@ -15380,9 +15408,8 @@ const SELECTED_REPORTS = new Set();
 // Ticking only updates the tick, the counter and the buttons in place — it no longer re-draws the
 // whole report-card list (which made every tick slow on big classes).
 function rcSelRefresh(){
-  const ids = rcListedStudents(rcAppliedIds()).map(s=>s.id);
-  let n = 0; ids.forEach(id=>{ if(SELECTED_REPORTS.has(id)) n++; });
-  const rows = {length: ids.length};
+  const rows = document.querySelectorAll('input.rc-row-cb');
+  let n = 0; rows.forEach(cb=>{ if(cb.checked) n++; });
   const ct = document.querySelector('.rc-sel-count'); if(ct) ct.textContent = n+' selected';
   document.querySelectorAll('.rc-sel-print,.rc-sel-dl').forEach(b=>{ b.disabled = !n; });
   const clr = document.querySelector('.rc-sel-clear'); if(clr) clr.style.display = n ? '' : 'none';
@@ -15394,8 +15421,11 @@ function toggleReportSelect(studentId){
   rcSelRefresh();
 }
 function toggleReportSelectAll(classId, checked){
-  rcListedStudents(rcAppliedIds()).forEach(s=>{ if(checked) SELECTED_REPORTS.add(s.id); else SELECTED_REPORTS.delete(s.id); });   // every page, not only the one on screen
-  document.querySelectorAll('input.rc-row-cb').forEach(cb=>{ cb.checked = SELECTED_REPORTS.has(cb.getAttribute('data-id')); });
+  document.querySelectorAll('input.rc-row-cb').forEach(cb=>{
+    cb.checked = checked;
+    const id = cb.getAttribute('data-id');
+    if(checked) SELECTED_REPORTS.add(id); else SELECTED_REPORTS.delete(id);
+  });
   rcSelRefresh();
 }
 function clearReportSelection(){
@@ -15405,6 +15435,7 @@ function clearReportSelection(){
 }
 async function downloadSelectedReportsPdf(onProgress){
   if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); return; }
+  if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
   // ONLY the students ticked in the list on screen (ticks left over from another class/search are ignored).
   const tickedOnScreen = new Set([...document.querySelectorAll('input.rc-row-cb:checked')].map(cb=>cb.getAttribute('data-id')));
   const students = rcByClassOrder(sortByName(DB.students.filter(s=>SELECTED_REPORTS.has(s.id) && tickedOnScreen.has(s.id) && s.status!=='left')));
@@ -15429,6 +15460,7 @@ function rcClearAfterOpen(){
 // pipeline as the bulk export above, so a downloaded single card and a bulk one
 // look identical.
 async function downloadReportCardPdf(studentId, term, year){
+  if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
   setAppBusy(true);
   try{
     try{ await loadJsPdfOnly(); }catch(e){ alert(e.message); return; }
@@ -15455,6 +15487,7 @@ async function downloadReportCardPdf(studentId, term, year){
 // id the single report-card page uses to isolate what the browser Print dialog
 // shows) out of the ticked students only, prints it, then removes it again.
 async function printSelectedReports(){
+  if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
   await withPdfPrint(()=>downloadSelectedReportsPdf());
 }
 
@@ -18797,7 +18830,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
   return `
   ${periodPicker}
-  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${CUR.role==='admin'?`<button class="btn" onclick="printReportClean('${s.id}', decodeURIComponent('${encodeURIComponent(term)}'), '${year}')"><b>Print this report card</b></button>
+  ${embedded? '' : `<div class="flex" style="margin-bottom:10px;">${(CUR.role==='admin' && !reportOutputBlocked())?`<button class="btn" onclick="printReportClean('${s.id}', decodeURIComponent('${encodeURIComponent(term)}'), '${year}')"><b>Print this report card</b></button>
   <button class="btn-outline" data-action="dlReportCardPdf:${s.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>`:''}
   <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`}
   ${editNote}
@@ -20244,6 +20277,7 @@ document.addEventListener('click', async (e)=>{
     }
     case 'printReport': {
       if(CUR.role!=='admin'){ alert('Only an Admin can print report cards.'); break; }
+      if(reportOutputBlocked()){ reportOutputBlockedAlert(); break; }
       if((DB.students.find(x=>x.id===arg)||{}).status==='left'){ alert('This student is in Old Students and is not included among current report cards.'); break; }
       VIEW = {name:'reportcard', params:{studentId:arg}};
       render();
@@ -20253,6 +20287,7 @@ document.addEventListener('click', async (e)=>{
     }
     case 'singlePdf': {
       if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); break; }
+      if(reportOutputBlocked()){ reportOutputBlockedAlert(); break; }
       // Instant visual feedback on the tap itself (and a guard against a second tap
       // firing a second, overlapping render while the first PDF is still being built).
       if(el.disabled) break;
@@ -20700,6 +20735,7 @@ Continue?`);
     }
     case 'bulkPdf': {
       if(CUR.role!=='admin'){ alert('Only an Admin can download report cards.'); break; }
+      if(reportOutputBlocked()){ reportOutputBlockedAlert(); break; }
       // Same one-tap guard as singlePdf, above — matters even more here since a
       // full-class bulk export can take real time (one render pass per
       // student), during which an impatient second tap would otherwise kick off a
@@ -21387,6 +21423,7 @@ Continue?`);
       break;
     }
     case 'dlReportCardPdf': {
+      if(reportOutputBlocked()){ reportOutputBlockedAlert(); break; }
       const [studentId, termEnc, year] = (arg||'').split(':');
       const term = termEnc?decodeURIComponent(termEnc):undefined;
       await downloadReportCardPdf(studentId, term, year);
@@ -21474,6 +21511,13 @@ Continue?`);
     case 'foundReopen': { const code=prompt('Enter your founder code to reconnect this school:'); if(code===null) break;
       if(!founderCodeCheck(code)) break;
       const r = REGISTRY.find(x=>x.id===arg); if(r){ r.status='active'; delete r.closedReason; delete r.closedAt; await saveRegistry(); render(); } break; }
+    case 'foundToggleReportOutput': {
+      const r = REGISTRY.find(x=>x.id===arg); if(!r) break;
+      const nowBlocked = !r.noReportOutput;
+      const code=prompt('Enter your founder code to '+(nowBlocked?'BLOCK':'allow')+' printing and downloading of report cards for '+r.name+':'); if(code===null) break;
+      if(!founderCodeCheck(code)) break;
+      if(nowBlocked) r.noReportOutput=true; else delete r.noReportOutput;
+      await saveRegistry(); render(); break; }
     case 'foundViewLogins': { const code=prompt('Enter your founder code to view this school\'s login details:'); if(code===null) break;
       if(!founderCodeCheck(code)) break;
       await openFounderLogins(arg); break; }
@@ -24437,6 +24481,7 @@ async function runMasterMarkSheetPdf(arg, el, forPrint){
   }
 }
 async function printReportClean(studentId, term, year){
+  if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
   const p = (typeof VIEW!=='undefined' && VIEW && VIEW.params) || {};
   const id = studentId || p.studentId;
   if(!id){ alert('Open a report card first.'); return; }
@@ -24455,11 +24500,26 @@ document.addEventListener('keydown', function(e){
   try{
     if(!((e.ctrlKey||e.metaKey) && (e.key==='p'||e.key==='P'))) return;
     if(!VIEW || VIEW.name!=='reportcard' || !VIEW.params || !VIEW.params.studentId) return;
-    if(!CUR || CUR.role!=='admin' || !document.querySelector('#printArea .rc-card')) return;
+    if(!CUR || !document.querySelector('#printArea .rc-card')) return;
+    if(reportOutputBlocked()){ e.preventDefault(); e.stopPropagation(); reportOutputBlockedAlert(); return; }
+    if(CUR.role!=='admin') return;
     e.preventDefault(); e.stopPropagation();
     printReportClean(VIEW.params.studentId);
   }catch(err){}
 }, true);
+// Report cards switched off for printing by the Founder: the browser's own Print (menu) prints a blank page instead of the card.
+(function(){
+  let st=null;
+  window.addEventListener('beforeprint', function(){
+    try{
+      if(!reportOutputBlocked() || !document.querySelector('#printArea .rc-card')) return;
+      st=document.createElement('style'); st.id='rcOutputBlockedPrint';
+      st.textContent='@media print{ .rc-card{display:none !important;} }';
+      document.head.appendChild(st);
+    }catch(e){}
+  });
+  window.addEventListener('afterprint', function(){ try{ if(st){ st.remove(); st=null; } }catch(e){} });
+})();
 // A browser menu Print cannot be redirected, so the on-screen card is at least printed cleanly: no address/title
 // header or footer (zero page margin), nothing but the card, and scaled so one report card = ONE A4 page.
 (function(){
@@ -25474,6 +25534,7 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
 
 /* ---------- Bulk PDF ---------- */
 async function pdfForStudents(students, filename, opts={}){
+  if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
   if(!students.length){ alert('No students to export.'); return; }
   setAppBusy(true); // guards this (potentially long, 100+ student) export against an auto-update reload
   try{
@@ -26412,11 +26473,10 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
         t.classList.toggle('sp-fill', fillIt);
       }
       if(sp) t.classList.add('sp-hug'); else t.style.width='auto';   // Student Performance: columns hug their contents (class sp-hug), measured at their natural width
-      var lo=5, hi=sp?18:(fillIt?30:44), best=5;   // Student Performance font never goes above 18px
+      var lo=5, hi=sp?18:(fillIt?30:22), best=5;   // Student Performance font never goes above 18px
       for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
       t.style.setProperty('--tf',best);
       if(!sp) t.style.width='100%';
-      box.querySelectorAll('.rc-pager').forEach(function(pg){ pg.style.setProperty('--tf',best); });
       // Student Performance form: fill the page down to the bottom edge (no blank space under it) by sharing
       // the spare height between the rows; a long class that is taller than the screen just scrolls as usual.
       if(fillIt && !document.body.classList.contains('print-thin') && !t.closest('.pdf-thin')){
@@ -26614,11 +26674,6 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 
 /* Report cards list: the Action cell hugs its buttons and the PDF button has no spare space inside it */
 table.rc-list td:last-child,table.rc-list th:last-child{width:1%;white-space:nowrap !important;}
-.rc-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:calc(var(--tf,12)*.5px);font-size:calc(var(--tf,12)*1px);font-weight:700;margin:calc(var(--tf,12)*.3px) calc(var(--tf,12)*.4px);}
-.rc-pager .rc-pager-btns{display:inline-flex;align-items:center;gap:calc(var(--tf,12)*.6px);}
-.rc-pager button{width:auto !important;min-height:0 !important;font-size:inherit !important;padding:calc(var(--tf,12)*.25px) calc(var(--tf,12)*.8px) !important;margin:0 !important;}
-.rc-pager label{font-size:inherit !important;text-transform:none !important;letter-spacing:0 !important;margin:0 !important;font-weight:700 !important;display:inline-flex;align-items:center;gap:calc(var(--tf,12)*.4px);}
-.rc-pager select{font-size:inherit !important;width:auto !important;min-height:0 !important;font-size:inherit !important;padding:calc(var(--tf,12)*.15px) calc(var(--tf,12)*.4px) !important;}
 table.rc-list td:last-child .btn-outline.rc-pdf-btn{padding:0 !important;margin:0 !important;min-width:0 !important;width:auto !important;line-height:1.1 !important;border-width:1px !important;letter-spacing:0;}
 /* Every typing box (text, password, number, date, email, search, textarea, dropdown) has a thick boundary */
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=button]):not([type=submit]):not([type=hidden]),
