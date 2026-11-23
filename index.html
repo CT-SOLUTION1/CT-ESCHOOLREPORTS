@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-23-1300'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-23-1400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -15196,19 +15196,34 @@ function reportsListView(){
       const listStudents = rcListedStudents(rcIds);
       const selectedCount = listStudents.filter(s=>SELECTED_REPORTS.has(s.id)).length;
       const allVisibleSelected = listStudents.length>0 && listStudents.every(s=>SELECTED_REPORTS.has(s.id));
+      // Pages: a long class is shown a page at a time so every row stays big and readable (page size is the person's choice).
+      const _sig = rcIds.join(',')+'|'+RC_QUERY.trim();
+      if(RC_PAGE_SIG!==_sig){ RC_PAGE_SIG=_sig; RC_PAGE=0; }
+      const _total = listStudents.length, _size = RC_PAGE_SIZE>0 ? RC_PAGE_SIZE : (_total||1);
+      const _pages = Math.max(1, Math.ceil(_total/_size));
+      if(RC_PAGE>=_pages) RC_PAGE=_pages-1; if(RC_PAGE<0) RC_PAGE=0;
+      const _off = RC_PAGE*_size, pageStudents = listStudents.slice(_off, _off+_size);
+      const pagerHTML = _total<=15 ? '' : `<div class="rc-pager"><span>${_off+1}–${Math.min(_off+_size,_total)} of ${_total}</span>
+        <span class="rc-pager-btns"><button type="button" class="btn-outline" ${RC_PAGE<=0?'disabled':''} onclick="rcGoPage(${RC_PAGE-1})">◀ Prev</button><b>Page ${RC_PAGE+1} / ${_pages}</b><button type="button" class="btn-outline" ${RC_PAGE>=_pages-1?'disabled':''} onclick="rcGoPage(${RC_PAGE+1})">Next ▶</button></span>
+        <label>Per page <select onchange="rcSetPageSize(this.value)">${[15,25,40,0].map(n=>`<option value="${n}" ${RC_PAGE_SIZE===n?'selected':''}>${n||'All'}</option>`).join('')}</select></label></div>`;
       return `
     ${isAdmin ? `<p class="small">Tick individual students to print or download just those report cards — the "Download all" button above still exports every ticked class in full.</p>
     ${rcCollapsed ? '' : `<div style="margin:0 0 6px;"><span class="small rc-sel-count" style="margin:0;text-transform:none;font-weight:700;">${selectedCount} selected</span></div>${rcActionBar(false, selectedCount)}`}` : ''}
+    ${pagerHTML}
     <table class="data-table rc-list"><tr><th>No.</th>${isAdmin?`<th><input type="checkbox" class="rc-all-cb" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
-    ${listStudents.map((s,i)=>{
+    ${pageStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${i+1}</td>${isAdmin?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
+      return `<tr><td>${_off+i+1}</td>${isAdmin?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${isAdmin?`<button class="btn-outline" data-action="printReport:${s.id}">Print</button><button class="btn-outline rc-pdf-btn" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${isAdmin?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
-    </table>`;
+    </table>
+    ${pagerHTML}`;
     })()}
   </div>`;
 }
+let RC_PAGE = 0, RC_PAGE_SIZE = 25, RC_PAGE_SIG = '';
+function rcGoPage(n){ RC_PAGE = Math.max(0, n|0); render(); try{ const e=document.querySelector('.rc-pager'); if(e) e.scrollIntoView({block:'start'}); }catch(err){} }
+function rcSetPageSize(v){ RC_PAGE_SIZE = Number(v)||0; RC_PAGE = 0; render(); }
 // ---- Class picker (tick several classes, then OK) ----
 // RC_PICK holds the ticks BEFORE OK is pressed; VIEW.params.classIds holds the classes actually loaded.
 const RC_PICK = new Set();
@@ -15365,8 +15380,9 @@ const SELECTED_REPORTS = new Set();
 // Ticking only updates the tick, the counter and the buttons in place — it no longer re-draws the
 // whole report-card list (which made every tick slow on big classes).
 function rcSelRefresh(){
-  const rows = document.querySelectorAll('input.rc-row-cb');
-  let n = 0; rows.forEach(cb=>{ if(cb.checked) n++; });
+  const ids = rcListedStudents(rcAppliedIds()).map(s=>s.id);
+  let n = 0; ids.forEach(id=>{ if(SELECTED_REPORTS.has(id)) n++; });
+  const rows = {length: ids.length};
   const ct = document.querySelector('.rc-sel-count'); if(ct) ct.textContent = n+' selected';
   document.querySelectorAll('.rc-sel-print,.rc-sel-dl').forEach(b=>{ b.disabled = !n; });
   const clr = document.querySelector('.rc-sel-clear'); if(clr) clr.style.display = n ? '' : 'none';
@@ -15378,11 +15394,8 @@ function toggleReportSelect(studentId){
   rcSelRefresh();
 }
 function toggleReportSelectAll(classId, checked){
-  document.querySelectorAll('input.rc-row-cb').forEach(cb=>{
-    cb.checked = checked;
-    const id = cb.getAttribute('data-id');
-    if(checked) SELECTED_REPORTS.add(id); else SELECTED_REPORTS.delete(id);
-  });
+  rcListedStudents(rcAppliedIds()).forEach(s=>{ if(checked) SELECTED_REPORTS.add(s.id); else SELECTED_REPORTS.delete(s.id); });   // every page, not only the one on screen
+  document.querySelectorAll('input.rc-row-cb').forEach(cb=>{ cb.checked = SELECTED_REPORTS.has(cb.getAttribute('data-id')); });
   rcSelRefresh();
 }
 function clearReportSelection(){
@@ -26399,10 +26412,11 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
         t.classList.toggle('sp-fill', fillIt);
       }
       if(sp) t.classList.add('sp-hug'); else t.style.width='auto';   // Student Performance: columns hug their contents (class sp-hug), measured at their natural width
-      var lo=5, hi=sp?18:(fillIt?30:22), best=5;   // Student Performance font never goes above 18px
+      var lo=5, hi=sp?18:(fillIt?30:44), best=5;   // Student Performance font never goes above 18px
       for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
       t.style.setProperty('--tf',best);
       if(!sp) t.style.width='100%';
+      box.querySelectorAll('.rc-pager').forEach(function(pg){ pg.style.setProperty('--tf',best); });
       // Student Performance form: fill the page down to the bottom edge (no blank space under it) by sharing
       // the spare height between the rows; a long class that is taller than the screen just scrolls as usual.
       if(fillIt && !document.body.classList.contains('print-thin') && !t.closest('.pdf-thin')){
@@ -26600,6 +26614,11 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 
 /* Report cards list: the Action cell hugs its buttons and the PDF button has no spare space inside it */
 table.rc-list td:last-child,table.rc-list th:last-child{width:1%;white-space:nowrap !important;}
+.rc-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:calc(var(--tf,12)*.5px);font-size:calc(var(--tf,12)*1px);font-weight:700;margin:calc(var(--tf,12)*.3px) calc(var(--tf,12)*.4px);}
+.rc-pager .rc-pager-btns{display:inline-flex;align-items:center;gap:calc(var(--tf,12)*.6px);}
+.rc-pager button{width:auto !important;min-height:0 !important;font-size:inherit !important;padding:calc(var(--tf,12)*.25px) calc(var(--tf,12)*.8px) !important;margin:0 !important;}
+.rc-pager label{font-size:inherit !important;text-transform:none !important;letter-spacing:0 !important;margin:0 !important;font-weight:700 !important;display:inline-flex;align-items:center;gap:calc(var(--tf,12)*.4px);}
+.rc-pager select{font-size:inherit !important;width:auto !important;min-height:0 !important;font-size:inherit !important;padding:calc(var(--tf,12)*.15px) calc(var(--tf,12)*.4px) !important;}
 table.rc-list td:last-child .btn-outline.rc-pdf-btn{padding:0 !important;margin:0 !important;min-width:0 !important;width:auto !important;line-height:1.1 !important;border-width:1px !important;letter-spacing:0;}
 /* Every typing box (text, password, number, date, email, search, textarea, dropdown) has a thick boundary */
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=button]):not([type=submit]):not([type=hidden]),
