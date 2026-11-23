@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-22-1400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-23-1300'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -866,7 +866,7 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    pointer-events:none so it never intercepts clicks/taps on the editable score cells
    above it. This is separate from — and does not change — the sharp, full-opacity logo
    already shown in the header block (.rc-title-block .rc-logo below). */
-.rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.035;z-index:0;pointer-events:none;user-select:none;}
+.rc-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;max-width:480px;opacity:.045;z-index:0;pointer-events:none;user-select:none;}
 .rc-content{position:relative;z-index:1;}
 .rc-topline{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-bottom:8px;font-family:monospace;letter-spacing:.02em;}
 .rc-topline .fees-code-tag{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:12.5px;font-weight:800;letter-spacing:.04em;color:var(--navy);position:relative;top:5px;} /* nudged down off the card border; relative offset so the logo/title below never moves */
@@ -5246,6 +5246,7 @@ async function loadAll(){
         } else {
           CUR = acc; SCHOOL_ID = sess.schoolId; FINANCE_ONLY = !!sess.financeOnly && acc.role==='admin';
           SESSION_FP = sess.cred || credFp(acc.username, acc.password); SESSION_CHECK_AT = 0;
+          await preloadCoreLists(acc.role);   // dashboard opens with every tile ready
         }
       }
     }
@@ -5314,6 +5315,16 @@ function viewDataNeeds(view){
     default: return ['students','assignments','bands'];
   }
 }
+// Reads the lists every tile opens (students, subject assignments, grading bands) in parallel, BEFORE the first screen is drawn,
+// so the dashboard appears with every tile ready and enrollment filled in. Waits at most a few seconds: on a bad connection the
+// dashboard still opens and the lists keep loading in the background (see prefetchListsSoon).
+async function preloadCoreLists(role, maxMs){
+  try{
+    if(!DB_SCHOOL || !role || role==='founder') return;
+    const need = role==='parent' ? ['students'] : ['assignments','students','bands'];
+    await Promise.race([ ensureData(need).catch(()=>false), new Promise(r=>setTimeout(r, maxMs||6000)) ]);
+  }catch(e){ console.error(e); }
+}
 let _gateFail = null;
 function dataGateFor(view){
   const miss = viewDataNeeds(view).filter(n=>!DB_LOADED[n]);
@@ -5366,8 +5377,12 @@ function prefetchListsSoon(){
   try{
     if(!CUR || CUR.role==='founder' || !DB_SCHOOL || navigator.onLine===false) return;
     const need = CUR.role==='parent' ? ['students'] : ['assignments','students','bands'];
-    const go = ()=>{ try{ if(CUR && DB_SCHOOL) ensureData(need).then(ok=>{ if(ok && CUR && CUR.role==='teacher') prefetchScoresFor('tscores', {}); }).catch(()=>{}); }catch(e){} };
-    if(window.requestIdleCallback) window.requestIdleCallback(go, {timeout:1200}); else setTimeout(go, 500);
+    const wasReady = need.every(n=>DB_LOADED[n]);
+    const go = ()=>{ try{ if(CUR && DB_SCHOOL) ensureData(need).then(ok=>{
+      if(ok && !wasReady && CUR && VIEW && VIEW.name==='dashboard' && !FORM_DIRTY) render();   // lists arrived late: fill the dashboard in
+      if(ok && CUR && CUR.role==='teacher') prefetchScoresFor('tscores', {});
+    }).catch(()=>{}); }catch(e){} };
+    go();
   }catch(e){}
 }
 async function loadSchoolData(id, earlyAssignments){
@@ -7434,7 +7449,9 @@ function playUISound(kind='open'){
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
-    const ctx = new AC(), osc = ctx.createOscillator(), gain = ctx.createGain();
+    const ctx = window.__cteAC || (window.__cteAC = new AC());
+    if(ctx.state==='suspended') ctx.resume().catch(()=>{});
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
     const vol = Math.max(0, Math.min(1, Number(VOICE_SETTINGS.volume)||1));
     osc.type='sine';
     osc.frequency.value = kind==='open' ? 660 : 440;
@@ -7442,9 +7459,12 @@ function playUISound(kind='open'){
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.06*vol), ctx.currentTime+0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.12);
     osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime+0.13);
-    setTimeout(()=>ctx.close().catch(()=>{}), 250);
+    osc.onended=()=>{ try{ osc.disconnect(); gain.disconnect(); }catch(e){} };
   }catch(e){}
 }
+// Create the shared audio context while idle, so the first tap does not pay for it.
+(function(){ const mk=()=>{ try{ const AC=window.AudioContext||window.webkitAudioContext; if(AC && !window.__cteAC) window.__cteAC=new AC(); }catch(e){} };
+  if(window.requestIdleCallback) requestIdleCallback(mk,{timeout:4000}); else setTimeout(mk,2500); })();
 function refreshSpeechVoices(){
   try{ if('speechSynthesis' in window) speechSynthesis.getVoices(); }catch(e){}
 }
@@ -16498,6 +16518,22 @@ function withAssessMode(mode, fn){
   RA_MODE = mode; clear();
   try{ return fn(); } finally { RA_MODE = prev; clear(); }
 }
+// Assessment types offered on Result Analysis / General Marksheets. A class (or stream) can have its OWN exam setup, so the options
+// are read from the picked class AND every stream of its group: a type that any of them uses stays valid, and picking a
+// stream / "All streams" no longer silently drops the assessment type already chosen.
+function assessTypesForSelection(cls, groupClasses){
+  const ids = []; if(cls && cls.id) ids.push(cls.id);
+  (groupClasses||[]).forEach(c=>{ if(c && c.id && !ids.includes(c.id)) ids.push(c.id); });
+  const cfgs = (ids.length ? ids : [undefined]).map(id=>examConfig(id));
+  const first = cfgs[0];
+  const cw = cfgs.find(c=>c.cwEnabled), eot = cfgs.find(c=>c.eotEnabled), both = cfgs.find(c=>c.cwEnabled && c.eotEnabled);
+  const out = [];
+  if(cw) out.push(['cw', cw.cwLabel]);
+  if(eot) out.push(['eot', eot.eotLabel]);
+  if(both) out.push(['integrated', both.cwLabel+' + '+both.eotLabel]);
+  if(!out.length) out.push(['integrated','Score']);
+  return out;
+}
 function classAnalysisView(){
   const a = VIEW && VIEW.params && VIEW.params.assess;
   FORCE_STREAM_GROUP = !!(VIEW && VIEW.params && VIEW.params.streamAll && VIEW.params.form!=='levelwise');   // "All streams": the whole class together
@@ -16538,12 +16574,7 @@ function classAnalysisViewCore(){
   const _byId = id => id && (visibleClasses.find(c=>c.id===id) || (_multi && DB.classes.find(c=>c.id===id))) || null;
   const _selCls = isLevelForm ? (selLevel ? visibleClasses.find(c=>c.level===selLevel) : null)
     : _byId(_effId);
-  const _acfg = examConfig(_selCls ? _selCls.id : undefined);   // the admin's own assessment names
-  const ASSESS_TYPES = [];
-  if(_acfg.cwEnabled) ASSESS_TYPES.push(['cw', _acfg.cwLabel]);
-  if(_acfg.eotEnabled) ASSESS_TYPES.push(['eot', _acfg.eotLabel]);
-  if(_acfg.cwEnabled && _acfg.eotEnabled) ASSESS_TYPES.push(['integrated', _acfg.cwLabel+' + '+_acfg.eotLabel]);
-  if(!ASSESS_TYPES.length) ASSESS_TYPES.push(['integrated','Score']);
+  const ASSESS_TYPES = assessTypesForSelection(_selCls, (_multi && _gsel) ? _gsel.streams : (_selCls && !isLevelForm ? streamGroupClasses(_selCls) : null));   // the admin's own assessment names (any stream's own setup counts)
   const assessKey = (formKey && ASSESS_TYPES.some(a=>a[0]===sel.assess)) ? sel.assess : '';
   const assessLabel = (ASSESS_TYPES.find(a=>a[0]===assessKey)||['',''])[1];
   const cls = !assessKey ? null : (isLevelForm
@@ -16980,12 +17011,7 @@ function masterMarkSheetViewCore(forExport){
   const selLevel = mmLevelsAvail.includes(sel.mmLevel) ? sel.mmLevel : '';
   const _selCls = isLevelForm ? (selLevel ? DB.classes.find(c=>c.level===selLevel) : null)
     : ((sel.mmClassId && visibleClasses.find(c=>c.id===(isAllStr(sel.mmClassId) ? sel.mmClassId.slice(ALLSTR.length) : sel.mmClassId))) || null);
-  const _acfg = examConfig(_selCls ? _selCls.id : undefined);
-  const ASSESS_TYPES = [];
-  if(_acfg.cwEnabled) ASSESS_TYPES.push(['cw', _acfg.cwLabel]);
-  if(_acfg.eotEnabled) ASSESS_TYPES.push(['eot', _acfg.eotLabel]);
-  if(_acfg.cwEnabled && _acfg.eotEnabled) ASSESS_TYPES.push(['integrated', _acfg.cwLabel+' + '+_acfg.eotLabel]);
-  if(!ASSESS_TYPES.length) ASSESS_TYPES.push(['integrated','Score']);
+  const ASSESS_TYPES = assessTypesForSelection(_selCls, (_selCls && !isLevelForm) ? streamGroupClasses(_selCls) : null);   // any stream's own setup counts
   const assessKey = (formKey && ASSESS_TYPES.some(a=>a[0]===sel.mmAssess)) ? sel.mmAssess : '';
   const cls = assessKey ? _selCls : null;
   const assessLabelMM = (ASSESS_TYPES.find(a=>a[0]===assessKey)||['',''])[1];
@@ -19218,7 +19244,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       const props = pdf.getImageProperties(data.school.logo);
       const wmW = cardW*0.55, wmH = wmW*(props.height/props.width);
       pdf.saveGraphicsState();
-      pdf.setGState(new pdf.GState({opacity:0.06}));
+      pdf.setGState(new pdf.GState({opacity:0.045}));
       pdf.addImage(data.school.logo, 'PNG', cardX+(cardW-wmW)/2, cardY+(cardH-wmH)/2, wmW, wmH, 'rcLogo');
       pdf.restoreGraphicsState();
     }catch(e){ /* unreadable/unsupported image — skip watermark, never block the PDF */ }
@@ -22782,7 +22808,8 @@ document.addEventListener('submit', async (e)=>{
         FINANCE_ONLY = !!finLogin;
         if(finLogin) VIEW = {name:'finance', params:{}};
         roleHintSet(foundSchoolId, u, role);
-        render();        // first screen goes up immediately; saving the session record and the background reads follow it
+        await preloadCoreLists(role);   // every tile is ready the moment the dashboard appears
+        render();
         prefetchListsSoon();
         try{ await setPersonal('session', {scope:'school', schoolId:foundSchoolId, username:u, financeOnly:!!finLogin}); }catch(e){ console.error(e); }
       }
@@ -26222,15 +26249,33 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
       var cap=(window.innerHeight||document.documentElement.clientHeight)-top-10;
       var cols=parseInt(getComputedStyle(g).getPropertyValue('--cols'))||(box.classList.contains('td-fit')?3:5);
       var rows=Math.ceil(g.children.length/cols), u=W/412, rg=parseFloat(getComputedStyle(box).rowGap)||0;
-      for(var i=0;i<45;i++){
-        box.style.setProperty('--uk',u.toFixed(3)+'px');
+      // Same result as shrinking by 5% per step until the tiles fit (or can be made slightly wider than tall), but found by
+      // halving the search range: step i uses size u*0.95^i, and once a step fits, every later (smaller) step fits too.
+      var _us=[u]; for(var _i=1;_i<45;_i++) _us.push(_us[_i-1]*0.95);
+      var _try=function(i){
+        box.style.setProperty('--uk',_us[i].toFixed(3)+'px');
         box.classList.remove('th-set'); box.style.removeProperty('--th');
-        if(box.scrollHeight<=cap+1) break;                      // square tiles fit: done
+        _S=box.scrollHeight; if(_S<=cap+1) return true;         // square tiles fit
         var gap=parseFloat(getComputedStyle(g).columnGap)||2, tileW=(W-gap*(cols-1))/cols, others=0, kids=box.children;
         for(var j=0;j<kids.length;j++){ if(kids[j]!==g) others+=Math.max(kids[j].offsetHeight,kids[j].scrollHeight)+rg; }
+        _O=others;
         var th=(cap-others-rg-gap*(rows-1))/rows;
-        if(th>=tileW*0.7){ box.style.setProperty('--th',th.toFixed(1)+'px'); box.classList.add('th-set'); break; }
-        u*=0.95;
+        if(th>=tileW*0.7){ box.style.setProperty('--th',th.toFixed(1)+'px'); box.classList.add('th-set'); return true; }
+        return false;
+      };
+      var _S=0, _O=0, _memo=window.__cteFitMemo||(window.__cteFitMemo={});
+      if(!_try(0)){
+        // Same screen size and same content as an earlier run (this runs many times while a page settles): reuse that answer,
+        // checked with one more layout, instead of searching again.
+        var _key=[W,Math.round(cap),cols,rows,Math.round(_S),Math.round(_O),box.className.replace(/\s*(fit-ready|ad-split|th-set)\b/g,'')].join('|'), _m=_memo[_key], _done=false;
+        if(_m){ box.style.setProperty('--uk',_m.u); box.classList.remove('th-set'); box.style.removeProperty('--th'); if(_m.th){ box.style.setProperty('--th',_m.th); box.classList.add('th-set'); } _done = box.scrollHeight<=cap+1; }
+        if(!_done){
+        var lo=0, hi=44;                                        // lo never fits; look for the first step that does
+        if(!_try(hi)){ /* nothing fits: stay at the smallest size, as before */ }
+        else { while(hi-lo>1){ var mid=(lo+hi)>>1; if(_try(mid)) hi=mid; else lo=mid; } _try(hi); }
+        var _ks=Object.keys(_memo); if(_ks.length>40) delete _memo[_ks[0]];
+        _memo[_key]={u:box.style.getPropertyValue('--uk'), th:box.classList.contains('th-set')?box.style.getPropertyValue('--th'):''};
+        }
       }
     }
   }
