@@ -2671,6 +2671,7 @@ function migrateBackupData(raw){
   const info = {...(d.info||{})};
   info.oExtraSubjects = Array.isArray(info.oExtraSubjects) ? info.oExtraSubjects : [];
   info.pExtraSubjects = Array.isArray(info.pExtraSubjects) ? info.pExtraSubjects : [];
+  info.pClassSubjects = (info.pClassSubjects && typeof info.pClassSubjects==='object' && !Array.isArray(info.pClassSubjects)) ? info.pClassSubjects : {};
   info.aExtraSubjects = Array.isArray(info.aExtraSubjects) ? info.aExtraSubjects : [];
   info.examConfig = info.examConfig || {};
   // oCompulsoryLower/oCompulsoryUpper (and the newer pCompulsory/aCompulsoryExtra) are
@@ -3166,13 +3167,25 @@ function oCompulsoryFor(form){
   if(custom) return custom;
   return lower ? O_LOWER_COMPULSORY : O_UPPER_COMPULSORY;
 }
-function pOptionalList(){ return [...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || [])]; }
+// Subjects the admin added for ONE Primary class only (P.1 ... P.7), via the class-by-subject
+// table on the subjects page. Stored on DB.info.pClassSubjects = {'P.3':['COMPUTER STUDIES'], ...}.
+function pClassSubjectsFor(form){
+  const m = (DB.info && DB.info.pClassSubjects) || {};
+  return Array.isArray(m[form]) ? m[form] : [];
+}
+// With a form (e.g. 'P.3'): the optional subjects of that class. Without one: every class's.
+function pOptionalList(form){
+  const extra = form ? pClassSubjectsFor(form) : PRIMARY_FORMS.flatMap(f=>pClassSubjectsFor(f));
+  return [...new Set([...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || []), ...extra])];
+}
+// The subjects a given class can offer (class-aware for Primary; level-wide otherwise).
+function subjectsForClass(c){ return (c && c.level==='P') ? pAllSubjectPool(c.form) : subjectsForLevel(c ? c.level : 'O'); }
 // Every subject name a Primary school could conceivably mark compulsory (core): the
 // syllabus-default PLE-core set, the base optional set, and anything the admin has
 // added. Feeds the compulsory-subject picker in oLevelSubjectsView, same pattern as
 // oAllSubjectPool() above.
-function pAllSubjectPool(){
-  return [...new Set([...P_CORE_SUBJECTS, ...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || [])])].sort();
+function pAllSubjectPool(form){
+  return [...new Set([...P_CORE_SUBJECTS, ...pOptionalList(form)])].sort();
 }
 // Which subjects are compulsory (auto-included for every Primary student, no ticking
 // needed). Admin-chosen via oLevelSubjectsView and saved on DB.info.pCompulsory; falls
@@ -3182,7 +3195,11 @@ function pAllSubjectPool(){
 // (PLE_DIVISIONS) are calibrated for exactly 4 core subjects; changing the count here
 // still works (nothing breaks), but the Division label on report cards should then be
 // read as approximate rather than an exact match to the official UNEB bands.
-function pCompulsoryList(){
+function pCompulsoryList(form){
+  // Per-class choice (saved from the class-by-subject table) wins; classes never saved there
+  // fall back to the school-wide list below, then to the PLE default.
+  const by = DB.info && DB.info.pCompulsoryByForm;
+  if(form && by && Array.isArray(by[form])) return by[form];
   const custom = DB.info && DB.info.pCompulsory;
   if(custom) return custom;
   return P_CORE_SUBJECTS;
@@ -3231,14 +3248,14 @@ function teachersForLevel(level){
     return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && (c.level==='O' || c.level==='A'); });
   });
 }
-function subjectCompulsoryFor(cls){ return cls.level==='P' ? pCompulsoryList() : oCompulsoryFor(cls.form); }
+function subjectCompulsoryFor(cls){ return cls.level==='P' ? pCompulsoryList(cls.form) : oCompulsoryFor(cls.form); }
 // Whether a given subject is compulsory (taken by every student) in a given class, across
 // all three levels — used to decide whether that subject's teacher gets a "select all"
 // shortcut when ticking their roster, instead of ticking students in one by one.
 function isCompulsorySubjectFor(subject, cls){
   if(!cls) return false;
   if(cls.level==='A') return COMPULSORY.includes(subject) || aCompulsoryExtra().includes(subject);
-  if(cls.level==='P') return pCompulsoryList().includes(subject);
+  if(cls.level==='P') return pCompulsoryList(cls.form).includes(subject);
   return oCompulsoryFor(cls.form).includes(subject);
 }
 function levelLabel(c){
@@ -8008,7 +8025,7 @@ function _studentSubjectsRaw0(st, cls){
     return [...new Set([...compulsory, ...extra])];
   }
   if(cls.level==='P'){
-    const compulsory = pCompulsoryList();
+    const compulsory = pCompulsoryList(cls.form);
     const extra = rosterSubjectsFor(st, cls).filter(s=>!compulsory.includes(s));
     return [...new Set([...compulsory, ...extra])];
   }
@@ -8048,7 +8065,7 @@ function comboLabel(st, cls){
   cls = aOwnClass(st, cls);
   if(!cls) return '—';
   if(cls.level==='O' || cls.level==='P'){
-    const compulsory = cls.level==='O' ? oCompulsoryFor(cls.form) : pCompulsoryList();
+    const compulsory = cls.level==='O' ? oCompulsoryFor(cls.form) : pCompulsoryList(cls.form);
     const extra = rosterSubjectsFor(st, cls).filter(s=>!compulsory.includes(s));
     return extra.length ? extra.map(s=>ABBR[s]||s.slice(0,4).toUpperCase()).join('/') : '—';
   }
@@ -8542,7 +8559,7 @@ function gradeDisplay(subject, grade, level, avg){
 // set is changed from the standard 4.
 function primaryAggregate(st, cls, term, year){
   if(!cls || cls.level!=='P') return null;
-  const coreSubjects = pCompulsoryList();
+  const coreSubjects = pCompulsoryList(cls.form);
   let sum=0, count=0;
   for(const subj of coreSubjects){
     let avg = subjectAverage(st.id, subj, term, year);
@@ -14433,6 +14450,21 @@ function oldStudentsView(){
 }
 
 /* ---------- Admin: A-Level, O-Level & Primary extra subjects ---------- */
+// Primary subjects page: one table, a column per class (P.1 - P.7) and a row per subject.
+// A ticked box = that subject is COMPULSORY for that class. The last row adds a new subject
+// to ONE class (its column only). Subjects added to a class show "—" in the other columns.
+function pSubjectsTableHtml(){
+  const forms = PRIMARY_FORMS;
+  const legacy = new Set((DB.info && DB.info.pExtraSubjects) || []);
+  const isOwn = (f,s)=> pClassSubjectsFor(f).includes(s) && !P_CORE_SUBJECTS.includes(s) && !P_OPTIONAL_BASE.includes(s) && !legacy.has(s);
+  const th = 'style="text-align:center;white-space:nowrap;"';
+  const rows = pAllSubjectPool().map(s=>`<tr><td style="text-align:left;font-weight:700;white-space:nowrap;">${esc(s)}</td>${forms.map(f=>{
+      if(!pAllSubjectPool(f).includes(s)) return '<td class="small" style="text-align:center;">—</td>';
+      return `<td style="text-align:center;white-space:nowrap;"><input type="checkbox" name="pc_${f}" value="${esc(s)}" style="width:auto;" ${pCompulsoryList(f).includes(s)?'checked':''} aria-label="${esc(s)} compulsory in ${f}">${isOwn(f,s)?` <span title="Remove ${esc(s)} from ${f}" data-action="delPClassSubject:${encodeURIComponent(f+'|'+s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span>`:''}</td>`;
+    }).join('')}</tr>`).join('');
+  const addRow = `<tr><td style="text-align:left;font-weight:800;white-space:nowrap;">Add a subject</td>${forms.map(f=>`<td style="text-align:center;min-width:130px;"><input id="pcAdd_${f}" placeholder="New subject" autocomplete="off" style="width:100%;min-width:110px;margin-bottom:4px;" onkeydown="if(event.key==='Enter'){event.preventDefault();this.parentNode.querySelector('button').click();}"><button type="button" class="btn" data-action="addPClassSubject:${f}" style="width:100%;">Add</button></td>`).join('')}</tr>`;
+  return `<div style="overflow:auto;"><table class="data-table" style="min-width:760px;"><tr><th style="text-align:left;">Subject</th>${forms.map(f=>`<th ${th}>${f}</th>`).join('')}</tr>${rows}${addRow}</table></div>`;
+}
 function oLevelSubjectsView(){
   const extra = DB.info.oExtraSubjects || [];
   const pExtra = DB.info.pExtraSubjects || [];
@@ -14510,28 +14542,19 @@ function oLevelSubjectsView(){
   </div>`}
   ${!showPrimary ? '' : `
   <div class="card">
-    <h3>Compulsory (core) subjects</h3>
-    <p class="small">Ticked subjects are automatically included on every Primary student's report card — no roster tick needed from the subject teacher. Anything left unticked is optional: only students a subject teacher ticks into their own class roster will show it. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
-    <div class="note">Uganda's official PLE Division bands assume exactly 4 core subjects. If you change the number of compulsory subjects from 4, the Aggregate figure still totals correctly, but the Division label becomes approximate rather than an exact match to the UNEB standard.</div>
+    <h3>Primary subjects by class</h3>
+    <p class="small">Each column is a Primary class and each row a subject. <b>Tick</b> a box to make that subject <b>compulsory</b> for that class — it is then automatically included on every student's report card in that class, no roster tick needed from the subject teacher. Anything left unticked is optional: only students a subject teacher ticks into their own class roster will show it. Use the last row to <b>add a subject</b> to one class (a subject added under a class appears for that class only; "—" means the subject isn't offered in that class). Click <b>Save compulsory subjects</b> after ticking. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
+    <div class="note">Uganda's official PLE Division bands assume exactly 4 core subjects. If you change the number of compulsory subjects for a class from 4, the Aggregate figure still totals correctly, but the Division label becomes approximate rather than an exact match to the UNEB standard.</div>
     <form data-form="savePCompulsory" style="margin-top:10px;">
-      <div class="flex" style="gap:6px 18px;flex-wrap:wrap;">
-        ${pAllSubjectPool().map(s=>`<label class="flex" style="gap:6px;width:auto;"><input type="checkbox" name="coreSubjects" value="${esc(s)}" style="width:auto;" ${pCompulsoryList().includes(s)?'checked':''}> <span>${esc(s)}</span></label>`).join('')}
-      </div>
+      ${pSubjectsTableHtml()}
       <div style="margin-top:10px;"><button class="btn">Save compulsory subjects</button></div>
-    </form>
-  </div>
-  <div class="card">
-    <h3>Primary</h3>
-    <form data-form="addPSubject" class="flex">
-      <div style="flex:2;"><label>New Primary subject name</label><input name="subjectName" placeholder="e.g. COMPUTER STUDIES" required></div>
-      <div style="align-self:end;"><button class="btn">Submit — add</button></div>
     </form>
   </div>
   <div class="card">
     <h3>PLE syllabus default</h3><p>${P_CORE_SUBJECTS.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     <h3>Base optional</h3><p>${P_OPTIONAL_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
-    <h3>Your added subjects</h3>
-    <p>${pExtra.length? pExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delPSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('') : '<span class="small">None added yet.</span>'}</p>
+    ${pExtra.length ? `<h3>Added subjects (all classes)</h3>
+    <p>${pExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delPSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('')}</p>` : ''}
   </div>`}`;
 }
 
@@ -14551,12 +14574,12 @@ function assignSubjectsView(){
     const byLevel = {};
     const subjectList = [];
     DB.classes.forEach(c=>{
-      if(!byLevel[c.level]) byLevel[c.level] = subjectsForLevel(c.level);
+      if(!byLevel[c.level]) byLevel[c.level] = subjectsForLevel(c.level);   // Primary: union over P.1-P.7
       byLevel[c.level].forEach(sj=>{ if(!subjectList.includes(sj)) subjectList.push(sj); });
     });
     const blocks = subjectList.map((sj,i)=>{
       // One row per class: every stream of a class shares the same assignment (its first stream carries it).
-      const cls = DB.classes.filter(c=>byLevel[c.level].includes(sj) && streamGroupClasses(c)[0].id===c.id);
+      const cls = DB.classes.filter(c=>subjectsForClass(c).includes(sj) && streamGroupClasses(c)[0].id===c.id);
       if(!cls.length) return '';
       const done = cls.filter(c=>has.has(sj+'||'+c.id)).length;
       const anyNonPrimary = cls.some(c=>c.level!=='P');
@@ -14657,7 +14680,7 @@ function teacherProfileView(username){
       <div class="grid2">
         <div><label>Class</label><select name="classId" id="assignClassSel" required>
           <option value="">-- select class --</option>
-          ${DB.classes.filter(c=>streamGroupClasses(c)[0].id===c.id).map(c=>`<option value="${c.id}" data-level="${esc(c.level)}">${esc(assignClassName(c))}</option>`).join('')}
+          ${DB.classes.filter(c=>streamGroupClasses(c)[0].id===c.id).map(c=>`<option value="${c.id}" data-level="${esc(c.level)}" data-form="${esc(c.form||'')}">${esc(assignClassName(c))}</option>`).join('')}
         </select></div>
         <div><label>Subject</label><select name="subject" id="assignSubjectSel" required disabled><option value="">-- select a class first --</option></select></div>
       </div>
@@ -16355,6 +16378,7 @@ function triggerBlobDownload(blob, filename){
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
 function downloadCsv(filename, rows){
+  try{ if(window.__primaryLearnerWords) rows = rows.map(r=>r.map(c=>typeof c==='string' ? window.__primaryLearnerWords(c) : c)); }catch(e){}
   const csv = rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   triggerBlobDownload(blob, filename);
@@ -20194,7 +20218,7 @@ document.addEventListener('click', async (e)=>{
   const myNavToken = ++NAV_TOKEN;
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
-  const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','delStudent','closeAcc','reopenAcc',
+  const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','addPClassSubject','delPClassSubject','delStudent','closeAcc','reopenAcc',
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature','stmNext','stmSaveAssign','stmConfirm',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
@@ -20648,10 +20672,32 @@ Continue?`);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
       await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
     }
+    case 'addPClassSubject': {
+      const form = arg;
+      if(!PRIMARY_FORMS.includes(form)) break;
+      const inp = document.getElementById('pcAdd_'+form);
+      const name = ((inp && inp.value) || '').replace(/[|]/g,' ').replace(/\s+/g,' ').trim().toUpperCase();
+      if(!name){ alert('Type the new subject name for '+form+' first.'); break; }
+      if(pAllSubjectPool(form).includes(name)){ alert(name+' is already listed for '+form+'.'); break; }
+      DB.info.pClassSubjects = DB.info.pClassSubjects || {};
+      DB.info.pClassSubjects[form] = [...pClassSubjectsFor(form), name];
+      await saveInfo(); showActionSuccess('Subject added successfully', el); render(); break;
+    }
+    case 'delPClassSubject': {
+      const raw = decodeURIComponent(arg), cut = raw.indexOf('|');
+      const form = raw.slice(0,cut), name = raw.slice(cut+1);
+      const inUse = DB.assignments.some(a=>a.subject===name && (DB.classes.find(c=>c.id===a.classId)||{}).form===form);
+      if(inUse){ alert(name+' is still assigned to a teacher in '+form+'. Remove that assignment first, then remove the subject.'); break; }
+      if(!confirm('Remove '+name+' from '+form+'?')) break;
+      DB.info.pClassSubjects[form] = pClassSubjectsFor(form).filter(x=>x!==name);
+      if(DB.info.pCompulsoryByForm && Array.isArray(DB.info.pCompulsoryByForm[form])) DB.info.pCompulsoryByForm[form] = DB.info.pCompulsoryByForm[form].filter(x=>x!==name);
+      await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
+    }
     case 'delPSubject': {
       const name = decodeURIComponent(arg);
       if(!(await binGuard('subject', name, "Primary subject", {key:'pExtraSubjects', name, lower:false, upper:false}))) break;
       DB.info.pExtraSubjects = (DB.info.pExtraSubjects||[]).filter(s=>s!==name);
+      if(DB.info.pCompulsoryByForm) Object.keys(DB.info.pCompulsoryByForm).forEach(f=>{ DB.info.pCompulsoryByForm[f] = (DB.info.pCompulsoryByForm[f]||[]).filter(s=>s!==name); });
       await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
     }
     case 'delASubject': {
@@ -22032,7 +22078,7 @@ document.addEventListener('change', (e)=>{
       const form = e.target.closest('form');
       const subjSel = form ? form.querySelector('#assignSubjectSel') : null;
       if(subjSel){
-        const subs = subjectsForLevel(level);
+        const subs = (level==='P' && opt && opt.dataset.form) ? pAllSubjectPool(opt.dataset.form) : subjectsForLevel(level);
         subjSel.innerHTML = subs.length ? '<option value="">-- select subject --</option>' + subs.map(s=>`<option value="${s}">${s}</option>`).join('') : '<option value="">-- no subjects available --</option>';
         subjSel.disabled = subs.length === 0;
       }
@@ -23539,7 +23585,9 @@ document.addEventListener('submit', async (e)=>{
       await saveInfo(); if(seedAllRostersFromScores()) await saveAssignments(); render();
     }
     else if(type==='savePCompulsory'){
-      DB.info.pCompulsory = fd.getAll('coreSubjects');
+      const by = Object.assign({}, DB.info.pCompulsoryByForm || {});
+      PRIMARY_FORMS.forEach(f=>{ by[f] = fd.getAll('pc_'+f); });
+      DB.info.pCompulsoryByForm = by;
       await saveInfo(); if(seedAllRostersFromScores()) await saveAssignments(); render();
     }
     else if(type==='saveASubjectCategories'){
@@ -26911,6 +26959,74 @@ h6:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
   function start(){ try{ new MutationObserver(scan).observe(document.body,{childList:true,subtree:true}); }catch(e){} scan(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
   document.addEventListener('change', function(e){ var t = e.target; if(t && t.classList && t.classList.contains('sc-cb')){ var c = t.closest('.sc-card'); if(c) c.classList.toggle('on', t.checked); } });
+})();
+</script>
+<script id="cte-primary-learner">
+/* PRIMARY schools only: every visible "student(s)" becomes "learner(s)" (same capitalisation:
+   student -> learner, Student -> Learner, STUDENTS -> LEARNERS). Secondary schools are untouched.
+   Works on the live page (text, placeholders, tooltips, button labels), on pop-up messages
+   (alert / confirm / prompt) and on CSV downloads. Report-card / list PDFs are captured from the
+   page, so they pick it up too. Code, styles and typed-in boxes are never altered. */
+(function(){
+  var RE = /\bstudent(s?)\b/gi;
+  function conv(t){
+    return t.replace(RE, function(m){
+      if(m.length > 1 && m === m.toUpperCase()) return /S$/.test(m) ? 'LEARNERS' : 'LEARNER';
+      return (m.charAt(0) === 'S' ? 'L' : 'l') + 'earner' + (/s$/i.test(m) ? 's' : '');
+    });
+  }
+  function on(){ try{ return typeof isPrimarySchool === 'function' && !!DB && !!DB.info && isPrimarySchool(); }catch(e){ return false; } }
+  window.__primaryLearnerWords = function(t){ return on() ? conv(String(t)) : t; };
+  var SKIP = {SCRIPT:1, STYLE:1, TEXTAREA:1, NOSCRIPT:1, CODE:0};
+  var ATTRS = ['placeholder','title','aria-label','alt','data-tip','data-title'];
+  function fixNode(n){
+    if(n.nodeType === 3){
+      var p = n.parentNode;
+      if(p && SKIP[p.nodeName]) return;
+      var v = n.nodeValue;
+      if(v && /student/i.test(v)){ var c = conv(v); if(c !== v) n.nodeValue = c; }
+    } else if(n.nodeType === 1){
+      if(SKIP[n.nodeName]) return;
+      fixEl(n);
+      var w = document.createTreeWalker(n, 5, null);   // 1 = elements, 4 = text
+      var x; while((x = w.nextNode())){
+        if(x.nodeType === 3){ var q = x.parentNode; if(q && SKIP[q.nodeName]) continue; var vv = x.nodeValue; if(vv && /student/i.test(vv)){ var cc = conv(vv); if(cc !== vv) x.nodeValue = cc; } }
+        else fixEl(x);
+      }
+    }
+  }
+  function fixEl(e){
+    for(var i = 0; i < ATTRS.length; i++){
+      var a = e.getAttribute && e.getAttribute(ATTRS[i]);
+      if(a && /student/i.test(a)){ var c = conv(a); if(c !== a) e.setAttribute(ATTRS[i], c); }
+    }
+    if(e.nodeName === 'INPUT' && /^(button|submit|reset)$/i.test(e.type) && e.value && /student/i.test(e.value)) e.value = conv(e.value);
+  }
+  var busy = false, full = 0;
+  function scanAll(){ if(!on()) return; busy = true; try{ fixNode(document.body); if(/student/i.test(document.title)) document.title = conv(document.title); } finally { busy = false; } }
+  function start(){
+    var mo = new MutationObserver(function(ms){
+      if(busy || !on()) return;
+      busy = true;
+      try{
+        for(var i = 0; i < ms.length; i++){
+          var m = ms[i];
+          if(m.type === 'childList'){ for(var j = 0; j < m.addedNodes.length; j++) fixNode(m.addedNodes[j]); }
+          else if(m.type === 'characterData') fixNode(m.target);
+          else if(m.type === 'attributes') fixEl(m.target);
+        }
+      } finally { busy = false; }
+      clearTimeout(full); full = setTimeout(scanAll, 350);   // safety net for anything missed
+    });
+    mo.observe(document.body, {childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:ATTRS});
+    scanAll();
+  }
+  ['alert','confirm','prompt'].forEach(function(k){
+    var orig = window[k];
+    window[k] = function(msg){ var a = Array.prototype.slice.call(arguments); if(typeof a[0] === 'string' && on()) a[0] = conv(a[0]); if(k === 'prompt' && typeof a[1] === 'string' && on()) a[1] = conv(a[1]); return orig.apply(window, a); };
+  });
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+  window.addEventListener('load', function(){ setTimeout(scanAll, 300); });
 })();
 </script>
 </body>
