@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-24-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-24-2100'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -1306,6 +1306,8 @@ table.rc-perf.primary-report-card, .primary-report-card table.rc-perf{table-layo
 .rc-th-init br{display:block;}
 
 /* Assign Subjects to Teachers: teacher-first, tick subjects then classes */
+.as-dept{margin:14px 0 4px;padding:8px 10px 6px;border:2px solid var(--blue);border-radius:10px;background:#f3f8fd;}
+.as-dept-h{font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--navy);margin:0 0 2px;}
 .as-subj{border:1px solid #cfd9e3;border-radius:8px;margin:8px 0;background:#fff;}
 .as-subj>label.as-head{display:flex;align-items:center;gap:10px;margin:0;padding:11px 14px;font-size:15px;font-weight:700;color:var(--navy);text-transform:none;letter-spacing:0;cursor:pointer;}
 .as-subj>label.as-head input{width:auto;margin:0;}
@@ -2941,10 +2943,11 @@ function levelForForm(form){ return ['S.5','S.6'].includes(form) ? 'A' : 'O'; }
 // null (grade not yet chosen) means no restriction, matching legacy behaviour.
 function allowedClassLevels(){
   const g = schoolGrade();
-  if(g==='primary') return ['P'];
+  if(g==='primary') return ['P','N'];   // Nursery travels with Primary, like O-Level with A-Level
   if(g==='secondary') return ['O','A'];
-  return ['P','O','A'];
+  return ['P','N','O','A'];
 }
+function levelName(l){ return l==='O'?'O-Level':l==='A'?'A-Level':l==='N'?'Nursery':'Primary'; }
 // Display label for the combined Extra Subjects setup page/tile — drops the
 // deactivated grade's wording once a School Grade has been chosen for this school.
 function extraSubjectsPageLabel(){
@@ -3148,7 +3151,7 @@ const PLE_DIVISIONS = [{name:'Division 1',min:4,max:12},{name:'Division 2',min:1
 function allSubjects(){
   return [...new Set([...COMPULSORY, ...SUBSIDIARIES, ...aOptionalList(), ...O_LOWER_COMPULSORY, ...O_UPPER_COMPULSORY,
     ...O_OPTIONAL_BASE, ...((DB.info && DB.info.oExtraSubjects) || []),
-    ...P_CORE_SUBJECTS, ...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || [])])];
+    ...P_CORE_SUBJECTS, ...P_OPTIONAL_BASE, ...((DB.info && DB.info.pExtraSubjects) || []), ...nurseryAreaNames()])];
 }
 function oOptionalList(){ return [...O_OPTIONAL_BASE, ...((DB.info && DB.info.oExtraSubjects) || [])]; }
 // Which subjects are compulsory (auto-included for every student, no ticking
@@ -3222,6 +3225,7 @@ function subjectOptionalListFor(level){ return level==='P' ? pOptionalList() : o
 // principal/subsidiary subjects — instead of every subject the school has across all
 // three levels dumped into one long list.
 function subjectsForLevel(level){
+  if(level==='N') return nurseryAreaNames();   // Nursery: every learning area is a "subject", grouped by department
   if(level==='A') return [...new Set([...COMPULSORY, ...SUBSIDIARIES, ...aOptionalList()])];
   if(level==='P') return pAllSubjectPool();
   return oAllSubjectPool();
@@ -3235,11 +3239,11 @@ function teachersForLevel(level){
   const allTeachers = DB.accounts.filter(a=>a.role==='teacher' && a.status!=='pending');
   // O-Level and A-Level are taught within the same secondary school, so their
   // teachers share one assignment pool. Primary remains completely separate.
-  if(level==='P'){
+  if(level==='P' || level==='N'){   // Nursery travels with Primary
     return allTeachers.filter(t=>{
       const myAssigns = DB.assignments.filter(a=>a.teacherUsername===t.username);
       if(!myAssigns.length) return true;
-      return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && c.level==='P'; });
+      return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && (c.level==='P' || c.level==='N'); });
     });
   }
   return allTeachers.filter(t=>{
@@ -3259,6 +3263,7 @@ function isCompulsorySubjectFor(subject, cls){
   return oCompulsoryFor(cls.form).includes(subject);
 }
 function levelLabel(c){
+  if(c.level==='N') return 'Nursery '+(c.form||'');
   if(c.level==='A') return 'A-Level '+(c.form||'');
   if(c.level==='P') return 'Primary '+(c.form||'');
   return 'O-Level '+(c.form||'');
@@ -3294,7 +3299,9 @@ function schoolInitials(){
 // student who joined mid-level, etc.), and it never touches a class's year after the
 // class already exists (see the 'change' listener below — it only fires while the
 // admin is actively picking a level/form, not on page load).
+const NURSERY_FORMS = ['Baby','Middle','Top'];   // Nursery classes; Top moves on to P.1
 const FORM_SEQUENCE_BY_LEVEL = {
+  N: NURSERY_FORMS,
   P: PRIMARY_FORMS,                 // P.1 .. P.7
   O: ['S.1','S.2','S.3','S.4'],
   A: ['S.5','S.6']
@@ -8676,6 +8683,7 @@ function promoRules(level){
 // The class after this one: next form of the same level; O-Level S.4 goes on to S.5. null for the last class (P.7, S.6).
 function promoNextForm(cls){
   if(!cls) return null;
+  if(cls.level==='N'){ const k = NURSERY_FORMS.indexOf(cls.form); return k<0 ? null : (k<NURSERY_FORMS.length-1 ? NURSERY_FORMS[k+1] : 'P.1'); }
   const seq = cls.level==='P' ? PRIMARY_FORMS : SECONDARY_FORMS;
   const i = seq.indexOf(cls.form);
   return (i>=0 && i<seq.length-1) ? seq[i+1] : null;
@@ -13180,7 +13188,7 @@ function summarySpans(m){ return {l: m===1?2:1, v: m===3?1:(m===2?2:4)}; }
 /* ---------- Admin: School info ---------- */
 function schoolInfoView(){
   const i = DB.info;
-  const gradeName = i.schoolGrade==='primary' ? 'Primary School' : i.schoolGrade==='secondary' ? "Secondary School — O' and A' Level" : '';
+  const gradeName = i.schoolGrade==='primary' ? 'Primary School — Nursery and Primary' : i.schoolGrade==='secondary' ? "Secondary School — O' and A' Level" : '';
   const gradeCard = schoolGradeLocked() ? `
   <div class="card">
     <h3>School Grade</h3>
@@ -13189,7 +13197,7 @@ function schoolInfoView(){
   <div class="card">
     <h3>School Grade</h3>
     <form data-form="schoolGrade">
-      <label class="flex" style="gap:8px;align-items:center;"><input type="radio" name="schoolGrade" value="primary" style="width:auto;" ${i.schoolGrade==='primary'?'checked':''} required> <span><b>Primary School</b></span></label>
+      <label class="flex" style="gap:8px;align-items:center;"><input type="radio" name="schoolGrade" value="primary" style="width:auto;" ${i.schoolGrade==='primary'?'checked':''} required> <span><b>Primary School</b> — Nursery and Primary</span></label>
       <label class="flex" style="gap:8px;align-items:center;margin-top:8px;"><input type="radio" name="schoolGrade" value="secondary" style="width:auto;" ${i.schoolGrade==='secondary'?'checked':''} required> <span><b>Secondary School</b> — O' and A' Level</span></label>
       <button class="btn" style="margin-top:14px;">Save school grade</button>
     </form>
@@ -13307,8 +13315,8 @@ function classesView(){
         <div><label>Class name</label><input name="name" placeholder="${isPrimarySchool()?'e.g. Primary One':isSecondarySchool()?'e.g. Senior One':'e.g. S.3'}" ${(isPrimarySchool()||isSecondarySchool())?`pattern="[A-Za-z]+( [A-Za-z]+)*" title="Words only (letters and spaces), e.g. ${isPrimarySchool()?'Primary One':'Senior One'}"`:''} required></div>
       </div>
       <div style="max-width:420px;margin-top:6px;">
-        <div><label>Level</label><select name="level" id="clsLevel">${['O','A','P'].filter(l=>allowedClassLevels().includes(l)).map(l=>`<option value="${l}">${l==='O'?'O-Level':l==='A'?'A-Level':'Primary'}</option>`).join('')}</select></div>
-        <div id="formWrap"><label>Form</label><select name="form" id="clsForm">${formsForLevel(['O','A','P'].filter(l=>allowedClassLevels().includes(l))[0]).map(f=>`<option>${f}</option>`).join('')}</select></div>
+        <div><label>Level</label><select name="level" id="clsLevel">${['P','N','O','A'].filter(l=>allowedClassLevels().includes(l)).map(l=>`<option value="${l}">${levelName(l)}</option>`).join('')}</select></div>
+        <div id="formWrap"><label>Form</label><select name="form" id="clsForm">${formsForLevel(['P','N','O','A'].filter(l=>allowedClassLevels().includes(l))[0]).map(f=>`<option>${f}</option>`).join('')}</select></div>
       </div>
       <div style="margin-top:6px;max-width:320px;">
         <label>Streams — how many streams does this class have?</label>
@@ -13340,7 +13348,7 @@ function classEditView(classId){
       <div class="grid3">
         <div><label>Class name</label><input name="name" value="${esc(cls.name)}" placeholder="e.g. S.3 East" required></div>
         <div><label>Level</label><select name="level" id="clsLevel">
-          ${[['O','O-Level'],['A','A-Level'],['P','Primary']].filter(([l])=>allowedClassLevels().includes(l) || l===cls.level).map(([l,label])=>`<option value="${l}" ${cls.level===l?'selected':''}>${label}${!allowedClassLevels().includes(l)?' (other grade)':''}</option>`).join('')}
+          ${[['P','Primary'],['N','Nursery'],['O','O-Level'],['A','A-Level']].filter(([l])=>allowedClassLevels().includes(l) || l===cls.level).map(([l,label])=>`<option value="${l}" ${cls.level===l?'selected':''}>${label}${!allowedClassLevels().includes(l)?' (other grade)':''}</option>`).join('')}
         </select></div>
         <div id="formWrap"><label>Form</label><select name="form" id="clsForm">
           ${forms.map(f=>`<option ${f===cls.form?'selected':''}>${f}</option>`).join('')}
@@ -14458,11 +14466,13 @@ function pSubjectsTableHtml(){
   const legacy = new Set((DB.info && DB.info.pExtraSubjects) || []);
   const isOwn = (f,s)=> pClassSubjectsFor(f).includes(s) && !P_CORE_SUBJECTS.includes(s) && !P_OPTIONAL_BASE.includes(s) && !legacy.has(s);
   const th = 'style="text-align:center;white-space:nowrap;"';
-  const rows = pAllSubjectPool().map(s=>`<tr><td style="text-align:left;font-weight:700;white-space:nowrap;">${esc(s)}</td>${forms.map(f=>{
+  const rows = pAllSubjectPool().map(s=>`<tr><td style="text-align:left;font-weight:700;white-space:nowrap;">${esc(s)}${legacy.has(s)?` <span title="Remove ${esc(s)} from all classes" data-action="delPSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span>`:''}</td>${forms.map(f=>{
       if(!pAllSubjectPool(f).includes(s)) return '<td class="small" style="text-align:center;">—</td>';
       return `<td style="text-align:center;white-space:nowrap;"><input type="checkbox" name="pc_${f}" value="${esc(s)}" style="width:auto;" ${pCompulsoryList(f).includes(s)?'checked':''} aria-label="${esc(s)} compulsory in ${f}">${isOwn(f,s)?` <span title="Remove ${esc(s)} from ${f}" data-action="delPClassSubject:${encodeURIComponent(f+'|'+s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span>`:''}</td>`;
     }).join('')}</tr>`).join('');
-  const addRow = `<tr><td style="text-align:left;font-weight:800;white-space:nowrap;">Add a subject</td>${forms.map(f=>`<td style="text-align:center;min-width:130px;"><input id="pcAdd_${f}" placeholder="New subject" autocomplete="off" style="width:100%;min-width:110px;margin-bottom:4px;" onkeydown="if(event.key==='Enter'){event.preventDefault();this.parentNode.querySelector('button').click();}"><button type="button" class="btn" data-action="addPClassSubject:${f}" style="width:100%;">Add</button></td>`).join('')}</tr>`;
+  // Subjects are added ONLY here, in the Subject column. A new subject appears in every class
+  // column (stored school-wide in pExtraSubjects) and the classes are then just ticked.
+  const addRow = `<tr><td style="text-align:left;min-width:190px;"><input id="pSubjAdd" placeholder="Add a subject" autocomplete="off" style="width:100%;margin-bottom:4px;" onkeydown="if(event.key==='Enter'){event.preventDefault();this.parentNode.querySelector('button').click();}"><button type="button" class="btn" data-action="addPSubjectCol" style="width:100%;">Add subject</button></td><td colspan="${forms.length}" class="small" style="text-align:left;">New subjects appear in every class column — just tick the classes that take it.</td></tr>`;
   return `<div style="overflow:auto;"><table class="data-table" style="min-width:760px;"><tr><th style="text-align:left;">Subject</th>${forms.map(f=>`<th ${th}>${f}</th>`).join('')}</tr>${rows}${addRow}</table></div>`;
 }
 function oLevelSubjectsView(){
@@ -14543,7 +14553,7 @@ function oLevelSubjectsView(){
   ${!showPrimary ? '' : `
   <div class="card">
     <h3>Primary subjects by class</h3>
-    <p class="small">Each column is a Primary class and each row a subject. <b>Tick</b> a box to make that subject <b>compulsory</b> for that class — it is then automatically included on every student's report card in that class, no roster tick needed from the subject teacher. Anything left unticked is optional: only students a subject teacher ticks into their own class roster will show it. Use the last row to <b>add a subject</b> to one class (a subject added under a class appears for that class only; "—" means the subject isn't offered in that class). Click <b>Save compulsory subjects</b> after ticking. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
+    <p class="small">Each column is a Primary class and each row a subject. <b>Tick</b> a box to make that subject <b>compulsory</b> for that class — it is then automatically included on every student's report card in that class, no roster tick needed from the subject teacher. Anything left unticked is optional: only students a subject teacher ticks into their own class roster will show it. Add a new subject only through the <b>Subject</b> column (last row) — it then appears in every class column and you simply <b>tick</b> the classes that take it. Click <b>Save compulsory subjects</b> after ticking. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
     <div class="note">Uganda's official PLE Division bands assume exactly 4 core subjects. If you change the number of compulsory subjects for a class from 4, the Aggregate figure still totals correctly, but the Division label becomes approximate rather than an exact match to the UNEB standard.</div>
     <form data-form="savePCompulsory" style="margin-top:10px;">
       ${pSubjectsTableHtml()}
@@ -14577,13 +14587,13 @@ function assignSubjectsView(){
       if(!byLevel[c.level]) byLevel[c.level] = subjectsForLevel(c.level);   // Primary: union over P.1-P.7
       byLevel[c.level].forEach(sj=>{ if(!subjectList.includes(sj)) subjectList.push(sj); });
     });
-    const blocks = subjectList.map((sj,i)=>{
+    const blockFor = (sj,i)=>{
       // One row per class: every stream of a class shares the same assignment (its first stream carries it).
       const cls = DB.classes.filter(c=>subjectsForClass(c).includes(sj) && streamGroupClasses(c)[0].id===c.id);
       if(!cls.length) return '';
       const done = cls.filter(c=>has.has(sj+'||'+c.id)).length;
-      const anyNonPrimary = cls.some(c=>c.level!=='P');
-      const prev = mine.find(a=>a.subject===sj && Array.isArray(a.papers) && a.papers.length && (DB.classes.find(c=>c.id===a.classId)||{}).level!=='P');
+      const anyNonPrimary = cls.some(c=>!noPapersLevel(c.level));
+      const prev = mine.find(a=>a.subject===sj && Array.isArray(a.papers) && a.papers.length && !noPapersLevel((DB.classes.find(c=>c.id===a.classId)||{}).level));
       const free = cls.length - done;
       return `<div class="as-subj">
         <input type="checkbox" class="as-subj-cb" id="asSubj${i}" name="subj" value="${esc(sj)}" ${done?'checked':''}>
@@ -14598,12 +14608,20 @@ function assignSubjectsView(){
               const asg = mine.find(x=>x.subject===sj && x.classId===c.id);
               const d = !!asg;
               const dp = asg && Array.isArray(asg.papers) ? asg.papers.map(String) : [];
-              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked':''}> ${esc(assignClassName(c))}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> c.level==='P' ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked':''):'disabled'}></td>`).join('') : ''}</tr>`;
+              return `<tr class="${d?'as-done':''}"><td><label class="as-cls ${d?'as-done':''}"><input type="checkbox" name="cls" value="${esc(sj)}||${esc(c.id)}" ${d?'checked':''}> ${esc(assignClassName(c))}${d?' <span class="as-tag">✓</span>':''}</label></td>${anyNonPrimary? opts.map(pp=> noPapersLevel(c.level) ? '<td>—</td>' : `<td><input type="checkbox" class="as-paper-cb" name="pap" value="${esc(sj)}||${esc(c.id)}||${esc(pp)}" ${d?(dp.includes(pp)?'checked':''):'disabled'}></td>`).join('') : ''}</tr>`;
             }).join('')}</table></div>`;
           })()}
         </div>
       </div>`;
-    }).join('');
+    };
+    // Ordinary subjects first; then every Nursery department as its own group, its learning areas listed beneath it.
+    const nurAreas = new Set(DB.classes.some(c=>c.level==='N') ? nurseryAreaNames() : []);
+    const plain = subjectList.map((sj,i)=>nurAreas.has(sj) ? '' : blockFor(sj,i)).join('');
+    const nursery = DB.classes.some(c=>c.level==='N') ? nurseryConfig().depts.map(d=>{
+      const inner = d.areas.map(a=>{ const i = subjectList.indexOf(a.name); return i<0 ? '' : blockFor(a.name,i); }).join('');
+      return inner ? `<div class="as-dept"><div class="as-dept-h">Nursery — ${esc(d.name)}</div>${inner}</div>` : '';
+    }).join('') : '';
+    const blocks = plain + nursery;
     pickerHtml = `
       <p class="small" style="margin:12px 0 4px;"><b>${esc(tch.name)}</b> currently has <b>${mine.length}</b> subject/class assignment${mine.length===1?'':'s'}. Tick the subjects they teach, then tick each class and its papers. Existing assignments show ticked — untick a class (or a whole subject) to remove it, tick new ones to add them, then save.</p>
       ${blocks ? `<div class="as-grid">${blocks}</div>` : '<p class="small">No classes or subjects have been set up yet.</p>'}
@@ -14630,7 +14648,7 @@ function assignSubjectsView(){
     ${DB.assignments.filter(a=>{ const t0 = DB.accounts.find(x=>x.username===a.teacherUsername); return !(t0 && t0.status==='pending'); }).map(a=>{
       const t = DB.accounts.find(x=>x.username===a.teacherUsername); const c = DB.classes.find(x=>x.id===a.classId);
       const isP = c && c.level==='P';
-      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td><td>${isP?'—':esc(a.papers.join(', '))}</td>
+      return `<tr><td>${t?esc(t.name):'—'}</td><td>${c?esc(c.name):'—'}</td><td>${subjectWithDeptHTML(a.subject,c)}</td><td>${noPapersLevel(c&&c.level)?'—':esc(a.papers.join(', '))}</td>
       <td><button class="btn-danger" data-action="delAssign:${a.id}">Remove</button></td></tr>`;
     }).join('') || '<tr><td colspan="5">No assignments yet.</td></tr>'}
     </table>
@@ -14693,8 +14711,8 @@ function teacherProfileView(username){
     <table class="data-table"><tr><th>Class</th><th>Subject</th><th>Papers</th><th>Remove</th></tr>
     ${mine.map(a=>{
       const c = DB.classes.find(x=>x.id===a.classId);
-      const isP = c && c.level==='P';
-      return `<tr><td>${c?esc(c.name):'—'}</td><td>${esc(a.subject)}</td>
+      const isP = c && noPapersLevel(c.level);
+      return `<tr><td>${c?esc(c.name):'—'}</td><td>${subjectWithDeptHTML(a.subject,c)}</td>
       <td>${isP ? '—' : `<form data-form="editAssignPapers" data-id="${a.id}" style="display:flex;gap:6px;align-items:center;margin:0;">
         <input name="papers" value="${esc(a.papers.join(', '))}" style="width:110px;">
         <button class="btn-outline" type="submit" style="padding:6px 10px;">Save</button>
@@ -14763,6 +14781,110 @@ function studentProfileView(studentId){
 }
 
 /* ---------- Admin: Grading setup ---------- */
+
+/* ---------- Nursery grading (separate from O/A-Level and Primary) ---------- */
+// Nursery report cards show GRADES (A-E) and a descriptor, never scores. Four departments, each with its own
+// learning areas; every learning area has its own descriptor for every grade. Stored on DB.info.nursery.
+const NURSERY_GRADES = ['A','B','C','D','E'];
+const NURSERY_GRADE_KEY = {A:'Outstanding',B:'Very good',C:'Good',D:'Fair',E:'Needs improvement'};
+const NURSERY_DEFAULT_BANDS = {A:[80,100],B:[70,79.99],C:[60,69.99],D:[50,59.99],E:[0,49.99]};
+const NURSERY_DEFAULT_DEPTS = [
+  ['Social Development',['Sharing','Singing & Reciting','Appreciates beauty','Drama','Identification of Colours']],
+  ['Health Habits',['Personal hygiene','Physical Education','Out door activities','Classifying objects','Identifying parts of the body']],
+  ['Language Development',['Vowels','Consonant','Short Sentences','Words','Handwriting','Pictures','Speaking']],
+  ['Mathematical Concepts',['Numbers','Shapes','Addition','Subtraction','Matching']]
+];
+// Nursery (like Primary) has no papers: a single implicit paper.
+function noPapersLevel(l){ return l==='P' || l==='N'; }
+// Every Nursery learning area name, in department order.
+function nurseryAreaNames(){ return nurseryConfig().depts.flatMap(d=>d.areas.map(a=>a.name)); }
+// The department a Nursery learning area belongs to (looked up live, so renaming a department never orphans an assignment).
+function nurseryDeptOf(areaName){
+  const d = nurseryConfig().depts.find(d=>d.areas.some(a=>a.name===areaName));
+  return d ? d.name : '';
+}
+// "Sharing" -> "Sharing · Social Development" for tables; plain subjects come back unchanged.
+function subjectWithDeptHTML(subject, cls){
+  const dn = (cls && cls.level==='N') ? nurseryDeptOf(subject) : '';
+  return esc(subject) + (dn ? ` <span class="small" style="color:var(--muted);">(${esc(dn)})</span>` : '');
+}
+// <option>s for a subject dropdown; Nursery learning areas sit under their department as <optgroup>s.
+function subjectOptionsHTML(level, subs){
+  if(level==='N'){
+    const g = nurseryConfig().depts.filter(d=>d.areas.length).map(d=>`<optgroup label="${esc(d.name)}">${d.areas.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('')}</optgroup>`).join('');
+    return g ? '<option value="">-- select learning area --</option>'+g : '<option value="">-- no learning areas available --</option>';
+  }
+  return subs.length ? '<option value="">-- select subject --</option>' + subs.map(x=>`<option value="${x}">${x}</option>`).join('') : '<option value="">-- no subjects available --</option>';
+}
+function nurseryNewId(){ return 'na'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function nurseryConfig(){
+  const n = (DB.info && DB.info.nursery) || {};
+  const depts = (Array.isArray(n.depts) && n.depts.length===4) ? n.depts
+    : NURSERY_DEFAULT_DEPTS.map((d,di)=>({id:'nd'+(di+1), name:d[0], areas:d[1].map((a,ai)=>({id:'nd'+(di+1)+'a'+(ai+1), name:a}))}));
+  const bands = {...NURSERY_DEFAULT_BANDS, ...(n.bands||{})};
+  // Migrate the former whole-number defaults, which left decimal averages ungraded.
+  const legacy = {A:[80,100],B:[70,79],C:[60,69],D:[50,59],E:[0,49]};
+  for(const g of NURSERY_GRADES){
+    const saved = n.bands && n.bands[g];
+    if(Array.isArray(saved) && saved.length===2 && saved[0]===legacy[g][0] && saved[1]===legacy[g][1]) bands[g]=NURSERY_DEFAULT_BANDS[g].slice();
+  }
+  return {depts, bands, desc:n.desc||{}};
+}
+// Grade for a learning-area result (0-100). Ranges are continuous to two decimal places.
+function nurseryGradeFor(score){
+  const v = Number(score);
+  if(!Number.isFinite(v) || v<0 || v>100) return null;
+  const n = Math.round(v*100)/100;
+  const b = nurseryConfig().bands;
+  return NURSERY_GRADES.find(g=>n>=Number(b[g][0]) && n<=Number(b[g][1])) || null;
+}
+// The descriptor printed for one learning area at one grade (falls back to the grade's key word).
+function nurseryDescriptor(areaId, grade){
+  const d = ((nurseryConfig().desc[areaId]||{})[grade]||'').trim();
+  return d || NURSERY_GRADE_KEY[grade] || '';
+}
+function nurseryAreaRowHTML(deptId, a){
+  return `<div class="nrow" style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+    <input type="hidden" name="nAreaId_${deptId}" value="${esc(a.id||'')}">
+    <input name="nArea_${deptId}" value="${esc(a.name||'')}" placeholder="Learning area" style="min-width:0;">
+    <button type="button" class="btn-outline" data-action="removeNurseryArea" title="Remove" style="padding:4px 8px;">✕</button>
+  </div>`;
+}
+function nurseryGradingHTML(){
+  const c = nurseryConfig();
+  return `
+  ${nurseryThemeCardHTML()}
+  <div class="card">
+    <h3>Nursery — departments &amp; learning areas</h3>
+    <p class="small">Nursery is graded on its own. Each department is a column and every learning area is a row under it. Tap <b>+ Add learning area</b> under any department, then save.</p>
+    <form data-form="saveNurseryAreas">
+      <div style="overflow-x:auto;"><table class="data-table" style="width:100%;min-width:760px;table-layout:fixed;">
+        <tr>${c.depts.map(d=>`<th>${esc(d.name)}</th>`).join('')}</tr>
+        <tr>${c.depts.map(d=>`<td style="vertical-align:top;">
+          ${d.areas.map(a=>nurseryAreaRowHTML(d.id,a)).join('')}
+          <button type="button" class="btn-outline" data-action="addNurseryArea" data-dept="${d.id}" style="margin-top:4px;">+ Add learning area</button>
+        </td>`).join('')}</tr>
+      </table></div>
+      <button class="btn" style="margin-top:12px;">Submit — save learning areas</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Nursery — grading table</h3>
+    <p class="small">Nursery report cards show the <b>grade</b>, not the score. Set the score range for each grade, then write what each grade means for every learning area (different learning areas can have different descriptors in the same grade). Save the learning areas above first so new ones appear here.</p>
+    <form data-form="saveNurseryBands">
+      <div style="overflow-x:auto;"><table class="data-table" style="width:100%;min-width:1000px;">
+        <tr><th rowspan="2" style="width:110px;">Range (%)</th><th rowspan="2" style="width:80px;">Grade</th><th colspan="4">Descriptor by department</th></tr>
+        <tr>${c.depts.map(d=>`<th>${esc(d.name)}</th>`).join('')}</tr>
+        ${NURSERY_GRADES.map(g=>`<tr>
+          <td style="vertical-align:top;white-space:nowrap;"><input name="nBmin_${g}" value="${c.bands[g][0]}" type="number" min="0" max="100" step="0.01" style="width:58px;text-align:center;"> – <input name="nBmax_${g}" value="${c.bands[g][1]}" type="number" min="0" max="100" step="0.01" style="width:58px;text-align:center;"></td>
+          <td style="vertical-align:top;text-align:center;"><b style="font-size:18px;">${g}</b><div class="small">${NURSERY_GRADE_KEY[g]}</div></td>
+          ${c.depts.map(d=>`<td style="vertical-align:top;">${d.areas.length ? d.areas.map(a=>`<div style="margin-bottom:6px;"><div class="small"><b>${esc(a.name)}</b></div><textarea name="nDesc_${a.id}_${g}" rows="2" placeholder="${NURSERY_GRADE_KEY[g]}" style="width:100%;">${esc((c.desc[a.id]||{})[g]||'')}</textarea></div>`).join('') : '<span class="small">No learning areas yet</span>'}</td>`).join('')}
+        </tr>`).join('')}
+      </table></div>
+      <button class="btn" style="margin-top:12px;">Submit — save Nursery grading</button>
+    </form>
+  </div>`;
+}
 function gradingView(gcClassId){
   const b = DB.bands||DEFAULT_A_BANDS, ob = DB.obands||DEFAULT_O_BANDS, pb = DB.pbands||DEFAULT_P_BANDS;
   const showSecondary = !isPrimarySchool();
@@ -14826,6 +14948,7 @@ function gradingView(gcClassId){
       <button class="btn" style="margin-top:14px;">Submit — save O-Level bands</button>
     </form>
   </div>`}
+  ${!showPrimary ? '' : nurseryGradingHTML()}
   ${!showPrimary ? '' : `
   <div class="card">
     <h3>Primary bands — per subject (PLE scale)</h3>
@@ -15591,6 +15714,7 @@ function rcClearAfterOpen(){
 // look identical.
 async function downloadReportCardPdf(studentId, term, year){
   if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
+  { const _n=DB.students.find(x=>x.id===studentId), _c=_n&&DB.classes.find(k=>k.id===_n.classId); if(_c&&_c.level==='N'){ setAppBusy(true); try{ await downloadNurseryReportPdf(studentId, term, year); } finally{ setAppBusy(false); } return; } }
   setAppBusy(true);
   try{
     try{ await loadJsPdfOnly(); }catch(e){ alert(e.message); return; }
@@ -18631,6 +18755,219 @@ function rcSumTotals(s, cls, term, year, rows, breakdowns, cwTests, useCwTestCol
   const f = (v,n)=> n ? zr(v.toFixed(1)) : '\u00A0';
   return { cwTotalTxt: f(cw,cwN), eotTotalTxt: f(eot,eotN), testTotals: tSum.map((v,i)=>f(v,tN[i])) };
 }
+/* ======================================================================
+   NURSERY REPORT CARD  (colourful, picture-based layout)
+   Four coloured department boxes (Social = green, Health = blue, Language = purple,
+   Mathematical = orange). Every header is a dark colour with white text and every
+   row is a pale tint of the same colour with dark text, so no colour ever clashes
+   with the wording. Grades A-E are coloured circles. Pictures are inline SVG so
+   they print and save to PDF without any external files.
+   ====================================================================== */
+const NRC_THEME = [
+  {dark:'#1b7f3b', pale:'#eaf7ee', line:'#9fd4ae'},   // Social Development
+  {dark:'#0f6fb3', pale:'#e8f3fb', line:'#9cc8e6'},   // Health Habits
+  {dark:'#6a35b0', pale:'#f1eafa', line:'#c2a6e6'},   // Language Development
+  {dark:'#c25e00', pale:'#fff2e2', line:'#f0bf84'}    // Mathematical Concepts
+];
+const NRC_DEFAULT_THEME = {frame:'#8b1c2c', d0:'#1b7f3b', d1:'#0f6fb3', d2:'#6a35b0', d3:'#c25e00'};
+function nrcHexRgb(x){ const m=/^#([0-9a-f]{6})$/i.exec(x||''); if(!m) return null; const n=parseInt(m[1],16); return [n>>16&255,n>>8&255,n&255]; }
+function nrcMix(x,t){ const c=nrcHexRgb(x)||[0,0,0]; return '#'+c.map(v=>Math.round(v+(255-v)*t).toString(16).padStart(2,'0')).join(''); }
+function nrcLum(x){ const c=nrcHexRgb(x)||[0,0,0]; return (0.299*c[0]+0.587*c[1]+0.114*c[2])/255; }
+function nrcThemeCfg(){ const t=(DB.info&&DB.info.nurseryTheme)||{}; const o={}; Object.keys(NRC_DEFAULT_THEME).forEach(k=>{ o[k]=nrcHexRgb(t[k])?t[k]:NRC_DEFAULT_THEME[k]; }); return o; }
+function nrcDeptTheme(i){ const dark=nrcThemeCfg()['d'+(i%4)]; return {dark, pale:nrcMix(dark,.9), line:nrcMix(dark,.55), ink:nrcLum(dark)>.62?'#1d2433':'#fff'}; }
+async function setNurseryTheme(key,val){
+  if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
+  DB.info.nurseryTheme = DB.info.nurseryTheme || {};
+  if(key==='reset') DB.info.nurseryTheme = {}; else if(nrcHexRgb(val)) DB.info.nurseryTheme[key]=val;
+  await saveInfo(); render();
+}
+function nurseryThemeCardHTML(){
+  const t=nrcThemeCfg(), c=nurseryConfig();
+  const row=(k,l)=>`<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="color" value="${t[k]}" onchange="setNurseryTheme('${k}',this.value)" style="width:48px;height:32px;padding:0;"> ${esc(l)}</label>`;
+  return `<div class="card"><h3>Nursery report card colours</h3>
+  <p class="small">Pick this school's colours. Pale row tints and white/dark wording are worked out automatically so the text always stays readable. School name, term, year, learner and class always come from your own data.</p>
+  ${row('frame','Border &amp; header')}${c.depts.map((d,i)=>row('d'+i,d.name)).join('')}
+  <button type="button" class="btn-outline" onclick="setNurseryTheme('reset')">Reset to default colours</button></div>`;
+}
+const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
+function nrcCss(){
+  const css = `
+.nrc-card{--u:7.94px;width:100%;max-width:794px;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:1.6u;position:relative;overflow:hidden;}
+@supports (width:1cqw){.nrc-wrap{container-type:inline-size;} .nrc-card{--u:1cqw;}}
+.nrc-card.nrc-pdf{--u:7.94px;width:794px;max-width:none;}
+.nrc-head{display:flex;align-items:center;gap:1.6u;background:var(--nf);color:var(--nfi);border-radius:1.2u;padding:1.4u 2u;}
+.nrc-logo{width:9u;height:9u;border-radius:50%;background:#fff;object-fit:contain;flex:none;border:0.4u solid #f2c94c;}
+.nrc-ht{flex:1;text-align:center;min-width:0;}
+.nrc-school{font-size:3.6u;font-weight:900;letter-spacing:.04u;text-transform:uppercase;line-height:1.05;}
+.nrc-addr{font-size:1.3u;margin-top:.5u;color:#ffe9b8;}
+.nrc-motto{font-size:1.5u;font-style:italic;margin-top:.4u;color:#fff;font-family:Georgia,serif;}
+.nrc-photo{width:10u;height:12u;object-fit:cover;border-radius:1u;border:.4u solid #f2c94c;background:#fff;flex:none;}
+.nrc-photo.empty{display:flex;align-items:center;justify-content:center;color:var(--nf);font-size:1.2u;text-align:center;}
+.nrc-title{margin:1.4u auto 1u;width:max-content;max-width:100%;background:#d62839;color:#fff;font-weight:900;font-size:2.2u;padding:.7u 3u;border-radius:1u;letter-spacing:.1u;text-align:center;}
+.nrc-info{display:flex;gap:2u;align-items:flex-end;font-size:1.9u;margin-bottom:1u;}
+.nrc-info div{flex:1;border-bottom:.25u solid #1d2433;padding-bottom:.3u;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.nrc-info b{color:#0b2a6f;font-size:2.1u;}
+.nrc-info .c{flex:.55;}
+.nrc-key{display:flex;flex-wrap:wrap;gap:.8u;align-items:center;justify-content:center;font-size:1.2u;margin-bottom:1.2u;}
+.nrc-key span{display:inline-flex;align-items:center;gap:.4u;background:#f6f6f8;border:.15u solid #d5d8e0;border-radius:1u;padding:.3u 1u;}
+.nrc-key i{font-style:normal;color:#fff;font-weight:900;width:2u;height:2u;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
+.nrc-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2u 1.4u;}
+.nrc-dept{min-width:0;}
+.nrc-dh{color:#fff;font-weight:900;font-size:1.5u;text-transform:uppercase;letter-spacing:.1u;padding:.6u 1.2u;border-radius:.8u .8u 0 0;}
+.nrc-tb{width:100%;border-collapse:collapse;table-layout:fixed;}
+.nrc-tb th{font-size:1.25u;padding:.45u .5u;color:#1d2433;text-align:center;border:.15u solid;}
+.nrc-tb td{border:.15u solid;padding:.4u .6u;vertical-align:middle;font-size:1.25u;}
+.nrc-tb td.a{font-weight:700;color:#1d2433;width:27%;}
+.nrc-tb td.g{text-align:center;width:11%;}
+.nrc-tb td.m{color:#0b2a6f;font-weight:600;font-size:1.2u;}
+.nrc-g{display:inline-flex;align-items:center;justify-content:center;width:2.6u;height:2.6u;border-radius:50%;color:#fff;font-weight:900;font-size:1.6u;}
+.nrc-pics{display:flex;justify-content:space-around;align-items:flex-end;gap:.6u;margin:.9u 0 0;}
+.nrc-pics svg{width:8.6u;height:8.6u;}
+.nrc-overall{display:flex;align-items:center;gap:1.6u;margin:1.4u 0 .8u;padding:.9u 1.6u;border-radius:1.2u;background:#fff8e1;border:.25u solid #f2c94c;}
+.nrc-overall .t{font-weight:900;font-size:1.8u;color:var(--nf);}
+.nrc-overall .n{margin-left:auto;font-size:1.4u;color:#1d2433;}
+.nrc-cm{border:.25u solid var(--nf);border-radius:1.2u;overflow:hidden;margin-top:.8u;}
+.nrc-cm div{padding:.8u 1.4u;font-size:1.6u;}
+.nrc-cm div+div{border-top:.2u dashed #c9a5ab;}
+.nrc-cm b{color:var(--nf);}
+.nrc-cm .w{color:#0b2a6f;font-weight:600;}
+.nrc-cm .s{display:inline-block;min-width:12u;border-bottom:.2u solid #1d2433;margin-left:1u;}
+.nrc-foot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1u;margin-top:1u;font-size:1.4u;}
+.nrc-foot div{border:.2u solid var(--nf);border-radius:.9u;padding:.7u 1u;background:var(--nfp);}
+.nrc-foot b{color:var(--nf);display:block;font-size:1.15u;text-transform:uppercase;}
+.nrc-theme{margin-top:1u;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
+.nrc-wm{position:absolute;left:50%;top:52%;width:50u;height:50u;transform:translate(-50%,-50%);opacity:.06;object-fit:contain;pointer-events:none;}
+`;
+  return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`);
+}
+/* small cartoon pictures (48x48) */
+const NRC_SVG = (()=>{
+  const W = b=>`<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${b}</svg>`;
+  const kid = (shirt,hair,x=0)=>`<g transform="translate(${x} 0)"><circle cx="24" cy="14" r="8" fill="#8d5a3b"/><path d="M16 13a8 8 0 0116 0c-3-3-13-3-16 0z" fill="${hair}"/><circle cx="21" cy="15" r="1" fill="#222"/><circle cx="27" cy="15" r="1" fill="#222"/><path d="M21 18q3 2 6 0" stroke="#222" stroke-width="1" fill="none"/><rect x="15" y="22" width="18" height="14" rx="5" fill="${shirt}"/><rect x="18" y="36" width="5" height="9" rx="2" fill="#2d3a8c"/><rect x="25" y="36" width="5" height="9" rx="2" fill="#2d3a8c"/></g>`;
+  const small = (shirt,hair,x)=>`<g transform="translate(${x} 8) scale(.62)">${kid(shirt,hair)}</g>`;
+  return {
+    share: W(small('#e4572e','#222',-4)+small('#1b7f3b','#4a2c12',18)+`<path d="M18 30h12" stroke="#8d5a3b" stroke-width="3"/>`),
+    sing: W(kid('#0f6fb3','#222')+`<path d="M38 8v14" stroke="#6a35b0" stroke-width="2"/><circle cx="35" cy="23" r="3.2" fill="#6a35b0"/><path d="M38 8l6 3" stroke="#6a35b0" stroke-width="2"/>`),
+    colours: W(`<circle cx="14" cy="16" r="8" fill="#d62839"/><circle cx="32" cy="16" r="8" fill="#f2c94c"/><circle cx="23" cy="30" r="8" fill="#0f6fb3"/>`),
+    run: W(kid('#f2c94c','#222')+`<circle cx="40" cy="38" r="6" fill="#fff" stroke="#222" stroke-width="1.5"/><path d="M36 36l8 4M40 32v12" stroke="#222" stroke-width="1"/>`),
+    hand: W(kid('#6a35b0','#4a2c12')+`<path d="M38 4c4 5 5 8 0 10-5-2-4-5 0-10z" fill="#5bb8f0"/>`),
+    body: W(kid('#d62839','#222')+`<path d="M6 24l9 3M42 24l-9 3" stroke="#d62839" stroke-width="2"/>`),
+    apple: W(`<path d="M24 14c-8-6-16 2-12 12 3 8 9 10 12 8 3 2 9 0 12-8 4-10-4-18-12-12z" fill="#d62839"/><path d="M24 12c0-5 2-7 5-8" stroke="#5a3a1a" stroke-width="2" fill="none"/><path d="M26 10c4-4 8-2 8-2s-2 6-8 4z" fill="#1b7f3b"/>`),
+    book: W(`<path d="M5 10q10-4 19 2v28q-9-6-19-2z" fill="#0f6fb3"/><path d="M43 10q-10-4-19 2v28q9-6 19-2z" fill="#f2c94c"/><path d="M10 18q6-2 10 1M10 24q6-2 10 1M28 19q5-3 10-1M28 25q5-3 10-1" stroke="#fff" stroke-width="1.5" fill="none"/>`),
+    abc: W(`<rect x="3" y="6" width="42" height="28" rx="3" fill="#1f4d3a" stroke="#c98a3b" stroke-width="3"/><text x="24" y="26" font-size="14" font-weight="700" text-anchor="middle" fill="#fff" font-family="Arial">A B C</text><rect x="9" y="38" width="30" height="3" fill="#c98a3b"/>`),
+    pencil: W(`<g transform="rotate(40 24 24)"><rect x="19" y="3" width="10" height="30" fill="#f2c94c"/><path d="M19 33h10l-5 10z" fill="#f1d3a8"/><path d="M22 40h4l-2 4z" fill="#222"/><rect x="19" y="3" width="10" height="5" fill="#d62839"/></g>`),
+    blocks: W(`<rect x="4" y="26" width="18" height="18" rx="2" fill="#d62839"/><rect x="26" y="26" width="18" height="18" rx="2" fill="#0f6fb3"/><rect x="15" y="6" width="18" height="18" rx="2" fill="#f2c94c"/><g font-size="13" font-weight="700" fill="#fff" font-family="Arial" text-anchor="middle"><text x="13" y="40">1</text><text x="35" y="40">2</text><text x="24" y="20" fill="#222">3</text></g>`),
+    shapes: W(`<circle cx="12" cy="14" r="9" fill="#d62839"/><rect x="26" y="5" width="18" height="18" fill="#0f6fb3"/><path d="M24 26l12 18H12z" fill="#1b7f3b"/>`),
+    nums: W(`<text x="24" y="33" font-size="17" font-weight="900" text-anchor="middle" fill="#c25e00" font-family="Arial">1 2 3</text>`)
+  };
+})();
+function nrcPics(keys){ return `<div class="nrc-pics">${keys.map(k=>NRC_SVG[k]||'').join('')}</div>`; }
+function nrcOverallComment(grade, name, kind){
+  const first = String(name||'The learner').split(/\s+/).slice(-1)[0] || 'The learner';
+  const C = {
+    A:{class:`${first} is consistently hardworking and a brilliant example to others. Keep shining!`, head:`Very good progress in all areas.`},
+    B:{class:`${first} has worked very well this term and shows lovely progress.`, head:`Good work. Keep it up.`},
+    C:{class:`${first} is doing well. With more practice, even better results will come.`, head:`A fair result. More effort will help.`},
+    D:{class:`${first} is trying. Please help ${first} to practise at home every day.`, head:`There is room to improve. Keep encouraging the learner.`},
+    E:{class:`${first} needs extra help and encouragement. Let us work together.`, head:`Needs close support from school and home.`}
+  };
+  return (C[grade]||C.C)[kind];
+}
+function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPeriods, isCurrentPeriod){
+  const { rows } = computeSubjectRows(s, cls, term, year);
+  const byName = new Map(rows.map(r=>[r.subject, r]));
+  const conf = nurseryConfig();
+  const gradeChip = g => g ? `<span class="nrc-g" style="background:${NRC_GRADE_COL[g]}">${g}</span>` : `<span class="nrc-g" style="background:#9aa1ad">–</span>`;
+  const sumAvg = rows.filter(r=>r.avg!=null);
+  const overall = sumAvg.length ? nurseryGradeFor(sumAvg.reduce((a,r)=>a+r.avg,0)/sumAvg.length) : null;
+  const pics = [['share','sing','colours'],['hand','run','body'],['abc','book','pencil'],['blocks','shapes','nums']];
+  const picsRow = (a,b)=>nrcPics(a)+'';
+  const dept = (d,i)=>{
+    const th = nrcDeptTheme(i);
+    return `<div class="nrc-dept">
+      <div class="nrc-dh" style="background:${th.dark};color:${th.ink}">${esc(d.name)}</div>
+      <table class="nrc-tb" style="background:${th.pale}">
+        <colgroup><col style="width:28%"><col style="width:12%"><col></colgroup>
+        <tr><th style="border-color:${th.line}">Learning Area</th><th style="border-color:${th.line}">Grade</th><th style="border-color:${th.line}">Comment</th></tr>
+        ${d.areas.map(a=>{
+          const r = byName.get(a.name); const g = (r && r.avg!=null) ? nurseryGradeFor(r.avg) : null;
+          const txt = g ? nurseryDescriptor(a.id, g) : '';
+          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td><td class="g" style="border-color:${th.line}">${gradeChip(g)}</td><td class="m" style="border-color:${th.line}">${esc(txt)}</td></tr>`;
+        }).join('')}
+      </table>
+    </div>`;
+  };
+  const d = conf.depts;
+  const grid = `<div class="nrc-grid">${dept(d[0],0)}${dept(d[1],1)}
+      <div>${nrcPics(pics[0])}</div><div>${nrcPics(pics[1])}</div>
+      ${dept(d[2],2)}${dept(d[3],3)}
+      <div>${nrcPics(pics[2])}</div><div>${nrcPics(pics[3])}</div></div>`;
+  const acc = DB.accounts.find(a=>a.username===cls.classTeacher);
+  const ctName = acc ? acc.name : '', ctSig = acc ? acc.signature : null;
+  const info = DB.info;
+  const termTxt = String(term||'').toUpperCase();
+  const key = NURSERY_GRADES.map(g=>`<span><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
+  const card = `
+  <div class="nrc-wrap"><style>${nrcCss()}</style>
+  <div class="nrc-card${embedded?' nrc-pdf':''}" style="--nf:${nrcThemeCfg().frame};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
+    ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
+    <div class="nrc-head">
+      ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="">`:''}
+      <div class="nrc-ht">
+        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>34?2.6:(String(info.schoolName||'').length>24?3.1:3.6)})">${esc(info.schoolName||'')}</div>
+        <div class="nrc-addr">${[info.address, info.phone?'Tel: '+info.phone:'', info.email].filter(Boolean).map(esc).join(' &nbsp;|&nbsp; ')}</div>
+        ${info.motto?`<div class="nrc-motto">${esc(info.motto)}</div>`:''}
+      </div>
+      ${s.photo?`<img class="nrc-photo" src="${s.photo}" alt="">`:`<div class="nrc-photo empty">Photo</div>`}
+    </div>
+    <div class="nrc-title">END OF ${esc(termTxt||'TERM')} ${esc(String(year||DB.info.currentYear||''))} REPORT</div>
+    <div class="nrc-info"><div>Name: <b>${esc(s.name)}</b></div><div class="c">Class: <b>${esc(classFullName(cls))}</b></div></div>
+    <div class="nrc-key"><b>KEY:</b>${key}</div>
+    ${grid}
+    <div class="nrc-overall"><span class="t">Overall</span>${gradeChip(overall)}<span class="n">${overall?esc(NURSERY_GRADE_KEY[overall]):'No grades yet'}</span></div>
+    <div class="nrc-cm">
+      <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class')):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*3)'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
+      <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head')):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*5);vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
+    </div>
+    <div class="nrc-foot" style="grid-template-columns:1fr 1fr;">
+      <div><b>Term ends on</b>${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
+      <div><b>Next term begins</b>${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>
+    </div>
+    ${themeOfYearText()?`<div class="nrc-theme">Theme ${esc(String(year||''))}: ${esc(themeOfYearText())}</div>`:''}
+  </div></div>`;
+  if(embedded || bareCard) return card;
+  const picker = pickerPeriods && pickerPeriods.length ? `
+  <div class="card" style="margin-bottom:10px;">
+    <label style="margin-bottom:4px;display:block;">Viewing period (read-only)</label>
+    <select onchange="viewReportPeriod('${s.id}', this.value)">
+      ${pickerPeriods.map(p=>{
+        const sel = p.term===term && Number(p.year)===Number(year);
+        const cur = p.term===DB.info.currentTerm && Number(p.year)===Number(DB.info.currentYear);
+        return `<option value="${esc(p.term)}||${p.year}" ${sel?'selected':''}>${esc(p.term)}, ${p.year}${cur?' (current)':(p.hasData?'':' (no scores yet)')}</option>`;
+      }).join('')}
+    </select>
+    ${!isCurrentPeriod?'<p class="small" style="color:var(--danger);margin-top:6px;">You are viewing an earlier term — not the current one.</p>':''}
+  </div>` : '';
+  const btns = `<div class="flex" style="margin-bottom:10px;">${(CUR.role==='admin' && !reportOutputBlocked())?`<button class="btn" onclick="printReportClean('${s.id}', decodeURIComponent('${encodeURIComponent(term)}'), '${year}')"><b>Print this report card</b></button>
+  <button class="btn-outline" data-action="dlReportCardPdf:${s.id}:${encodeURIComponent(term)}:${year}"><b>Download as PDF</b></button>`:''}
+  <button class="btn-outline" data-action="nav:${CUR.role==='parent'?'pdash':(CUR.role==='teacher'?'treports':'reports')}">${CUR.role==='parent'?'Back to My Child':'Back to list'}</button></div>`;
+  return `${picker}${btns}<div id="printArea"><div class="rc-card nrc-outer">${card}</div></div>`;
+}
+/* Nursery PDF: capture the colourful card (a normal vector report card cannot hold the pictures). */
+async function downloadNurseryReportPdf(studentId, term, year){
+  const s = DB.students.find(x=>x.id===studentId); const cls = s && DB.classes.find(c=>c.id===s.classId);
+  if(!s || !cls) return;
+  const holder = document.createElement('div');
+  holder.id = 'nrcPdfHolder';
+  holder.style.cssText = 'position:fixed;left:-12000px;top:0;width:794px;background:#fff;';
+  holder.innerHTML = nurseryReportCardHTML(s, cls, term||DB.info.currentTerm, year||DB.info.currentYear, true, true);
+  document.body.appendChild(holder);
+  try{
+    const t = String(term||DB.info.currentTerm||'Term').replace(/\s+/g,'_');
+    await downloadElementAsPdf('nrcPdfHolder', `${s.name.replace(/\s+/g,'_')}_${t}_${year||DB.info.currentYear}_report.pdf`, {orientation:'portrait'});
+  } finally { holder.remove(); }
+}
+
 function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const s = DB.students.find(x=>x.id===studentId);
   if(!s) return '<p>Student not found.</p>';
@@ -18641,6 +18978,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const isCurrentPeriod = term===DB.info.currentTerm && Number(year)===Number(DB.info.currentYear);
   const periods = availableTermYears(studentId);
   const pickerPeriods = reportCardPeriods(studentId);
+  if(cls.level==='N') return nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPeriods, isCurrentPeriod);
   const { rows, totalPoints, avgPct } = computeSubjectRows(s, cls, term, year);
   const { position, size } = classPosition(s, cls, term, year);
   const isA = cls.level==='A';
@@ -20218,7 +20556,7 @@ document.addEventListener('click', async (e)=>{
   const myNavToken = ++NAV_TOKEN;
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
-  const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','addPClassSubject','delPClassSubject','delStudent','closeAcc','reopenAcc',
+  const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','addPSubjectCol','addPClassSubject','delPClassSubject','delStudent','closeAcc','reopenAcc',
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature','stmNext','stmSaveAssign','stmConfirm',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
@@ -20286,6 +20624,17 @@ document.addEventListener('click', async (e)=>{
       const num = tbl.querySelectorAll('tr').length; // header row + existing rows → next visible number
       (tbl.tBodies[0] || tbl).insertAdjacentHTML('beforeend', isA ? aExtraRowHTML(i, {}) : pfRowHTML(i, {}, num));
       const first = tbl.querySelector(`input[name="${isA?'aXLabel_':'pfMin_'}${i}"]`); if(first) first.focus();
+      FORM_DIRTY = true;
+      break;
+    }
+    case 'addNurseryArea': {
+      el.insertAdjacentHTML('beforebegin', nurseryAreaRowHTML(el.dataset.dept, {id:'', name:''}));
+      const inp = el.previousElementSibling && el.previousElementSibling.querySelector('input[name^="nArea_"]'); if(inp) inp.focus();
+      FORM_DIRTY = true;
+      break;
+    }
+    case 'removeNurseryArea': {
+      const row = el.closest('.nrow'); if(row) row.remove();
       FORM_DIRTY = true;
       break;
     }
@@ -20671,6 +21020,19 @@ Continue?`);
       if(Array.isArray(DB.info.oCompulsoryS2)) DB.info.oCompulsoryS2 = DB.info.oCompulsoryS2.filter(s=>s!==name);
       if(Array.isArray(DB.info.oCompulsoryUpper)) DB.info.oCompulsoryUpper = DB.info.oCompulsoryUpper.filter(s=>s!==name);
       await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
+    }
+    case 'addPSubjectCol': {
+      const inp = document.getElementById('pSubjAdd');
+      const name = ((inp && inp.value) || '').replace(/[|]/g,' ').replace(/\s+/g,' ').trim().toUpperCase();
+      if(!name){ alert('Type the new subject name first.'); break; }
+      if(pAllSubjectPool().includes(name)){ alert(name+' is already listed.'); break; }
+      // keep any ticks made but not yet saved
+      const by = Object.assign({}, DB.info.pCompulsoryByForm || {});
+      PRIMARY_FORMS.forEach(f=>{ const boxes = document.querySelectorAll('input[name="pc_'+f+'"]'); if(boxes.length) by[f] = [...boxes].filter(b=>b.checked).map(b=>b.value); });
+      DB.info.pCompulsoryByForm = by;
+      DB.info.pExtraSubjects = DB.info.pExtraSubjects || [];
+      DB.info.pExtraSubjects.push(name);
+      await saveInfo(); showActionSuccess('Subject added successfully', el); render(); break;
     }
     case 'addPClassSubject': {
       const form = arg;
@@ -22055,7 +22417,7 @@ document.addEventListener('change', (e)=>{
     // defaulted to a single implicit paper) whenever a Primary class is selected here.
     const opt = e.target.selectedOptions[0];
     const level = opt ? opt.dataset.level : null;
-    const isPrimary = level==='P';
+    const isPrimary = noPapersLevel(level);
     const wrap = document.getElementById('papersWrap');
     const input = document.getElementById('papersInput');
     if(wrap) wrap.style.display = isPrimary ? 'none' : 'block';
@@ -22079,7 +22441,7 @@ document.addEventListener('change', (e)=>{
       const subjSel = form ? form.querySelector('#assignSubjectSel') : null;
       if(subjSel){
         const subs = (level==='P' && opt && opt.dataset.form) ? pAllSubjectPool(opt.dataset.form) : subjectsForLevel(level);
-        subjSel.innerHTML = subs.length ? '<option value="">-- select subject --</option>' + subs.map(s=>`<option value="${s}">${s}</option>`).join('') : '<option value="">-- no subjects available --</option>';
+        subjSel.innerHTML = subjectOptionsHTML(level, subs);
         subjSel.disabled = subs.length === 0;
       }
       const teachSel = form ? form.querySelector('#assignTeacherSel') : null;
@@ -22122,7 +22484,7 @@ document.addEventListener('change', (e)=>{
     // field is hidden entirely on the score-entry form once a Primary class/subject
     // assignment is chosen — nothing for the teacher to pick.
     const assignedCls = a ? DB.classes.find(c=>c.id===a.classId) : null;
-    const isPrimaryAssign = !!(assignedCls && assignedCls.level==='P');
+    const isPrimaryAssign = !!(assignedCls && noPapersLevel(assignedCls.level));
     // No paper is pre-selected: the teacher must choose one (Primary keeps its single implicit paper).
     if(paperSel){
       const paperOpts = a ? a.papers.map(p=>`<option value="${p}">Paper ${p}</option>`).join('') : '';
@@ -22276,7 +22638,7 @@ document.addEventListener('submit', async (e)=>{
   // Backstop: these forms edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
   const ADMIN_ONLY_FORMS = new Set(['addClass','addOSubject','addPSubject','addStudent','assignSubject','assignBulk','bulkAddStudents',
-    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','savePromoRules','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
+    'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveNurseryAreas','saveNurseryBands','savePromoRules','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
     'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade','saveSummaryOptions']);
@@ -23262,7 +23624,7 @@ document.addEventListener('submit', async (e)=>{
       if(schoolGradeLocked()){ alert('The school grade has already been saved. Only the Founder can change it.'); return; }
       if(g!=='primary' && g!=='secondary'){ alert('Please choose a school grade.'); return; }
       if(!FOUNDER_IMPERSONATING_SCHOOL && !confirm(`Save ${g==='primary'?'Primary School':'Secondary School'} as your school grade?\n\nOnce saved it cannot be changed by the school — only the Founder can change it.`)) return;
-      const mismatched = DB.classes.filter(c=> g==='primary' ? c.level!=='P' : c.level==='P');
+      const mismatched = DB.classes.filter(c=> g==='primary' ? (c.level!=='P' && c.level!=='N') : (c.level==='P' || c.level==='N'));
       if(mismatched.length){
         const ok = confirm(`${mismatched.length} existing class${mismatched.length===1?'':'es'} (${mismatched.map(c=>c.name).join(', ')}) belong to the grade you're switching away from. They will stay exactly as they are, but you won't be able to add any more classes of that grade until you switch back. Continue?`);
         if(!ok) return;
@@ -23708,7 +24070,7 @@ document.addEventListener('submit', async (e)=>{
       if(!assignCls){ alert('Please select a class.'); return; }
       if(!(fd.get('teacherUsername')||'').trim()){ alert('Please select a teacher.'); return; }
       if(!(fd.get('subject')||'').trim()){ alert('Please select a subject.'); return; }
-      const papers = (assignCls && assignCls.level==='P') ? ['1'] : (fd.get('papers')||'').split(',').map(p=>p.trim()).filter(Boolean);
+      const papers = (assignCls && noPapersLevel(assignCls.level)) ? ['1'] : (fd.get('papers')||'').split(',').map(p=>p.trim()).filter(Boolean);
       if(!papers.length){ alert('Please enter the papers taught, e.g. 1,2'); return; }
       // The same teacher + subject for any stream of this class is the SAME assignment — never repeated.
       const _gi = streamGroupIds(assignCls);
@@ -23738,8 +24100,8 @@ document.addEventListener('submit', async (e)=>{
         for(const cid of mine){
           const c = DB.classes.find(x=>x.id===cid);
           if(!c) continue;
-          const papers = c.level==='P' ? ['1'] : papersFor(sj, cid);
-          if(c.level!=='P' && !papers.length){ alert('Please tick the papers taught for '+sj+' in '+c.name+'.'); return; }
+          const papers = noPapersLevel(c.level) ? ['1'] : papersFor(sj, cid);
+          if(!noPapersLevel(c.level) && !papers.length){ alert('Please tick the papers taught for '+sj+' in '+c.name+'.'); return; }
           desired.set(sj+'||'+cid, papers);
         }
       }
@@ -23942,6 +24304,34 @@ document.addEventListener('submit', async (e)=>{
       DB.info.promoRulesByLevel = {...(DB.info.promoRulesByLevel||{}), [level]: out};
       if(level==='O') delete DB.info.promoRules;   // older single set of conditions now lives under O-Level
       await saveInfo(); alertOk(PROMO_LEVEL_NAMES[level]+' promotion conditions saved.'); render();
+    }
+    else if(type==='saveNurseryAreas'){
+      const c = nurseryConfig();
+      const depts = c.depts.map(d=>{
+        const ids = fd.getAll('nAreaId_'+d.id), names = fd.getAll('nArea_'+d.id), seen = new Set(), areas = [];
+        names.forEach((nm,i)=>{ nm = (nm||'').trim(); const k = nm.toLowerCase(); if(!nm || seen.has(k)) return; seen.add(k); areas.push({id: ids[i] || nurseryNewId(), name: nm}); });
+        return {...d, areas};
+      });
+      const valid = new Set(); depts.forEach(d=>d.areas.forEach(a=>valid.add(a.id)));
+      const desc = {}; Object.keys(c.desc).forEach(k=>{ if(valid.has(k)) desc[k] = c.desc[k]; });
+      DB.info.nursery = {depts, bands:c.bands, desc};
+      await saveInfo(); render();
+    }
+    else if(type==='saveNurseryBands'){
+      const c = nurseryConfig(), bands = {}, desc = {};
+      for(const g of NURSERY_GRADES){
+        const lo = Number(fd.get('nBmin_'+g)), hi = Number(fd.get('nBmax_'+g));
+        if(!Number.isFinite(lo) || !Number.isFinite(hi) || lo<0 || hi>100 || lo>hi){ alert('Check the range for grade '+g+': use numbers from 0 to 100 with the first not above the second.'); return; }
+        bands[g] = [Math.round(lo*100)/100,Math.round(hi*100)/100];
+      }
+      // Require complete, non-overlapping coverage from 0.00 to 100.00.
+      const ordered = NURSERY_GRADES.map(g=>({g,lo:bands[g][0],hi:bands[g][1]})).sort((a,b)=>a.lo-b.lo);
+      if(ordered[0].lo!==0 || ordered[ordered.length-1].hi!==100 || ordered.some((x,i)=>i>0 && Math.abs(x.lo-ordered[i-1].hi-0.01)>0.000001)){
+        alert('The Nursery grading ranges must cover 0.00–100.00 without gaps or overlaps. Use E 0.00–49.99, D 50.00–59.99, C 60.00–69.99, B 70.00–79.99 and A 80.00–100.00, or another continuous set of ranges.'); return;
+      }
+      c.depts.forEach(d=>d.areas.forEach(a=>{ desc[a.id] = {}; NURSERY_GRADES.forEach(g=>{ desc[a.id][g] = (fd.get('nDesc_'+a.id+'_'+g)||'').trim(); }); }));
+      DB.info.nursery = {depts:c.depts, bands, desc};
+      await saveInfo(); render();
     }
     else if(type==='saveOBands'){
       const b={...(DB.obands||DEFAULT_O_BANDS)}; ['A','B','C','D','E'].forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
@@ -24173,7 +24563,7 @@ document.addEventListener('submit', async (e)=>{
       // attribute) — no silent fallback to 100 if it's ever empty or invalid.
       const _pickA = DB.assignments.find(x=>x.id===fd.get('assignId'));
       const _pickCls = _pickA ? DB.classes.find(c=>c.id===_pickA.classId) : null;
-      if(!(_pickCls && _pickCls.level==='P') && !fd.get('paper')){ alert('Please choose a paper.'); return; }
+      if(!(_pickCls && noPapersLevel(_pickCls.level)) && !fd.get('paper')){ alert('Please choose a paper.'); return; }
       if(!fd.get('kind')){ alert('Please choose an assessment type.'); return; }
       if(_pickA && _pickCls && streamGroupClasses(_pickCls).length>1){
         if(!fd.get('stream')){ alert('Please choose the stream.'); return; }
