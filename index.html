@@ -18939,7 +18939,7 @@ const NRC_THEME = [
   {dark:'#6a35b0', pale:'#f1eafa', line:'#c2a6e6'},   // Language Development
   {dark:'#c25e00', pale:'#fff2e2', line:'#f0bf84'}    // Mathematical Concepts
 ];
-const NRC_DEFAULT_THEME = {frame:'#8b1c2c', d0:'#1b7f3b', d1:'#0f6fb3', d2:'#6a35b0', d3:'#c25e00'};
+const NRC_DEFAULT_THEME = {frame:'#8b1c2c', head:'#8b1c2c', d0:'#1b7f3b', d1:'#0f6fb3', d2:'#6a35b0', d3:'#c25e00'};
 function nrcHexRgb(x){ const m=/^#([0-9a-f]{6})$/i.exec(x||''); if(!m) return null; const n=parseInt(m[1],16); return [n>>16&255,n>>8&255,n&255]; }
 function nrcMix(x,t){ const c=nrcHexRgb(x)||[0,0,0]; return '#'+c.map(v=>Math.round(v+(255-v)*t).toString(16).padStart(2,'0')).join(''); }
 function nrcLum(x){ const c=nrcHexRgb(x)||[0,0,0]; return (0.299*c[0]+0.587*c[1]+0.114*c[2])/255; }
@@ -18956,43 +18956,43 @@ function nurseryThemeCardHTML(){
   const row=(k,l)=>`<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="color" value="${t[k]}" onchange="setNurseryTheme('${k}',this.value)" style="width:48px;height:32px;padding:0;"> ${esc(l)}</label>`;
   return `<div class="card"><h3>Nursery report card colours</h3>
   <p class="small">Pick this school's colours. Pale row tints and white/dark wording are worked out automatically so the text always stays readable. School name, term, year, learner and class always come from your own data.</p>
-  ${row('frame','Border &amp; header')}${c.depts.map((d,i)=>row('d'+i,d.name)).join('')}
+  ${row('frame','Decorative border')}${row('head','School header background')}${c.depts.map((d,i)=>row('d'+i,d.name)).join('')}
   <button type="button" class="btn-outline" onclick="setNurseryTheme('reset')">Reset to default colours</button></div>`;
 }
 const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
 function nrcCss(){
   const css = `
-.nrc-card{--u:7.94px;width:100%;max-width:794px;height:auto;min-height:0;aspect-ratio:210/297;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:1.6u;position:relative;overflow:hidden;display:flex;flex-direction:column;}
+.nrc-card{--u:7.94px;width:100%;max-width:794px;height:auto;min-height:0;aspect-ratio:210/297;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;font-weight:700;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:2.8u 2.6u 2.4u;position:relative;overflow:hidden;display:flex;flex-direction:column;}
 @supports (width:1cqw){.nrc-wrap{container-type:inline-size;} .nrc-card{--u:1cqw;}}
 .nrc-card.nrc-pdf{--u:7.94px;width:794px;max-width:none;height:1123px;min-height:1123px;aspect-ratio:auto;}
-.nrc-head{display:flex;align-items:center;gap:1.6u;background:var(--nf);color:var(--nfi);border-radius:1.2u;padding:1.4u 2u;}
+.nrc-head{font-weight:700;display:flex;align-items:center;gap:1.6u;background:var(--nh);color:var(--nhi);border-radius:1.2u;padding:1.4u 2u;}
 .nrc-logo{width:9u;height:9u;border-radius:50%;background:#fff;object-fit:contain;flex:none;border:0.4u solid #f2c94c;}
 .nrc-ht{flex:1;text-align:center;min-width:0;}
-.nrc-school{font-size:3.6u;font-weight:900;letter-spacing:.04u;text-transform:uppercase;line-height:1.05;}
-.nrc-addr{font-size:1.3u;margin-top:.5u;color:#ffe9b8;}
-.nrc-motto{font-size:1.5u;font-style:italic;margin-top:.4u;color:#fff;font-family:Georgia,serif;}
+.nrc-school{font-size:3.6u;font-weight:950;letter-spacing:.055u;text-transform:uppercase;line-height:1.08;display:inline-block;transform:rotate(-1deg);transform-origin:center;text-shadow:0 .18u .18u rgba(0,0,0,.24);font-family:Georgia,'Times New Roman',serif;}
+.nrc-addr{font-size:1.3u;font-weight:700;margin-top:.5u;color:var(--nhi);opacity:.94;}
+.nrc-motto{font-size:1.5u;font-weight:700;font-style:italic;margin-top:.4u;color:var(--nhi);font-family:Georgia,serif;}
 .nrc-photo{width:10u;height:12u;object-fit:cover;border-radius:1u;border:.4u solid #f2c94c;background:#fff;flex:none;}
-.nrc-photo.empty{display:flex;align-items:center;justify-content:center;color:var(--nf);font-size:1.2u;text-align:center;}
+
 .nrc-title{margin:1.4u auto 1u;width:max-content;max-width:100%;background:#d62839;color:#fff;font-weight:900;font-size:2.2u;padding:.7u 3u;border-radius:1u;letter-spacing:.1u;text-align:center;}
-.nrc-info{display:flex;gap:2u;align-items:flex-end;font-size:1.9u;margin-bottom:1u;}
+.nrc-info{font-weight:700;display:flex;gap:2u;align-items:flex-end;font-size:1.9u;margin-bottom:1u;}
 .nrc-info div{flex:1;border-bottom:.25u solid #1d2433;padding-bottom:.3u;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .nrc-info b{color:#0b2a6f;font-size:2.1u;}
 .nrc-info .c{flex:.55;}
-.nrc-key{display:flex;flex-wrap:wrap;gap:.8u;align-items:center;justify-content:center;font-size:1.2u;margin-bottom:1.2u;}
+.nrc-key{font-weight:700;display:flex;flex-wrap:wrap;gap:.8u;align-items:center;justify-content:center;font-size:1.2u;margin-bottom:1.2u;}
 .nrc-key span{display:inline-flex;align-items:center;gap:.4u;background:#f6f6f8;border:.15u solid #d5d8e0;border-radius:1u;padding:.3u 1u;}
 .nrc-key i{font-style:normal;color:#fff;font-weight:900;width:2u;height:2u;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
 .nrc-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2u 1.4u;flex:1 1 auto;align-content:space-evenly;min-height:0;}
 .nrc-dept{min-width:0;}
 .nrc-dh{color:#fff;font-weight:900;font-size:1.5u;text-transform:uppercase;letter-spacing:.1u;padding:.6u 1.2u;border-radius:.8u .8u 0 0;}
 .nrc-tb{width:100%;border-collapse:collapse;table-layout:fixed;}
-.nrc-tb th{font-size:1.25u;padding:.45u .5u;color:#1d2433;text-align:center;border:.15u solid;}
-.nrc-tb td{border:.15u solid;padding:.4u .6u;vertical-align:middle;font-size:1.25u;}
+.nrc-tb th{font-weight:800;font-size:1.25u;padding:.45u .5u;color:#1d2433;text-align:center;border:.15u solid;}
+.nrc-tb td{border:.15u solid;padding:.4u .6u;vertical-align:middle;font-size:1.25u;font-weight:700;}
 .nrc-tb td.a{font-weight:700;color:#1d2433;width:27%;}
 .nrc-tb td.g{text-align:center;width:11%;}
-.nrc-tb td.m{color:#0b2a6f;font-weight:600;font-size:1.2u;line-height:1.22;}
+.nrc-tb td.m{color:#0b2a6f;font-weight:700;font-size:1.2u;line-height:1.22;}
 .nrc-g{display:inline-flex;align-items:center;justify-content:center;width:2.6u;height:2.6u;border-radius:50%;color:#fff;font-weight:900;font-size:1.6u;}
 .nrc-pics{display:flex;justify-content:space-around;align-items:flex-end;gap:.6u;margin:.9u 0 0;}
-.nrc-pics svg{width:8.6u;height:8.6u;}
+.nrc-pics svg{width:100%;max-width:19u;height:auto;aspect-ratio:120/76;border-radius:.8u;box-shadow:0 .2u .5u rgba(20,35,50,.12);}
 .nrc-overall{display:flex;align-items:center;gap:1.6u;margin:1.4u 0 .8u;padding:.9u 1.6u;border-radius:1.2u;background:#fff8e1;border:.25u solid #f2c94c;}
 .nrc-overall .t{font-weight:900;font-size:1.8u;color:var(--nf);}
 .nrc-overall .n{margin-left:auto;font-size:1.4u;color:#1d2433;}
@@ -19000,54 +19000,91 @@ function nrcCss(){
 .nrc-cm div{padding:.8u 1.4u;font-size:1.6u;}
 .nrc-cm div+div{border-top:.2u dashed #c9a5ab;}
 .nrc-cm b{color:var(--nf);}
-.nrc-cm .w{color:#0b2a6f;font-weight:600;}
+.nrc-cm .w{color:#0b2a6f;font-weight:700;}
 .nrc-cm .s{display:inline-block;min-width:12u;border-bottom:.2u solid #1d2433;margin-left:1u;}
 .nrc-foot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1u;margin-top:1u;font-size:1.4u;}
 .nrc-foot div{border:.2u solid var(--nf);border-radius:.9u;padding:.7u 1u;background:var(--nfp);}
 .nrc-foot b{color:var(--nf);display:block;font-size:1.15u;text-transform:uppercase;}
 .nrc-theme{margin-top:1u;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
+/* Readability pass: keep Nursery report text comfortably legible at A4 print size. */
+.nrc-card{font-size:max(11px,calc(var(--u)*1.5));line-height:1.24;}
+.nrc-school{font-size:clamp(22px,calc(var(--u)*3.6),34px);line-height:1.12;}
+.nrc-addr{font-size:max(10px,calc(var(--u)*1.45));line-height:1.2;}
+.nrc-motto{font-size:max(11px,calc(var(--u)*1.55));line-height:1.2;}
+.nrc-title{font-size:max(14px,calc(var(--u)*2.2));line-height:1.2;}
+.nrc-info{font-size:max(12px,calc(var(--u)*1.9));line-height:1.25;}
+.nrc-info b{font-size:max(13px,calc(var(--u)*2.1));}
+.nrc-key{font-size:max(10px,calc(var(--u)*1.35));line-height:1.2;}
+.nrc-dh{font-size:max(11px,calc(var(--u)*1.55));line-height:1.2;}
+.nrc-tb th{font-size:max(10px,calc(var(--u)*1.4));line-height:1.18;padding:.48u .5u;}
+.nrc-tb td{font-size:max(11px,calc(var(--u)*1.5));line-height:1.22;padding:.48u .55u;}
+.nrc-tb td.a{font-size:max(10.5px,calc(var(--u)*1.42));line-height:1.2;}
+.nrc-tb td.m{font-size:max(11px,calc(var(--u)*1.48));line-height:1.22;}
+.nrc-g{font-size:max(13px,calc(var(--u)*1.7));}
+.nrc-overall .t{font-size:max(14px,calc(var(--u)*1.9));}
+.nrc-overall .n{font-size:max(11px,calc(var(--u)*1.5));}
+.nrc-cm div{font-size:max(11px,calc(var(--u)*1.55));line-height:1.3;padding:.85u 1.4u;}
+.nrc-foot{font-size:max(11px,calc(var(--u)*1.45));line-height:1.25;}
+.nrc-foot b{font-size:max(10px,calc(var(--u)*1.25));}
+.nrc-theme{font-size:max(10px,calc(var(--u)*1.4));line-height:1.2;}
 .nrc-wm{position:absolute;left:50%;top:52%;width:50u;height:50u;transform:translate(-50%,-50%);opacity:.06;object-fit:contain;pointer-events:none;}
 .nrc-card:before{content:'';position:absolute;inset:2px;padding:8px;pointer-events:none;z-index:5;background:radial-gradient(circle at 50% 50%,#f2c94c 0 1.2px,transparent 1.6px),radial-gradient(circle at 50% 0%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 100% 50%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 50% 100%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 0% 50%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px);background-size:22px 22px;background-repeat:repeat;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
 .nrc-card:before{inset:3px;padding:7px;}
-.nrc-card:after{content:'';position:absolute;inset:12px;border:2px double var(--nf);border-radius:1u;pointer-events:none;z-index:5;box-sizing:border-box;}
+.nrc-card:after{content:'';position:absolute;inset:18px;border:2px double var(--nf);border-radius:1u;pointer-events:none;z-index:5;box-sizing:border-box;}
 .nrc-outer{position:relative;padding:0 !important;border:0 !important;box-shadow:none !important;min-height:0 !important;height:auto !important;aspect-ratio:210/297 !important;max-width:724px !important;}
 .nrc-outer:after{content:none !important;}
 @media (max-width:760px){.nrc-card:not(.nrc-pdf){height:auto;min-height:0;aspect-ratio:210/297;}.nrc-grid{align-content:space-between;}}
 `;
   return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`);
 }
-/* small cartoon pictures (48x48) */
+/* Nursery department illustrations: fuller human figures, natural proportions and visible classroom/play actions. */
 const NRC_SVG = (()=>{
-  const W = b=>`<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${b}</svg>`;
-  const kid = (shirt,hair,x=0)=>`<g transform="translate(${x} 0)"><circle cx="24" cy="14" r="8" fill="#8d5a3b"/><path d="M16 13a8 8 0 0116 0c-3-3-13-3-16 0z" fill="${hair}"/><circle cx="21" cy="15" r="1" fill="#222"/><circle cx="27" cy="15" r="1" fill="#222"/><path d="M21 18q3 2 6 0" stroke="#222" stroke-width="1" fill="none"/><rect x="15" y="22" width="18" height="14" rx="5" fill="${shirt}"/><rect x="18" y="36" width="5" height="9" rx="2" fill="#2d3a8c"/><rect x="25" y="36" width="5" height="9" rx="2" fill="#2d3a8c"/></g>`;
-  const small = (shirt,hair,x)=>`<g transform="translate(${x} 8) scale(.62)">${kid(shirt,hair)}</g>`;
+  const W=b=>`<svg viewBox="0 0 120 76" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${b}</svg>`;
+  const person=(x,y,shirt,skin,hair,pose='stand')=>{
+    const arm=pose==='give'?`<path d="M${x+19} ${y+31} Q${x+31} ${y+35} ${x+39} ${y+42}" stroke="${skin}" stroke-width="5" stroke-linecap="round" fill="none"/>`:
+      pose==='raise'?`<path d="M${x+18} ${y+31} Q${x+9} ${y+18} ${x+14} ${y+9}" stroke="${skin}" stroke-width="5" stroke-linecap="round" fill="none"/>`:
+      ` <path d="M${x+18} ${y+31} L${x+10} ${y+45} M${x+34} ${y+31} L${x+42} ${y+43}" stroke="${skin}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+    return `<g><ellipse cx="${x+27}" cy="${y+68}" rx="17" ry="3" fill="#6c7a89" opacity=".16"/><path d="M${x+20} ${y+47}L${x+17} ${y+65}M${x+32} ${y+47}L${x+37} ${y+65}" stroke="#34445a" stroke-width="6" stroke-linecap="round"/><path d="M${x+17} ${y+27}Q${x+27} ${y+22} ${x+37} ${y+27}L${x+39} ${y+49}Q${x+27} ${y+54} ${x+15} ${y+49}Z" fill="${shirt}" stroke="#334155" stroke-width=".8"/>${arm}<path d="M${x+20} ${y+17}Q${x+18} ${y+4} ${x+29} ${y+3}Q${x+41} ${y+5} ${x+38} ${y+20}L${x+37} ${y+27}Q${x+27} ${y+33} ${x+18} ${y+25}Z" fill="${skin}" stroke="#744b3a" stroke-width=".7"/><path d="M${x+18} ${y+17}Q${x+14} ${y+1} ${x+30} ${y+1}Q${x+42} ${y+2} ${x+39} ${y+17}Q${x+31} ${y+10} ${x+20} ${y+16}Z" fill="${hair}"/><circle cx="${x+25}" cy="${y+19}" r="1" fill="#20252c"/><circle cx="${x+33}" cy="${y+19}" r="1" fill="#20252c"/><path d="M${x+26} ${y+24}q3 2 6 0" stroke="#874f42" stroke-width="1" fill="none"/></g>`;
+  };
   return {
-    share: W(small('#e4572e','#222',-4)+small('#1b7f3b','#4a2c12',18)+`<path d="M18 30h12" stroke="#8d5a3b" stroke-width="3"/>`),
-    sing: W(kid('#0f6fb3','#222')+`<path d="M38 8v14" stroke="#6a35b0" stroke-width="2"/><circle cx="35" cy="23" r="3.2" fill="#6a35b0"/><path d="M38 8l6 3" stroke="#6a35b0" stroke-width="2"/>`),
-    colours: W(`<circle cx="14" cy="16" r="8" fill="#d62839"/><circle cx="32" cy="16" r="8" fill="#f2c94c"/><circle cx="23" cy="30" r="8" fill="#0f6fb3"/>`),
-    run: W(kid('#f2c94c','#222')+`<circle cx="40" cy="38" r="6" fill="#fff" stroke="#222" stroke-width="1.5"/><path d="M36 36l8 4M40 32v12" stroke="#222" stroke-width="1"/>`),
-    hand: W(kid('#6a35b0','#4a2c12')+`<path d="M38 4c4 5 5 8 0 10-5-2-4-5 0-10z" fill="#5bb8f0"/>`),
-    body: W(kid('#d62839','#222')+`<path d="M6 24l9 3M42 24l-9 3" stroke="#d62839" stroke-width="2"/>`),
-    apple: W(`<path d="M24 14c-8-6-16 2-12 12 3 8 9 10 12 8 3 2 9 0 12-8 4-10-4-18-12-12z" fill="#d62839"/><path d="M24 12c0-5 2-7 5-8" stroke="#5a3a1a" stroke-width="2" fill="none"/><path d="M26 10c4-4 8-2 8-2s-2 6-8 4z" fill="#1b7f3b"/>`),
-    book: W(`<path d="M5 10q10-4 19 2v28q-9-6-19-2z" fill="#0f6fb3"/><path d="M43 10q-10-4-19 2v28q9-6 19-2z" fill="#f2c94c"/><path d="M10 18q6-2 10 1M10 24q6-2 10 1M28 19q5-3 10-1M28 25q5-3 10-1" stroke="#fff" stroke-width="1.5" fill="none"/>`),
-    abc: W(`<rect x="3" y="6" width="42" height="28" rx="3" fill="#1f4d3a" stroke="#c98a3b" stroke-width="3"/><text x="24" y="26" font-size="14" font-weight="700" text-anchor="middle" fill="#fff" font-family="Arial">A B C</text><rect x="9" y="38" width="30" height="3" fill="#c98a3b"/>`),
-    pencil: W(`<g transform="rotate(40 24 24)"><rect x="19" y="3" width="10" height="30" fill="#f2c94c"/><path d="M19 33h10l-5 10z" fill="#f1d3a8"/><path d="M22 40h4l-2 4z" fill="#222"/><rect x="19" y="3" width="10" height="5" fill="#d62839"/></g>`),
-    blocks: W(`<rect x="4" y="26" width="18" height="18" rx="2" fill="#d62839"/><rect x="26" y="26" width="18" height="18" rx="2" fill="#0f6fb3"/><rect x="15" y="6" width="18" height="18" rx="2" fill="#f2c94c"/><g font-size="13" font-weight="700" fill="#fff" font-family="Arial" text-anchor="middle"><text x="13" y="40">1</text><text x="35" y="40">2</text><text x="24" y="20" fill="#222">3</text></g>`),
-    shapes: W(`<circle cx="12" cy="14" r="9" fill="#d62839"/><rect x="26" y="5" width="18" height="18" fill="#0f6fb3"/><path d="M24 26l12 18H12z" fill="#1b7f3b"/>`),
-    nums: W(`<text x="24" y="33" font-size="17" font-weight="900" text-anchor="middle" fill="#c25e00" font-family="Arial">1 2 3</text>`)
+    share:W(`<rect width="120" height="76" rx="8" fill="#eef7ef"/><path d="M8 61h104" stroke="#a8b99c" stroke-width="2"/>${person(18,5,'#e46b45','#9a6248','#292321','give')}${person(65,5,'#388a63','#75452f','#1e1a18','give')}<path d="M54 43q7-9 14 0q-7 8-14 0" fill="#f0c75e" stroke="#ad7c32"/><path d="M48 42l7 1M68 42l-6 1" stroke="#75452f" stroke-width="2"/>`),
+    sing:W(`<rect width="120" height="76" rx="8" fill="#eef5fc"/><path d="M8 62h104" stroke="#b5c4d2" stroke-width="2"/>${person(22,5,'#3976b8','#9a6248','#28201d','raise')}${person(70,5,'#e4a33b','#75452f','#251b18','raise')}<path d="M42 5q5-6 9 0m-8 8q7-8 14 0m28-9q5-6 9 0m-8 8q7-8 14 0" stroke="#6a35b0" stroke-width="2" fill="none"/>`),
+    colours:W(`<rect width="120" height="76" rx="8" fill="#fff8ed"/>${person(8,7,'#d45c4d','#9a6248','#292321','raise')}<circle cx="75" cy="20" r="10" fill="#e74d4d"/><circle cx="99" cy="20" r="10" fill="#f1c34b"/><circle cx="75" cy="49" r="10" fill="#3c83c7"/><circle cx="99" cy="49" r="10" fill="#48a06a"/><path d="M42 28L66 22" stroke="#9a6248" stroke-width="3"/>`),
+    hand:W(`<rect width="120" height="76" rx="8" fill="#eef8f5"/><path d="M7 63h106" stroke="#b7c9bf" stroke-width="2"/>${person(28,4,'#438d70','#9a6248','#292321','raise')}<rect x="75" y="39" width="28" height="20" rx="3" fill="#8ac8ed"/><path d="M81 40q-5-10 1-11q6 1 3 10m9 0q-3-12 4-12q6 3 1 12" fill="#5dbb83" stroke="#39845b"/>`),
+    run:W(`<rect width="120" height="76" rx="8" fill="#eff8e9"/><path d="M5 63h110" stroke="#9fbd8d" stroke-width="2"/><circle cx="99" cy="17" r="9" fill="#f3cf62"/>${person(30,4,'#e2a93d','#9a6248','#292321','raise')}<path d="M48 39l14 7-10 7M25 48l-13 8M44 55l12 7" stroke="#9a6248" stroke-width="3" fill="none"/>`),
+    body:W(`<rect width="120" height="76" rx="8" fill="#f5f1fb"/>${person(38,3,'#bb5b63','#9a6248','#292321')}<path d="M88 12v46M82 18h12M82 29h12M82 40h12" stroke="#6a35b0" stroke-width="2"/><circle cx="88" cy="8" r="4" fill="#e5a477"/>`),
+    abc:W(`<rect width="120" height="76" rx="8" fill="#eef5fc"/><rect x="12" y="8" width="96" height="60" rx="5" fill="#37634e" stroke="#b88b4a" stroke-width="3"/>${person(3,8,'#d8a13b','#9a6248','#292321')}<text x="73" y="34" font-size="19" font-weight="900" text-anchor="middle" fill="#fff">A B C</text><path d="M55 43h35" stroke="#fff" stroke-width="2"/>`),
+    book:W(`<rect width="120" height="76" rx="8" fill="#fff8e9"/>${person(6,7,'#4384b7','#9a6248','#292321')}<path d="M55 22q15-8 28 0v37q-14-8-28 0z" fill="#f0c75e" stroke="#8b6a35" stroke-width="2"/><path d="M55 22q-15-8-28 0v37q14-8 28 0z" fill="#5c91c7" stroke="#365c82" stroke-width="2"/><path d="M33 31h16m-16 7h16m14-7h14m-14 7h14" stroke="#fff" stroke-width="2"/>`),
+    pencil:W(`<rect width="120" height="76" rx="8" fill="#f4f6fb"/>${person(5,6,'#b65c72','#9a6248','#292321')}<path d="M58 48l37-34 7 8-37 34-10 3z" fill="#efc44e" stroke="#a77927" stroke-width="2"/><path d="M58 48l-3 11 10-4" fill="#d9b18a"/><path d="M74 31l7 8" stroke="#fff" stroke-width="2"/>`),
+    blocks:W(`<rect width="120" height="76" rx="8" fill="#f2f7fd"/>${person(8,6,'#438b69','#9a6248','#292321')}<rect x="68" y="39" width="17" height="17" fill="#d9574f"/><rect x="87" y="39" width="17" height="17" fill="#4387c4"/><rect x="77" y="20" width="17" height="17" fill="#efc44e"/><text x="76" y="52" font-size="11" fill="#fff" font-weight="900">1</text><text x="95" y="52" font-size="11" fill="#fff" font-weight="900">2</text>`),
+    shapes:W(`<rect width="120" height="76" rx="8" fill="#f7f4fc"/>${person(5,6,'#8b6bb0','#9a6248','#292321')}<circle cx="79" cy="23" r="11" fill="#d9574f"/><rect x="91" y="13" width="20" height="20" fill="#4387c4"/><path d="M86 42l12 21H74z" fill="#49a06c"/>`),
+    nums:W(`<rect width="120" height="76" rx="8" fill="#fff8e9"/>${person(5,6,'#d79c38','#9a6248','#292321')}<text x="82" y="34" font-size="23" font-weight="900" text-anchor="middle" fill="#a75a22">1 2 3</text><path d="M65 45h45" stroke="#a75a22" stroke-width="2"/>`)
   };
 })();
 function nrcPics(keys){ return `<div class="nrc-pics">${keys.map(k=>NRC_SVG[k]||'').join('')}</div>`; }
-function nrcOverallComment(grade, name, kind){
-  const first = String(name||'The learner').split(/\s+/).slice(-1)[0] || 'The learner';
-  const C = {
-    A:{class:`${first} is consistently hardworking and a brilliant example to others. Keep shining!`, head:`Very good progress in all areas.`},
-    B:{class:`${first} has worked very well this term and shows lovely progress.`, head:`Good work. Keep it up.`},
-    C:{class:`${first} is doing well. With more practice, even better results will come.`, head:`A fair result. More effort will help.`},
-    D:{class:`${first} is trying. Please help ${first} to practise at home every day.`, head:`There is room to improve. Keep encouraging the learner.`},
-    E:{class:`${first} needs extra help and encouragement. Let us work together.`, head:`Needs close support from school and home.`}
+function nrcOverallComment(grade, name, kind, studentId){
+  const first = String(name||'The learner').trim().split(/\s+/).slice(-1)[0] || 'The learner';
+  const pools = {
+    A:{
+      class:[`${first} is consistently hardworking and sets an excellent example to others. Keep shining!`,`${first} participates enthusiastically and demonstrates excellent progress across the learning areas.`,`${first} is confident, creative and eager to learn. Maintain this wonderful effort.`,`${first} completes activities carefully and shows outstanding independence. Well done!`],
+      head:[`Outstanding progress in all learning areas. Keep nurturing this excellent attitude.`,`A very impressive term. The school appreciates the learner's commitment and enthusiasm.`,`Excellent development has been observed. Continue providing opportunities for discovery at home.`,`A delightful performance. Keep up the good work and continue exploring new ideas.`]},
+    B:{
+      class:[`${first} has worked very well this term and is making pleasing progress.`,`${first} participates well in class and completes most activities confidently. Keep it up!`,`${first} is developing good skills and shows a positive attitude towards learning.`,`${first} is attentive and cooperative. Continued practice will bring even greater confidence.`],
+      head:[`Very good progress. Encourage the learner to maintain this positive attitude.`,`A pleasing report. More practice and encouragement will help sustain this progress.`,`Good development is evident. Keep supporting learning through play and conversation.`,`Well done. The learner is progressing steadily across the learning areas.`]},
+    C:{
+      class:[`${first} is making steady progress and should continue practising the skills learnt in class.`,`${first} understands many activities and benefits from regular guidance. Keep trying!`,`${first} is developing confidence. More participation will strengthen the skills further.`,`${first} has made fair progress; regular practice will lead to better achievement.`],
+      head:[`Good effort. Continued support at school and home will improve confidence.`,`The learner is progressing. Let us provide regular opportunities for practice.`,`A satisfactory term. Encourage consistent participation in learning activities.`,`There is encouraging progress, with more room to develop independence.`]},
+    D:{
+      class:[`${first} is beginning to develop the expected skills and needs more guided practice.`,`${first} tries the activities but still benefits from close support and encouragement.`,`${first} should be encouraged to participate more often and practise simple tasks daily.`,`${first} is making gradual progress. Patient guidance will help build confidence.`],
+      head:[`More support and regular practice are needed to strengthen the learner's skills.`,`Please work closely with the class teacher to support the learner's progress.`,`The learner needs encouragement, repetition and practical activities at home.`,`Progress is still developing. Continued attention from school and home is important.`]},
+    E:{
+      class:[`${first} needs additional individual attention and patient guidance to develop the basic skills.`,`${first} requires more practice through simple, enjoyable activities at school and at home.`,`${first} is finding some activities challenging. Let us work together to provide support.`,`${first} needs close encouragement and repeated practical experiences to make progress.`],
+      head:[`Close support from both school and home is strongly recommended.`,`The learner needs an individual support plan and frequent encouragement.`,`Please maintain close communication with the teacher so that progress can be supported.`,`More guided practice and patient support are necessary at this stage.`]}
   };
-  return (C[grade]||C.C)[kind];
+  const list=(pools[grade]||pools.C)[kind==='head'?'head':'class'];
+  const seed=String(studentId||name||'nursery')+'|'+grade+'|'+kind;
+  let h=0; for(let i=0;i<seed.length;i++) h=(h*31+seed.charCodeAt(i))>>>0;
+  return list[h%list.length];
 }
 function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPeriods, isCurrentPeriod){
   const { rows } = computeSubjectRows(s, cls, term, year);
@@ -19085,16 +19122,16 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const key = NURSERY_GRADES.map(g=>`<span><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
   const card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
-  <div class="nrc-card${embedded?' nrc-pdf':''}" style="--nf:${nrcThemeCfg().frame};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
+  <div class="nrc-card${embedded?' nrc-pdf':''}" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
     <div class="nrc-head">
       ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="">`:''}
       <div class="nrc-ht">
-        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>34?2.6:(String(info.schoolName||'').length>24?3.1:3.6)})">${esc(info.schoolName||'')}</div>
+        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.7:(String(info.schoolName||'').length>26?3.15:3.8)})">${esc(info.schoolName||'')}</div>
         <div class="nrc-addr">${[info.address, info.phone?'Tel: '+info.phone:'', info.email].filter(Boolean).map(esc).join(' &nbsp;|&nbsp; ')}</div>
         ${info.motto?`<div class="nrc-motto">${esc(info.motto)}</div>`:''}
       </div>
-      ${s.photo?`<img class="nrc-photo" src="${s.photo}" alt="">`:`<div class="nrc-photo empty">Photo</div>`}
+      ${s.photo?`<img class="nrc-photo" src="${s.photo}" alt="Learner photograph">`:''}
     </div>
     <div class="nrc-title">END OF ${esc(termTxt||'TERM')} ${esc(String(year||DB.info.currentYear||''))} REPORT</div>
     <div class="nrc-info"><div>Name: <b>${esc(s.name)}</b></div><div class="c">Class: <b>${esc(classFullName(cls))}</b></div></div>
@@ -19102,8 +19139,8 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     ${grid}
     <div class="nrc-overall"><span class="t">Overall</span>${gradeChip(overall)}<span class="n">${overall?esc(NURSERY_GRADE_KEY[overall]):'No grades yet'}</span></div>
     <div class="nrc-cm">
-      <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class')):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*3)'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
-      <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head')):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*5);vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
+      <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*3)'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
+      <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*5);vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
     </div>
     <div class="nrc-foot" style="grid-template-columns:1fr 1fr;">
       <div><b>Term ends on</b>${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
