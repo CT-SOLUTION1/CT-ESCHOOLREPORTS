@@ -862,6 +862,10 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 .rc-theme-line{max-width:724px;margin:5px auto 0;text-align:center;font:700 11px/1.25 Georgia,'Times New Roman',serif;letter-spacing:.04em;color:var(--navy);overflow-wrap:anywhere;}
 @media print{.rc-theme-line{margin-top:1mm;font-size:8pt;color:#0A2A4A !important;}}
 .rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
+/* Primary report cards receive a distinct two-layer ornamental frame; O-Level is untouched. */
+.primary-report-card{border:5px solid #1d4e89 !important;outline:2px solid #c99a3b;outline-offset:-10px;}
+.primary-report-card::before{content:'';position:absolute;inset:1px;padding:9px;pointer-events:none;z-index:4;background:radial-gradient(circle at 50% 50%,#c99a3b 0 1.5px,transparent 1.9px),radial-gradient(circle at 50% 0%,#1d4e89 0 3px,transparent 3.5px),radial-gradient(circle at 100% 50%,#1d4e89 0 3px,transparent 3.5px),radial-gradient(circle at 50% 100%,#1d4e89 0 3px,transparent 3.5px),radial-gradient(circle at 0% 50%,#1d4e89 0 3px,transparent 3.5px);background-size:24px 24px;background-repeat:repeat;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
+.primary-report-card::after{inset:12px !important;border:2px double #1d4e89 !important;border-radius:3px !important;}
 /* The live report-card canvas uses the same printable proportion as the native A4 PDF (190:277). On narrow phones it remains responsive rather than overflowing the screen. */
 @media (max-width:760px){.rc-card{max-width:100%;min-height:0;aspect-ratio:190/277;padding:18px 18px 16px;overflow:hidden;}.rc-card .rc-content{transform-origin:top left;}}
 /* Faint background watermark of the school logo — purely decorative, sits behind every
@@ -14839,9 +14843,175 @@ function nurseryGradeFor(score){
   return NURSERY_GRADES.find(g=>n>=Number(b[g][0]) && n<=Number(b[g][1])) || null;
 }
 // The descriptor printed for one learning area at one grade (falls back to the grade's key word).
+// Varied, learning-area-specific Nursery descriptors. Wording follows the practical,
+// child-centred observation style of the school's sample report card. Each row is
+// ordered A, B, C, D, E so every learning area has a distinct comment at every level.
+const NURSERY_DEFAULT_DESCRIPTORS = {
+  'Sharing': [
+    'Cheerfully shares toys and learning materials with others.',
+    'Shares most materials willingly and takes turns with friends.',
+    'Is learning to share and responds well to gentle reminders.',
+    'Needs encouragement to share materials and wait for a turn.',
+    'Requires close guidance to share and play cooperatively.'
+  ],
+  'Singing & Reciting': [
+    'Sings songs confidently and recites rhymes with clear expression.',
+    'Enjoys singing and recites familiar rhymes with little help.',
+    'Joins in familiar songs and is improving in reciting rhymes.',
+    'Needs prompting to join songs and remember simple rhymes.',
+    'Needs regular practice with simple songs, sounds and rhymes.'
+  ],
+  'Appreciates beauty': [
+    'Notices beauty in nature and describes colours and attractive objects.',
+    'Enjoys beautiful objects and identifies pleasing features around them.',
+    'Shows interest in pictures, colours and attractive surroundings.',
+    'Needs help to notice and talk about beauty in the environment.',
+    'Requires guided activities to observe and appreciate her surroundings.'
+  ],
+  'Drama': [
+    'Acts out roles creatively and participates confidently in role-play.',
+    'Enjoys role-play and performs familiar actions with confidence.',
+    'Takes part in simple drama when given encouragement.',
+    'Needs support to take a role and express ideas through actions.',
+    'Needs patient guidance to participate in simple role-play activities.'
+  ],
+  'Identification of Colours': [
+    'Identifies and names a wide range of colours correctly.',
+    'Recognises and names most common colours accurately.',
+    'Identifies some common colours and is improving with practice.',
+    'Confuses some colours and needs repeated matching activities.',
+    'Needs individual practice to recognise and name basic colours.'
+  ],
+  'Personal hygiene': [
+    'Maintains personal cleanliness and follows hygiene routines independently.',
+    'Maintains good hygiene and usually remembers the daily routines.',
+    'Practises basic hygiene but sometimes needs reminders.',
+    'Needs frequent reminders to wash hands and keep clean.',
+    'Requires close support to develop regular personal hygiene habits.'
+  ],
+  'Physical Education': [
+    'Performs physical activities skilfully and follows movement instructions.',
+    'Participates actively and coordinates body movements very well.',
+    'Enjoys physical activities and is developing better coordination.',
+    'Needs encouragement to join activities and control movements.',
+    'Needs guided practice in basic movement and coordination activities.'
+  ],
+  'Out door activities': [
+    'Explores outdoor activities confidently and observes the environment carefully.',
+    'Participates happily outdoors and follows safety instructions well.',
+    'Enjoys outdoor play and is learning to follow activity rules.',
+    'Needs reminders to participate and observe outdoor safety rules.',
+    'Requires close supervision and encouragement during outdoor play.'
+  ],
+  'Classifying objects': [
+    'Classifies objects accurately by colour, size, shape and use.',
+    'Groups familiar objects correctly using their common features.',
+    'Can group simple objects but sometimes needs a guiding question.',
+    'Finds it difficult to group objects without practical assistance.',
+    'Needs repeated hands-on practice sorting familiar objects.'
+  ],
+  'Identifying parts of the body': [
+    'Names and points out body parts correctly and explains simple uses.',
+    'Identifies most body parts and describes their basic functions.',
+    'Recognises common body parts and is learning their uses.',
+    'Needs help to name some body parts and remember their functions.',
+    'Needs individual practice using songs, pictures and body games.'
+  ],
+  'Vowels': [
+    'Recognises, names and gives examples of all the vowels confidently.',
+    'Identifies most vowels and matches them to familiar examples.',
+    'Recognises some vowels and is improving through sound practice.',
+    'Confuses vowel sounds and needs repeated listening activities.',
+    'Needs close support to recognise and pronounce basic vowel sounds.'
+  ],
+  'Consonant': [
+    'Recognises consonant letters and produces their sounds accurately.',
+    'Identifies many consonants and says their common sounds correctly.',
+    'Recognises some consonants and is building sound-letter links.',
+    'Needs prompts to identify consonants and say their sounds.',
+    'Requires regular practice with a few familiar consonant sounds.'
+  ],
+  'Short Sentences': [
+    'Reads and forms short meaningful sentences with confidence.',
+    'Reads familiar short sentences and constructs simple ones with little help.',
+    'Understands simple sentences and is improving in reading them.',
+    'Needs help to follow word order when reading short sentences.',
+    'Needs guided practice with simple spoken and written sentences.'
+  ],
+  'Words': [
+    'Reads familiar words clearly and uses them appropriately in speech.',
+    'Recognises and reads many familiar words correctly.',
+    'Identifies some familiar words and is expanding vocabulary.',
+    'Needs support to recognise words without picture clues.',
+    'Requires regular practice matching familiar words to pictures and objects.'
+  ],
+  'Handwriting': [
+    'Forms letters neatly, correctly and with good pencil control.',
+    'Writes familiar letters clearly and maintains good spacing.',
+    'Is improving letter formation and control of the writing tool.',
+    'Needs reminders about letter direction, size and spacing.',
+    'Needs guided tracing and fine-motor activities to develop writing control.'
+  ],
+  'Pictures': [
+    'Interprets pictures accurately and describes details in complete ideas.',
+    'Identifies picture details and explains what is happening clearly.',
+    'Names familiar pictures and gives simple descriptions.',
+    'Needs questions and prompts to describe what pictures show.',
+    'Requires guided picture-talk activities to build recognition and vocabulary.'
+  ],
+  'Speaking': [
+    'Expresses ideas clearly and confidently using a rich vocabulary.',
+    'Speaks clearly and communicates needs and ideas well.',
+    'Communicates simple ideas and is gaining confidence when speaking.',
+    'Needs encouragement to speak audibly and answer simple questions.',
+    'Needs patient support through conversation, naming and storytelling.'
+  ],
+  'Numbers': [
+    'Counts, recognises and writes numbers accurately within the taught range.',
+    'Counts objects correctly and recognises most taught numerals.',
+    'Counts small groups and is improving in numeral recognition.',
+    'Needs objects and number games to strengthen counting skills.',
+    'Requires individual practice counting real objects one by one.'
+  ],
+  'Shapes': [
+    'Identifies common shapes and describes their features correctly.',
+    'Recognises and names most familiar shapes in the environment.',
+    'Identifies basic shapes with occasional guidance.',
+    'Needs help to distinguish and name common shapes.',
+    'Needs repeated matching and tracing activities for basic shapes.'
+  ],
+  'Addition': [
+    'Combines groups accurately and solves simple addition tasks independently.',
+    'Adds small groups correctly using objects or pictures.',
+    'Understands simple combining activities with some support.',
+    'Needs practical demonstrations to combine two small groups.',
+    'Requires guided counting games to understand adding more objects.'
+  ],
+  'Subtraction': [
+    'Takes away objects correctly and explains how many remain.',
+    'Solves simple take-away activities accurately using objects.',
+    'Understands some take-away activities with practical help.',
+    'Needs repeated demonstrations to see what remains after taking away.',
+    'Needs one-to-one practice with simple take-away games.'
+  ],
+  'Matching': [
+    'Matches related objects, pictures and patterns accurately.',
+    'Matches most similar objects and pictures correctly.',
+    'Matches familiar pairs and is improving in noticing similarities.',
+    'Needs prompts to match objects by shape, colour or use.',
+    'Requires guided activities matching identical familiar objects.'
+  ]
+};
+function nurseryDefaultDescriptor(areaName, grade){
+  const key = Object.keys(NURSERY_DEFAULT_DESCRIPTORS).find(k=>k.toLowerCase()===String(areaName||'').trim().toLowerCase());
+  const i = NURSERY_GRADES.indexOf(grade);
+  return key && i>=0 ? NURSERY_DEFAULT_DESCRIPTORS[key][i] : (NURSERY_GRADE_KEY[grade]||'');
+}
 function nurseryDescriptor(areaId, grade){
-  const d = ((nurseryConfig().desc[areaId]||{})[grade]||'').trim();
-  return d || NURSERY_GRADE_KEY[grade] || '';
+  const cfg = nurseryConfig();
+  const d = ((cfg.desc[areaId]||{})[grade]||'').trim();
+  const area = cfg.depts.flatMap(x=>x.areas).find(a=>a.id===areaId);
+  return d || nurseryDefaultDescriptor(area&&area.name, grade) || NURSERY_GRADE_KEY[grade] || '';
 }
 function nurseryAreaRowHTML(deptId, a){
   return `<div class="nrow" style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
@@ -14878,7 +15048,7 @@ function nurseryGradingHTML(){
         ${NURSERY_GRADES.map(g=>`<tr>
           <td style="vertical-align:top;white-space:nowrap;"><input name="nBmin_${g}" value="${c.bands[g][0]}" type="number" min="0" max="100" step="0.01" style="width:58px;text-align:center;"> – <input name="nBmax_${g}" value="${c.bands[g][1]}" type="number" min="0" max="100" step="0.01" style="width:58px;text-align:center;"></td>
           <td style="vertical-align:top;text-align:center;"><b style="font-size:18px;">${g}</b><div class="small">${NURSERY_GRADE_KEY[g]}</div></td>
-          ${c.depts.map(d=>`<td style="vertical-align:top;">${d.areas.length ? d.areas.map(a=>`<div style="margin-bottom:6px;"><div class="small"><b>${esc(a.name)}</b></div><textarea name="nDesc_${a.id}_${g}" rows="2" placeholder="${NURSERY_GRADE_KEY[g]}" style="width:100%;">${esc((c.desc[a.id]||{})[g]||'')}</textarea></div>`).join('') : '<span class="small">No learning areas yet</span>'}</td>`).join('')}
+          ${c.depts.map(d=>`<td style="vertical-align:top;">${d.areas.length ? d.areas.map(a=>`<div style="margin-bottom:6px;"><div class="small"><b>${esc(a.name)}</b></div><textarea name="nDesc_${a.id}_${g}" rows="2" placeholder="${NURSERY_GRADE_KEY[g]}" style="width:100%;">${esc(nurseryDescriptor(a.id,g))}</textarea></div>`).join('') : '<span class="small">No learning areas yet</span>'}</td>`).join('')}
         </tr>`).join('')}
       </table></div>
       <button class="btn" style="margin-top:12px;">Submit — save Nursery grading</button>
@@ -18792,9 +18962,9 @@ function nurseryThemeCardHTML(){
 const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
 function nrcCss(){
   const css = `
-.nrc-card{--u:7.94px;width:100%;max-width:794px;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:1.6u;position:relative;overflow:hidden;}
+.nrc-card{--u:7.94px;width:100%;max-width:794px;height:auto;min-height:0;aspect-ratio:210/297;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:1.6u;position:relative;overflow:hidden;display:flex;flex-direction:column;}
 @supports (width:1cqw){.nrc-wrap{container-type:inline-size;} .nrc-card{--u:1cqw;}}
-.nrc-card.nrc-pdf{--u:7.94px;width:794px;max-width:none;}
+.nrc-card.nrc-pdf{--u:7.94px;width:794px;max-width:none;height:1123px;min-height:1123px;aspect-ratio:auto;}
 .nrc-head{display:flex;align-items:center;gap:1.6u;background:var(--nf);color:var(--nfi);border-radius:1.2u;padding:1.4u 2u;}
 .nrc-logo{width:9u;height:9u;border-radius:50%;background:#fff;object-fit:contain;flex:none;border:0.4u solid #f2c94c;}
 .nrc-ht{flex:1;text-align:center;min-width:0;}
@@ -18811,7 +18981,7 @@ function nrcCss(){
 .nrc-key{display:flex;flex-wrap:wrap;gap:.8u;align-items:center;justify-content:center;font-size:1.2u;margin-bottom:1.2u;}
 .nrc-key span{display:inline-flex;align-items:center;gap:.4u;background:#f6f6f8;border:.15u solid #d5d8e0;border-radius:1u;padding:.3u 1u;}
 .nrc-key i{font-style:normal;color:#fff;font-weight:900;width:2u;height:2u;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
-.nrc-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2u 1.4u;}
+.nrc-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2u 1.4u;flex:1 1 auto;align-content:space-evenly;min-height:0;}
 .nrc-dept{min-width:0;}
 .nrc-dh{color:#fff;font-weight:900;font-size:1.5u;text-transform:uppercase;letter-spacing:.1u;padding:.6u 1.2u;border-radius:.8u .8u 0 0;}
 .nrc-tb{width:100%;border-collapse:collapse;table-layout:fixed;}
@@ -18819,7 +18989,7 @@ function nrcCss(){
 .nrc-tb td{border:.15u solid;padding:.4u .6u;vertical-align:middle;font-size:1.25u;}
 .nrc-tb td.a{font-weight:700;color:#1d2433;width:27%;}
 .nrc-tb td.g{text-align:center;width:11%;}
-.nrc-tb td.m{color:#0b2a6f;font-weight:600;font-size:1.2u;}
+.nrc-tb td.m{color:#0b2a6f;font-weight:600;font-size:1.2u;line-height:1.22;}
 .nrc-g{display:inline-flex;align-items:center;justify-content:center;width:2.6u;height:2.6u;border-radius:50%;color:#fff;font-weight:900;font-size:1.6u;}
 .nrc-pics{display:flex;justify-content:space-around;align-items:flex-end;gap:.6u;margin:.9u 0 0;}
 .nrc-pics svg{width:8.6u;height:8.6u;}
@@ -18837,6 +19007,12 @@ function nrcCss(){
 .nrc-foot b{color:var(--nf);display:block;font-size:1.15u;text-transform:uppercase;}
 .nrc-theme{margin-top:1u;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
 .nrc-wm{position:absolute;left:50%;top:52%;width:50u;height:50u;transform:translate(-50%,-50%);opacity:.06;object-fit:contain;pointer-events:none;}
+.nrc-card:before{content:'';position:absolute;inset:2px;padding:8px;pointer-events:none;z-index:5;background:radial-gradient(circle at 50% 50%,#f2c94c 0 1.2px,transparent 1.6px),radial-gradient(circle at 50% 0%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 100% 50%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 50% 100%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 0% 50%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px);background-size:22px 22px;background-repeat:repeat;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
+.nrc-card:before{inset:3px;padding:7px;}
+.nrc-card:after{content:'';position:absolute;inset:12px;border:2px double var(--nf);border-radius:1u;pointer-events:none;z-index:5;box-sizing:border-box;}
+.nrc-outer{position:relative;padding:0 !important;border:0 !important;box-shadow:none !important;min-height:0 !important;height:auto !important;aspect-ratio:210/297 !important;max-width:724px !important;}
+.nrc-outer:after{content:none !important;}
+@media (max-width:760px){.nrc-card:not(.nrc-pdf){height:auto;min-height:0;aspect-ratio:210/297;}.nrc-grid{align-content:space-between;}}
 `;
   return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`);
 }
@@ -19771,9 +19947,24 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   }
 
   // ---- 2. Outer decorative double border ----
-  setDrawC(navy);
-  pdf.setLineWidth(1.2); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
-  pdf.setLineWidth(0.5); pdf.rect(cardX+8.5, cardY+8.5, cardW-17, cardH-17);
+  if(data.isP){
+    // Primary-only double ornamental frame with small floral motifs around both edges.
+    const pc=[29,78,137], gold=[201,154,59];
+    pdf.setDrawColor(pc[0],pc[1],pc[2]); pdf.setLineWidth(1.35); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
+    pdf.setDrawColor(gold[0],gold[1],gold[2]); pdf.setLineWidth(0.8); pdf.rect(cardX+9, cardY+9, cardW-18, cardH-18);
+    const flower=(x,y,r)=>{
+      pdf.setDrawColor(pc[0],pc[1],pc[2]); pdf.setFillColor(255,255,255); pdf.setLineWidth(0.45);
+      for(let k=0;k<4;k++){ const a=k*Math.PI/2; pdf.circle(x+Math.cos(a)*r*0.72,y+Math.sin(a)*r*0.72,r*0.42,'FD'); }
+      pdf.setFillColor(gold[0],gold[1],gold[2]); pdf.circle(x,y,r*0.32,'F');
+    };
+    const step=26, x0=cardX+17, x1=cardX+cardW-17, y0=cardY+17, y1=cardY+cardH-17;
+    for(let x=x0+12;x<x1-8;x+=step){ flower(x,y0,2.4); flower(x,y1,2.4); }
+    for(let y=y0+12;y<y1-8;y+=step){ flower(x0,y,2.4); flower(x1,y,2.4); }
+    flower(x0,y0,3); flower(x1,y0,3); flower(x0,y1,3); flower(x1,y1,3);
+  } else {
+    pdf.setDrawColor(10,42,74); pdf.setLineWidth(1.2); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
+    pdf.setLineWidth(0.5); pdf.rect(cardX+8.5, cardY+8.5, cardW-17, cardH-17);
+  }
 
   // ---- 2b. THEME OF THE YEAR: printed in the page margin BELOW the frame (outside the border).
   // Drawn here, with the frame, so it sits outside the content transform and never moves the border or any content.
