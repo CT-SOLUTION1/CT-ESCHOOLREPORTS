@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-23-1300'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-24-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -859,6 +859,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    a report contains many subjects/rows. */
 .rc-card:not(.pdf-report-card) .rc-content{transform-origin:top left;transform:none;width:auto;}
 /* Thick decorative boundary stays inside the existing report-card margins. It is an overlay, so it consumes no layout space and cannot change table widths, A4 fit, or content positioning. */
+.rc-theme-line{max-width:724px;margin:5px auto 0;text-align:center;font:700 11px/1.25 Georgia,'Times New Roman',serif;letter-spacing:.04em;color:var(--navy);overflow-wrap:anywhere;}
+@media print{.rc-theme-line{margin-top:1mm;font-size:8pt;color:#0A2A4A !important;}}
 .rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
 /* The live report-card canvas uses the same printable proportion as the native A4 PDF (190:277). On narrow phones it remains responsive rather than overflowing the screen. */
 @media (max-width:760px){.rc-card{max-width:100%;min-height:0;aspect-ratio:190/277;padding:18px 18px 16px;overflow:hidden;}.rc-card .rc-content{transform-origin:top left;}}
@@ -13142,6 +13144,22 @@ function restoreItemsView(){
   </form>`;
 }
 
+/* ---------- Report-card options: Performance Summary (Total average + Position) and THEME OF THE YEAR ---------- */
+// Set in Grading Setup. Default ON, so every school keeps today's report card until the admin switches it off.
+function showTotalAvgPos(){ return !(DB.info && DB.info.showTotalAvgPos===false); }
+// Set by the admin under School Info & Logo. Empty = nothing is printed.
+function themeOfYearText(){ return String((DB.info && DB.info.themeOfYear) || '').replace(/\s+/g,' ').trim(); }
+// Splits the Performance Summary's label/value pairs into balanced rows of at most 3 pairs, so hiding
+// some of them never leaves an empty cell. Row of 3 pairs = 1+1 columns each, 2 pairs = 1+2, 1 pair = 2+4 (of 6).
+function summaryRowsLayout(pairs){
+  const n = pairs.length; if(!n) return [];
+  const sizes = n<=3 ? [n] : n===4 ? [2,2] : n===5 ? [3,2] : [3,3];
+  const rows = []; let k = 0;
+  sizes.forEach(sz=>{ rows.push(pairs.slice(k,k+sz)); k += sz; });
+  return rows;
+}
+function summarySpans(m){ return {l: m===1?2:1, v: m===3?1:(m===2?2:4)}; }
+
 /* ---------- Admin: School info ---------- */
 function schoolInfoView(){
   const i = DB.info;
@@ -13180,6 +13198,8 @@ function schoolInfoView(){
         </div>
         <div><label>Motto</label><input name="motto" value="${esc(i.motto||'')}"></div>
       </div>
+      <label>THEME OF THE YEAR</label><input name="themeOfYear" value="${esc(i.themeOfYear||'')}" maxlength="120" placeholder="Type the theme only, e.g. Nurturing Excellence Through Discipline">
+      <p class="small">Optional. Once set, <b>THEME OF THE YEAR: …</b> is printed at the very bottom of every report card, just outside the page border. Clear the box and save to remove it.</p>
       <label>Headteacher's full name</label><input name="headteacher" value="${esc(i.headteacher||'')}" required>
       <div class="flex" style="margin-top:6px;">
         ${i.stamp?`<img loading="lazy" decoding="async" src="${i.stamp}" class="photo-thumb" style="width:80px;height:80px;object-fit:contain;background:#f4f8fc;">`:''}
@@ -14731,6 +14751,14 @@ function gradingView(gcClassId){
   <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper and the two subsidiaries are graded from their own level table below (it starts with 50% and above = Pass, 1 point; below 50% = Fail, 0 points) — the grades, points and descriptors you save in the tables are what the whole system uses. O-Level has no points, only A–E descriptors. `:''}${showPrimary?`Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects). `:''}
   All banding tables below are editable.</div>
   ${!showSecondary && !showPrimary ? `<div class="card" style="margin-top:14px;"><p>Set your <a href="#" data-action="nav:schoolinfo">School Grade</a> first to see the relevant grading bands here.</p></div>` : ''}
+  <div class="card" style="margin-top:14px;">
+    <h3>Report card — Performance Summary</h3>
+    <form data-form="saveSummaryOptions">
+      <label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="showTotalAvgPos" style="width:auto;" ${showTotalAvgPos()?'checked':''}> <span><b>Show the Total Final Average and the Position</b> in the Performance Summary table</span></label>
+      <p class="small">Tick to show them on every report card (the default). Untick to leave both out — the rest of the table re-arranges itself with no empty boxes. ${showSecondary?"A' Level cards keep their Total Points; only the Position is removed.":''}</p>
+      <button class="btn" style="margin-top:10px;">Submit — save</button>
+    </form>
+  </div>
   ${!showSecondary ? '' : `
   <div class="card" style="margin-top:14px;">
     <h3>A-Level bands</h3>
@@ -19002,16 +19030,20 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <div class="rc-section-title">Performance Summary</div>
     <table class="rc-summary-table">
       <colgroup><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.665%"></colgroup>
-      <tr>
-        <td class="lbl">Total Subjects</td><td class="val">${rows.length}</td>
-        <td class="lbl">${isA?'Total Points':'Total Final Average'}</td><td class="val">${isA?`${totalPoints}/${maxP}`:zrpct(avgPct,0)}</td>
-        <td class="lbl">${isP?'Total Aggregates':'Overall Grade'}</td><td class="val">${isP?(pAggregate!==null?pAggregate:'—'):(overallGrade||'—')}</td>
-      </tr>
-      <tr>
-        <td class="lbl">${isP?'Division':'Level'}</td><td class="val">${isP?(pDivision||'—'):(overallDesc||'—')}</td>
-        <td class="lbl">${termLbl} Position</td><td class="val" style="color:#8a0303;font-weight:800;">${ordSup(position)} / ${size}</td>
-        <td class="lbl">Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}</td><td class="val">${weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'}</td>
-      </tr>
+      ${(()=>{
+        const _showAP = showTotalAvgPos();
+        const _pairs = [{l:'Total Subjects', v:String(rows.length)}];
+        if(isA) _pairs.push({l:'Total Points', v:`${totalPoints}/${maxP}`});
+        else if(_showAP) _pairs.push({l:'Total Final Average', v:zrpct(avgPct,0)});
+        _pairs.push({l:isP?'Total Aggregates':'Overall Grade', v:isP?(pAggregate!==null?pAggregate:'—'):(overallGrade||'—')});
+        _pairs.push({l:isP?'Division':'Level', v:isP?(pDivision||'—'):(overallDesc||'—')});
+        if(_showAP) _pairs.push({l:`${termLbl} Position`, v:`${ordSup(position)} / ${size}`, pos:true});
+        _pairs.push({l:`Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}`, v:weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'});
+        return summaryRowsLayout(_pairs).map(r=>{
+          const sp = summarySpans(r.length);
+          return `<tr>${r.map(p=>`<td class="lbl"${sp.l>1?` colspan="${sp.l}"`:''}>${p.l}</td><td class="val"${sp.v>1?` colspan="${sp.v}"`:''}${p.pos?' style="color:#8a0303;font-weight:800;"':''}>${p.v}</td>`).join('')}</tr>`;
+        }).join('\n      ');
+      })()}
     </table>
 
     ${!isP ? `
@@ -19079,7 +19111,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     ${assessmentsAddDirectly(cfg) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
     ${(()=>{ const _n = assessNoteFor(cls && cls.id); return _n ? `<div class="rc-scoring-note">${esc(_n)}</div>` : ''; })()}
     </div>
-  </div>${bareCard ? '' : '</div>'}`;
+  </div>${(!bareCard && !embedded && themeOfYearText()) ? `<div class="rc-theme-line">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>` : ''}${bareCard ? '' : '</div>'}`;
 }
 
 /* ======================================================================
@@ -19266,6 +19298,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       classComment: isP ? primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak),
       headComment: isP ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
     },
+    showTotalAvgPos: showTotalAvgPos(), theme: themeOfYearText(),
     signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
     feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, photo: s.photo
@@ -19379,6 +19412,17 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   setDrawC(navy);
   pdf.setLineWidth(1.2); pdf.rect(cardX+4, cardY+4, cardW-8, cardH-8);
   pdf.setLineWidth(0.5); pdf.rect(cardX+8.5, cardY+8.5, cardW-17, cardH-17);
+
+  // ---- 2b. THEME OF THE YEAR: printed in the page margin BELOW the frame (outside the border).
+  // Drawn here, with the frame, so it sits outside the content transform and never moves the border or any content.
+  if(data.theme){
+    let _thTxt = 'THEME OF THE YEAR: ' + data.theme, _thSz = 7;
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(_thSz);
+    while(_thSz > 4.5 && pdf.getTextWidth(_thTxt) > cardW-8){ _thSz -= 0.25; pdf.setFontSize(_thSz); }
+    if(pdf.getTextWidth(_thTxt) > cardW-8){ _thTxt = String(pdf.splitTextToSize(_thTxt, cardW-8)[0]).replace(/\s+$/,'') + '…'; }
+    pdf.setTextColor(navy[0],navy[1],navy[2]);
+    pdf.text(_thTxt, pageW/2, pageH-8, {align:'center'});
+  }
 
   // Keep the decorative frame outside the content transform so it always
   // remains fixed on the A4 page. The generated content is wrapped in a
@@ -19722,32 +19766,34 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   cy += 12;
   const sumRowH = 16, sumColW = contentW/6;
   const sm = data.summary;
-  const summaryRows = [
-    ['Total Subjects', String(data.totals.subjectCount),
-     data.isA?'Total Points':'Total Final Average', data.isA?`${data.totals.totalPoints}/${sm.maxP}`:zrpct(sm.avgPct,0),
-     data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')],
-    [data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—'),
-     `${data.term} Position`, `${ordSup(sm.position,'pdf')} / ${sm.size}`,
-     `Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`,
-     (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]
-  ];
+  const _showAP = data.showTotalAvgPos !== false;
+  const _pairs = [['Total Subjects', String(data.totals.subjectCount)]];
+  if(data.isA) _pairs.push(['Total Points', `${data.totals.totalPoints}/${sm.maxP}`]);
+  else if(_showAP) _pairs.push(['Total Final Average', zrpct(sm.avgPct,0)]);
+  _pairs.push([data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')]);
+  _pairs.push([data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—')]);
+  if(_showAP) _pairs.push([`${data.term} Position`, `${ordSup(sm.position,'pdf')} / ${sm.size}`, true]);
+  _pairs.push([`Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`, (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]);
+  const summaryRows = summaryRowsLayout(_pairs);
   setDrawC([29,78,137]);
   summaryRows.forEach((row,ri)=>{
     const ry = cy + ri*sumRowH;
-    for(let ci=0; ci<6; ci++){
-      const rx = contentX + ci*sumColW;
-      pdf.setLineWidth(0.6); pdf.rect(rx, ry, sumColW, sumRowH);
-      const isLbl = ci%2===0;
-      if(isLbl) pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
-      if(isLbl){ pdf.rect(rx, ry, sumColW, sumRowH, 'F'); pdf.rect(rx, ry, sumColW, sumRowH); }
-      const val = row[ci];
-      const lines = wrap(String(val), sumColW-6, isLbl?6.5:8, isLbl?'bold':'normal');
-      const isPos = (ri===1 && ci===3);   // the learner's position / rank: bold blood red
-      if(!isLbl && /\u0001/.test(String(val))){ pdf.setFont('helvetica', isPos?'bold':'normal'); pdf.setFontSize(8); setC(isPos ? [138,3,3] : ink); supText(String(val), rx+sumColW/2, ry+sumRowH-5, 'center'); }
-      else centerText(lines[0]||'', rx, sumColW, ry+sumRowH-5, isLbl?6.5:8, (isLbl||isPos)?'bold':'normal', isLbl?shadeInk:(isPos ? [138,3,3] : ink));
-    }
+    const sp = summarySpans(row.length);
+    let col = 0;
+    row.forEach(pair=>{
+      [[sp.l,true],[sp.v,false]].forEach(([span,isLbl])=>{
+        const rx = contentX + col*sumColW, cw = span*sumColW; col += span;
+        pdf.setLineWidth(0.6); pdf.rect(rx, ry, cw, sumRowH);
+        if(isLbl){ pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]); pdf.rect(rx, ry, cw, sumRowH, 'F'); pdf.rect(rx, ry, cw, sumRowH); }
+        const val = isLbl ? pair[0] : pair[1];
+        const lines = wrap(String(val), cw-6, isLbl?6.5:8, isLbl?'bold':'normal');
+        const isPos = !isLbl && pair[2]===true;   // the learner's position / rank: bold blood red
+        if(!isLbl && /\u0001/.test(String(val))){ pdf.setFont('helvetica', isPos?'bold':'normal'); pdf.setFontSize(8); setC(isPos ? [138,3,3] : ink); supText(String(val), rx+cw/2, ry+sumRowH-5, 'center'); }
+        else centerText(lines[0]||'', rx, cw, ry+sumRowH-5, isLbl?6.5:8, (isLbl||isPos)?'bold':'normal', isLbl?shadeInk:(isPos ? [138,3,3] : ink));
+      });
+    });
   });
-  cy += sumRowH*2 + 14 + gapBoost;
+  cy += sumRowH*summaryRows.length + 14 + gapBoost;
 
   // ---- 7b. Grading Key (O'/A' Level only) ----
   // A small, tightly-padded reference table (grade / label / descriptor sentence),
@@ -22187,7 +22233,7 @@ document.addEventListener('submit', async (e)=>{
     'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','savePromoRules','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
-    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade']);
+    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade','saveSummaryOptions']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
@@ -23207,6 +23253,7 @@ document.addEventListener('submit', async (e)=>{
         alert('That email is already registered to another school. Each school needs its own email address.'); return;
       }
       DB.info.email=fd.get('email'); DB.info.motto=fd.get('motto'); DB.info.headteacher=fd.get('headteacher');
+      DB.info.themeOfYear = String(fd.get('themeOfYear')||'').replace(/\s+/g,' ').trim();
       await saveInfo();
       if(emailChanged){
         // A legacy school (or one correcting a typo) just set/changed its email — this is
@@ -23876,6 +23923,10 @@ document.addEventListener('submit', async (e)=>{
         await saveInfo();
       }
       await savePBands(); render();
+    }
+    else if(type==='saveSummaryOptions'){
+      DB.info.showTotalAvgPos = fd.get('showTotalAvgPos')==='on';
+      await saveInfo(); render();
     }
     else if(type==='saveExamConfig'){
       DB.info.examConfig = {
