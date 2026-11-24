@@ -723,6 +723,10 @@ table.report-table th, table.data-table th{background:var(--blue);color:#fff;fon
 .grid3.stu-bio3{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
 .grid3.stu-bio3 input{min-width:0;width:100%;box-sizing:border-box;}
 @media(max-width:480px){.grid3.stu-bio3{gap:6px;}.grid3.stu-bio3 label{font-size:11px;}}
+/* Pick-students focus mode: only the student list + the controls it needs stay on screen */
+#promoteWrap.ps-focus .ps-hide,#promoteWrap.ps-focus .ps-hide-title{display:none!important;}
+#promoteWrap.ps-focus .promote-stack{grid-template-columns:1fr;}
+#promoteWrap.ps-focus #psList{max-height:none!important;}
 /* Promote Students: Class, Current Year and Next class share one line, with taller, clearer controls */
 .promote-stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:6px;align-items:start;}
 .promote-stack .pl{display:flex;flex-direction:column;gap:4px;min-width:0;}
@@ -15157,19 +15161,23 @@ var PS = {cls:'', sel:new Set(), dest:''};
 function psPick(id){ PS.cls=id; PS.sel=new Set(); PS.dest=''; psRender(); }
 function psToggle(id,on){ if(on) PS.sel.add(id); else PS.sel.delete(id); psRender(); }
 function psAll(on){ PS.sel = new Set(on ? psStudents().map(s=>s.id) : []); psRender(); }
+function psBack(){ const sel=document.getElementById('psSel'); if(sel) sel.value=''; psPick(''); }
 function psDestPick(v){ PS.dest=v; }
 function psStudents(){ return DB.students.filter(s=>s.classId===PS.cls && s.status!=='left').sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))); }
 function psRender(){
   const el=document.getElementById('psDyn'); if(!el) return;
   const btn=document.getElementById('prSubmit'), dyn=document.getElementById('prDyn');
   const on=!!PS.cls;
+  const wrap=document.getElementById('promoteWrap'); if(wrap) wrap.classList.toggle('ps-focus', on);
+  if(on) window.scrollTo(0,0);
   if(btn) btn.style.display = on ? 'none' : '';
   if(dyn) dyn.style.display = on ? 'none' : '';
   if(!on){ el.innerHTML=''; return; }
   const studs=psStudents(), all=pickGroups(), dg=all.find(x=>x.id===PR.to);
   const allOn = studs.length>0 && studs.every(s=>PS.sel.has(s.id));
-  let h = `<div style="margin-top:12px;"><label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" style="width:auto;" ${allOn?'checked':''} onchange="psAll(this.checked)"> Select all (${studs.length} student${studs.length===1?'':'s'})</label>`
-    + `<div style="max-height:320px;overflow:auto;margin-top:6px;border:1px solid var(--border,#ddd);border-radius:8px;">`
+  let h = `<button type="button" class="btn-outline" style="margin-top:12px;" onclick="psBack()">◀ Back</button>`
+    + `<div style="margin-top:12px;"><label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" style="width:auto;" ${allOn?'checked':''} onchange="psAll(this.checked)"> Select all (${studs.length} student${studs.length===1?'':'s'})</label>`
+    + `<div id="psList" style="max-height:320px;overflow:auto;margin-top:6px;border:1px solid var(--border,#ddd);border-radius:8px;">`
     + (studs.map(s=>`<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border,#eee);font-weight:600;"><input type="checkbox" style="width:auto;" ${PS.sel.has(s.id)?'checked':''} onchange="psToggle('${esc(s.id)}',this.checked)"><span>${esc(s.name)}</span><span class="small" style="margin-left:auto;color:var(--muted);">${esc(s.admNo||'')}</span></label>`).join('') || `<div class="small" style="padding:12px;">No students in this class.</div>`)
     + `</div></div>`;
   if(dg && PR.to!=='__OLD__' && dg.streams.length>1)
@@ -15224,25 +15232,26 @@ function promoteView(){
   PR = {from:'', to:'', sel:new Set(), mode:'keep'}; PS = {cls:'', sel:new Set(), dest:''};
   const defaultCurr = i.currentYear || new Date().getFullYear();
   return `
-  <h2>Year, Term & Promotion</h2>
-  ${termSettingsCardHTML()}
-  ${scoreDeadlineCardsHTML()}
+  <div id="promoteWrap">
+  <h2 class="ps-hide-title">Year, Term & Promotion</h2>
+  <div class="ps-hide">${termSettingsCardHTML()}</div>
+  <div class="ps-hide">${scoreDeadlineCardsHTML()}</div>
   <div class="card">
     <h3>Promote Students</h3>
     <form data-form="promoteAll">
       <div class="promote-row promote-stack">
-        <div class="pl"><div class="pc"><label>Class</label><select onchange="prPickFrom(this.value)"><option value="">-- select --</option>${pickGroups().map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}</select></div><p class="small ph">The class to move up. If it has streams, tap the stream cards that appear.</p></div>
-        <div class="pl"><div class="pc"><label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required></div><p class="small ph">The year this promotion belongs to.</p></div>
-        <div class="pl"><div class="pc"><label>Next class</label><select onchange="prPickTo(this.value)"><option value="">-- select --</option>${pickGroups().map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select></div><p class="small ph">Where they go. Can be a higher class (promote) or a lower one (move back). If it has streams you choose to maintain or combine them next.</p></div>
-        <div class="pl"><div class="pc"><label>Pick students from class</label><select onchange="psPick(this.value)"><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${esc(c.id)}">${esc(classFullName(c))}</option>`).join('')}</select></div><p class="small ph">Optional. Loads that class's students so you can tick only some (or all) to move to the Next class.</p></div>
+        <div class="pl ps-hide"><div class="pc"><label>Class</label><select onchange="prPickFrom(this.value)"><option value="">-- select --</option>${pickGroups().map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}</select></div><p class="small ph">The class to move up. If it has streams, tap the stream cards that appear.</p></div>
+        <div class="pl"><div class="pc"><label>Current Year</label><input type="number" name="currYear" min="2000" max="2100" step="1" value="${esc(String(defaultCurr))}" required></div><p class="small ph ps-hide">The year this promotion belongs to.</p></div>
+        <div class="pl"><div class="pc"><label>Next class</label><select onchange="prPickTo(this.value)"><option value="">-- select --</option>${pickGroups().map(g=>`<option value="${esc(g.id)}">${esc(g.label)}</option>`).join('')}<option value="__OLD__">🎒 Old Students (graduate / leave)</option></select></div><p class="small ph ps-hide">Where they go. Can be a higher class (promote) or a lower one (move back). If it has streams you choose to maintain or combine them next.</p></div>
+        <div class="pl"><div class="pc"><label>Pick students from class</label><select id="psSel" onchange="psPick(this.value)"><option value="">-- select --</option>${DB.classes.map(c=>`<option value="${esc(c.id)}">${esc(classFullName(c))}</option>`).join('')}</select></div><p class="small ph ps-hide">Optional. Loads that class's students so you can tick only some (or all) to move to the Next class.</p></div>
       </div>
       <div id="prDyn"></div>
       <div id="psDyn"></div>
-      <p class="small" style="margin:8px 0 0;">Score history, subject assignments and class teachers are kept as they are. A class teacher changes only if you pick one above.</p>
+      <p class="small ps-hide" style="margin:8px 0 0;">Score history, subject assignments and class teachers are kept as they are. A class teacher changes only if you pick one above.</p>
       <button class="btn" id="prSubmit" style="margin-top:10px;">Submit — promote class</button>
     </form>
   </div>
-  <div class="card">
+  <div class="card ps-hide">
     <h3>Promote All Classes</h3>
     <p class="small">Promote every class in one go. Type the Current Year once, then choose a next class for each class you want to move — leave any class set to "-- don't promote --" to skip it (nothing happens to that class or its students). Choose "Old Students" for a class whose students are graduating/leaving instead of moving up. Only the classes you assign a destination to are touched.</p>
     <form data-form="promoteAll">
@@ -15255,6 +15264,7 @@ function promoteView(){
       </table>
       <button class="btn" style="margin-top:10px;">Submit — promote all classes</button>
     </form>
+  </div>
   </div>`;
 }
 
