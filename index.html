@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-25-1500'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-25-1600'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -875,6 +875,7 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
 /* Primary report cards receive a distinct two-layer ornamental frame; O-Level is untouched. */
 .primary-report-card{border:5px solid #1d4e89 !important;outline:2px solid #c99a3b;outline-offset:-10px;}
 .primary-report-card::before{content:'';position:absolute;inset:1px;padding:9px;pointer-events:none;z-index:4;background:radial-gradient(circle at 50% 50%,#c99a3b 0 1.5px,transparent 1.9px),radial-gradient(circle at 50% 0%,#1d4e89 0 3px,transparent 3.5px),radial-gradient(circle at 100% 50%,#1d4e89 0 3px,transparent 3.5px),radial-gradient(circle at 50% 100%,#1d4e89 0 3px,transparent 3.5px),radial-gradient(circle at 0% 50%,#1d4e89 0 3px,transparent 3.5px);background-size:24px 24px;background-repeat:repeat;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
+.rc-card.primary-report-card{padding:30px 29px 30px;}
 .primary-report-card::after{inset:12px !important;border:2px double #1d4e89 !important;border-radius:3px !important;}
 /* The live report-card canvas uses the same printable proportion as the native A4 PDF (190:277). On narrow phones it remains responsive rather than overflowing the screen. */
 @media (max-width:760px){.rc-card{max-width:100%;min-height:0;aspect-ratio:190/277;padding:18px 18px 16px;overflow:hidden;}.rc-card .rc-content{transform-origin:top left;}}
@@ -19167,6 +19168,19 @@ function nurseryThemeCardHTML(){
   <button type="button" class="btn-outline" onclick="setNurseryTheme('reset')">Reset to default colours</button></div>`;
 }
 const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
+// Flower border between the outer and inner Nursery frames, drawn as real SVG (not a CSS mask/gradient) so it is
+// captured into the PDF and printed exactly as on screen.
+function nrcFlowersSvg(col){
+  const W=780, H=1109, c=9.5, step=26, gold='#f2c94c';
+  const fl=(x,y,k)=>{ const o=2.6*k, r=2.2*k; let g='<g fill="#fff" stroke="'+col+'" stroke-width="0.7">';
+    [[o,0],[-o,0],[0,o],[0,-o]].forEach(d=>{ g+='<circle cx="'+(x+d[0]).toFixed(1)+'" cy="'+(y+d[1]).toFixed(1)+'" r="'+r.toFixed(1)+'"/>'; });
+    return g+'</g><circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(1.5*k).toFixed(1)+'" fill="'+gold+'" stroke="'+col+'" stroke-width="0.4"/>'; };
+  const nx=Math.max(2,Math.round((W-2*c)/step)), ny=Math.max(2,Math.round((H-2*c)/step));
+  let out='';
+  for(let i=0;i<=nx;i++){ const x=c+i*(W-2*c)/nx, k=(i===0||i===nx)?1.12:1; out+=fl(x,c,k)+fl(x,H-c,k); }
+  for(let j=1;j<ny;j++){ const y=c+j*(H-2*c)/ny; out+=fl(c,y,1)+fl(W-c,y,1); }
+  return '<svg class="nrc-flw" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">'+out+'</svg>';
+}
 function nrcCss(){
   const css = `
 .nrc-card{--u:7.94px;width:100%;max-width:794px;height:auto;min-height:0;aspect-ratio:210/297;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;font-weight:700;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:3.3u 3u 3u;position:relative;overflow:hidden;display:flex;flex-direction:column;}
@@ -19235,8 +19249,7 @@ function nrcCss(){
 .nrc-foot b{font-size:max(10px,calc(var(--u)*1.25));}
 .nrc-theme{font-size:max(10px,calc(var(--u)*1.4));line-height:1.2;}
 .nrc-wm{position:absolute;left:50%;top:52%;width:50u;height:50u;transform:translate(-50%,-50%);opacity:.06;object-fit:contain;pointer-events:none;}
-.nrc-card:before{content:'';position:absolute;inset:2px;padding:8px;pointer-events:none;z-index:5;background:radial-gradient(circle at 50% 50%,#f2c94c 0 1.2px,transparent 1.6px),radial-gradient(circle at 50% 0%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 100% 50%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 50% 100%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px),radial-gradient(circle at 0% 50%,var(--nf,#8b1c2c) 0 2.8px,transparent 3.2px);background-size:22px 22px;background-repeat:repeat;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
-.nrc-card:before{inset:3px;padding:7px;}
+.nrc-flw{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5;display:block;}
 .nrc-card:after{content:'';position:absolute;inset:18px;border:2px double var(--nf);border-radius:1u;pointer-events:none;z-index:5;box-sizing:border-box;}
 .nrc-outer{position:relative;padding:0 !important;border:0 !important;box-shadow:none !important;min-height:0 !important;height:auto !important;aspect-ratio:210/297 !important;max-width:724px !important;}
 .nrc-outer:after{content:none !important;}
@@ -19483,6 +19496,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   let card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
   <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
+    ${nrcFlowersSvg(nrcThemeCfg().frame)}
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
     <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
     <div class="nrc-head${info.logo?' nrc-hl':''}">
@@ -20390,7 +20404,10 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const hdrSeam = (_shade.custom && !_shade.dark) ? [29,78,137] : hdrFill.slice();
   // Clear column dividers inside the header band: single continuous lines, full header height.
   const hdrDiv = !_shade.custom ? [255,255,255] : (_shade.dark ? _shade.seam.map(v=>Math.round(v)) : [29,78,137]);
-  let cy = cardY + 14; // running vertical cursor
+  // Primary cards carry a flower border (flowers centred 17pt in from the card edge): content keeps clear of it on every
+  // side while still using the full remaining width. Other levels keep their original, tighter margins.
+  const _padTop = data.isP ? 26 : 14, _padSide = data.isP ? 25 : 16, _padBottom = data.isP ? 26 : 12;
+  let cy = cardY + _padTop; // running vertical cursor
 
   function setC(rgb){ pdf.setTextColor(rgb[0],rgb[1],rgb[2]); }
   function setDrawC(rgb){ pdf.setDrawColor(rgb[0],rgb[1],rgb[2]); }
@@ -20461,9 +20478,9 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const _rcPageNo = pdf.internal.getCurrentPageInfo().pageNumber;
   const _rcPageOps = pdf.internal.pages[_rcPageNo];
   const _rcContentStart = _rcPageOps.length;
-  const _rcContentTop = cardY + 14;
+  const _rcContentTop = cardY + _padTop;
 
-  const contentX = cardX + 16, contentW = cardW - 32;
+  const contentX = cardX + _padSide, contentW = cardW - _padSide*2;
 
   // ---- 3. Topline: fees code + printed date ----
   pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
@@ -21060,7 +21077,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // safety net, by a small uniform scale — so the card always ends up filling
   // the page exactly, never under or over it, even in edge cases (e.g. a gap
   // cap keeping gapBoost from fully absorbing a very short card).
-  const _rcAvailableBottom = cardY + cardH - 12;
+  const _rcAvailableBottom = cardY + cardH - _padBottom;
   const _rcNaturalHeight = Math.max(1, cy - _rcContentTop);
   const _rcScaleY = (_rcAvailableBottom - _rcContentTop) / _rcNaturalHeight;
   if(Number.isFinite(_rcScaleY) && _rcScaleY > 0 && Math.abs(_rcScaleY-1) > 0.0005){
