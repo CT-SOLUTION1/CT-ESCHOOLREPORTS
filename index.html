@@ -555,6 +555,12 @@ img{max-width:100%;height:auto;}
 .sl-actions>button.sl-ab-btn.host-busy{background:#e67e22;border-color:#e67e22;color:#fff;}
 .sl-actions>button.sl-ab-btn:disabled{cursor:progress;}
 .aiu-btn{display:block;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;text-align:center;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;border:2px solid #b91c1c;border-radius:8px;background:#dc2626;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;text-decoration:none;}
+.agg-switch{position:relative;display:grid;grid-template-columns:1fr 1fr;box-sizing:border-box;width:fit-content;max-width:calc(100% - 22*var(--uk));margin:calc(6*var(--uk)) auto;border:2px solid #b91c1c;border-radius:8px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35);overflow:hidden;}
+.agg-thumb{position:absolute;top:0;bottom:0;left:0;width:50%;background:#dc2626;transition:transform .22s ease;}
+.agg-switch.is-all .agg-thumb{transform:translateX(100%);}
+.agg-opt{position:relative;z-index:1;text-align:center;white-space:nowrap;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#b91c1c;cursor:pointer;text-decoration:none;transition:color .22s ease;}
+.agg-opt.on{color:#fff;}
+.rc-agg-note{font-weight:900;font-size:9.5px;text-align:center;margin:4px 0 0;line-height:1.2;white-space:nowrap;color:var(--navy);}
 .aiu-btn:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .aiu-card{--aiu-k:1;margin:8px auto;width:100%;max-width:640px;box-sizing:border-box;padding:calc(28px*var(--aiu-k)) calc(22px*var(--aiu-k));display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
 .aiu-card h3{font-size:calc(24px*var(--aiu-k));margin-bottom:calc(6px*var(--aiu-k));}
@@ -8640,21 +8646,39 @@ function gradeDisplay(subject, grade, level, avg){
 // the admin currently has set as compulsory (pCompulsoryList(), default: the 4 real
 // PLE-core subjects) — see the note on pCompulsoryList() about Division accuracy if that
 // set is changed from the standard 4.
+// Which subjects feed the Aggregate / Division (Primary Subjects > scope button):
+//   'all'   -> every subject the learner does (compulsory + optional/extra)
+//   'core4' -> only the 4 PLE core subjects (English, Mathematics, Science, Social Studies)
+//   unset   -> the original behaviour (the class's compulsory subjects, normally those same 4)
+function pAggScope(){ const v = DB.info && DB.info.pAggScope; return (v==='all'||v==='core4') ? v : ''; }
+// One-line statement printed under the Performance Summary (Primary report cards) saying what the
+// Aggregate and Division were worked out from.
+function pAggNoteText(cls){
+  const sc = pAggScope();
+  if(sc==='all') return 'Aggregates and Division are calculated from ALL subjects done.';
+  const list = (sc==='core4') ? P_CORE_SUBJECTS : pCompulsoryList(cls && cls.form);
+  if(list.length===P_CORE_SUBJECTS.length && P_CORE_SUBJECTS.every(x=>list.includes(x))) return 'Aggregates and Division are calculated from ONLY the 4 CORE subjects (English, Mathematics, Science, Social Studies).';
+  return 'Aggregates and Division are calculated from the COMPULSORY subjects only ('+list.join(', ')+').';
+}
 function primaryAggregate(st, cls, term, year){
   if(!cls || cls.level!=='P') return null;
-  const coreSubjects = pCompulsoryList(cls.form);
-  let sum=0, count=0;
+  const compulsory = pCompulsoryList(cls.form);
+  const scope = pAggScope();
+  let coreSubjects = compulsory, required = compulsory;
+  if(scope==='core4'){ coreSubjects = P_CORE_SUBJECTS.slice(); required = coreSubjects; }
+  else if(scope==='all'){ coreSubjects = [...new Set([...compulsory, ...studentSubjects(st, cls)])]; }
+  let sum=0, count=0; const done = new Set();
   for(const subj of coreSubjects){
     let avg = subjectAverage(st.id, subj, term, year);
     if(avg===null){
-      // missed a core subject that classmates already have scores in: counts as 0 (hidden); otherwise not counted
+      // missed a subject that classmates already have scores in: counts as 0 (hidden); otherwise not counted
       if(studentSubjects(st, cls).includes(subj) && coreSubjects.some(sj=>subjectAverage(st.id, sj, term, year)!==null) && peersHaveScore(st, subj, term, year, raPeerKind())) avg = 0;
       else continue;
     }
     const g = gradeFor(subj, avg, 'P');
-    sum += PLE_GRADE_POINTS[g]; count++;
+    sum += PLE_GRADE_POINTS[g]; count++; done.add(subj);
   }
-  if(count < coreSubjects.length) return null; // Division needs every compulsory subject on record
+  if(!required.length || required.some(sj=>!done.has(sj))) return null; // Division needs every required subject on record
   return sum;
 }
 // Rows of the Grading Key printed on O/A-Level report cards. A-Level lists every level the school
@@ -14665,6 +14689,16 @@ function oLevelSubjectsView(){
     <h3>Base optional</h3><p>${P_OPTIONAL_BASE.map(s=>`<span class="chip">${s}</span>`).join('')}</p>
     ${pExtra.length ? `<h3>Added subjects (all classes)</h3>
     <p>${pExtra.map(s=>`<span class="chip">${esc(s)} <span data-action="delPSubject:${encodeURIComponent(s)}" style="cursor:pointer;color:var(--danger);font-weight:800;">&times;</span></span>`).join('')}</p>` : ''}
+  </div>
+  <div class="card">
+    <h3>Aggregate &amp; Division</h3>
+    <p class="small">Slide the button to choose which subjects count when the Aggregate and Division are worked out for Primary learners.</p>
+    ${(()=>{ const all = pAggScope()==='all'; return `<div class="agg-switch${all?' is-all':''}" role="group" aria-label="Subjects used for Aggregate and Division">
+      <span class="agg-thumb"></span>
+      <a href="#" class="agg-opt${all?' on':''}" data-action="setPAggScope:all">All subjects done</a>
+      <a href="#" class="agg-opt${all?'':' on'}" data-action="setPAggScope:core4">Only core 4 subjects</a>
+    </div>`; })()}
+    <p class="small" style="text-align:center;">Core 4 = ${P_CORE_SUBJECTS.map(esc).join(', ')}. With <b>All subjects done</b> every subject the learner does is added up, so the Division is approximate rather than the exact UNEB band.</p>
   </div>`}`;
 }
 
@@ -19996,6 +20030,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         }).join('\n      ');
       })()}
     </table>
+    ${(isP && showAggDiv(cls.id)) ? `<div class="rc-agg-note">${esc(pAggNoteText(cls))}</div>` : ''}
 
     ${!isP ? `
     <div class="rc-section-title">Grading Key</div>
@@ -20791,7 +20826,16 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       });
     });
   });
-  cy += sumRowH*summaryRows.length + 14 + gapBoost;
+  cy += sumRowH*summaryRows.length;
+  if(data.isP && data.showAggDiv !== false){
+    const _noteCls = DB.classes.find(c=>c.id===data.classId);
+    const _noteTxt = pAggNoteText(_noteCls);
+    let _nfs = 7; pdf.setFont('helvetica','bold'); pdf.setFontSize(_nfs);
+    while(_nfs>4.5 && pdf.getTextWidth(_noteTxt) > contentW-4){ _nfs -= 0.25; pdf.setFontSize(_nfs); }
+    centerText(_noteTxt, contentX, contentW, cy+9, _nfs, 'bold', navy);
+    cy += 11;
+  }
+  cy += 14 + gapBoost;
 
   // ---- 7b. Grading Key (O'/A' Level only) ----
   // A small, tightly-padded reference table (grade / label / descriptor sentence),
@@ -21192,7 +21236,7 @@ document.addEventListener('click', async (e)=>{
   const myNavToken = ++NAV_TOKEN;
   // Backstop: these actions edit student/teacher bio data, accounts, subject
   // assignments, or grading config — Admin only, no matter how they're triggered.
-  const ADMIN_ONLY_ACTIONS = new Set(['delAssign','delClass','delOSubject','delPSubject','addPSubjectCol','addPClassSubject','delPClassSubject','delStudent','closeAcc','reopenAcc',
+  const ADMIN_ONLY_ACTIONS = new Set(['setPAggScope','delAssign','delClass','delOSubject','delPSubject','addPSubjectCol','addPClassSubject','delPClassSubject','delStudent','closeAcc','reopenAcc',
     'resetAccPw','approveAcc','rejectAcc','editTeacherProfile','editStudentProfile','editClass','delCwTest','editCwTestStart','delClassCwTest','editClassCwTestStart','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot',
     'markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','addExtraScoreStudent','removeTeacherSignature','stmNext','stmSaveAssign','stmConfirm',
     'editFinanceFee','delFinanceFee','editFinancePayment','delFinancePayment','editRequirement','delRequirement','financeStudent','resyncFinance',
@@ -21203,7 +21247,7 @@ document.addEventListener('click', async (e)=>{
   if(ADMIN_ONLY_ACTIONS.has(action) && (!CUR || CUR.role!=='admin')){
     alert('Only an Admin can do that.'); return;
   }
-  const MUTATING_ACTIONS = new Set(['delAllClassScores','delSelectedClassScores','delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
+  const MUTATING_ACTIONS = new Set(['setPAggScope','delAllClassScores','delSelectedClassScores','delClass','delStudent','markStudentLeft','restoreStudent','delOldStudentNow','repairAdmissionNumbers','delAssign','delOSubject','delPSubject','delCwTest','delClassCwTest','delAcc','delTeacherAny','delOrphanTeacher','delCorruptTeachers','closeAcc','reopenAcc','resetAccPw','approveAcc','rejectAcc','reopenScoreDeadline','lockScoreDeadline','reopenAllScoreDeadline','restoreAutoSnapshot','settleShortfallFull','delShortfallSettlement','delShortfall','delExpenseType','delExpense','reqUndoStatus']);
   // These are destructive/irreversible actions (deletes, account closures, etc.), so
   // the progress banner must stay anchored to the button (el) and always resolve to
   // success or failure — never leave "Processing…" on screen once the command is
@@ -21690,6 +21734,11 @@ Continue?`);
       DB.info.pClassSubjects[form] = pClassSubjectsFor(form).filter(x=>x!==name);
       if(DB.info.pCompulsoryByForm && Array.isArray(DB.info.pCompulsoryByForm[form])) DB.info.pCompulsoryByForm[form] = DB.info.pCompulsoryByForm[form].filter(x=>x!==name);
       await saveInfo(); showActionSuccess('Subject removed successfully', el, true); render(); break;
+    }
+    case 'setPAggScope': {
+      if(arg!=='all' && arg!=='core4') break;
+      DB.info.pAggScope = arg;
+      await saveInfo(); showActionSuccess(arg==='all' ? 'Aggregate now uses ALL subjects done' : 'Aggregate now uses ONLY the core 4 subjects', el, true); render(); break;
     }
     case 'delPSubject': {
       const name = decodeURIComponent(arg);
