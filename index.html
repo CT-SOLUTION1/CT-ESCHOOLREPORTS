@@ -958,6 +958,8 @@ table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;table
 table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size:12px;overflow-wrap:break-word;word-break:break-word;}
 table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--shade-ink,var(--navy));}
 table.rc-info-table td.val{font-weight:700;}
+/* Keep the learner name vertically centered in its information row on Primary, O-Level and A-Level cards, matching Nursery. */
+table.rc-info-table td.rc-stu-name{vertical-align:middle !important;line-height:1.2;padding-top:8px;padding-bottom:8px;}
 table.rc-info-table td.photo-cell{padding:0;position:relative;overflow:hidden;text-align:center;vertical-align:middle;background:#fff;}
 table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 0%;border:0;border-radius:0;display:block;}
 /* PDF capture only: swap to separate borders, which is what actually avoids the
@@ -19372,7 +19374,7 @@ function nrcCss(){
 .nrc-bio{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;margin:0 0 1.2u;border-top:.18u solid var(--nf);border-left:.18u solid var(--nf);}
 .nrc-bio td{border-right:.18u solid var(--nf);border-bottom:.18u solid var(--nf);padding:.55u 1u;font-size:1.45u;font-weight:700;line-height:1.2;overflow-wrap:anywhere;word-break:break-word;vertical-align:middle;}
 .nrc-bio td.lbl{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.15u;letter-spacing:.03em;}
-.nrc-bio td.nm{color:#0b2a6f;font-weight:900;font-size:1.7u;}
+.nrc-bio td.nm{color:#0b2a6f;font-weight:900;font-size:1.7u;vertical-align:middle;padding-top:.8u;padding-bottom:.8u;}
 .nrc-bio td.ph{padding:.5u;text-align:center;background:#fff;}
 .nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;object-position:50% 0%;border:.2u solid var(--nf);border-radius:.5u;}
 /* ONE-PAGE FIT: every size below is in "k" units = u x --nk. nurseryReportCardHTML() measures the card and sets --nk (1 = full size) so the whole
@@ -19390,7 +19392,7 @@ function nrcCss(){
 .nrc-bio{margin:0 0 .9k;}
 .nrc-bio td{padding:.45k .8k;font-size:1.35k;}
 .nrc-bio td.lbl{font-size:1k;}
-.nrc-bio td.nm{font-size:1.55k;}
+.nrc-bio td.nm{font-size:1.55k;padding-top:.65k;padding-bottom:.65k;vertical-align:middle;}
 .nrc-bio-photo{width:6.4k;height:6.4k;}
 .nrc-key{font-size:1.05k;margin-bottom:.8k;gap:.6k;}
 .nrc-key span{padding:.2k .8k;}
@@ -19414,7 +19416,7 @@ function nrcCss(){
 .nrc-foot{margin-top:.7k;gap:.8k;font-size:1.3k;line-height:1.2;}
 .nrc-foot div{padding:.35k .8k;}
 .nrc-foot b{font-size:1k;}
-.nrc-theme{margin-top:auto;margin-bottom:-1.2k;font-size:1.1k;padding:.35k .8k;line-height:1.2;}
+.nrc-theme{margin-top:auto;margin-bottom:0;font-size:1.1k;padding:.35k .8k;line-height:1.2;}
 .nrc-scale{margin-top:.7k;}
 .nrc-scale th,.nrc-scale td{padding:.25k .4k;font-size:1.05k;line-height:1.15;}
 .nrc-scale td{font-size:1.3k;}
@@ -19467,7 +19469,7 @@ function nrcCss(){
 .nrc-topline>span:empty{display:none;}
 .nrc-topline .nrc-fees{font-size:9px !important;letter-spacing:.03em;color:#000;}
 .nrc-mot{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.4px #000;}
-.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.45em 1em !important;width:100%;max-width:100%;box-sizing:border-box;margin:auto auto 0 !important;white-space:nowrap;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
+.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.45em 1em !important;width:100%;max-width:100%;box-sizing:border-box;margin:auto auto 0 !important;white-space:normal;text-align:center;overflow-wrap:anywhere;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
 .nrc-g.nrc-sh{background:none !important;border-radius:0 !important;position:relative;}
 .nrc-g.nrc-sh svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
 .nrc-g.nrc-sh i{position:relative;z-index:1;font-style:normal;line-height:1;}
@@ -19662,9 +19664,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     ${showG ? `<div class="nrc-key"><b>KEY:</b>${key}</div>` : ''}
     ${grid}
     <table class="nrc-overall-table" style="width:100%;border-collapse:collapse;margin:1u 0;font-size:1.25u;">
-      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'%' : '—'}</td></tr>
-      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Grade</th><td style="padding:.8u;border:1px solid var(--nf);">${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b></td></tr>
-      ${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Promotion</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;color:${pd.promoted?'#166534':'#991b1b'};">${esc(pd.text)}</td></tr>` : ''; })()}
+      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall Grade</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b>${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? ` <span class="nrc-promotion" style="font-weight:900;color:#c62828;font-size:max(11px,calc(var(--u)*1.5));margin-left:.8em;line-height:1.2;">${esc(pd.text)}</span>` : ''; })()}</td></tr>
       ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
     </table>
     <table class="nrc-gs">
