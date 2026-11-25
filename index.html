@@ -1308,6 +1308,20 @@ table.rc-perf.primary-report-card, .primary-report-card table.rc-perf{table-layo
 #pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-init{width:68px !important;}
 #pdfCaptureHolder .primary-report-card table.rc-perf th.rc-th-eot{width:82px !important;}
 
+/* PRIMARY report card, Academic Performance table: fully fluid columns. The widths come from the
+   percentage <colgroup> built in reportCardHTML (rcPrimaryFluid); every fixed pixel width / min-width
+   above is neutralised so End of Term + all Course Work columns can be on together and just get tighter. */
+.primary-report-card table.rc-perf.rc-fluid{table-layout:fixed !important;width:100% !important;min-width:0 !important;max-width:100% !important;}
+.primary-report-card table.rc-perf.rc-fluid th[class],
+.primary-report-card table.rc-perf.rc-fluid td{width:auto !important;min-width:0 !important;max-width:none !important;box-sizing:border-box;overflow:hidden;overflow-wrap:anywhere;word-break:normal;}
+.primary-report-card table.rc-perf.rc-fluid th[class]{font-size:var(--rc-fs-h,8.6px) !important;padding:4px var(--rc-px,3px) !important;letter-spacing:0 !important;line-height:1.15 !important;white-space:normal !important;overflow-wrap:normal !important;word-break:normal !important;hyphens:none;-webkit-text-stroke:.25px currentColor;}
+.primary-report-card table.rc-perf.rc-fluid td{font-size:var(--rc-fs-b,11px);padding:5px var(--rc-px,3px);line-height:1.15;}
+.primary-report-card table.rc-perf.rc-fluid td:first-child{font-size:var(--rc-fs-b,11px);}
+.primary-report-card table.rc-perf.rc-fluid td.rc-primary-comment{font-size:calc(var(--rc-fs-b,11px) - 3px);line-height:1.1;}
+.primary-report-card table.rc-perf.rc-fluid th.rc-th-cw-group{white-space:nowrap !important;overflow:visible;}
+#pdfCaptureHolder .primary-report-card table.rc-perf.rc-fluid th[class]{width:auto !important;min-width:0 !important;}
+.primary-report-card .rc-perf-wrap{overflow:hidden;}
+
 /* Report card clarity: keep Teacher Initials on exactly two lines and strengthen headings. */
 .report-card th, .report-card thead th, .rc-perf th, table.report-table th{font-weight:900!important;}
 .rc-th-init{white-space:nowrap;line-height:1.05;font-weight:900!important;}
@@ -15679,7 +15693,7 @@ function reportsListView(){
     <table class="data-table rc-list"><tr><th>No.</th>${rcOut?`<th><input type="checkbox" class="rc-all-cb" style="width:auto;" ${allVisibleSelected?'checked':''} onchange="toggleReportSelectAll(null, this.checked)"></th>`:''}<th>Name</th><th>Class</th><th class="rc-combo">Combination / Subjects</th><th>Action</th></tr>
     ${listStudents.map((s,i)=>{
       const cls = DB.classes.find(c=>c.id===s.classId);
-      return `<tr><td>${i+1}</td>${rcOut?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td>${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
+      return `<tr><td>${i+1}</td>${rcOut?`<td><input type="checkbox" class="rc-row-cb" data-id="${s.id}" style="width:auto;" ${SELECTED_REPORTS.has(s.id)?'checked':''} onchange="toggleReportSelect('${s.id}')"></td>`:''}<td class="stu-name">${esc(s.name)}</td><td class="rc-cls">${cls?esc(cls.name):'—'}</td><td class="rc-combo">${esc(comboLabel(s,cls))}</td>
       <td><button class="btn-outline" data-action="viewReport:${s.id}">OPEN REPORT</button>${rcOut?`<button class="btn-outline" data-action="printReport:${s.id}">Print</button><button class="btn-outline rc-pdf-btn" data-action="singlePdf:${s.id}">PDF</button>`:''}</td></tr>`;
     }).join('') || `<tr><td colspan="${rcOut?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
@@ -19536,6 +19550,33 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     return '<colgroup>'+widths.map(w=>{const safeW=Number.isFinite(w)?w:5; return `<col style="width:${safeW.toFixed(4)}%;">`;}).join('')+'</colgroup>';
   })() : '';
 
+  // PRIMARY: one fluid, percentage-based column plan used on screen, in print and in the PDF capture.
+  // End of Term, every Course Work test column, Final Average, Grade, Remarks, Comment and Initials
+  // all share 100% of the table width, so turning everything on only makes the columns a little
+  // tighter (smaller type, tighter padding) instead of letting them overlap.
+  const rcPrimaryFluid = (()=>{
+    if(!isP) return {colgroup:'', style:''};
+    const cwCols = showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0;
+    const cwTotal = cwCols===0 ? 0 : (cwCols===1 ? 10 : Math.min(48, cwCols*7));
+    const tight = cwCols>5;                                  // many Course Work columns: give Subjects a little more room
+    const core = [{w:tight?19:15.5}];                        // Subjects
+    if(showEOT) core.push({w:9});                            // End of Term
+    if(showPaperAverageColumn) core.push({w:7});             // Paper Average (normally off for Primary)
+    if(showFinalAverageColumn) core.push({w:10});            // Final Average
+    core.push({w:6.5}, {w:10}, {w:tight?10:12.5}, {w:10});            // Grade, Remarks, Comment, Initials
+    const coreShare = 100 - cwTotal, sum = core.reduce((a,c)=>a+c.w,0);
+    const widths = [];
+    widths.push(coreShare*core[0].w/sum);
+    for(let i=0;i<cwCols;i++) widths.push(cwTotal/cwCols);
+    for(let i=1;i<core.length;i++) widths.push(coreShare*core[i].w/sum);
+    const dense = cwCols<=3 ? 0 : (cwCols<=5 ? 1 : 2);
+    const hf = [8.6,7.6,6.8][dense], bf = [11,10,8.6][dense], px = [3,2,1.5][dense];
+    return {
+      colgroup: '<colgroup>'+widths.map(w=>`<col style="width:${w.toFixed(3)}%;">`).join('')+'</colgroup>',
+      style: `--rc-fs-h:${hf}px;--rc-fs-b:${bf}px;--rc-px:${px}px;`
+    };
+  })();
+
   const periodPicker = (!embedded && pickerPeriods.length>0) ? `
   <div class="card" style="margin-bottom:10px;">
     <label style="margin-bottom:4px;display:block;">Viewing period (read-only)</label>
@@ -19595,22 +19636,22 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     <div class="rc-section-title">Academic Performance Analysis</div>
     <div class="rc-perf-wrap">
-    <table class="rc-perf">
-      ${pdfColgroup}
+    <table class="rc-perf${isP?' rc-fluid':''}"${isP?` style="${rcPrimaryFluid.style}"`:''}>
+      ${isP ? rcPrimaryFluid.colgroup : pdfColgroup}
       ${useCwTestCols ? `
       <tr>
         <th class="rc-th-subj mrg-top"></th>${isP?'':'<th class="rc-th-papers mrg-top"></th>'}
         <th colspan="${cwTests.length+1}" class="rc-th-cw rc-th-cw-group">${esc(cfg.cwLabel)}</th>
         ${showEOT?`<th class="rc-th-eot mrg-top"></th>`:''}
-        ${data.showPaperAverageColumn?'<th class="rc-th-pavg mrg-top"></th>':''}
-        ${data.showFinalAverageColumn?'<th class="rc-th-final mrg-top"></th>':''}<th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th>${isP?'<th class="rc-th-comment mrg-top"></th>':''}<th class="rc-th-init mrg-top"></th>
+        ${showPaperAverageColumn?'<th class="rc-th-pavg mrg-top"></th>':''}
+        ${showFinalAverageColumn?'<th class="rc-th-final mrg-top"></th>':''}<th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th>${isP?'<th class="rc-th-comment mrg-top"></th>':''}<th class="rc-th-init mrg-top"></th>
       </tr>
       <tr>
         <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
-        ${data.showPaperAverageColumn?'<th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>':''}
-        ${data.showFinalAverageColumn?'<th class="rc-th-final mrg-bot">Final Average (%)</th>':''}<th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">${isP?'Remarks':'Descriptor'}</th>${isP?'<th class="rc-th-comment mrg-bot">COMMENT</th>':''}<th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
+        ${showPaperAverageColumn?'<th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>':''}
+        ${showFinalAverageColumn?'<th class="rc-th-final mrg-bot">Final Average (%)</th>':''}<th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">${isP?'Remarks':'Descriptor'}</th>${isP?'<th class="rc-th-comment mrg-bot">COMMENT</th>':''}<th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
       </tr>` : `
       <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}${showPaperAverageColumn?'<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>':''}${showFinalAverageColumn?'<th class="rc-th-final">Final Average (%)</th>':''}<th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th>${isP?'<th class="rc-th-comment">COMMENT</th>':''}<th class="rc-th-init">Teacher<br>Initials</th></tr>`}
       ${rowsHtml}
@@ -19812,6 +19853,11 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const remarkSeed = remarkSeedFor(s.id), remarkWeak = weakestSubjectNames(rows);
   const cwTests = cfg.cwTests || [];
   const useCwTestCols = showCW && cwTests.length>1; // keep a single CW column when only one test is configured
+  // Same rules as the on-screen card (reportCardHTML): these two flags are returned in the data object below
+  // and drive which columns the PDF draws. They were never defined here, which made every download/print fail.
+  const _inUseAssessments = assessListFor(cls.id).filter(x=>{ const off=assessOffSet(cls.id); return !off || !off.has(x.key); });
+  const showFinalAverageColumn = _inUseAssessments.length > 1;
+  const showPaperAverageColumn = !isP && rows.some(r=>subjectPapersFor(r.subject, cls).length > 1);
 
   function assignmentFor(subject, paper){
     const asns = DB.assignments.filter(a=>a.subject===subject && streamGroupIds(cls).has(a.classId));
@@ -27333,9 +27379,42 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
       }
       if(sp) t.classList.add('sp-hug'); else t.style.width='auto';   // Student Performance: columns hug their contents (class sp-hug), measured at their natural width
       var lo=5, hi=sp?18:(fillIt?30:22), best=5;   // Student Performance font never goes above 18px
-      for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
-      t.style.setProperty('--tf',best);
-      if(!sp) t.style.width='100%';
+      if(!sp){
+        // REPORT-CARD LIST. Phones/tablets lay the page out 1280px wide and scale it down, so a CSS font that
+        // looks fine on a computer is tiny on a phone. 'ps' = on-screen size of one CSS px (1 on a computer);
+        // the font ceiling grows as the screen shrinks so names and buttons stay about 14px on the real screen.
+        // Widths are measured fractionally (offsetWidth rounds UP, which made the table never "fit" on phones
+        // and dropped the font to its 5px floor) and with the table at its natural width, not stretched to 100%.
+        var ps=Math.min(1,((screen.width||window.innerWidth||1280)/(window.innerWidth||1280)));
+        var hiP=Math.min(60,Math.max(22,14/ps)), goodTf=Math.min(hiP,11/ps);
+        var measureNat=function(wrapMode){
+          // wrapMode: 0 = one line per row, 1 = name / combination / buttons may wrap, 2 = the class name may wrap too
+          t.classList.toggle('rc-wrap',wrapMode>=1); t.classList.toggle('rc-wrap2',wrapMode>=2);
+          t.style.setProperty('width',wrapMode?'1px':'auto','important');   // 1px = the table's narrowest possible (every cell wrapped as far as allowed)
+        };
+        var searchTf=function(){
+          var a=5,b=hiP,got=5;
+          for(var k=0;k<14;k++){ var m=(a+b)/2; t.style.setProperty('--tf',m); if(t.getBoundingClientRect().width<=avail+0.5){ got=m; a=m; } else b=m; }
+          return got;
+        };
+        var mode=0; measureNat(0); best=searchTf();          // 1st choice: every row on a single line
+        if(best<goodTf){                                      // too small to read: let name / combination / buttons wrap instead
+          measureNat(1); var b1=searchTf();
+          if(b1>best){ best=b1; mode=1; }
+          if(best<goodTf){ measureNat(2); var b2=searchTf(); if(b2>best){ best=b2; mode=2; } }
+          measureNat(mode); 
+        }
+        if(mode>0){
+          best=Math.max(5,best*0.94);
+          // at this slightly smaller font, use the LEAST wrapping that still fits (single lines if possible, then only name / buttons, last of all the class)
+          for(var m=0;m<=2;m++){ measureNat(m); t.style.setProperty('--tf',best); if(t.getBoundingClientRect().width<=avail+0.5){ mode=m; break; } mode=2; }
+        }
+        t.style.setProperty('--tf',best);
+        t.style.removeProperty('width');                      // back to the stylesheet's 100%: spare width is shared between the columns
+      } else {
+        for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
+        t.style.setProperty('--tf',best);
+      }
       // Student Performance form: fill the page down to the bottom edge (no blank space under it) by sharing
       // the spare height between the rows; a long class that is taller than the screen just scrolls as usual.
       if(fillIt && !document.body.classList.contains('print-thin') && !t.closest('.pdf-thin')){
@@ -27534,6 +27613,18 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
 /* Report cards list: the Action cell hugs its buttons and the PDF button has no spare space inside it */
 table.rc-list td:last-child,table.rc-list th:last-child{width:1%;white-space:nowrap !important;}
 table.rc-list td:last-child .btn-outline.rc-pdf-btn{padding:0 !important;margin:0 !important;min-width:0 !important;width:auto !important;line-height:1.1 !important;border-width:1px !important;letter-spacing:0;}
+/* Report cards list on a phone/tablet: when single-line rows would force a tiny font, names, classes, combinations and the
+   Action buttons are allowed to wrap, so the whole list can use a readable font and still fit the screen with no idle gaps. */
+table.rc-list.rc-wrap td.stu-name,table.rc-list.rc-wrap td.rc-combo,table.rc-list.rc-wrap2 td.rc-cls{white-space:normal !important;overflow-wrap:break-word;word-break:normal;}
+table.rc-list.rc-wrap td.rc-cls:not(:empty){white-space:nowrap;}
+table.rc-list.rc-wrap2 td.rc-cls{white-space:normal !important;}
+/* Open Report / Print / PDF: same size and padding in every row so they are easy to see and tap */
+table.rc-list td:last-child .btn-outline.rc-pdf-btn{padding:calc(var(--tf,12)*.1px) calc(var(--tf,12)*.35px) !important;font-size:calc((var(--tf,12) - 1)*1px) !important;}
+table.rc-list.rc-wrap td.rc-combo,table.rc-list.rc-wrap th.rc-combo{width:auto !important;}
+table.rc-list.rc-wrap td:last-child,table.rc-list.rc-wrap th:last-child{white-space:normal !important;}
+table.rc-list.rc-wrap td:last-child .btn-outline{margin:calc(var(--tf,12)*.06px) calc(var(--tf,12)*.1px) !important;}
+table.rc-list td:first-child,table.rc-list th:first-child{width:1%;}
+table.rc-list td:nth-child(2):has(> input[type=checkbox]),table.rc-list th:nth-child(2):has(> input[type=checkbox]){width:1%;}
 /* Every typing box (text, password, number, date, email, search, textarea, dropdown) has a thick boundary */
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=button]):not([type=submit]):not([type=hidden]),
 select,textarea{border:3px solid #1f3a5f !important;}
