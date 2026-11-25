@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-25-1700'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-25-1800'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -1194,7 +1194,9 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 .rc-term-middle div{display:block;}
 
 .rc-termdates{text-align:center;font-size:11.5px;font-weight:700;margin:4px 0 10px;}
-.rc-motto{text-align:center;font-style:normal;font-weight:900;font-size:17px;letter-spacing:.04em;line-height:1.3;color:#000;margin-top:10px;margin-bottom:4px;-webkit-text-stroke:.35px currentColor;}
+.fee-gap{display:inline-block;width:48px;}
+.fee-blank{display:inline-block;min-width:80px;height:1em;border-bottom:1px solid #000;vertical-align:baseline;}
+.rc-motto{text-align:center;font-style:normal;font-weight:900;font-size:17px;letter-spacing:.04em;line-height:1.3;color:#000;margin-top:20px;margin-bottom:4px;-webkit-text-stroke:.35px currentColor;}
 
 .legend-strip{display:flex;gap:9px;flex-wrap:wrap;font-size:9.5px;margin-top:10px;color:var(--muted);align-items:center;justify-content:center;}
 .legend-strip b{color:var(--ink);}
@@ -19160,8 +19162,15 @@ const NRC_DEFAULT_THEME = {frame:'#8b1c2c', head:'#8b1c2c', d0:'#1b7f3b', d1:'#0
 function nrcHexRgb(x){ const m=/^#([0-9a-f]{6})$/i.exec(x||''); if(!m) return null; const n=parseInt(m[1],16); return [n>>16&255,n>>8&255,n&255]; }
 function nrcMix(x,t){ const c=nrcHexRgb(x)||[0,0,0]; return '#'+c.map(v=>Math.round(v+(255-v)*t).toString(16).padStart(2,'0')).join(''); }
 function nrcLum(x){ const c=nrcHexRgb(x)||[0,0,0]; return (0.299*c[0]+0.587*c[1]+0.114*c[2])/255; }
+function nrcShade(x,f=.48){ const c=nrcHexRgb(x)||[0,0,0]; return '#'+c.map(v=>Math.round(v*f).toString(16).padStart(2,'0')).join(''); }
+// Descriptor wording follows its actual background: dark department-tinted ink on pale rows,
+// and white ink whenever an administrator chooses a sufficiently dark row background.
+function nrcContrastInk(bg,theme){ return nrcLum(bg) > 0.58 ? nrcShade(theme,.48) : '#ffffff'; }
 function nrcThemeCfg(){ const t=(DB.info&&DB.info.nurseryTheme)||{}; const o={}; Object.keys(NRC_DEFAULT_THEME).forEach(k=>{ o[k]=nrcHexRgb(t[k])?t[k]:NRC_DEFAULT_THEME[k]; }); return o; }
-function nrcDeptTheme(i){ const dark=nrcThemeCfg()['d'+(i%4)]; return {dark, pale:nrcMix(dark,.9), line:nrcMix(dark,.55), ink:nrcLum(dark)>.62?'#1d2433':'#fff'}; }
+function nrcDeptTheme(i){
+  const dark=nrcThemeCfg()['d'+(i%4)], pale=nrcMix(dark,.9), bodyBg=nrcMix(dark,.965);
+  return {dark, pale, bodyBg, line:nrcMix(dark,.55), ink:nrcContrastInk(dark,dark), bodyInk:nrcContrastInk(bodyBg,dark)};
+}
 async function setNurseryTheme(key,val){
   if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
   DB.info.nurseryTheme = DB.info.nurseryTheme || {};
@@ -19192,14 +19201,14 @@ const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c
 const NRC_GRADE_BG  = {A:'#d6f1dd', B:'#d3e8fa', C:'#fdeeba', D:'#fddcc0', E:'#f8d2cf'};   // soft tint behind each key (dark text stays readable)
 // Flower border between the outer and inner Nursery frames, drawn as real SVG (not a CSS mask/gradient) so it is
 // captured into the PDF and printed exactly as on screen.
-function nrcFlowersSvg(col){
+function nrcFlowersSvg(col, hasFees){
   const W=780, H=1109, c=9.5, step=26, gold='#f2c94c';
   const fl=(x,y,k)=>{ const o=2.6*k, r=2.2*k; let g='<g fill="#fff" stroke="'+col+'" stroke-width="0.7">';
     [[o,0],[-o,0],[0,o],[0,-o]].forEach(d=>{ g+='<circle cx="'+(x+d[0]).toFixed(1)+'" cy="'+(y+d[1]).toFixed(1)+'" r="'+r.toFixed(1)+'"/>'; });
     return g+'</g><circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(1.5*k).toFixed(1)+'" fill="'+gold+'" stroke="'+col+'" stroke-width="0.4"/>'; };
   const nx=Math.max(2,Math.round((W-2*c)/step)), ny=Math.max(2,Math.round((H-2*c)/step));
   let out='';
-  for(let i=0;i<=nx;i++){ const x=c+i*(W-2*c)/nx, k=(i===0||i===nx)?1.12:1; out+=fl(x,c,k)+fl(x,H-c,k); }
+  for(let i=0;i<=nx;i++){ const x=c+i*(W-2*c)/nx, k=(i===0||i===nx)?1.12:1; const skipTop=(x>596&&x<W-c-8)||(hasFees&&x>14&&x<135); out+=(skipTop?'':fl(x,c,k))+fl(x,H-c,k); }
   for(let j=1;j<ny;j++){ const y=c+j*(H-2*c)/ny; out+=fl(c,y,1)+fl(W-c,y,1); }
   return '<svg class="nrc-flw" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">'+out+'</svg>';
 }
@@ -19225,7 +19234,10 @@ function nrcCss(){
 .nrc-key span{display:inline-flex;align-items:center;gap:.4u;background:#f6f6f8;border:.15u solid #d5d8e0;border-radius:1u;padding:.3u 1u;}
 .nrc-key i{font-style:normal;color:#fff;font-weight:900;width:2u;height:2u;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
 .nrc-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2u 1.4u;flex:1 1 auto;align-content:space-evenly;min-height:0;}
-.nrc-dept{min-width:0;}
+.nrc-dept{min-width:0;width:100%;align-self:start;}
+.nrc-grid{align-items:start;grid-auto-rows:max-content;row-gap:calc(var(--u)*1.2*var(--nk));}
+.nrc-tb{width:100%;max-width:100%;border-collapse:collapse;table-layout:fixed;}
+.nrc-tb tr{height:auto;}
 .nrc-dh{color:#fff;font-weight:900;font-size:1.5u;text-transform:uppercase;letter-spacing:.1u;padding:.6u 1.2u;border-radius:.8u .8u 0 0;}
 .nrc-tb{width:100%;border-collapse:collapse;table-layout:fixed;}
 .nrc-tb th{font-weight:800;font-size:1.25u;padding:.45u .5u;color:#1d2433;text-align:center;border:.15u solid;}
@@ -19338,7 +19350,11 @@ function nrcCss(){
 .nrc-scale{margin-top:.7k;}
 .nrc-scale th,.nrc-scale td{padding:.25k .4k;font-size:1.05k;line-height:1.15;}
 .nrc-scale td{font-size:1.3k;}
-.nrc-cl{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;max-height:2.37em;}   /* descriptor: one or two lines only */
+/* Nursery descriptors: never occupy more than two lines on screen, print or PDF.
+   The ellipsis keeps long descriptor wording inside its own cell without colliding
+   with neighbouring rows or other report-card content. */
+.nrc-cl{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;white-space:normal;overflow:hidden;text-overflow:ellipsis;max-height:calc(2 * 1.24em);overflow-wrap:anywhere;word-break:normal;line-height:1.24;}
+.nrc-tb td.m{vertical-align:middle;overflow:hidden;overflow-wrap:anywhere;word-break:normal;}
 .nrc-card.nrc-measure{height:auto !important;min-height:0 !important;aspect-ratio:auto !important;}
 .nrc-tb td,.nrc-tb th{overflow-wrap:anywhere;min-width:0;}
 .nrc-stage{position:relative;width:100%;aspect-ratio:210/297;overflow:hidden;}
@@ -19374,8 +19390,15 @@ function nrcCss(){
   const plus1 = t => t.replace(/font-size:\s*([^;}]+)/g, (m,v)=>`font-size:calc(${v.trim()} + 1px)`);
   // Final overrides (not enlarged): Primary-style theme line, black bold motto, very bold table headers.
   const extra = `
+.nrc-mot{margin-top:calc(var(--u)*2.2) !important;}
+.nrc-legend .fee-gap{width:40px;}
+.nrc-card{padding-top:calc(var(--u)*3) !important;padding-bottom:calc(var(--u)*3.2) !important;}
+.nrc-topline{position:absolute !important;left:24px;right:24px;top:3.5px;height:12px;margin:0 !important;display:flex;justify-content:space-between;align-items:center;z-index:6;pointer-events:none;font:700 9px/12px Arial,Helvetica,sans-serif !important;color:#000 !important;}
+.nrc-topline>span{background:#fff;padding:0 5px;white-space:nowrap;font-size:9px !important;line-height:12px;}
+.nrc-topline>span:empty{display:none;}
+.nrc-topline .nrc-fees{font-size:9px !important;letter-spacing:.03em;color:#000;}
 .nrc-mot{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.4px #000;}
-.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.35em 1em !important;max-width:724px;margin:auto auto -10px !important;white-space:nowrap;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
+.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.35em 1em !important;max-width:724px;margin:auto auto 0 !important;white-space:nowrap;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
 .nrc-g.nrc-sh{background:none !important;border-radius:0 !important;position:relative;}
 .nrc-g.nrc-sh svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
 .nrc-g.nrc-sh i{position:relative;z-index:1;font-style:normal;line-height:1;}
@@ -19448,10 +19471,7 @@ function nrcFitScale(cardHTML){
     const c = host.querySelector('.nrc-card'); if(!c) return out;
     c.classList.add('nrc-pdf','nrc-measure');
     const PAGE_H = 1123 - 2;
-    let lineRule = false;   // when on, a descriptor that needs a 3rd line also counts as "does not fit"
-    const clipped = ()=>{ const el = c.querySelectorAll('.nrc-cl'); for(let i=0;i<el.length;i++){ if(el[i].scrollHeight > el[i].clientHeight+1) return true; } return false; };
     const bad = ()=>{
-      if(lineRule && clipped()) return true;
       if(c.getBoundingClientRect().height > PAGE_H) return true;
       if(c.scrollWidth > c.clientWidth+1) return true;
       const cells = c.querySelectorAll('.nrc-bio td,.nrc-tb th,.nrc-tb td,.nrc-head,.nrc-gs th,.nrc-gs td,.nrc-cmt th,.nrc-cmt td,.nrc-overall-table th,.nrc-overall-table td,.nrc-key');
@@ -19467,11 +19487,7 @@ function nrcFitScale(cardHTML){
     };
     let k = search(0.45);
     if(!k){ c.classList.add('nrc-nopics'); out.nopics = true; k = search(0.35) || 0.35; }
-    // Learning-area descriptors must sit on one or two lines: shrink a little more until none needs a third line.
-    lineRule = true;
-    const kl = search(0.5);
-    k = Math.min(k, kl || 0.5);
-    if(!kl) lineRule = false;   // still too long at the floor: the 2-line clamp trims it rather than shrinking the card further
+    // Keep every descriptor fully visible. The card is scaled to fit the page rather than clipping long wording.
     k = Math.floor(k*1000)/1000;
     for(let i=0;i<60 && k>0.3;i++){ c.style.setProperty('--nk', k); if(!bad()) break; k = Math.floor((k-0.005)*1000)/1000; }
     out.k = k;
@@ -19522,7 +19538,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
         ${d.areas.map((a,ai)=>{
           const r = byName.get(a.name); const g = (r && r.avg!=null) ? nurseryGradeFor(r.avg) : null;
           const txt = g ? nurseryDescriptor(a.id, g) : '';
-          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g, ai)}</td>`:''}<td class="m" style="border-color:${th.line}"><div class="nrc-cl">${esc(txt)}</div></td></tr>`;
+          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g, ai)}</td>`:''}<td class="m" style="border-color:${th.line};background:${th.bodyBg};color:${th.bodyInk};"><div class="nrc-cl">${esc(txt)}</div></td></tr>`;
         }).join('')}
       </table>
     </div>`;
@@ -19540,9 +19556,9 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   let card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
   <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
-    ${nrcFlowersSvg(nrcThemeCfg().frame)}
+    ${nrcFlowersSvg(nrcThemeCfg().frame, !!s.feesCode)}
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
-    <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
+    <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span class="nrc-printed">Printed ${fmtDateOrd(Date.now())}</span></div>
     <div class="nrc-head${info.logo?' nrc-hl':''}">
       ${info.logo?`<img class="nrc-logo" src="${trimmedLogoSrc()}" alt="School logo">`:''}
       <div class="nrc-ht">
@@ -19601,7 +19617,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       </div>
     </div>
     <div class="nrc-legend">
-      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
+      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):((s.feesBalCur||FEES_CUR)+' <span class="fee-blank"></span>')}<span class="fee-gap"></span><b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):((s.nextFeesCur||FEES_CUR)+' <span class="fee-blank"></span>')}</span>
     </div>
     ${info.motto?`<div class="nrc-mot">"${esc(info.motto)}"</div>`:''}
     ${themeOfYearText()?`<div class="nrc-theme" style="font-size:${themeFitPx(14,680)}px !important;white-space:nowrap;">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
@@ -20175,7 +20191,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     </div>
 
     <div class="legend-strip">
-      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
+      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):((s.feesBalCur||FEES_CUR)+' <span class="fee-blank"></span>')}<span class="fee-gap"></span><b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):((s.nextFeesCur||FEES_CUR)+' <span class="fee-blank"></span>')}</span>
     </div>
 
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
@@ -20605,6 +20621,36 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       'Admission No', data.student.admNo||'—']
   ];
   const infoTop = cy;
+  // Value cells: one line when it fits; otherwise wrap onto (at most) two lines inside the cell, shrinking a little only if two lines still do not fit.
+  function drawInfoVal(txt, x, ry, isName){
+    txt = String(txt==null?'':txt).replace(/\s+/g,' ').trim();
+    const maxW = valW - 8, base = isName ? 9.5 : 8.5, nb = [10,47,214];
+    const put = (t, y, sz)=>{
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(sz);
+      if(isName){
+        setC(nb);
+        try{ pdf.setDrawColor(nb[0],nb[1],nb[2]); pdf.setLineWidth(0.35); pdf.text(t, x, y, {renderingMode:'fillThenStroke'}); }
+        catch(e){ pdf.text(t, x, y); }
+        setDrawC([29,78,137]); pdf.setLineWidth(0.7);
+      } else { setC(ink); pdf.text(t, x, y); }
+    };
+    const tw = (t,sz)=>{ pdf.setFont('helvetica','bold'); pdf.setFontSize(sz); return pdf.getTextWidth(t); };
+    if(tw(txt, base) <= maxW){ put(txt, ry+infoRowH-5, base); return; }
+    const layout = (sz)=>{
+      const words = txt.split(' '), lines = []; let cur = '';
+      const push = w=>{ // a single word wider than the cell is broken by characters
+        while(tw(w,sz) > maxW){ let k = w.length; while(k>1 && tw(w.slice(0,k),sz) > maxW) k--; if(cur){ lines.push(cur); cur=''; } lines.push(w.slice(0,k)); w = w.slice(k); }
+        return w; };
+      words.forEach(w0=>{ const w = push(w0); const t = cur ? cur+' '+w : w; if(tw(t,sz) <= maxW) cur = t; else { if(cur) lines.push(cur); cur = w; } });
+      if(cur) lines.push(cur);
+      return lines;
+    };
+    let sz = Math.min(base, 8), lines = layout(sz);
+    while(lines.length > 2 && sz > 6){ sz -= 0.5; lines = layout(sz); }
+    if(lines.length > 2){ let last = lines.slice(1).join(' '); while(last.length>1 && tw(last+'...',sz) > maxW) last = last.slice(0,-1); lines = [lines[0], last+'...']; }
+    put(lines[0], ry+6.4, sz);
+    if(lines[1]) put(lines[1], ry+12.4, sz);
+  }
   setDrawC([29,78,137]);
   for(let i=0;i<infoRows.length;i++){
     const ry = infoTop + i*infoRowH;
@@ -20617,17 +20663,9 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.rect(contentX, ry, lblW, infoRowH, 'F'); pdf.rect(contentX, ry, lblW, infoRowH);
     pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH, 'F'); pdf.rect(contentX+lblW+valW, ry, lblW, infoRowH);
     leftText(infoRows[i][0], contentX+4, ry+infoRowH-5, 7.5, 'bold', shadeInk);
-    if(i===0){
-      // learner's name: very bold blue (bold + a thin stroke of the same colour)
-      const _nb=[10,47,214];
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(9.5); setC(_nb);
-      try{ pdf.setDrawColor(_nb[0],_nb[1],_nb[2]); pdf.setLineWidth(0.35); pdf.text(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5, {renderingMode:'fillThenStroke'}); }
-      catch(e){ pdf.text(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5); }
-      setDrawC([29,78,137]); pdf.setLineWidth(0.7);
-    } else
-    leftText(String(infoRows[i][1]), contentX+lblW+4, ry+infoRowH-5, 8.5, 'bold', ink);
+    drawInfoVal(infoRows[i][1], contentX+lblW+4, ry, i===0);
     leftText(infoRows[i][2], contentX+lblW+valW+4, ry+infoRowH-5, 7.5, 'bold', shadeInk);
-    leftText(String(infoRows[i][3]), contentX+lblW*2+valW+4, ry+infoRowH-5, 8.5, 'bold', ink);
+    drawInfoVal(infoRows[i][3], contentX+lblW*2+valW+4, ry, false);
   }
   if(hasPhoto){
     const px = contentX+infoTableW, py = infoTop, ph = infoRowH*3;
@@ -21108,8 +21146,19 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   cy += 28;
 
   // ---- 11. Fees legend, motto, scoring note ----
-  const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?((data.feesBalCur||FEES_CUR)+' '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?((data.nextFeesCur||FEES_CUR)+' '+Number(data.nextTermFees).toLocaleString()):'—'}`;
-  centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
+  {
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(7.5);
+    const mkFee=(lbl,has,cur,val)=>{ const t=`${lbl}: ${cur} ${has?Number(val).toLocaleString():''}`; const blank=has?0:62; return {t,blank,w:pdf.getTextWidth(t)+blank}; };
+    const fA=mkFee('FEES BALANCE', data.feesBalance!=null, data.feesBalCur||FEES_CUR, data.feesBalance);
+    const fB=mkFee('NEXT TERM FEES', data.nextTermFees!=null, data.nextFeesCur||FEES_CUR, data.nextTermFees);
+    const FEE_GAP=44; let fx=contentX+(contentW-(fA.w+FEE_GAP+fB.w))/2;
+    [fA,fB].forEach(pt=>{
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(7.5); setC(muted); pdf.text(pt.t, fx, cy);
+      if(pt.blank){ setDrawC(muted); line(fx+pdf.getTextWidth(pt.t), cy+1.5, fx+pt.w, cy+1.5, 0.6); }
+      fx += pt.w + FEE_GAP;
+    });
+    cy += 20;
+  }
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
   const _convNote = !assessmentsAddDirectly(data.cfg) && !singleAssessOutOf100(data.classId);
   if(_convNote) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
