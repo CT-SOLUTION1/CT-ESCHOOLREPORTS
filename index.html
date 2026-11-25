@@ -3277,12 +3277,13 @@ function teachersForLevel(level){
     return myAssigns.some(a=>{ const c = DB.classes.find(x=>x.id===a.classId); return c && (c.level==='O' || c.level==='A'); });
   });
 }
-function subjectCompulsoryFor(cls){ return cls.level==='P' ? pCompulsoryList(cls.form) : oCompulsoryFor(cls.form); }
+function subjectCompulsoryFor(cls){ if(cls.level==='N') return nurseryAreaNames(); return cls.level==='P' ? pCompulsoryList(cls.form) : oCompulsoryFor(cls.form); }
 // Whether a given subject is compulsory (taken by every student) in a given class, across
 // all three levels — used to decide whether that subject's teacher gets a "select all"
 // shortcut when ticking their roster, instead of ticking students in one by one.
 function isCompulsorySubjectFor(subject, cls){
   if(!cls) return false;
+  if(cls.level==='N') return nurseryAreaNames().includes(subject);
   if(cls.level==='A') return COMPULSORY.includes(subject) || aCompulsoryExtra().includes(subject);
   if(cls.level==='P') return pCompulsoryList(cls.form).includes(subject);
   return oCompulsoryFor(cls.form).includes(subject);
@@ -3556,6 +3557,7 @@ function effectiveRosterIds(classId, subject){
 }
 function studentRemovedFromSubject(st, subject){
   if(!st || !subject) return false;
+  { const _nc = DB.classes.find(c=>c.id===st.classId); if(_nc && _nc.level==='N') return false; }   // Nursery: never removed from a learning area
   if(Array.isArray(st.dropSubjects) && st.dropSubjects.includes(subject)) return true;
   const key = st.classId+'||'+subject;
   let e = _rosterOffCache.get(key);
@@ -8045,12 +8047,17 @@ function studentSubjects(st, cls){
 }
 function _studentSubjectsRaw(st, cls){
   const _all = _studentSubjectsRaw0(st, cls);
+  { const _oc = aOwnClass(st, cls); if(_oc && _oc.level==='N') return _all; }   // Nursery: every learning area is compulsory, none can be dropped
   const _drop = st && Array.isArray(st.dropSubjects) ? st.dropSubjects : null;
   return (_drop && _drop.length) ? _all.filter(sj=>!_drop.includes(sj)) : _all;
 }
 function _studentSubjectsRaw0(st, cls){
   cls = aOwnClass(st, cls);
   if(!cls) return [];
+  // Nursery: every learning area (across all departments) is compulsory for every learner.
+  // Without this branch Nursery fell through to the A-Level logic below, which returns [] for a non-A class,
+  // so no learning areas reached the report card and no grades were shown.
+  if(cls.level==='N') return nurseryAreaNames();
   if(cls.level==='O'){
     const compulsory = oCompulsoryFor(cls.form);
     const extra = rosterSubjectsFor(st, cls).filter(s=>!compulsory.includes(s));
@@ -8512,6 +8519,7 @@ function pickGradeByThreshold(bands, order, fallback){
   };
 }
 function gradeFor(subject, avg, level){
+  if(level==='N') return nurseryGradeFor(avg);   // Nursery: A-E from the Nursery grading table
   if(level==='O'){
     const b = DB.obands || DEFAULT_O_BANDS;
     return pickGradeByThreshold(b, ['A','B','C','D','E'], 'E')(avg);
@@ -15054,6 +15062,7 @@ function nurseryAreaRowHTML(deptId, a){
 function nurseryGradingHTML(){
   const c = nurseryConfig();
   return `
+  ${nurseryShowCardHTML()}
   ${nurseryThemeCardHTML()}
   <div class="card">
     <h3>Nursery — departments &amp; learning areas</h3>
@@ -15681,6 +15690,7 @@ function reportsListView(){
     ${rcOut ? '' : `<p class="small" style="margin-top:12px;">${rcBlocked ? 'Printing and downloading report cards has been switched off for this school by the Founder.' : 'Printing and downloading report cards is available to Admin only.'}</p>`}
   </div>
   ${togglesCard}
+  ${(isAdmin && DB.classes.some(c=>c.level==='N')) ? nurseryShowCardHTML() : ''}
   ${isAdmin ? rcShadeCard() : ''}`}
   <div class="card">
     ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tap “Filter report cards by class(es)” above, tick one or more classes and submit, or search a student by name, to see the report card list.</p>` : (()=>{
@@ -18999,6 +19009,18 @@ async function setNurseryTheme(key,val){
   if(key==='reset') DB.info.nurseryTheme = {}; else if(nrcHexRgb(val)) DB.info.nurseryTheme[key]=val;
   await saveInfo(); render();
 }
+// What Nursery report cards show per learning area: 'grade' (grade + descriptor, the default), 'score' (score + descriptor) or 'both'.
+function nurseryShowMode(){ const m = DB.info && DB.info.nurseryShow; return (m==='score' || m==='both') ? m : 'grade'; }
+function nurseryScoreTxt(v){ if(v==null || !Number.isFinite(Number(v))) return '–'; return String(Math.round(Number(v)*10)/10); }
+function nurseryShowCardHTML(){
+  const m = nurseryShowMode();
+  const b = (k,l)=>`<button type="button" class="rc-tog ${m===k?'on':'off'}" data-action="setNurseryShow" data-mode="${k}">${l}<br>${m===k?'SELECTED':'OFF'}</button>`;
+  return `<div class="card rc-toggle-card">
+    <label class="rc-sel-lbl">NURSERY REPORT CARDS SHOW</label>
+    <div class="rc-toggle-row">${b('score','Scores + descriptors')}${b('grade','Grades + descriptors')}${b('both','Scores, grades + descriptors')}</div>
+    <p class="small" style="margin-top:8px;">Applies to every Nursery report card (screen, print and PDF). The descriptor is always shown beside each learning area.</p>
+  </div>`;
+}
 function nurseryThemeCardHTML(){
   const t=nrcThemeCfg(), c=nurseryConfig();
   const row=(k,l)=>`<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="color" value="${t[k]}" onchange="setNurseryTheme('${k}',this.value)" style="width:48px;height:32px;padding:0;"> ${esc(l)}</label>`;
@@ -19082,6 +19104,25 @@ function nrcCss(){
 .nrc-outer{position:relative;padding:0 !important;border:0 !important;box-shadow:none !important;min-height:0 !important;height:auto !important;aspect-ratio:210/297 !important;max-width:724px !important;}
 .nrc-outer:after{content:none !important;}
 @media (max-width:760px){.nrc-card:not(.nrc-pdf){height:auto;min-height:0;aspect-ratio:210/297;}.nrc-grid{align-content:space-between;}}
+.nrc-scale{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:1u;text-align:center;}
+.nrc-scale th,.nrc-scale td{border:.18u solid var(--nf);padding:.4u .5u;font-size:1.3u;line-height:1.2;}
+.nrc-scale th{background:var(--nfp);color:#1d2433;font-weight:900;}
+.nrc-scale td{font-weight:900;font-size:1.6u;background:#fff;}
+/* Header + learner bio data laid out like the Primary report card (centred school block, logo on the left, bio table with photo cell), keeping the Nursery colours. */
+.nrc-topline{display:flex;justify-content:space-between;font-size:1.15u;font-weight:700;font-family:monospace;color:#5a6270;margin-bottom:.5u;}
+.nrc-topline .nrc-fees{font-family:Arial,Helvetica,sans-serif;font-size:1.4u;font-weight:800;letter-spacing:.04em;color:#1d2433;}
+.nrc-head{display:block;position:relative;text-align:center;gap:0;padding:1u 2u;min-height:8.5u;border-radius:1.2u;background:var(--nh);color:var(--nhi);margin-bottom:1.2u;}
+.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;max-width:26%;border-radius:1u;background:#fff;object-fit:contain;object-position:center;padding:.4u;border:.3u solid #f2c94c;box-sizing:border-box;z-index:2;}
+.nrc-ht{width:100%;min-width:0;text-align:center;}
+.nrc-head .nrc-school{font-family:Arial,Helvetica,sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:0;text-shadow:none;line-height:1.12;margin:.1u 0 .3u;overflow-wrap:break-word;}
+.nrc-head .nrc-addr{font-size:1.25u;font-weight:700;font-style:italic;line-height:1.25;margin-top:.3u;opacity:1;}
+.nrc-sub{display:inline-block;margin-top:.6u;background:#fff;color:#1d2433;border:.15u solid rgba(0,0,0,.28);border-radius:.5u;padding:.3u 1.6u;font-size:1.35u;font-weight:800;text-transform:uppercase;letter-spacing:.03em;line-height:1.3;}
+.nrc-bio{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;margin:0 0 1.2u;border-top:.18u solid var(--nf);border-left:.18u solid var(--nf);}
+.nrc-bio td{border-right:.18u solid var(--nf);border-bottom:.18u solid var(--nf);padding:.55u 1u;font-size:1.45u;font-weight:700;line-height:1.2;overflow-wrap:anywhere;word-break:break-word;vertical-align:middle;}
+.nrc-bio td.lbl{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.15u;letter-spacing:.03em;}
+.nrc-bio td.nm{color:#0b2a6f;font-weight:900;font-size:1.7u;}
+.nrc-bio td.ph{padding:.5u;text-align:center;background:#fff;}
+.nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;border:.2u solid var(--nf);border-radius:.5u;}
 `;
   return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`);
 }
@@ -19140,7 +19181,9 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const conf = nurseryConfig();
   const gradeChip = g => g ? `<span class="nrc-g" style="background:${NRC_GRADE_COL[g]}">${g}</span>` : `<span class="nrc-g" style="background:#9aa1ad">–</span>`;
   const sumAvg = rows.filter(r=>r.avg!=null);
-  const overall = sumAvg.length ? nurseryGradeFor(sumAvg.reduce((a,r)=>a+r.avg,0)/sumAvg.length) : null;
+  const overallAvg = sumAvg.length ? sumAvg.reduce((a,r)=>a+r.avg,0)/sumAvg.length : null;
+  const overall = overallAvg!=null ? nurseryGradeFor(overallAvg) : null;
+  const _mode = nurseryShowMode(), showS = _mode!=='grade', showG = _mode!=='score';
   const nurseryRank = classPosition(s, cls, term, year);
   const pics = [['share','sing','colours'],['hand','run','body'],['abc','book','pencil'],['blocks','shapes','nums']];
   const picsRow = (a,b)=>nrcPics(a)+'';
@@ -19149,12 +19192,12 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     return `<div class="nrc-dept">
       <div class="nrc-dh" style="background:${th.dark};color:${th.ink}">${esc(d.name)}</div>
       <table class="nrc-tb" style="background:${th.pale}">
-        <colgroup><col style="width:28%"><col style="width:12%"><col></colgroup>
-        <tr><th style="border-color:${th.line}">Learning Area</th><th style="border-color:${th.line}">Grade</th><th style="border-color:${th.line}">Comment</th></tr>
+        <colgroup>${showS&&showG ? '<col style="width:24%"><col style="width:11%"><col style="width:11%"><col>' : '<col style="width:28%"><col style="width:12%"><col>'}</colgroup>
+        <tr><th style="border-color:${th.line}">Learning Area</th>${showS?`<th style="border-color:${th.line}">Score</th>`:''}${showG?`<th style="border-color:${th.line}">Grade</th>`:''}<th style="border-color:${th.line}">Comment</th></tr>
         ${d.areas.map(a=>{
           const r = byName.get(a.name); const g = (r && r.avg!=null) ? nurseryGradeFor(r.avg) : null;
           const txt = g ? nurseryDescriptor(a.id, g) : '';
-          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td><td class="g" style="border-color:${th.line}">${gradeChip(g)}</td><td class="m" style="border-color:${th.line}">${esc(txt)}</td></tr>`;
+          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g)}</td>`:''}<td class="m" style="border-color:${th.line}">${esc(txt)}</td></tr>`;
         }).join('')}
       </table>
     </div>`;
@@ -19173,21 +19216,38 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   <div class="nrc-wrap"><style>${nrcCss()}</style>
   <div class="nrc-card${embedded?' nrc-pdf':''}" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
+    <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
     <div class="nrc-head">
-      ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="">`:''}
+      ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="School logo">`:''}
       <div class="nrc-ht">
         <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.7:(String(info.schoolName||'').length>26?3.15:3.8)})">${esc(info.schoolName||'')}</div>
-        <div class="nrc-addr">${[info.address, info.phone?'Tel: '+info.phone:'', info.email].filter(Boolean).map(esc).join(' &nbsp;|&nbsp; ')}</div>
-        ${info.motto?`<div class="nrc-motto">${esc(info.motto)}</div>`:''}
+        <div class="nrc-addr">Academic Year: ${esc(String(year||DB.info.currentYear||''))}${info.address?' &nbsp;|&nbsp; '+esc(info.address):''}</div>
+        ${(info.phone||info.email)?`<div class="nrc-addr">${[info.phone?'Tel: '+esc(info.phone):'', info.email?'Email: '+esc(info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
+        <div class="nrc-sub">STUDENT'S ACADEMIC REPORT CARD FORM</div>
       </div>
-      ${s.photo?`<img class="nrc-photo" src="${s.photo}" alt="Learner photograph">`:''}
     </div>
-    <div class="nrc-title">END OF ${esc(termTxt||'TERM')} ${esc(String(year||DB.info.currentYear||''))} REPORT</div>
-    <div class="nrc-info"><div>Name: <b>${esc(s.name)}</b></div><div class="c">Class: <b>${esc(classFullName(cls))}</b></div></div>
-    <div class="nrc-key"><b>KEY:</b>${key}</div>
+    <table class="nrc-bio">
+      <colgroup>${s.photo
+        ? '<col style="width:18%"><col style="width:27%"><col style="width:18%"><col style="width:27%"><col style="width:10%">'
+        : '<col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%">'}</colgroup>
+      <tr>
+        <td class="lbl">Name</td><td class="val nm">${esc(s.name)}</td>
+        <td class="lbl">Class</td><td class="val">${esc(classFullName(cls))}</td>
+        ${s.photo?`<td class="ph" rowspan="3"><img class="nrc-bio-photo" src="${s.photo}" alt="Learner photograph"></td>`:''}
+      </tr>
+      <tr>
+        <td class="lbl">Term</td><td class="val">${esc(term||'—')}, ${esc(String(year||DB.info.currentYear||''))}</td>
+        <td class="lbl">Sex</td><td class="val">${esc(s.gender||'—')}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Fees Pay Code</td><td class="val">${s.feesCode?esc(s.feesCode):'—'}</td>
+        <td class="lbl">Admission No</td><td class="val">${esc(s.admNo||'—')}</td>
+      </tr>
+    </table>
+    ${showG ? `<div class="nrc-key"><b>KEY:</b>${key}</div>` : ''}
     ${grid}
     <table class="nrc-overall-table" style="width:100%;border-collapse:collapse;margin:1u 0;font-size:1.25u;">
-      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall</th><td style="padding:.8u;border:1px solid var(--nf);">${gradeChip(overall)} <b>${overall?esc(NURSERY_GRADE_KEY[overall]):'No grades yet'}</b></td></tr>
+      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall</th><td style="padding:.8u;border:1px solid var(--nf);">${showG?gradeChip(overall)+' ':''}${showS && overallAvg!=null ? `<b>${nurseryScoreTxt(overallAvg)}%</b>${overall?' — ':''}` : ''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'No scores yet')}</b></td></tr>
       ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
     </table>
     <div class="nrc-cm">
@@ -19199,6 +19259,10 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       <div><b>Next term begins</b>${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>
     </div>
     ${themeOfYearText()?`<div class="nrc-theme">Theme ${esc(String(year||''))}: ${esc(themeOfYearText())}</div>`:''}
+    <table class="nrc-scale">
+      <tr><th>MARKS RANGE</th>${NURSERY_GRADES.map(g=>`<th>${conf.bands[g][0]}–${conf.bands[g][1]}%</th>`).join('')}</tr>
+      <tr><th>GRADE GIVEN</th>${NURSERY_GRADES.map(g=>`<td style="color:${NRC_GRADE_COL[g]}">${g}</td>`).join('')}</tr>
+    </table>
   </div></div>`;
   if(embedded || bareCard) return card;
   const picker = pickerPeriods && pickerPeriods.length ? `
@@ -19397,7 +19461,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const rowsHtml = rows.map((r,i)=>{
     r_subject = r.subject;
     const bd = breakdowns[i];
-    const descriptor = r.avg==null ? '—' : (isP ? primaryFinalRemark(r.avg) : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
+    const descriptor = r.avg==null ? '—' : (isP ? (commentMap[r.grade] || '—') : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     // Multi-paper subject (e.g. Paper 1 & Paper 2 of the same subject): show a row per
     // paper, but only for papers that actually have a score entered so far — a paper
     // with nothing on record yet simply doesn't get a row at all. The subject name,
@@ -19514,7 +19578,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   // so "Paper Avg" here means exactly what "Paper Avg" means in every row above it.
   const totalPaperAvgTxt = allPaperFinals.length ? zr((allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1)) : '\u00A0';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
-  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
+  const totalDescriptor = rows.length ? (commentMap[totalGrade] || '—') : '—';
   // Final Average column, TOTAL row: this column is a percentage (see header "Final
   // Average (%)"), same as every subject row above it (r.avg.toFixed(1)) — it must NOT
   // repeat the Points total for A-Level, since Points already gets its own column right
@@ -19880,7 +19944,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const subjectEntries = rows.map((r,i)=>{
     const bd = breakdowns[i];
     const dashFor = (kind, label, paper)=> peersHaveScore(s, r.subject, term, year, kind, label, paper) ? 'x' : '';
-    const descriptor = r.avg==null ? dashFor() : (isP ? primaryFinalRemark(r.avg) : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
+    const descriptor = r.avg==null ? dashFor() : (isP ? (commentMap[r.grade] || '—') : ((cls.level==='A' && isPassFailSubject(r.subject) && r.grade) ? passFailDescriptor(r.avg, r.grade) : (commentMap[r.grade] || '—')));
     const pb = subjectPaperBreakdown(s.id, r.subject, cls, term, year);
     const papersList = subjectPapersFor(r.subject, cls);
     const enteredPapers = pb ? pb.papers.filter(p=>p.hasAny || (()=>{ const f=peerPenaltyFlags(s, r.subject, term, year, p.paper); return f.cw||f.eot; })()) : [];
@@ -19934,7 +19998,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const eotTotalTxt = _sumT.eotTotalTxt;
   const totalPaperAvgTxt = allPaperFinals.length ? zr((allPaperFinals.reduce((a,b)=>a+b,0)/allPaperFinals.length).toFixed(1)) : '\u00A0';
   const totalGrade = rows.length ? (gradeFor('', avgPct, cls.level) || '—') : '—';
-  const totalDescriptor = rows.length ? (isP ? primaryFinalRemark(avgPct) : (commentMap[totalGrade] || '—')) : '—';
+  const totalDescriptor = rows.length ? (commentMap[totalGrade] || '—') : '—';
   const totalFinalTxt = isA ? zr(avgPct.toFixed(1)) : zrpct(avgPct,0);
 
   const classTeacherAcc = DB.accounts.find(a=>a.username===cls.classTeacher);
@@ -21553,6 +21617,19 @@ Continue?`);
         invalidateScoreLookupCache();
         showActionSuccess(DB.info.subjectCountInRanking ? 'Number of subjects now counts in ranking and positions' : 'Number of subjects no longer counts in ranking and positions', el, true);
       }catch(err){ DB.info.subjectCountInRanking = _old; el.classList.remove('rc-busy'); showActionFailure('Could not save — try again', el); break; }
+      render(); break;
+    }
+    case 'setNurseryShow': {
+      if(CUR.role!=='admin'){ alert('Only an Admin can do that.'); break; }
+      if(el.classList.contains('rc-busy')) break;
+      const _m = el.dataset.mode; if(!['score','grade','both'].includes(_m)) break;
+      el.classList.add('rc-busy');
+      const _old = DB.info.nurseryShow;
+      try{
+        DB.info.nurseryShow = _m;
+        await saveInfo();
+        showActionSuccess(_m==='score' ? 'Nursery report cards now show scores and descriptors' : _m==='both' ? 'Nursery report cards now show scores, grades and descriptors' : 'Nursery report cards now show grades and descriptors', el, true);
+      }catch(err){ DB.info.nurseryShow = _old; el.classList.remove('rc-busy'); showActionFailure('Could not save — try again', el); break; }
       render(); break;
     }
     case 'toggleReportZero': {
@@ -27387,30 +27464,15 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
         // and dropped the font to its 5px floor) and with the table at its natural width, not stretched to 100%.
         var ps=Math.min(1,((screen.width||window.innerWidth||1280)/(window.innerWidth||1280)));
         var hiP=Math.min(60,Math.max(22,14/ps)), goodTf=Math.min(hiP,11/ps);
-        var measureNat=function(wrapMode){
-          // wrapMode: 0 = one line per row, 1 = name / combination / buttons may wrap, 2 = the class name may wrap too
-          t.classList.toggle('rc-wrap',wrapMode>=1); t.classList.toggle('rc-wrap2',wrapMode>=2);
-          t.style.setProperty('width',wrapMode?'1px':'auto','important');   // 1px = the table's narrowest possible (every cell wrapped as far as allowed)
-        };
-        var searchTf=function(){
-          var a=5,b=hiP,got=5;
-          for(var k=0;k<14;k++){ var m=(a+b)/2; t.style.setProperty('--tf',m); if(t.getBoundingClientRect().width<=avail+0.5){ got=m; a=m; } else b=m; }
-          return got;
-        };
-        var mode=0; measureNat(0); best=searchTf();          // 1st choice: every row on a single line
-        if(best<goodTf){                                      // too small to read: let name / combination / buttons wrap instead
-          measureNat(1); var b1=searchTf();
-          if(b1>best){ best=b1; mode=1; }
-          if(best<goodTf){ measureNat(2); var b2=searchTf(); if(b2>best){ best=b2; mode=2; } }
-          measureNat(mode); 
-        }
-        if(mode>0){
-          best=Math.max(5,best*0.94);
-          // at this slightly smaller font, use the LEAST wrapping that still fits (single lines if possible, then only name / buttons, last of all the class)
-          for(var m=0;m<=2;m++){ measureNat(m); t.style.setProperty('--tf',best); if(t.getBoundingClientRect().width<=avail+0.5){ mode=m; break; } mode=2; }
-        }
+        // Names stay on ONE line and every action sits on ONE line, in tight columns, for every class size.
+        // The whole table is scaled to the largest font at which it fits the screen width; if that is small on a big class,
+        // the page stays pinch-zoomable (see the viewport tag) instead of wrapping names or buttons onto extra lines.
+        t.classList.remove('rc-wrap','rc-wrap2');
+        t.style.setProperty('width','auto','important');     // columns hug their contents — no idle space between them
+        var a=1.5,b=hiP,got=1.5;
+        for(var k=0;k<16;k++){ var m=(a+b)/2; t.style.setProperty('--tf',m); if(t.getBoundingClientRect().width<=avail+0.5){ got=m; a=m; } else b=m; }
+        best=got;
         t.style.setProperty('--tf',best);
-        t.style.removeProperty('width');                      // back to the stylesheet's 100%: spare width is shared between the columns
       } else {
         for(var i=0;i<12;i++){ var mid=(lo+hi)/2; t.style.setProperty('--tf',mid); if(t.offsetWidth<=avail){ best=mid; lo=mid; } else hi=mid; }
         t.style.setProperty('--tf',best);
