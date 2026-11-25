@@ -8737,6 +8737,12 @@ function pClassIsCore4Only(cls){
   const pool = pAllSubjectPool(cls && cls.form);
   return pool.length===P_CORE_SUBJECTS.length && P_CORE_SUBJECTS.every(x=>pool.includes(x));
 }
+// True when the subjects actually listed in the card's Academic Performance table are exactly the 4 core subjects:
+// the "Aggregates and Division are calculated from..." note adds nothing then, so it is left off the card.
+function pRowsAreCore4(subjects){
+  const set = new Set((subjects||[]).map(x=>String(x||'').trim()).filter(Boolean));
+  return set.size===P_CORE_SUBJECTS.length && P_CORE_SUBJECTS.every(x=>set.has(x));
+}
 function pAggNoteText(cls){
   const form = cls && cls.form;
   const list = pAggList(form);
@@ -20324,7 +20330,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         }).join('\n      ');
       })()}
     </table>
-    ${(isP && showAggDiv(cls.id) && !pClassIsCore4Only(cls)) ? `<div class="rc-agg-note">${esc(pAggNoteText(cls))}</div>` : ''}
+    ${(isP && showAggDiv(cls.id) && !pClassIsCore4Only(cls) && !pRowsAreCore4(rows.map(r=>r.subject))) ? `<div class="rc-agg-note">${esc(pAggNoteText(cls))}</div>` : ''}
 
     ${!isP ? `
     <div class="rc-section-title">Grading Key</div>
@@ -20583,7 +20589,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       classComment: (isP && showAggDiv(cls.id)) ? primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak),
       headComment: (isP && showAggDiv(cls.id)) ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
     },
-    classId: cls.id, showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showAggDiv: showAggDiv(cls.id), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
+    classId: cls.id, rowSubjects: rows.map(r=>r.subject), showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showAggDiv: showAggDiv(cls.id), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
     signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
     feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, feeDisplayMode: reportFeeDisplayMode(), photo: s.photo
@@ -21161,7 +21167,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     });
   });
   cy += sumRowH*summaryRows.length;
-  if(data.isP && data.showAggDiv !== false && !pClassIsCore4Only(DB.classes.find(c=>c.id===data.classId))){
+  if(data.isP && data.showAggDiv !== false && !pClassIsCore4Only(DB.classes.find(c=>c.id===data.classId)) && !pRowsAreCore4(data.rowSubjects)){
     const _noteCls = DB.classes.find(c=>c.id===data.classId);
     const _noteTxt = pAggNoteText(_noteCls);
     let _nfs = 7; pdf.setFont('helvetica','bold'); pdf.setFontSize(_nfs);
