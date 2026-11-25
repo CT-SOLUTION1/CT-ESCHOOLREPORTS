@@ -985,6 +985,8 @@ table.rc-perf th.rc-th-final{min-width:72px;width:72px;padding-left:2px;padding-
 table.rc-perf th.rc-th-grade{min-width:48px;width:48px;padding-left:2px;padding-right:2px;font-size:8px;}
 table.rc-perf th.rc-th-points{min-width:38px;width:38px;padding-left:2px;padding-right:2px;font-size:8px;}
 table.rc-perf th.rc-th-desc{min-width:92px;width:92px;white-space:nowrap;padding-left:2px;padding-right:2px;}
+table.rc-perf th.rc-th-comment{min-width:150px;width:150px;white-space:normal;line-height:1.1;}
+table.rc-perf td.rc-primary-comment{font-size:8px;line-height:1.15;white-space:normal;min-width:150px;}
 table.rc-perf th.rc-th-init{min-width:68px;width:68px;padding-left:2px;padding-right:2px;font-size:8px;}
 table.rc-perf th.rc-th-eot{min-width:80px;}
 /* Course Work group + its individual test-name/Avg sub-columns are the ones that
@@ -1294,6 +1296,8 @@ table.rc-perf.primary-report-card, .primary-report-card table.rc-perf{table-layo
 .primary-report-card table.rc-perf th.rc-th-final{width:78px;min-width:78px;}
 .primary-report-card table.rc-perf th.rc-th-grade{width:62px;min-width:62px;font-size:8.5px;}
 .primary-report-card table.rc-perf th.rc-th-desc{width:105px;min-width:105px;white-space:normal;}
+.primary-report-card table.rc-perf th.rc-th-comment{width:150px;min-width:150px;}
+.primary-report-card table.rc-perf td.rc-primary-comment{font-size:7.5px;line-height:1.1;}
 .primary-report-card table.rc-perf th.rc-th-init{width:68px;min-width:68px;}
 .primary-report-card table.rc-perf th.rc-th-eot{width:82px;min-width:82px;}
 .primary-report-card table.rc-perf th.rc-th-cw{white-space:normal;}
@@ -3148,6 +3152,9 @@ const PLE_GRADES = ['D1','D2','C3','C4','C5','C6','P7','P8','F9'];
 const PLE_GRADE_POINTS = {D1:1,D2:2,C3:3,C4:4,C5:5,C6:6,P7:7,P8:8,F9:9};
 const PLE_GRADE_COMMENT = {D1:'Distinction',D2:'Distinction',C3:'Credit',C4:'Credit',C5:'Credit',C6:'Credit',P7:'Pass',P8:'Pass',F9:'Fail'};
 const DEFAULT_P_BANDS = {D1:[90,100],D2:[80,89],C3:[70,79],C4:[65,69],C5:[60,64],C6:[55,59],P7:[50,54],P8:[40,49],F9:[0,39]};
+const DEFAULT_PRIMARY_SUBJECT_COMMENTS = {D1:'Outstanding mastery of the subject. Keep aiming higher.',D2:'Excellent understanding. Continue working consistently.',C3:'Very good work. Keep practising to maintain this standard.',C4:'Good understanding. More practice will strengthen your skills.',C5:'Fairly good progress. Revise regularly to improve further.',C6:'Satisfactory effort. Give more attention to challenging areas.',P7:'Basic understanding shown. Practise more to improve.',P8:'Limited understanding. Seek help and work harder.',F9:'Needs considerable support and regular practice.'};
+function primarySubjectCommentsFor(){ return {...DEFAULT_PRIMARY_SUBJECT_COMMENTS, ...((DB.info&&DB.info.primarySubjectComments)||{})}; }
+function primarySubjectCommentFor(avg){ if(avg===null||avg===undefined||!Number.isFinite(Number(avg))) return ''; const g=gradeFor('',Number(avg),'P'); return primarySubjectCommentsFor()[g] || ''; }
 // Aggregate = sum of the 4 core subjects' grade-points (lower is better, like real PLE).
 const PLE_DIVISIONS = [{name:'Division 1',min:4,max:12},{name:'Division 2',min:13,max:23},{name:'Division 3',min:24,max:29},
   {name:'Division 4',min:30,max:34},{name:'Division U',min:35,max:36}];
@@ -13175,7 +13182,17 @@ function restoreItemsView(){
 
 /* ---------- Report-card options: Performance Summary (Total average + Position) and THEME OF THE YEAR ---------- */
 // Set in Grading Setup. Default ON, so every school keeps today's report card until the admin switches it off.
-function showTotalAvgPos(){ return !(DB.info && DB.info.showTotalAvgPos===false); }
+function classReportSummaryOptions(classId){
+  const all = (DB.info && DB.info.reportCardClassOptions) || {};
+  const saved = classId!=null ? all[String(classId)] : null;
+  const legacy = !(DB.info && DB.info.showTotalAvgPos===false);
+  return {average: saved && typeof saved.average==='boolean' ? saved.average : legacy,
+          position: saved && typeof saved.position==='boolean' ? saved.position : legacy};
+}
+function showTotalAvgPos(classId, kind){
+  const o = classReportSummaryOptions(classId);
+  return kind==='position' ? o.position : kind==='average' ? o.average : (o.position && o.average);
+}
 // Set by the admin under School Info & Logo. Empty = nothing is printed.
 function themeOfYearText(){ return String((DB.info && DB.info.themeOfYear) || '').replace(/\s+/g,' ').trim(); }
 // Splits the Performance Summary's label/value pairs into balanced rows of at most 3 pairs, so hiding
@@ -13228,7 +13245,7 @@ function schoolInfoView(){
         <div><label>Motto</label><input name="motto" value="${esc(i.motto||'')}"></div>
       </div>
       <label>THEME OF THE YEAR</label><input name="themeOfYear" value="${esc(i.themeOfYear||'')}" maxlength="120" placeholder="Type the theme only, e.g. Nurturing Excellence Through Discipline">
-      <p class="small">Optional. Once set, <b>THEME OF THE YEAR: …</b> is printed at the very bottom of every report card, just outside the page border. Clear the box and save to remove it.</p>
+      <p class="small">Optional. Once set, <b>THEME OF THE YEAR: …</b> is printed at the very bottom of every report card, inside the page border. Clear the box and save to remove it.</p>
       <label>Headteacher's full name</label><input name="headteacher" value="${esc(i.headteacher||'')}" required>
       <div class="flex" style="margin-top:6px;">
         ${i.stamp?`<img loading="lazy" decoding="async" src="${i.stamp}" class="photo-thumb" style="width:80px;height:80px;object-fit:contain;background:#f4f8fc;">`:''}
@@ -15066,14 +15083,6 @@ function gradingView(gcClassId){
   <div class="note">${showSecondary?`A-Level points default to the standard scale: A=5, B=4, C=3, D=2, E=1 (editable below). General Paper and the two subsidiaries are graded from their own level table below (it starts with 50% and above = Pass, 1 point; below 50% = Fail, 0 points) — the grades, points and descriptors you save in the tables are what the whole system uses. O-Level has no points, only A–E descriptors. `:''}${showPrimary?`Primary uses Uganda's PLE-style scale (D1–F9 per subject, Division 1–U on the aggregate of the 4 PLE-core subjects). `:''}
   All banding tables below are editable.</div>
   ${!showSecondary && !showPrimary ? `<div class="card" style="margin-top:14px;"><p>Set your <a href="#" data-action="nav:schoolinfo">School Grade</a> first to see the relevant grading bands here.</p></div>` : ''}
-  <div class="card" style="margin-top:14px;">
-    <h3>Report card — Performance Summary</h3>
-    <form data-form="saveSummaryOptions">
-      <label class="flex" style="gap:8px;align-items:center;"><input type="checkbox" name="showTotalAvgPos" style="width:auto;" ${showTotalAvgPos()?'checked':''}> <span><b>Show the Total Final Average and the Position</b> in the Performance Summary table</span></label>
-      <p class="small">Tick to show them on every report card (the default). Untick to leave both out — the rest of the table re-arranges itself with no empty boxes. ${showSecondary?"A' Level cards keep their Total Points; only the Position is removed.":''}</p>
-      <button class="btn" style="margin-top:10px;">Submit — save</button>
-    </form>
-  </div>
   ${!showSecondary ? '' : `
   <div class="card" style="margin-top:14px;">
     <h3>A-Level bands</h3>
@@ -15124,12 +15133,14 @@ function gradingView(gcClassId){
     <h3>Primary bands — per subject (PLE scale)</h3>
     <p class="small">Each subject is graded D1–F9 off its final average — no points or descriptor at this level, just the min/max % per row. The 4 PLE-core subjects (English, Mathematics, Science, Social Studies) also feed the Division on the report card: Division 1 = aggregate 4–12, Division 2 = 13–23, Division 3 = 24–29, Division 4 = 30–34, Division U = 35–36.</p>
     <form data-form="savePBands">
-      <table class="data-table" style="width:100%;max-width:420px;">
-        <tr><th>Grade</th><th>Min %</th><th>Max %</th></tr>
+      <p class="small">Enter a short subject-teacher comment for each score range. The system selects the matching comment from the learner's subject average and prints it in the COMMENT column.</p>
+      <table class="data-table" style="width:100%;">
+        <tr><th>Grade</th><th>Min %</th><th>Max %</th><th>Subject comment (shown on report card)</th></tr>
         ${PLE_GRADES.map(g=>`<tr>
           <td><b>${g}</b></td>
           <td><input name="${g}min" value="${pb[g][0]}" style="text-align:center;"></td>
           <td><input name="${g}max" value="${pb[g][1]}" style="text-align:center;"></td>
+          <td><input name="pSubjectComment_${g}" value="${esc(primarySubjectCommentsFor()[g]||'')}" maxlength="180" required style="min-width:240px;"></td>
         </tr>`).join('')}
       </table>
       <h4 style="margin:16px 0 8px;">Division remarks — Class &amp; Head teacher's comment</h4>
@@ -15673,7 +15684,18 @@ function reportsListView(){
     }).join('') || `<tr><td colspan="${rcOut?6:5}">${RC_QUERY.trim() ? 'No student matches “'+esc(RC_QUERY.trim())+'”.' : 'No students found.'}</td></tr>`}
     </table>`;
     })()}
-  </div>`;
+  </div>
+  ${isAdmin ? `<div class="card" style="margin-top:16px;">
+    <h3>Positions and Total Average — Class Settings</h3>
+    <p class="small">Choose separately for each class whether its report cards should show the learner's Position in Class and Total Average. Tick to show; untick to hide. These settings apply to report cards and their downloaded PDFs.</p>
+    <form data-form="saveClassReportOptions">
+      <div style="overflow-x:auto;"><table class="data-table" style="min-width:100%;width:max-content;">
+        <tr><th>CLASS</th>${DB.classes.map(c=>`<th style="min-width:110px;">${esc(classFullName(c))}</th>`).join('')}</tr>
+        <tr><th>ACTION</th>${DB.classes.map(c=>{const o=classReportSummaryOptions(c.id);return `<td style="vertical-align:top;white-space:nowrap;"><label style="display:block;margin:3px 0;"><input type="checkbox" name="pos_${esc(c.id)}" style="width:auto;" ${o.position?'checked':''}> Position ✓</label><label style="display:block;margin:3px 0;"><input type="checkbox" name="avg_${esc(c.id)}" style="width:auto;" ${o.average?'checked':''}> Average ✓</label></td>`;}).join('')}</tr>
+      </table></div>
+      <button class="btn" style="margin-top:12px;">Submit — save class settings</button>
+    </form>
+  </div>` : ''}`;
 }
 // ---- Class picker (tick several classes, then OK) ----
 // RC_PICK holds the ticks BEFORE OK is pressed; VIEW.params.classIds holds the classes actually loaded.
@@ -18392,6 +18414,16 @@ function ensureRostersSeeded(){
   try{ changed = seedAllRostersFromScores(); }catch(e){ console.error(e); }
   if(changed && typeof CUR!=='undefined' && CUR && (CUR.role==='admin' || CUR.role==='teacher')){ try{ saveAssignments(); }catch(e){ console.error(e); } }
 }
+function nurseryScoreRangeTableHTML(){
+  const c = nurseryConfig();
+  return `<div class="card" style="margin:10px 0;padding:10px;">
+    <h4 style="margin:0 0 8px;">Nursery grading guide</h4>
+    <div style="overflow-x:auto;"><table class="data-table" style="min-width:440px;width:100%;text-align:center;">
+      <tr><th>MARKS RANGE</th>${NURSERY_GRADES.map(g=>`<th>${c.bands[g][0]}–${c.bands[g][1]}%</th>`).join('')}</tr>
+      <tr><th>GRADE GIVEN</th>${NURSERY_GRADES.map(g=>`<td><b>${g}</b></td>`).join('')}</tr>
+    </table></div>
+  </div>`;
+}
 function scoresEntryView(mine){
   // Assignments repeated per stream are folded into one shared set for the class (once, then saved).
   if(mergeStreamAssignments()){ try{ saveAssignments(); }catch(e){ console.error(e); } mine = CUR.role==='admin' ? DB.assignments : DB.assignments.filter(x=>x.teacherUsername===CUR.username); }
@@ -18565,6 +18597,7 @@ function scoresEntryView(mine){
         // boxes, nothing to submit. "Edit these scores" is the only way back into the
         // editable sheet from here.
         studentRows = `
+      ${cls.level==='N' ? nurseryScoreRangeTableHTML() : ''}
       <div class="card se-fit">
         <div class="flex" style="justify-content:space-between;align-items:center;">
           <h3 style="margin:0;">${esc(a.subject)}${isP?'':` — Paper ${esc(sel.paper)}`} — ${sel.kind==='AOI'?(testWord+': '+esc(sel.label||'')):testWord} — ${esc(clsLabel)}</h3>
@@ -18582,6 +18615,7 @@ function scoresEntryView(mine){
       // Actions column only when there is something to act on: a saved score to delete, or an X flag to clear.
       const showAct = students.some(st=>existingScoreFor(st.id)) || students.some(st=>missSet.has(st.id));
       studentRows = `
+      ${cls.level==='N' ? nurseryScoreRangeTableHTML() : ''}
       ${scoresLocked? `<div class="note" style="border-color:var(--danger);color:var(--danger);margin-bottom:14px;"><b>The ${esc(sel.kind==='AOI'?cfgHere.cwLabel:cfgHere.eotLabel)} submission deadline (${fmtDateTime(scoreDeadlineFor(sel.kind).deadline)}) has passed.</b> You can still see everything below, but scores can't be submitted, edited, or deleted until your admin reopens entry for you.</div>` : ''}
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center;">
@@ -18968,7 +19002,7 @@ function nrcCss(){
 .nrc-head{font-weight:700;display:flex;align-items:center;gap:1.6u;background:var(--nh);color:var(--nhi);border-radius:1.2u;padding:1.4u 2u;}
 .nrc-logo{width:9u;height:9u;border-radius:50%;background:#fff;object-fit:contain;flex:none;border:0.4u solid #f2c94c;}
 .nrc-ht{flex:1;text-align:center;min-width:0;}
-.nrc-school{font-size:3.6u;font-weight:950;letter-spacing:.055u;text-transform:uppercase;line-height:1.08;display:inline-block;transform:rotate(-1deg);transform-origin:center;text-shadow:0 .18u .18u rgba(0,0,0,.24);font-family:Georgia,'Times New Roman',serif;}
+.nrc-school{font-size:3.6u;font-weight:950;letter-spacing:.055u;text-transform:uppercase;line-height:1.08;display:block;transform:none;transform-origin:center;text-shadow:0 .18u .18u rgba(0,0,0,.24);font-family:Georgia,'Times New Roman',serif;}
 .nrc-addr{font-size:1.3u;font-weight:700;margin-top:.5u;color:var(--nhi);opacity:.94;}
 .nrc-motto{font-size:1.5u;font-weight:700;font-style:italic;margin-top:.4u;color:var(--nhi);font-family:Georgia,serif;}
 .nrc-photo{width:10u;height:12u;object-fit:cover;border-radius:1u;border:.4u solid #f2c94c;background:#fff;flex:none;}
@@ -19008,7 +19042,7 @@ function nrcCss(){
 .nrc-theme{margin-top:1u;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
 /* Readability pass: keep Nursery report text comfortably legible at A4 print size. */
 .nrc-card{font-size:max(11px,calc(var(--u)*1.5));line-height:1.24;}
-.nrc-school{font-size:clamp(22px,calc(var(--u)*3.6),34px);line-height:1.12;}
+.nrc-school{font-size:clamp(22px,calc(var(--u)*3.6),34px);line-height:1.12;display:block;transform:none;}
 .nrc-addr{font-size:max(10px,calc(var(--u)*1.45));line-height:1.2;}
 .nrc-motto{font-size:max(11px,calc(var(--u)*1.55));line-height:1.2;}
 .nrc-title{font-size:max(14px,calc(var(--u)*2.2));line-height:1.2;}
@@ -19093,6 +19127,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const gradeChip = g => g ? `<span class="nrc-g" style="background:${NRC_GRADE_COL[g]}">${g}</span>` : `<span class="nrc-g" style="background:#9aa1ad">–</span>`;
   const sumAvg = rows.filter(r=>r.avg!=null);
   const overall = sumAvg.length ? nurseryGradeFor(sumAvg.reduce((a,r)=>a+r.avg,0)/sumAvg.length) : null;
+  const nurseryRank = classPosition(s, cls, term, year);
   const pics = [['share','sing','colours'],['hand','run','body'],['abc','book','pencil'],['blocks','shapes','nums']];
   const picsRow = (a,b)=>nrcPics(a)+'';
   const dept = (d,i)=>{
@@ -19137,7 +19172,10 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     <div class="nrc-info"><div>Name: <b>${esc(s.name)}</b></div><div class="c">Class: <b>${esc(classFullName(cls))}</b></div></div>
     <div class="nrc-key"><b>KEY:</b>${key}</div>
     ${grid}
-    <div class="nrc-overall"><span class="t">Overall</span>${gradeChip(overall)}<span class="n">${overall?esc(NURSERY_GRADE_KEY[overall]):'No grades yet'}</span></div>
+    <table class="nrc-overall-table" style="width:100%;border-collapse:collapse;margin:1u 0;font-size:1.25u;">
+      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall</th><td style="padding:.8u;border:1px solid var(--nf);">${gradeChip(overall)} <b>${overall?esc(NURSERY_GRADE_KEY[overall]):'No grades yet'}</b></td></tr>
+      ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
+    </table>
     <div class="nrc-cm">
       <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*3)'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
       <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*5);vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
@@ -19263,6 +19301,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const remarkSeed = remarkSeedFor(s.id), remarkWeak = weakestSubjectNames(rows);
   const cwTests = cfg.cwTests || [];
   const useCwTestCols = showCW && cwTests.length>1; // split into test sub-columns only when multiple tests are configured
+  const _inUseAssessments = assessListFor(cls.id).filter(x=>{ const off=assessOffSet(cls.id); return !off || !off.has(x.key); });
+  const showFinalAverageColumn = _inUseAssessments.length > 1;
+  const showPaperAverageColumn = !isP && rows.some(r=>subjectPapersFor(r.subject, cls).length > 1);
   const breakdowns = rows.map(r=>subjectBreakdown(s.id, r.subject, term, year));
 
   // ---- Inline editing (Open Report) ----
@@ -19422,20 +19463,22 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       if(idx===0){
         return `<tr>`+
           mergedTd(esc(r.subject))+
-          `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
-          mergedTd(r.avg==null?dashFor(r.subject):zr(r.avg.toFixed(1)))+
+          `${papersTd}${cwHtml}${eotHtml}${showPaperAverageColumn?paperFinalHtml:''}`+
+          (showFinalAverageColumn?mergedTd(r.avg==null?dashFor(r.subject):zr(r.avg.toFixed(1))):'')+
           mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level, r.avg)) : dashFor(r.subject), 'rc-td-grade')+
           (isA?mergedTd(r.avg==null?dashFor(r.subject):r.pts):'')+
           mergedTd(r.avg==null?dashFor(r.subject):esc(descriptor))+
+          (isP ? mergedTd(r.avg==null?'':esc(primarySubjectCommentFor(r.avg)), 'rc-primary-comment') : '')+
           `<td>${initTxt}</td></tr>`;
       }
       return `<tr class="subrow">`+
         mergedTd(esc(r.subject))+
-        `${papersTd}${cwHtml}${eotHtml}${isP?'':paperFinalHtml}`+
-        mergedTd(r.avg==null?dashFor(r.subject):zr(r.avg.toFixed(1)))+
+        `${papersTd}${cwHtml}${eotHtml}${showPaperAverageColumn?paperFinalHtml:''}`+
+        (showFinalAverageColumn?mergedTd(r.avg==null?dashFor(r.subject):zr(r.avg.toFixed(1))):'')+
         mergedTd(r.grade? esc(gradeDisplay(r.subject, r.grade, cls.level, r.avg)) : dashFor(r.subject), 'rc-td-grade')+
         (isA?mergedTd(r.avg==null?dashFor(r.subject):r.pts):'')+
         mergedTd(r.avg==null?dashFor(r.subject):esc(descriptor))+
+        (isP ? mergedTd(r.avg==null?'':esc(primarySubjectCommentFor(r.avg)), 'rc-primary-comment') : '')+
         `<td>${initTxt}</td></tr>`;
     }).join('');
   }).join('');
@@ -19559,23 +19602,23 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         <th class="rc-th-subj mrg-top"></th>${isP?'':'<th class="rc-th-papers mrg-top"></th>'}
         <th colspan="${cwTests.length+1}" class="rc-th-cw rc-th-cw-group">${esc(cfg.cwLabel)}</th>
         ${showEOT?`<th class="rc-th-eot mrg-top"></th>`:''}
-        ${isP?'':'<th class="rc-th-pavg mrg-top"></th>'}
-        <th class="rc-th-final mrg-top"></th><th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th><th class="rc-th-init mrg-top"></th>
+        ${data.showPaperAverageColumn?'<th class="rc-th-pavg mrg-top"></th>':''}
+        ${data.showFinalAverageColumn?'<th class="rc-th-final mrg-top"></th>':''}<th class="rc-th-grade mrg-top"></th>${isA?'<th class="rc-th-points mrg-top"></th>':''}<th class="rc-th-desc mrg-top"></th>${isP?'<th class="rc-th-comment mrg-top"></th>':''}<th class="rc-th-init mrg-top"></th>
       </tr>
       <tr>
         <th class="rc-th-subj mrg-bot">Subjects</th>${isP?'':'<th class="rc-th-papers mrg-bot">PPs</th>'}
         ${cwTests.map(t=>`<th class="rc-th-cwsub">${esc(t.name)} (/${t.max})</th>`).join('')}<th class="rc-th-cwsub">Avg (/${cfg.cwPercent})</th>
         ${showEOT?`<th class="rc-th-eot mrg-bot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}
-        ${isP?'':'<th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>'}
-        <th class="rc-th-final mrg-bot">Final Average (%)</th><th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
+        ${data.showPaperAverageColumn?'<th class="rc-th-pavg mrg-bot"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>':''}
+        ${data.showFinalAverageColumn?'<th class="rc-th-final mrg-bot">Final Average (%)</th>':''}<th class="rc-th-grade mrg-bot">Grade</th>${isA?'<th class="rc-th-points mrg-bot">Points</th>':''}<th class="rc-th-desc mrg-bot">${isP?'Remarks':'Descriptor'}</th>${isP?'<th class="rc-th-comment mrg-bot">COMMENT</th>':''}<th class="rc-th-init mrg-bot">Teacher<br>Initials</th>
       </tr>` : `
-      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}${isP?'':'<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>'}<th class="rc-th-final">Final Average (%)</th><th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th><th class="rc-th-init">Teacher<br>Initials</th></tr>`}
+      <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}${showPaperAverageColumn?'<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>':''}${showFinalAverageColumn?'<th class="rc-th-final">Final Average (%)</th>':''}<th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th>${isP?'<th class="rc-th-comment">COMMENT</th>':''}<th class="rc-th-init">Teacher<br>Initials</th></tr>`}
       ${rowsHtml}
-      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${isP?'':`<td>${totalPaperAvgTxt}</td>`}<td>${totalFinalTxt}</td><td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td><td>—</td></tr>
+      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${showPaperAverageColumn?`<td>${totalPaperAvgTxt}</td>`:''}${showFinalAverageColumn?`<td>${totalFinalTxt}</td>`:''}<td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td>${isP?'<td>—</td>':''}<td>—</td></tr>
       ${(()=>{
         const _res = reportResultFor(rows, breakdowns, cls, showEOT, s, term, year);
         const _cwCols = showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0;
-        const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (isP?0:1) + 1 + 1 + (isA?1:0) + 1 + 1;
+        const _colCount = (isP?1:2) + _cwCols + (showEOT?1:0) + (showPaperAverageColumn?1:0) + (showFinalAverageColumn?1:0) + 1 + (isA?1:0) + 1 + (isP?1:0) + 1;
         const _st = 'text-align:center;font-weight:900;text-transform:uppercase;color:#000;border-top:2.4px solid var(--blue);';
         const _lblc = 'color:#0a7d2c;-webkit-text-stroke:0.6px #0a7d2c;', _valc = 'color:#8a0303;';   // labels: very bold green; the result / decision itself: bold red
         const _promo = promotionDecisionFor(s, cls, term, {year, avgPct, totalPoints, pAggregate, result:_res, rows, overallGrade});
@@ -19606,13 +19649,14 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <table class="rc-summary-table">
       <colgroup><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.667%"><col style="width:16.665%"></colgroup>
       ${(()=>{
-        const _showAP = showTotalAvgPos();
+        const _showAvg = showTotalAvgPos(cls.id, 'average');
+        const _showPos = showTotalAvgPos(cls.id, 'position');
         const _pairs = [{l:'Total Subjects', v:String(rows.length)}];
         if(isA) _pairs.push({l:'Total Points', v:`${totalPoints}/${maxP}`});
-        else if(_showAP) _pairs.push({l:'Total Final Average', v:zrpct(avgPct,0)});
+        else if(_showAvg) _pairs.push({l:'Total Final Average', v:zrpct(avgPct,0)});
         _pairs.push({l:isP?'Total Aggregates':'Overall Grade', v:isP?(pAggregate!==null?pAggregate:'—'):(overallGrade||'—')});
         _pairs.push({l:isP?'Division':'Level', v:isP?(pDivision||'—'):(overallDesc||'—')});
-        if(_showAP) _pairs.push({l:`${termLbl} Position`, v:`${ordSup(position)} / ${size}`, pos:true});
+        if(_showPos) _pairs.push({l:`${termLbl} Position`, v:`${ordSup(position)} / ${size}`, pos:true});
         _pairs.push({l:`Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}`, v:weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'});
         return summaryRowsLayout(_pairs).map(r=>{
           const sp = summarySpans(r.length);
@@ -19685,8 +19729,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     ${assessmentsAddDirectly(cfg) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
     ${(()=>{ const _n = assessNoteFor(cls && cls.id); return _n ? `<div class="rc-scoring-note">${esc(_n)}</div>` : ''; })()}
+    ${themeOfYearText()?`<div class="rc-theme-line">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
     </div>
-  </div>${(!bareCard && !embedded && themeOfYearText()) ? `<div class="rc-theme-line">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>` : ''}${bareCard ? '' : '</div>'}`;
+  </div>${bareCard ? '' : '</div>'}`;
 }
 
 /* ======================================================================
@@ -19831,6 +19876,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       gradeTxt: r.grade ? gradeDisplay(r.subject, r.grade, cls.level, r.avg) : dashFor(),
       pointsVal: isA ? (r.avg==null?dashFor():r.pts) : null,
       descriptorTxt: descriptor,
+      subjectCommentTxt: isP && r.avg!=null ? primarySubjectCommentFor(r.avg) : '',
       paperRows: rowsOut
     };
   });
@@ -19873,7 +19919,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       classComment: isP ? primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak),
       headComment: isP ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
     },
-    showTotalAvgPos: showTotalAvgPos(), theme: themeOfYearText(),
+    classId: cls.id, showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
     signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
     feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, photo: s.photo
@@ -20168,11 +20214,12 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     }
   }
   if(data.showEOT) cols.push({key:'eot', label:(data.cfg.eotLabel+' (/'+data.cfg.eotPercent+')').toUpperCase(), w:0.09});
-  if(!data.isP) cols.push({key:'paperavg', label:'PAPER AVG (%)', w:0.09});
-  cols.push({key:'final', label:'FINAL AVG (%)', w:0.10});
+  if(data.showPaperAverageColumn) cols.push({key:'paperavg', label:'PAPER AVG (%)', w:0.09});
+  if(data.showFinalAverageColumn) cols.push({key:'final', label:'FINAL AVG (%)', w:0.10});
   cols.push({key:'grade', label:'GRADE', w:0.07});
   if(data.isA) cols.push({key:'points', label:'POINTS', w:0.07});
   cols.push({key:'desc', label:(data.isP?'Remarks':'Descriptor').toUpperCase(), w:0.14});
+  if(data.isP) cols.push({key:'comment', label:'COMMENT', w:0.19});
   cols.push({key:'init', label:'TR. INIT', w:0.06});
   const wSum = cols.reduce((a,c)=>a+c.w,0);
   let xC = contentX;
@@ -20226,7 +20273,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     // Height needed by the subject/descriptor text spanning every paper subrow.
     const subjLines = wrap(entry.subject, colX('subject').width-6, bodySize);
     const descLines = wrap(entry.descriptorTxt, colX('desc').width-6, bodySize);
-    const mergedLines = Math.max(subjLines.length, descLines.length, 1);
+    const commentLines = data.isP ? wrap(entry.subjectCommentTxt||'', colX('comment').width-6, 7.2) : [];
+    const mergedLines = Math.max(subjLines.length, descLines.length, commentLines.length, 1);
     const perRowH = Math.max(lineH+4, (mergedLines*lineH+8)/spanCount);
     const rowHeights = entry.paperRows.map(()=>perRowH);
     const groupH = rowHeights.reduce((a,b)=>a+b,0);
@@ -20236,6 +20284,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       const rh = rowHeights[idx];
       const isFirst = idx===0, isLast = idx===entry.paperRows.length-1;
       const mergedKeys = new Set(['subject','final','grade','desc']);
+      if(data.isP) mergedKeys.add('comment');
       if(data.isA) mergedKeys.add('points');
 
       // Draw borders cell-by-cell. For a genuinely merged column, omit only
@@ -20258,7 +20307,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
         const c=colX('cwavg'); centerText(pr.cwAvgTxt, c.x, c.width, cy+rh/2+3, bodySize);
       }
       if(data.showEOT){ const c=colX('eot'); centerText(pr.eotTxt, c.x, c.width, cy+rh/2+3, bodySize); }
-      if(!data.isP){ const c=colX('paperavg'); centerText(pr.paperFinalTxt, c.x, c.width, cy+rh/2+3, bodySize); }
+      if(data.showPaperAverageColumn){ const c=colX('paperavg'); centerText(pr.paperFinalTxt, c.x, c.width, cy+rh/2+3, bodySize); }
       const initC=colX('init'); centerText(pr.teacherInitTxt||'—', initC.x, initC.width, cy+rh/2+3, bodySize);
       cy += rh;
     });
@@ -20270,12 +20319,13 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     const gc = colX('subject');
     const gy0 = groupTop + groupH/2 - ((subjLines.length-1)*lineH)/2 + 3;
     subjLines.forEach((ln,i)=>leftText(ln, gc.x+3, gy0+i*lineH, bodySize));
-    const fc = colX('final'); centerText(entry.finalAvgTxt, fc.x, fc.width, groupTop+groupH/2+3, bodySize, 'bold');
+    if(data.showFinalAverageColumn){ const fc = colX('final'); centerText(entry.finalAvgTxt, fc.x, fc.width, groupTop+groupH/2+3, bodySize, 'bold'); }
     const grc = colX('grade'); centerText(entry.gradeTxt, grc.x, grc.width, groupTop+groupH/2+3, bodySize, 'bold');
     if(data.isA){ const pc=colX('points'); centerText(String(entry.pointsVal), pc.x, pc.width, groupTop+groupH/2+3, bodySize); }
     const dc = colX('desc');
     const dy0 = groupTop + groupH/2 - ((descLines.length-1)*lineH)/2 + 3;
     descLines.forEach((ln,i)=>centerText(ln, dc.x, dc.width, dy0+i*lineH, bodySize));
+    if(data.isP){ const cc=colX('comment'); const clh=7.2; const cy0=groupTop+groupH/2-((commentLines.length-1)*clh)/2+2.5; commentLines.forEach((ln,i)=>centerText(ln,cc.x,cc.width,cy0+i*clh,7.2)); }
   });
 
   // ---- TOTAL / OVERALL row ----
@@ -20291,8 +20341,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed);
   }
   if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  if(!data.isP){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  { const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  if(data.showPaperAverageColumn){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  if(data.showFinalAverageColumn){ const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
   { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
   if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
   { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
@@ -20356,13 +20406,14 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   cy += 12;
   const sumRowH = 16, sumColW = contentW/6;
   const sm = data.summary;
-  const _showAP = data.showTotalAvgPos !== false;
+  const _showAvg = data.showShowAverage !== false;
+  const _showPos = data.showShowPosition !== false;
   const _pairs = [['Total Subjects', String(data.totals.subjectCount)]];
   if(data.isA) _pairs.push(['Total Points', `${data.totals.totalPoints}/${sm.maxP}`]);
-  else if(_showAP) _pairs.push(['Total Final Average', zrpct(sm.avgPct,0)]);
+  else if(_showAvg) _pairs.push(['Total Final Average', zrpct(sm.avgPct,0)]);
   _pairs.push([data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')]);
   _pairs.push([data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—')]);
-  if(_showAP) _pairs.push([`${data.term} Position`, `${ordSup(sm.position,'pdf')} / ${sm.size}`, true]);
+  if(_showPos) _pairs.push([`${data.term} Position`, `${ordSup(sm.position,'pdf')} / ${sm.size}`, true]);
   _pairs.push([`Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`, (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]);
   const summaryRows = summaryRowsLayout(_pairs);
   setDrawC([29,78,137]);
@@ -22869,7 +22920,7 @@ document.addEventListener('submit', async (e)=>{
     'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveNurseryAreas','saveNurseryBands','savePromoRules','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
-    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade','saveSummaryOptions']);
+    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade','saveSummaryOptions','saveClassReportOptions']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
@@ -24575,6 +24626,8 @@ document.addEventListener('submit', async (e)=>{
       const b={...(DB.pbands||DEFAULT_P_BANDS)}; PLE_GRADES.forEach(g=>{ b[g]=[Number(fd.get(g+'min')),Number(fd.get(g+'max'))]; });
       DB.pbands=b;
       if(DB.info){
+        DB.info.primarySubjectComments = {...DEFAULT_PRIMARY_SUBJECT_COMMENTS};
+        PLE_GRADES.forEach(g=>{ DB.info.primarySubjectComments[g]=(fd.get('pSubjectComment_'+g)||'').trim() || DEFAULT_PRIMARY_SUBJECT_COMMENTS[g]; });
         const merged = {};
         Object.keys(DEFAULT_PRIMARY_REMARKS).forEach(d=>{
           const key = d.replace(/\s+/g,'');
@@ -24589,6 +24642,16 @@ document.addEventListener('submit', async (e)=>{
         await saveInfo();
       }
       await savePBands(); render();
+    }
+    else if(type==='saveClassReportOptions'){
+      DB.info.reportCardClassOptions = DB.info.reportCardClassOptions || {};
+      DB.classes.forEach(c=>{
+        DB.info.reportCardClassOptions[String(c.id)] = {
+          position: fd.get('pos_'+c.id)==='on',
+          average: fd.get('avg_'+c.id)==='on'
+        };
+      });
+      await saveInfo(); render();
     }
     else if(type==='saveSummaryOptions'){
       DB.info.showTotalAvgPos = fd.get('showTotalAvgPos')==='on';
