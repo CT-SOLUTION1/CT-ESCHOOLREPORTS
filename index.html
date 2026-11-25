@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-25-1600'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-25-1700'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -958,7 +958,8 @@ table.rc-info-table{width:100%;border-collapse:collapse;margin-bottom:16px;table
 table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size:12px;overflow-wrap:break-word;word-break:break-word;}
 table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--shade-ink,var(--navy));}
 table.rc-info-table td.val{font-weight:700;}
-table.rc-info-table td.photo-cell{padding:5px;text-align:center;vertical-align:middle;background:#fff;}
+table.rc-info-table td.photo-cell{padding:0;position:relative;overflow:hidden;text-align:center;vertical-align:middle;background:#fff;}
+table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;border:0;border-radius:0;display:block;}
 /* PDF capture only: swap to separate borders, which is what actually avoids the
    html2canvas rowspan-painting bug mentioned above (collapse vs separate makes no
    visible difference at this border weight once rendered into the final PDF image). */
@@ -16075,7 +16076,7 @@ async function downloadReportCardPdf(studentId, term, year){
     if(!data){ alert('This student has no class assigned or could not be found.'); return; }
     if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
     if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
-    if(data.photo) data.photo = await toPngDataUrl(data.photo);
+    if(data.photo) data.photo = await rcPhotoCover(data.photo);
     const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
     try{ pdf.setProperties({title:'Report Card', creator:(data.school&&data.school.name)||'', producer:(data.school&&data.school.name)||''}); }catch(e){}
     renderReportCardPageFitted(pdf, data);
@@ -19208,7 +19209,7 @@ function nrcCss(){
 .nrc-tb{width:100%;border-collapse:collapse;table-layout:fixed;}
 .nrc-tb th{font-weight:800;font-size:1.25u;padding:.45u .5u;color:#1d2433;text-align:center;border:.15u solid;}
 .nrc-tb td{border:.15u solid;padding:.4u .6u;vertical-align:middle;font-size:1.25u;font-weight:700;}
-.nrc-tb td.a{font-weight:700;color:#1d2433;width:27%;}
+.nrc-tb td.a{font-weight:900;color:#000;text-shadow:.35px 0 0 #000;width:27%;}
 .nrc-tb td.g{text-align:center;width:11%;}
 .nrc-tb td.m{color:#0b2a6f;font-weight:700;font-size:1.2u;line-height:1.22;}
 .nrc-g{display:inline-flex;align-items:center;justify-content:center;width:2.6u;height:2.6u;border-radius:50%;color:#fff;font-weight:900;font-size:1.6u;}
@@ -19339,10 +19340,13 @@ function nrcCss(){
 .nrc-sg .a{display:block;border-bottom:.15k solid #1d2433;padding:.45k .3k .25k;min-height:1.9k;position:relative;line-height:1.2;}
 .nrc-sg .a img{position:absolute;left:50%;bottom:.15k;max-width:88%;max-height:2.4k;transform:translateX(-50%);object-fit:contain;pointer-events:none;mix-blend-mode:multiply;}
 .nrc-sg .stamp{position:absolute;left:50%;top:50%;width:8k;height:8k;max-width:92%;transform:translate(-50%,-50%) rotate(-18deg);object-fit:contain;opacity:.6;pointer-events:none;z-index:3;mix-blend-mode:multiply;}
-.nrc-tm{justify-self:center;width:90%;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Times New Roman',Times,serif;font-size:1.1k;line-height:1.3;color:var(--nf);}
+.nrc-tm{justify-self:center;width:90%;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Times New Roman',Times,serif;font-size:1.1k;line-height:1.3;color:#000;font-weight:900;}
 .nrc-legend{display:flex;gap:.8k;flex-wrap:wrap;justify-content:center;align-items:center;font-size:.95k;margin-top:.6k;color:#4a5262;line-height:1.2;}
 .nrc-legend b{color:#1d2433;}
 .nrc-mot{text-align:center;font-weight:900;font-size:1.4k;letter-spacing:.04em;line-height:1.25;color:var(--nf);margin:.6k 0 .2k;}
+.nrc-tm div{color:#000;font-weight:900;}
+.nrc-bio td.ph{padding:0;position:relative;overflow:hidden;}
+.nrc-bio td.ph .nrc-bio-photo{position:absolute;left:0;top:0;width:100% !important;height:100% !important;margin:0;border:0;border-radius:0;object-fit:cover;display:block;}
 `;
   return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`).replace(/(\d+(?:\.\d+)?|\.\d+)k\b/g, (m,n)=>`calc(var(--u)*${n}*var(--nk))`);
 }
@@ -20020,7 +20024,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </tr>` : `
       <tr><th class="rc-th-subj">Subjects</th>${isP?'':'<th class="rc-th-papers">PPs</th>'}${showCW?`<th class="rc-th-cw">${esc(cfg.cwLabel)} (/${cfg.cwPercent})</th>`:''}${showEOT?`<th class="rc-th-eot">${esc(cfg.eotLabel)} (/${cfg.eotPercent})</th>`:''}${showPaperAverageColumn?'<th class="rc-th-pavg"><span class="pavg-main">Paper</span><br><span class="pavg-main">Average</span><br><small class="pavg-scale">(%)</small></th>':''}${showFinalAverageColumn?'<th class="rc-th-final">Final Average (%)</th>':''}<th class="rc-th-grade">Grade</th>${isA?'<th class="rc-th-points">Points</th>':''}<th class="rc-th-desc">${isP?'Remarks':'Descriptor'}</th>${isP?'<th class="rc-th-comment">COMMENT</th>':''}<th class="rc-th-init">Teacher<br>Initials</th></tr>`}
       ${rowsHtml}
-      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${showPaperAverageColumn?`<td>${totalPaperAvgTxt}</td>`:''}${showFinalAverageColumn?`<td>${totalFinalTxt}</td>`:''}<td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td>${isP?'<td>—</td>':''}<td>—</td></tr>
+      <tr class="total"><td colspan="${isP?1:2}">TOTAL / OVERALL</td>${totalCwHtml}${showEOT?`<td>${eotTotalTxt}</td>`:''}${showPaperAverageColumn?`<td>${totalPaperAvgTxt}</td>`:''}${showFinalAverageColumn?`<td>${totalFinalTxt}</td>`:''}<td>${totalGrade}</td>${isA?`<td>${totalPoints}</td>`:''}<td>${totalDescriptor}</td>${isP?`<td class="rc-primary-comment">${rows.length?esc(primarySubjectCommentFor(avgPct)):'—'}</td>`:''}<td>${ctName?esc(initials(ctName)):'—'}</td></tr>
       ${(()=>{
         const _res = reportResultFor(rows, breakdowns, cls, showEOT, s, term, year);
         const _cwCols = showCW ? (useCwTestCols ? cwTests.length+1 : 1) : 0;
@@ -20322,7 +20326,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     // Performance Summary. The descriptor sentence is fixed standard wording; the short
     // label ("Exceptional", etc.) still comes from the school's own gradeCommentsFor().
     gradingKey: isP ? null : gradeKeyRows(cls.level),
-    totals: { cwTotalTxt, eotTotalTxt, cwTestTotals: _sumT.testTotals, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length },
+    totals: { cwTotalTxt, eotTotalTxt, cwTestTotals: _sumT.testTotals, totalPaperAvgTxt, totalGrade, totalDescriptor, totalFinalTxt, totalPoints, subjectCount: rows.length, totalComment: (isP && rows.length) ? primarySubjectCommentFor(avgPct) : '', ctInit: ctName ? initials(ctName) : '—' },
     result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year),
     promotion: promotionDecisionFor(s, cls, term, {year, avgPct, totalPoints, pAggregate, rows, overallGrade, result: reportResultFor(rows, breakdowns, cls, showEOT, s, term, year)}),
     summary: {
@@ -20586,15 +20590,20 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   }
   if(hasPhoto){
     const px = contentX+infoTableW, py = infoTop, ph = infoRowH*3;
-    setDrawC([29,78,137]); pdf.setLineWidth(0.7); pdf.rect(px, py, photoColW, ph);
+    // The photo is pre-cropped (rcPhotoCover) to exactly this box's proportions, so it fills the whole box edge to edge.
     try{
       const pp = pdf.getImageProperties(data.photo);
-      const inset=4, boxW=photoColW-inset*2, boxH=ph-inset*2;
-      let dw=boxW, dh=boxH*(pp.width/pp.height); // fit by height first, adjust
-      dh = boxH; dw = dh*(pp.width/pp.height);
-      if(dw>boxW){ dw=boxW; dh=dw*(pp.height/pp.width); }
-      pdf.addImage(data.photo, 'PNG', px+(photoColW-dw)/2, py+(ph-dh)/2, dw, dh);
+      const fmt = /^data:image\/jpe?g/i.test(data.photo) ? 'JPEG' : 'PNG';
+      if(Math.abs(pp.width/pp.height - photoColW/ph) < 0.03){
+        pdf.addImage(data.photo, fmt, px, py, photoColW, ph);
+      } else {   // not pre-cropped (conversion failed): fit inside the box as a fallback
+        const inset=1, boxW=photoColW-inset*2, boxH=ph-inset*2;
+        let dh = boxH, dw = dh*(pp.width/pp.height);
+        if(dw>boxW){ dw=boxW; dh=dw*(pp.height/pp.width); }
+        pdf.addImage(data.photo, fmt, px+(photoColW-dw)/2, py+(ph-dh)/2, dw, dh);
+      }
     }catch(e){}
+    setDrawC([29,78,137]); pdf.setLineWidth(0.7); pdf.rect(px, py, photoColW, ph);
   }
   cy = infoTop + infoRowH*3 + 14 + gapBoost;
 
@@ -20753,24 +20762,29 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   });
 
   // ---- TOTAL / OVERALL row ----
-  const totRowH = 16; const totRed = [213,0,0];
+  const totRed = [213,0,0];
+  // Primary: the general comment for the overall grade sits in the Comment column of this row, so the row grows to hold it.
+  const _totCmtLines = (data.isP && data.totals.totalComment) ? wrap(data.totals.totalComment, colX('comment').width-6, 7.2) : [];
+  const totRowH = Math.max(16, _totCmtLines.length*7.6 + 8);
+  const _tY = cy + totRowH/2 + 3;
   setDrawC([29,78,137]); pdf.setFillColor(blueLight[0],blueLight[1],blueLight[2]);
   pdf.rect(contentX, cy, contentW, totRowH, 'F');
   cols.forEach(c=>{ pdf.setLineWidth(0.6); pdf.rect(c.x, cy, c.width, totRowH); });
   const labelSpanCols = data.isP ? ['subject'] : ['subject','papers'];
   const labelW = labelSpanCols.reduce((a,k)=>a + (colX(k)?colX(k).width:0), 0);
-  leftText('TOTAL / OVERALL', colX('subject').x+3, cy+totRowH-5, bodySize, 'bold', totRed);
+  leftText('TOTAL / OVERALL', colX('subject').x+3, _tY, bodySize, 'bold', totRed);
   if(data.showCW){
-    if(data.useCwTestCols){ data.cwTests.forEach((t,ti)=>{ const c=colX('cw_'+t.name); centerText((data.totals.cwTestTotals&&data.totals.cwTestTotals[ti])||'', c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }); }
-    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed);
+    if(data.useCwTestCols){ data.cwTests.forEach((t,ti)=>{ const c=colX('cw_'+t.name); centerText((data.totals.cwTestTotals&&data.totals.cwTestTotals[ti])||'', c.x, c.width, _tY, bodySize, 'bold', totRed); }); }
+    const c=colX('cwavg'); centerText(data.totals.cwTotalTxt, c.x, c.width, _tY, bodySize, 'bold', totRed);
   }
-  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  if(data.showPaperAverageColumn){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  if(data.showFinalAverageColumn){ const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
-  { const c=colX('init'); centerText('—', c.x, c.width, cy+totRowH-5, bodySize, 'bold', totRed); }
+  if(data.showEOT){ const c=colX('eot'); centerText(data.totals.eotTotalTxt, c.x, c.width, _tY, bodySize, 'bold', totRed); }
+  if(data.showPaperAverageColumn){ const c=colX('paperavg'); centerText(data.totals.totalPaperAvgTxt, c.x, c.width, _tY, bodySize, 'bold', totRed); }
+  if(data.showFinalAverageColumn){ const c=colX('final'); centerText(data.totals.totalFinalTxt, c.x, c.width, _tY, bodySize, 'bold', totRed); }
+  { const c=colX('grade'); centerText(data.totals.totalGrade, c.x, c.width, _tY, bodySize, 'bold', totRed); }
+  if(data.isA){ const c=colX('points'); centerText(String(data.totals.totalPoints), c.x, c.width, _tY, bodySize, 'bold', totRed); }
+  { const c=colX('desc'); centerText(data.totals.totalDescriptor, c.x, c.width, _tY, bodySize, 'bold', totRed); }
+  if(data.isP){ const cc=colX('comment'); if(_totCmtLines.length){ const clh=7.6, y0=cy+totRowH/2-((_totCmtLines.length-1)*clh)/2+2.5; _totCmtLines.forEach((ln,i)=>centerText(ln, cc.x, cc.width, y0+i*clh, 7.2, 'bold', totRed)); } else centerText('—', cc.x, cc.width, _tY, bodySize, 'bold', totRed); }
+  { const c=colX('init'); centerText(data.totals.ctInit||'—', c.x, c.width, _tY, bodySize, 'bold', totRed); }
   cy += totRowH;
   // ---- RESULT row (O-Level): RESULT : | the result | Promoted / Advised to resit (Term 3 only). Primary / A-Level: DECISION : | Promoted / Advised to resit (Term 3 only). ----
   { const promo = data.promotion, hasRes = data.result!==null && data.result!==undefined;
@@ -25723,6 +25737,33 @@ function toPngDataUrl(dataUrl){
   _pngCache.set(dataUrl, p);
   return p;
 }
+// Learner photo for the report-card PDF: centre-cropped to exactly the proportions of the photo box (54 x 45 pt) so it
+// fills the box edge to edge with no empty space (same result as CSS object-fit:cover on screen).
+const RC_PHOTO_RATIO = 54/45;
+const _photoCoverCache = new Map();
+async function rcPhotoCover(src){
+  const png = await toPngDataUrl(src);
+  if(!png) return png;
+  if(_photoCoverCache.has(png)) return _photoCoverCache.get(png);
+  const out = await new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const iw = img.naturalWidth||img.width, ih = img.naturalHeight||img.height;
+        let sw = iw, sh = ih;
+        if(iw/ih > RC_PHOTO_RATIO) sw = ih*RC_PHOTO_RATIO; else sh = iw/RC_PHOTO_RATIO;
+        const c = document.createElement('canvas'); c.width = 360; c.height = 300;
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,360,300);
+        g.drawImage(img, (iw-sw)/2, (ih-sh)/2, sw, sh, 0, 0, 360, 300);
+        resolve(c.toDataURL('image/jpeg', 0.92));
+      }catch(e){ resolve(png); }
+    };
+    img.onerror = ()=>resolve(png);
+    img.src = png;
+  });
+  _photoCoverCache.set(png, out);
+  return out;
+}
 // Delivers a finished jsPDF document to the user, on phone and computer, with a
 // single tap.
 //
@@ -26945,7 +26986,7 @@ async function pdfForStudents(students, filename, opts={}){
       // The conversion is cache-hit-instant after the first student in a bulk run.
       if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
       if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
-      if(data.photo) data.photo = await toPngDataUrl(data.photo);
+      if(data.photo) data.photo = await rcPhotoCover(data.photo);
       renderReportCardPageFitted(pdf, data);
     }
     // Yield to the browser only about every 80ms (not after every student): a timer tick per
