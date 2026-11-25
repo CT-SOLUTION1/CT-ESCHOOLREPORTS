@@ -2519,6 +2519,31 @@ table.pg-compact th, table.pg-compact td{padding-left:4px !important;padding-rig
 table.pg-compact th{font-size:9px !important;}
 table.pg-compact.pg-sp th, table.pg-compact.pg-sp td{font-size:11px !important;}
 </style>
+
+<style id="nursery-clarity-size-pass">
+/* Compact illustrations leave room for clearer department and summary tables. */
+.nrc-dept-cell>.nrc-pics{width:100%;height:clamp(28px,calc(var(--u)*5.2),58px);margin-top:.35u;overflow:hidden;align-items:center;justify-content:center;}
+.nrc-pics img{width:auto;max-width:68%;height:100%;max-height:58px;object-fit:contain;box-shadow:none;}
+.nrc-tb th{font-size:1.45u;font-weight:900;padding:.55u .6u;line-height:1.15;}
+.nrc-tb td{font-size:1.45u;font-weight:800;padding:.5u .65u;line-height:1.18;}
+.nrc-tb td.m{font-size:1.35u;font-weight:800;line-height:1.2;}
+.nrc-dh{font-size:1.65u;padding:.65u 1.2u;}
+.nrc-key{font-size:1.4u;font-weight:800;gap:.65u;margin-bottom:.8u;}
+.nrc-key span{padding:.35u .8u;}
+.nrc-key i{width:2.2u;height:2.2u;font-size:1.2u;}
+.nrc-overall{gap:1u;margin:.8u 0 .6u;padding:.7u 1u;}
+.nrc-overall .t{font-size:1.7u;}
+.nrc-overall .n{font-size:1.5u;font-weight:800;}
+.nrc-cm div{padding:.65u 1u;font-size:1.45u;font-weight:700;line-height:1.22;}
+.nrc-cm .w{font-weight:800;}
+.nrc-foot{font-size:1.35u;gap:.7u;}
+.nrc-foot div{padding:.6u .8u;}
+.nrc-foot b{font-size:1.1u;}
+@media print{
+ .nrc-dept-cell>.nrc-pics{height:clamp(26px,calc(var(--u)*4.8),52px);}
+ .nrc-pics img{max-height:52px;}
+}
+</style>
 </head>
 <body>
 <!-- Boot splash: shown the instant the page loads, before any JS/data has run.
