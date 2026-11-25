@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-24-2100'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-25-1200'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -2842,7 +2842,7 @@ const DEFAULT_PASS_FAIL_COMMENTS = {Pass:'Pass',Fail:'Fail'};
 const DEFAULT_PRIMARY_REMARKS = {
   'Division 1': {class:'Excellent performance this term. Keep up the excellent work!', head:'An excellent result — well done.'},
   'Division 2': {class:'Very good performance. Keep working hard.', head:'A very good result this term.'},
-  'Division 3': {class:'Good performance, but there is clear room for improvement.', head:'A fair result — more effort next term will help.'},
+  'Division 3': {class:'Good performance, but your marks can still improve.', head:'A fair result — more effort in your studies next term will help.'},
   'Division 4': {class:'Fair performance. More effort and attention is needed.', head:'This result calls for renewed effort next term.'},
   'Division U': {class:'Below average performance. Needs serious improvement and support.', head:'This result is a serious concern and needs urgent action.'}
 };
@@ -2851,6 +2851,49 @@ const DEFAULT_PRIMARY_REMARKS = {
 // when that column IS present they look ahead to NEXT TERM. Several wordings exist for every
 // level of performance; one is picked per learner (see remarkPick) so cards don't all read alike.
 const PRIMARY_REMARK_VARIANTS = {
+  eot: {
+    class: {
+      'Division 1': ['Excellent performance so far. Keep it up and aim for even higher marks in the end of term exams.','Outstanding work! Keep revising and finish strongly in the end of term exams.','Very impressive results. Stay focused and aim to stay at the top in the end of term exams.'],
+      'Division 2': ['Very good performance. Put in a little more effort to achieve even better marks in the end of term exams.','A very good effort. Keep working hard and aim for higher marks in the end of term exams.','Good progress. Revise your work regularly and aim for Division 1 in the end of term exams.'],
+      'Division 3': ['Good performance, but you need to put in more effort in the end of term exams.','A fair result. Revise more thoroughly to improve in the end of term exams.','You can achieve better marks. Practise your weaker topics and work harder for the end of term exams.'],
+      'Division 4': ['Fair performance. You need to put in much more effort and attention in the end of term exams.','Your results are weak. Concentrate in class and revise daily for the end of term exams.','More commitment to your studies is needed. Work harder and ask for help to improve in the end of term exams.'],
+      'Division U': ['Below average performance. You need serious improvement and support before the end of term exams.','Your performance is worrying. Work very hard and seek help before the end of term exams.','Much greater effort in your studies is needed. Attend all lessons and revise every day for the end of term exams.']
+    },
+    head: {
+      'Division 1': ['An excellent result so far — keep working hard for the end of term exams.','Well done on this excellent result. Maintain it in the end of term exams.','A commendable result. Do not relax; aim to excel in the end of term exams.'],
+      'Division 2': ['A very good result so far — keep pushing towards the end of term exams.','A pleasing result. Sustained effort will pay off in the end of term exams.','Good work. Keep this momentum up in the end of term exams.'],
+      'Division 3': ['A fair result — more effort in your studies is needed to improve in the end of term exams.','You can achieve higher marks. Aim for higher marks in the end of term exams.','You are capable of better results. Work harder towards the end of term exams.'],
+      'Division 4': ['This result calls for renewed effort ahead of the end of term exams.','A weak result. Greater commitment is needed in the end of term exams.','This result is below expectation. You must improve in the end of term exams.'],
+      'Division U': ['This result is a serious concern; urgent action is needed to improve in the end of term exams.','A very poor result. Urgent action and support are needed before the end of term exams.','This result needs immediate attention and close monitoring before the end of term exams.']
+    }
+  },
+  next: {
+    class: {
+      'Division 1': ['Excellent performance. Keep it up and aim for even higher marks next term.','Outstanding work! Keep revising and finish strongly next term.','Very impressive results. Stay focused and aim to stay at the top next term.'],
+      'Division 2': ['Very good performance. Put in a little more effort to achieve even better marks next term.','A very good effort. Keep working hard and aim for higher marks next term.','Good progress. Revise your work regularly and aim for Division 1 next term.'],
+      'Division 3': ['Good performance, but you need to put in more effort next term.','A fair result. Revise more thoroughly to improve next term.','You can achieve better marks. Practise your weaker topics and work harder next term.'],
+      'Division 4': ['Fair performance. You need to put in much more effort and attention next term.','Your results are weak. Concentrate in class and revise daily next term.','More commitment to your studies is needed. Work harder and ask for help to improve next term.'],
+      'Division U': ['Below average performance. You need serious improvement and support next term.','Your performance is worrying. Work very hard and seek help next term.','Much greater effort in your studies is needed. Attend all lessons and revise every day next term.']
+    },
+    head: {
+      'Division 1': ['An excellent result — keep it up next term.','Well done on this excellent result. Maintain it next term.','A commendable result. Do not relax; aim to excel next term.'],
+      'Division 2': ['A very good result — keep pushing next term.','A pleasing result. Sustained effort will pay off next term.','Good work. Keep this momentum up next term.'],
+      'Division 3': ['A fair result — more effort in your studies next term will help.','You can achieve higher marks. Aim for higher marks next term.','You are capable of better results. Work harder next term.'],
+      'Division 4': ['This result calls for renewed effort next term.','A weak result. Greater commitment is needed next term.','This result is below expectation. You must improve next term.'],
+      'Division U': ['This result is a serious concern and needs urgent action next term.','A very poor result. Urgent action and support are needed next term.','This result needs immediate attention and close monitoring next term.']
+    }
+  }
+};
+// True when a saved comment is just one of the built-in wordings (not something the school typed),
+// so it must not override the end-of-term / next-term wording.
+const LEGACY_PRIMARY_REMARKS = {
+  'Division 1': {class:'Excellent performance this term. Keep up the excellent work!', head:'An excellent result — well done.'},
+  'Division 2': {class:'Very good performance. Keep working hard.', head:'A very good result this term.'},
+  'Division 3': {class:'Good performance, but there is clear room for improvement.', head:'A fair result — more effort next term will help.'},
+  'Division 4': {class:'Fair performance. More effort and attention is needed.', head:'This result calls for renewed effort next term.'},
+  'Division U': {class:'Below average performance. Needs serious improvement and support.', head:'This result is a serious concern and needs urgent action.'}
+};
+const LEGACY_PRIMARY_REMARK_VARIANTS = {
   eot: {
     class: {
       'Division 1': ['Excellent performance so far. Keep it up and aim even higher in the end of term exams.','Outstanding work! Keep revising and finish strongly in the end of term exams.','Very impressive results. Stay focused and aim to stay at the top in the end of term exams.'],
@@ -2884,10 +2927,10 @@ const PRIMARY_REMARK_VARIANTS = {
     }
   }
 };
-// True when a saved comment is just one of the built-in wordings (not something the school typed),
-// so it must not override the end-of-term / next-term wording.
 function isBuiltInPrimaryRemark(div, who, text){
   if(DEFAULT_PRIMARY_REMARKS[div] && DEFAULT_PRIMARY_REMARKS[div][who]===text) return true;
+  if(LEGACY_PRIMARY_REMARKS[div] && LEGACY_PRIMARY_REMARKS[div][who]===text) return true;
+  if(['eot','next'].some(m=>((LEGACY_PRIMARY_REMARK_VARIANTS[m][who]||{})[div]||[]).includes(text))) return true;
   return ['eot','next'].some(m=>((PRIMARY_REMARK_VARIANTS[m][who]||{})[div]||[]).includes(text));
 }
 function primaryRemarksFor(){
@@ -8973,20 +9016,20 @@ const OVERALL_REMARKS = {
   eot: {
     class: [
       ['Outstanding performance so far. Keep up this excellent work and finish strongly in the end of term exams.','An exceptional result. Stay focused and consistent to maintain this standard in the end of term exams.','Excellent work! Keep revising hard so that you excel in the end of term exams.'],
-      ['Excellent performance. A little extra effort will take you to the very top in the end of term exams.','Very impressive work so far. Keep it up and aim even higher in the end of term exams.','You are doing very well. Stay disciplined and push for an even better result in the end of term exams.'],
-      ['Very good performance. With more consistent revision you can do even better in the end of term exams.','A very good effort. Keep working hard and aim higher in the end of term exams.','Good progress so far. Keep up the hard work to improve further in the end of term exams.'],
-      ['Good, steady performance. Put in a little more effort to do better in the end of term exams.','A good result, but there is room to grow. Revise more thoroughly for the end of term exams.','You are doing well. More effort and practice will lift your results in the end of term exams.'],
-      ['Fair performance. You need to put in more effort and revise regularly for the end of term exams.','An average result. Work harder and ask for help where needed to improve in the end of term exams.','You can do better. Set aside more time for revision before the end of term exams.'],
-      ['Below average performance. You need to put in much more effort to improve in the end of term exams.','Your results are weak. Concentrate in class and revise daily to improve in the end of term exams.','More commitment is needed. Work harder and seek help to perform better in the end of term exams.'],
-      ['Poor performance. You must work much harder and revise seriously before the end of term exams.','Your performance is worrying. Serious effort and support are needed to improve in the end of term exams.','Much more effort is needed. Study every day and seek help to pass the end of term exams.'],
+      ['Excellent performance. A little extra effort will take you to the very top in the end of term exams.','Very impressive work so far. Keep it up and aim for even higher marks in the end of term exams.','You are doing very well. Stay disciplined and push for an even better result in the end of term exams.'],
+      ['Very good performance. With more consistent revision you can achieve even better marks in the end of term exams.','A very good effort. Keep working hard and aim for higher marks in the end of term exams.','Good progress so far. Keep up the hard work to improve further in the end of term exams.'],
+      ['Good, steady performance. Put in a little more effort to achieve better marks in the end of term exams.','A good result, but your marks can still improve. Revise more thoroughly for the end of term exams.','You are doing well. More effort and practice will lift your results in the end of term exams.'],
+      ['Fair performance. You need to put in more effort and revise regularly for the end of term exams.','An average result. Work harder and ask for help where needed to improve in the end of term exams.','You can achieve better marks. Set aside more time for revision before the end of term exams.'],
+      ['Below average performance. You need to put in much more effort to improve in the end of term exams.','Your results are weak. Concentrate in class and revise daily to improve in the end of term exams.','More commitment to your studies is needed. Work harder and seek help to perform better in the end of term exams.'],
+      ['Poor performance. You must work much harder and revise seriously before the end of term exams.','Your performance is worrying. Serious effort and support are needed to improve in the end of term exams.','Much greater effort in your studies is needed. Study every day and seek help to pass the end of term exams.'],
       ['Performance is very low. You need urgent support and serious daily revision before the end of term exams.','This result is far below expectation. Work with your teachers and put in great effort for the end of term exams.','You must change your approach now. Attend all lessons and revise hard for the end of term exams.']
     ],
     head: [
       ['A commendable result — keep working hard for the end of term exams.','Well done on this outstanding result. Maintain it in the end of term exams.','An excellent result so far. Do not relax; aim to excel in the end of term exams.'],
       ['A very good result — keep climbing in the end of term exams.','Impressive work. Keep pushing for a stronger result in the end of term exams.','A pleasing result. Sustained effort will pay off in the end of term exams.'],
-      ['A good result. A bit more effort will pay off in the end of term exams.','A pleasing result with room to grow in the end of term exams.','Good progress. Keep up the effort towards the end of term exams.'],
-      ['A satisfactory result — more effort will help you improve in the end of term exams.','A fair result. Work harder to raise your performance in the end of term exams.','You can achieve more. Aim higher in the end of term exams.'],
-      ['An average result. Greater effort is needed in the end of term exams.','This result calls for renewed effort in the end of term exams.','You are capable of more. Work harder towards the end of term exams.'],
+      ['A good result. A bit more effort will pay off in the end of term exams.','A pleasing result, and your marks can still rise in the end of term exams.','Good progress. Keep up the effort towards the end of term exams.'],
+      ['A satisfactory result — more effort in your studies will help you improve in the end of term exams.','A fair result. Work harder to raise your performance in the end of term exams.','You can achieve higher marks. Aim for higher marks in the end of term exams.'],
+      ['An average result. Greater effort is needed in the end of term exams.','This result calls for renewed effort in the end of term exams.','You are capable of better results. Work harder towards the end of term exams.'],
       ['This result is below expectation. You must improve in the end of term exams.','A weak result. Greater commitment is needed in the end of term exams.','This result calls for serious effort in the end of term exams.'],
       ['This result is a concern. Serious improvement is needed in the end of term exams.','A poor result. Much greater effort is required in the end of term exams.','This result is worrying and requires real effort in the end of term exams.'],
       ['This result is a serious concern; urgent improvement is needed in the end of term exams.','A very poor result. Urgent action and support are needed before the end of term exams.','This result needs immediate attention and close monitoring before the end of term exams.']
@@ -8995,20 +9038,20 @@ const OVERALL_REMARKS = {
   next: {
     class: [
       ['Outstanding performance. Keep up this excellent work next term.','An exceptional result. Stay focused and maintain this standard next term.','Excellent work! Keep revising hard and excel again next term.'],
-      ['Excellent performance. A little extra effort will take you to the very top next term.','Very impressive work. Keep it up and aim even higher next term.','You did very well. Stay disciplined and push for an even better result next term.'],
-      ['Very good performance. With more consistent revision you can do even better next term.','A very good effort. Keep working hard and aim higher next term.','Good progress. Keep up the hard work to improve further next term.'],
-      ['Good, steady performance. Put in a little more effort next term to do better.','A good result, but there is room to grow. Revise more thoroughly next term.','You did well. More effort and practice will lift your results next term.'],
-      ['Fair performance. You need to put in more effort and revise regularly next term.','An average result. Work harder and ask for help where needed next term.','You can do better. Set aside more time for revision next term.'],
-      ['Below average performance. You need to put in much more effort next term.','Your results are weak. Concentrate in class and revise daily next term.','More commitment is needed. Work harder and seek help to perform better next term.'],
-      ['Poor performance. You must work much harder and revise seriously next term.','Your performance is worrying. Serious effort and support are needed next term.','Much more effort is needed. Study every day and seek help next term.'],
+      ['Excellent performance. A little extra effort will take you to the very top next term.','Very impressive work. Keep it up and aim for even higher marks next term.','You did very well. Stay disciplined and push for an even better result next term.'],
+      ['Very good performance. With more consistent revision you can achieve even better marks next term.','A very good effort. Keep working hard and aim for higher marks next term.','Good progress. Keep up the hard work to improve further next term.'],
+      ['Good, steady performance. Put in a little more effort next term to achieve better marks.','A good result, but your marks can still improve. Revise more thoroughly next term.','You did well. More effort and practice will lift your results next term.'],
+      ['Fair performance. You need to put in more effort and revise regularly next term.','An average result. Work harder and ask for help where needed next term.','You can achieve better marks. Set aside more time for revision next term.'],
+      ['Below average performance. You need to put in much more effort next term.','Your results are weak. Concentrate in class and revise daily next term.','More commitment to your studies is needed. Work harder and seek help to perform better next term.'],
+      ['Poor performance. You must work much harder and revise seriously next term.','Your performance is worrying. Serious effort and support are needed next term.','Much greater effort in your studies is needed. Study every day and seek help next term.'],
       ['Performance is very low. You need urgent support and serious daily revision next term.','This result is far below expectation. Work with your teachers and put in great effort next term.','You must change your approach now. Attend all lessons and revise hard next term.']
     ],
     head: [
       ['A commendable result — keep it up next term.','Well done on this outstanding result. Maintain it next term.','An excellent result. Do not relax; aim to excel again next term.'],
       ['A very good result — keep climbing next term.','Impressive work. Keep pushing for a stronger result next term.','A pleasing result. Sustained effort will pay off next term.'],
-      ['A good result. A bit more effort will pay off next term.','A pleasing result with room to grow next term.','Good progress. Keep up the effort next term.'],
-      ['A satisfactory result — you can achieve more next term.','A fair result. Work harder to raise your performance next term.','You can achieve more. Aim higher next term.'],
-      ['An average result. Greater effort is needed next term.','This result calls for renewed effort next term.','You are capable of more. Work harder next term.'],
+      ['A good result. A bit more effort will pay off next term.','A pleasing result, and your marks can still rise next term.','Good progress. Keep up the effort next term.'],
+      ['A satisfactory result — you can achieve higher marks next term.','A fair result. Work harder to raise your performance next term.','You can achieve higher marks. Aim for higher marks next term.'],
+      ['An average result. Greater effort is needed next term.','This result calls for renewed effort next term.','You are capable of better results. Work harder next term.'],
       ['This result is below expectation. You must improve next term.','A weak result. Greater commitment is needed next term.','This result calls for serious effort next term.'],
       ['This result is a concern. Serious improvement is needed next term.','A poor result. Much greater effort is required next term.','This result is worrying and requires real effort next term.'],
       ['This result is a serious concern and needs urgent action next term.','A very poor result. Urgent action and support are needed next term.','This result needs immediate attention and close monitoring next term.']
@@ -19204,6 +19247,27 @@ function nrcCss(){
 .nrc-stage{position:relative;width:100%;aspect-ratio:210/297;overflow:hidden;}
 .nrc-stage>.nrc-card{position:absolute;left:0;top:0;margin:0;transform-origin:0 0;transform:scale(var(--ns,.9));}
 @media print{.nrc-stage>.nrc-card{--ns:.9235 !important;}}
+/* Bottom section laid out like the Primary report card (Grading Scale, Comments, signatures, fees strip, motto, theme) but in the Nursery colours. */
+.nrc-sec{margin:.9k 0 .4k;padding:.3k 1k;background:var(--nf);color:var(--nfi);font-weight:900;font-size:1.15k;letter-spacing:.04em;text-transform:uppercase;border-radius:.8k;line-height:1.15;}
+.nrc-gs,.nrc-cmt{width:100%;border-collapse:collapse;table-layout:fixed;}
+.nrc-gs th,.nrc-gs td{border:.18k solid var(--nf);padding:.3k .4k;font-size:1.05k;line-height:1.15;text-align:center;}
+.nrc-gs th{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;}
+.nrc-gs td{font-weight:900;font-size:1.3k;background:#fff;}
+.nrc-gs{margin-top:.9k;}
+.nrc-gs tr:first-child th:first-child{width:22%;}
+.nrc-cmt th,.nrc-cmt td{border:.18k solid var(--nf);padding:.45k .9k;font-size:1.1k;line-height:1.25;text-align:left;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
+.nrc-cmt th{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1k;}
+.nrc-cmt td{color:#0b2a6f;font-weight:700;}
+.nrc-sign{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:1.6k;margin:1k 0 .5k;font-size:1.1k;font-weight:700;}
+.nrc-sg{min-width:0;text-align:center;position:relative;}
+.nrc-sg .p{display:block;border-bottom:.15k solid #1d2433;padding-bottom:.25k;min-height:1.5k;line-height:1.2;}
+.nrc-sg .a{display:block;border-bottom:.15k solid #1d2433;padding:.45k .3k .25k;min-height:1.9k;position:relative;line-height:1.2;}
+.nrc-sg .a img{position:absolute;left:50%;bottom:.15k;max-width:88%;max-height:2.4k;transform:translateX(-50%);object-fit:contain;pointer-events:none;mix-blend-mode:multiply;}
+.nrc-sg .stamp{position:absolute;left:50%;top:50%;width:8k;height:8k;max-width:92%;transform:translate(-50%,-50%) rotate(-18deg);object-fit:contain;opacity:.6;pointer-events:none;z-index:3;mix-blend-mode:multiply;}
+.nrc-tm{justify-self:center;width:90%;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Times New Roman',Times,serif;font-size:1.1k;line-height:1.3;color:var(--nf);}
+.nrc-legend{display:flex;gap:.8k;flex-wrap:wrap;justify-content:center;align-items:center;font-size:.95k;margin-top:.6k;color:#4a5262;line-height:1.2;}
+.nrc-legend b{color:#1d2433;}
+.nrc-mot{text-align:center;font-weight:900;font-size:1.4k;letter-spacing:.04em;line-height:1.25;color:var(--nf);margin:.6k 0 .2k;}
 `;
   return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`).replace(/(\d+(?:\.\d+)?|\.\d+)k\b/g, (m,n)=>`calc(var(--u)*${n}*var(--nk))`);
 }
@@ -19243,7 +19307,7 @@ function nrcOverallComment(grade, name, kind, studentId){
       head:[`Very good progress. Encourage the learner to maintain this positive attitude.`,`A pleasing report. More practice and encouragement will help sustain this progress.`,`Good development is evident. Keep supporting learning through play and conversation.`,`Well done. The learner is progressing steadily across the learning areas.`]},
     C:{
       class:[`${first} is making steady progress and should continue practising the skills learnt in class.`,`${first} understands many activities and benefits from regular guidance. Keep trying!`,`${first} is developing confidence. More participation will strengthen the skills further.`,`${first} has made fair progress; regular practice will lead to better achievement.`],
-      head:[`Good effort. Continued support at school and home will improve confidence.`,`The learner is progressing. Let us provide regular opportunities for practice.`,`A satisfactory term. Encourage consistent participation in learning activities.`,`There is encouraging progress, with more room to develop independence.`]},
+      head:[`Good effort. Continued support at school and home will improve confidence.`,`The learner is progressing. Let us provide regular opportunities for practice.`,`A satisfactory term. Encourage consistent participation in learning activities.`,`There is encouraging progress, and independence can be strengthened further with regular practice.`]},
     D:{
       class:[`${first} is beginning to develop the expected skills and needs more guided practice.`,`${first} tries the activities but still benefits from close support and encouragement.`,`${first} should be encouraged to participate more often and practise simple tasks daily.`,`${first} is making gradual progress. Patient guidance will help build confidence.`],
       head:[`More support and regular practice are needed to strengthen the learner's skills.`,`Please work closely with the class teacher to support the learner's progress.`,`The learner needs encouragement, repetition and practical activities at home.`,`Progress is still developing. Continued attention from school and home is important.`]},
@@ -19278,7 +19342,7 @@ function nrcFitScale(cardHTML){
       if(lineRule && clipped()) return true;
       if(c.getBoundingClientRect().height > PAGE_H) return true;
       if(c.scrollWidth > c.clientWidth+1) return true;
-      const cells = c.querySelectorAll('.nrc-bio td,.nrc-tb th,.nrc-tb td,.nrc-head,.nrc-foot div,.nrc-cm div,.nrc-scale th,.nrc-scale td,.nrc-overall-table th,.nrc-overall-table td,.nrc-key');
+      const cells = c.querySelectorAll('.nrc-bio td,.nrc-tb th,.nrc-tb td,.nrc-head,.nrc-gs th,.nrc-gs td,.nrc-cmt th,.nrc-cmt td,.nrc-overall-table th,.nrc-overall-table td,.nrc-key');
       for(let i=0;i<cells.length;i++){ if(cells[i].scrollWidth > cells[i].clientWidth+1) return true; }
       return false;
     };
@@ -19392,19 +19456,35 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall</th><td style="padding:.8u;border:1px solid var(--nf);">${showG?gradeChip(overall)+' ':''}${showS && overallAvg!=null ? `<b>${nurseryScoreTxt(overallAvg)}%</b>${overall?' — ':''}` : ''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'No scores yet')}</b></td></tr>
       ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
     </table>
-    <div class="nrc-cm">
-      <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*2.4*var(--nk))'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
-      <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*3.6*var(--nk));vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
-    </div>
-    <div class="nrc-foot" style="grid-template-columns:1fr 1fr;">
-      <div><b>Term ends on</b>${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
-      <div><b>Next term begins</b>${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>
-    </div>
-    ${themeOfYearText()?`<div class="nrc-theme">Theme ${esc(String(year||''))}: ${esc(themeOfYearText())}</div>`:''}
-    <table class="nrc-scale">
+    <table class="nrc-gs">
       <tr><th>MARKS RANGE</th>${NURSERY_GRADES.map(g=>`<th>${conf.bands[g][0]}–${conf.bands[g][1]}%</th>`).join('')}</tr>
       <tr><th>GRADE GIVEN</th>${NURSERY_GRADES.map(g=>`<td style="color:${NRC_GRADE_COL[g]}">${g}</td>`).join('')}</tr>
     </table>
+    <div class="nrc-sec">Comments</div>
+    <table class="nrc-cmt">
+      <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
+      <tr><td>${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</td><td>${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</td></tr>
+    </table>
+    <div class="nrc-sign">
+      <div class="nrc-sg">
+        <span class="p">Class Teacher: ${esc(ctName)}</span>
+        <span class="a">Signature:${ctSig?`<img src="${ctSig}" alt="">`:''}</span>
+      </div>
+      <div class="nrc-tm">
+        <div>${esc(term||info.currentTerm||'Term')} ended on ${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
+        <div>Next term begins on ${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>
+      </div>
+      <div class="nrc-sg">
+        <span class="p">Head Teacher: ${esc(info.headteacher||'')}</span>
+        <span class="a">School Stamp:</span>
+        ${info.stamp?`<img class="stamp" src="${info.stamp}" alt="">`:''}
+      </div>
+    </div>
+    <div class="nrc-legend">
+      <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
+    </div>
+    ${info.motto?`<div class="nrc-mot">"${esc(info.motto)}"</div>`:''}
+    ${themeOfYearText()?`<div class="nrc-theme">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
   </div></div>`;
   { const f = nrcFitScale(card);
     card = card.replace('style="--nf:', 'style="--nk:'+f.k+';--nf:').replace(/<div class="nrc-card(?= |")/, m=>m+(f.nopics?' nrc-nopics':''));
@@ -20240,7 +20320,13 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const shadeInkBody = _shade.custom ? _shade.ink : ink;   // values sitting on the shade
   const hdrFill = _shade.custom ? _shade.fill : [29,78,137];
   const hdrInk  = _shade.custom ? _shade.ink  : [255,255,255];
-  const hdrSeam = _shade.custom ? _shade.seam.map(v=>Math.round(v)) : [255,255,255];
+  // Column-header cell outlines. The header band is ONE solid fill; the outlines used to be white
+  // (default) or a lightened tint (dark colours) and, at PDF_LINE_BOLD thickness, they cut visible
+  // un-shaded gaps through the band. They are now drawn in the band's own colour so the header row
+  // is uniformly shaded. Only a light chosen colour keeps blue outlines (shading is still uniform there).
+  const hdrSeam = (_shade.custom && !_shade.dark) ? [29,78,137] : hdrFill.slice();
+  // Clear column dividers inside the header band: single continuous lines, full header height.
+  const hdrDiv = !_shade.custom ? [255,255,255] : (_shade.dark ? _shade.seam.map(v=>Math.round(v)) : [29,78,137]);
   let cy = cardY + 14; // running vertical cursor
 
   function setC(rgb){ pdf.setTextColor(rgb[0],rgb[1],rgb[2]); }
@@ -20519,6 +20605,18 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       pdf.rect(gx, cy, gw, headerTopH);
       centerText(data.cfg.cwLabel.toUpperCase(), gx, gw, cy+8.5, 7.2, 'bold', hdrInk);
     }
+  }
+  // Column dividers: drawn last, one unbroken line per column boundary (inside a Course Work
+  // group only the lower row is divided, with a rule under the group title).
+  pdf.setDrawColor(hdrDiv[0],hdrDiv[1],hdrDiv[2]); pdf.setLineWidth(0.4);
+  cols.forEach((c,i)=>{
+    if(i===0) return;
+    const inCw = hasCwGroup && _isCwCol(c) && _isCwCol(cols[i-1]);
+    pdf.line(c.x, inCw ? cy+headerTopH : cy, c.x, cy+headerH);
+  });
+  if(hasCwGroup){
+    const cwc=cols.filter(_isCwCol);
+    if(cwc.length) pdf.line(cwc[0].x, cy+headerTopH, cwc[cwc.length-1].x+cwc[cwc.length-1].width, cy+headerTopH);
   }
   cy += headerH;
 
