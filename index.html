@@ -19397,7 +19397,11 @@ function nrcCss(){
 .nrc-key{font-size:1.05k;margin-bottom:.8k;gap:.6k;}
 .nrc-key span{padding:.2k .8k;}
 .nrc-key i{width:1.7k;height:1.7k;}
-.nrc-grid{flex:1 1 0;min-height:0;grid-template-rows:minmax(0,1fr) auto minmax(0,1fr) auto;align-content:stretch;gap:.7k 1.1k;}
+.nrc-grid{flex:1 1 0;min-height:0;grid-template-rows:max-content auto max-content auto;align-content:start;gap:.35k 1.1k;}
+.nrc-grid>.nrc-dept{align-self:start;}
+.nrc-grid>.nrc-dept>.nrc-tb{height:auto;}
+.nrc-pics{align-items:flex-end;min-height:0;margin:.2k 0 0;}
+.nrc-pics svg{height:auto;max-height:10k;object-fit:contain;}
 .nrc-grid>.nrc-dept{min-width:0;min-height:0;display:flex;flex-direction:column;}
 .nrc-grid>.nrc-dept>.nrc-tb{width:100%;min-width:0;table-layout:fixed;}
 .nrc-grid>.nrc-dept>.nrc-tb td,.nrc-grid>.nrc-dept>.nrc-tb th{white-space:normal;overflow-wrap:anywhere;word-break:normal;}
@@ -19406,8 +19410,8 @@ function nrcCss(){
 .nrc-nopics .nrc-grid>div:not(.nrc-dept){display:none;}
 .nrc-measure .nrc-grid{flex:0 0 auto !important;}   /* while measuring, the grid takes only the height its content needs */
 .nrc-dh{font-size:1.35k;padding:.4k 1k;letter-spacing:.06k;line-height:1.15;}
-.nrc-tb th{font-size:1.15k;padding:.3k .4k;line-height:1.15;}
-.nrc-tb td{font-size:1.25k;padding:.35k .5k;line-height:1.18;}
+.nrc-tb th{font-size:1.15k;padding:.24k .4k;line-height:1.12;}
+.nrc-tb td{font-size:1.25k;padding:.27k .45k;line-height:1.15;}
 .nrc-tb td.a{font-size:1.22k;line-height:1.16;}
 .nrc-tb td.m{font-size:1.2k;line-height:1.18;}
 .nrc-g{width:2.3k;height:2.3k;font-size:1.35k;}
@@ -19465,7 +19469,7 @@ function nrcCss(){
   const plus1 = t => t.replace(/font-size:\s*([^;}]+)/g, (m,v)=>`font-size:calc(${v.trim()} + 1px)`);
   // Final overrides (not enlarged): Primary-style theme line, black bold motto, very bold table headers.
   const extra = `
-.nrc-promotion{display:block !important;text-align:left !important;margin-left:0 !important;}
+.nrc-promotion{display:block !important;text-align:right !important;margin:0 !important;white-space:normal;}
 .nrc-mot{margin-top:calc(var(--u)*2.2) !important;}
 .nrc-legend .fee-gap{width:40px;}
 .nrc-card{padding-top:calc(var(--u)*3) !important;padding-bottom:calc(var(--u)*3.2) !important;}
@@ -19489,7 +19493,7 @@ const NRC_SVG = (()=>{
     const arm=pose==='give'?`<path d="M${x+19} ${y+31} Q${x+31} ${y+35} ${x+39} ${y+42}" stroke="${skin}" stroke-width="5" stroke-linecap="round" fill="none"/>`:
       pose==='raise'?`<path d="M${x+18} ${y+31} Q${x+9} ${y+18} ${x+14} ${y+9}" stroke="${skin}" stroke-width="5" stroke-linecap="round" fill="none"/>`:
       ` <path d="M${x+18} ${y+31} L${x+10} ${y+45} M${x+34} ${y+31} L${x+42} ${y+43}" stroke="${skin}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
-    return `<g><ellipse cx="${x+27}" cy="${y+68}" rx="17" ry="3" fill="#6c7a89" opacity=".16"/><path d="M${x+20} ${y+47}L${x+17} ${y+65}M${x+32} ${y+47}L${x+37} ${y+65}" stroke="#34445a" stroke-width="6" stroke-linecap="round"/><path d="M${x+17} ${y+27}Q${x+27} ${y+22} ${x+37} ${y+27}L${x+39} ${y+49}Q${x+27} ${y+54} ${x+15} ${y+49}Z" fill="${shirt}" stroke="#334155" stroke-width=".8"/>${arm}<path d="M${x+20} ${y+17}Q${x+18} ${y+4} ${x+29} ${y+3}Q${x+41} ${y+5} ${x+38} ${y+20}L${x+37} ${y+27}Q${x+27} ${y+33} ${x+18} ${y+25}Z" fill="${skin}" stroke="#744b3a" stroke-width=".7"/><path d="M${x+18} ${y+17}Q${x+14} ${y+1} ${x+30} ${y+1}Q${x+42} ${y+2} ${x+39} ${y+17}Q${x+31} ${y+10} ${x+20} ${y+16}Z" fill="${hair}"/><circle cx="${x+25}" cy="${y+19}" r="1" fill="#20252c"/><circle cx="${x+33}" cy="${y+19}" r="1" fill="#20252c"/><path d="M${x+26} ${y+24}q3 2 6 0" stroke="#874f42" stroke-width="1" fill="none"/></g>`;
+    return `<g><ellipse cx="${x+27}" cy="${y+68}" rx="17" ry="3" fill="#6c7a89" opacity=".16"/><path d="M${x+20} ${y+47}L${x+17} ${y+65}M${x+32} ${y+47}L${x+37} ${y+65}" stroke="#34445a" stroke-width="6" stroke-linecap="round"/><path d="M${x+17} ${y+27}Q${x+27} ${y+22} ${x+37} ${y+27}L${x+39} ${y+49}Q${x+27} ${y+54} ${x+15} ${y+49}Z" fill="${shirt}" stroke="#334155" stroke-width=".8"/>${arm}<path d="M${x+20} ${y+17}Q${x+18} ${y+4} ${x+29} ${y+3}Q${x+41} ${y+5} ${x+38} ${y+20}L${x+37} ${y+27}Q${x+27} ${y+33} ${x+18} ${y+25}Z" fill="${skin}" stroke="#744b3a" stroke-width=".7"/><path d="M${x+18} ${y+17}Q${x+14} ${y+1} ${x+30} ${y+1}Q${x+42} ${y+2} ${x+39} ${y+17}Q${x+31} ${y+10} ${x+20} ${y+16}Z" fill="${hair}"/><circle cx="${x+19}" cy="${y+20}" r="2.2" fill="${skin}"/><circle cx="${x+39}" cy="${y+20}" r="2.2" fill="${skin}"/><path d="M${x+23} ${y+17}q2-2 4 0m4 0q2-2 4 0" stroke="#33241f" stroke-width=".8" fill="none"/><circle cx="${x+25}" cy="${y+19}" r="1.05" fill="#20252c"/><circle cx="${x+33}" cy="${y+19}" r="1.05" fill="#20252c"/><path d="M${x+26} ${y+24}q3 2 6 0" stroke="#874f42" stroke-width="1.1" fill="none"/><path d="M${x+26} ${y+29}v3m-5 8h12" stroke="#ffffff" stroke-width=".8" opacity=".65"/></g>`;
   };
   return {
     share:W(`<rect width="120" height="76" rx="8" fill="#eef7ef"/><path d="M8 61h104" stroke="#a8b99c" stroke-width="2"/>${person(18,5,'#e46b45','#9a6248','#292321','give')}${person(65,5,'#388a63','#75452f','#1e1a18','give')}<path d="M54 43q7-9 14 0q-7 8-14 0" fill="#f0c75e" stroke="#ad7c32"/><path d="M48 42l7 1M68 42l-6 1" stroke="#75452f" stroke-width="2"/>`),
@@ -19676,7 +19680,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     ${showG ? `<div class="nrc-key"><b>KEY:</b>${key}</div>` : ''}
     ${grid}
     <table class="nrc-overall-table" style="width:100%;border-collapse:collapse;margin:1u 0;font-size:1.25u;">
-      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall Grade</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b>${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? ` <span class="nrc-promotion" style="display:block;text-align:right;font-weight:900;color:#c62828;font-size:max(11px,calc(var(--u)*1.5));margin:calc(var(--u)*.25) 0 0;line-height:1.2;">${esc(pd.text)}</span>` : ''; })()}</td></tr>
+      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall Grade</th><td class="nrc-overall-value" style="padding:.8u;border:1px solid var(--nf);font-weight:900;position:relative;padding-right:34%;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b>${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? ` <span class="nrc-promotion" style="position:absolute;right:.8u;top:50%;transform:translateY(-50%);display:block;text-align:right;font-weight:900;color:#e00000;font-size:max(11px,calc(var(--u)*1.5));line-height:1.2;max-width:33%;overflow-wrap:anywhere;">${esc(pd.text)}</span>` : ''; })()}</td></tr>
       ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
     </table>
     <table class="nrc-gs">
