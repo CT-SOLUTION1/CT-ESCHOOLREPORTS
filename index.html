@@ -53,7 +53,7 @@
   }
 })();
 </script>
-<script>const BUILD_ID = 'BUILD-2026-11-25-1400'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
+<script>const BUILD_ID = 'BUILD-2026-11-25-1500'; // <-- the ONLY thing to change on each deploy (keep it here at the top)</script>
 <script id="cte-pick-flow">
 /* Enter Scores: guided step-by-step flow. After each choice the page moves to the next unfinished field
    (subject → paper → assessment type → test → term → marked out of), and a later field can't be used
@@ -560,10 +560,10 @@ img{max-width:100%;height:auto;}
 .agg-switch.is-all .agg-thumb{transform:translateX(100%);}
 .agg-opt{position:relative;z-index:1;text-align:center;white-space:nowrap;padding:calc(7.5*var(--uk)) calc(12*var(--uk));font-size:calc(11*var(--uk));font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#b91c1c;cursor:pointer;text-decoration:none;transition:color .22s ease;}
 .agg-opt.on{color:#fff;}
-input[type=checkbox].tickx{-webkit-appearance:none;appearance:none;position:relative;display:inline-block;vertical-align:middle;width:22px !important;height:22px !important;min-width:22px;margin:0 4px 0 0;padding:0;border:0 !important;background:transparent !important;box-shadow:none;cursor:pointer;}
-input[type=checkbox].tickx::after{content:'\2715';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;line-height:1;color:#dc2626;}
-input[type=checkbox].tickx:checked::after{content:'\2713';color:#1d4ed8;font-size:20px;}
-input[type=checkbox].tickx:focus-visible{outline:2px solid #1d4ed8;outline-offset:1px;border-radius:4px;}
+input[type=checkbox].tickx{-webkit-appearance:none;appearance:none;position:relative;display:inline-block;vertical-align:middle;flex:0 0 18px;width:18px !important;height:18px !important;min-width:18px;margin:0 6px 0 0;padding:0;border:1.5px solid #333 !important;border-radius:3px;background:#fff !important;box-shadow:none;cursor:pointer;}
+input[type=checkbox].tickx::after{content:'\2718';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;line-height:1;color:#d62828;}
+input[type=checkbox].tickx:checked::after{content:'\2714';color:#1a9a3a;}
+input[type=checkbox].tickx:focus-visible{outline:2px solid #e0a800;outline-offset:1px;}
 .rc-agg-note{font-weight:900;font-size:9.5px;text-align:center;margin:4px 0 0;line-height:1.2;white-space:normal;color:var(--navy);}
 .aiu-btn:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .aiu-card{--aiu-k:1;margin:8px auto;width:100%;max-width:640px;box-sizing:border-box;padding:calc(28px*var(--aiu-k)) calc(22px*var(--aiu-k));display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
@@ -869,8 +869,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    a report contains many subjects/rows. */
 .rc-card:not(.pdf-report-card) .rc-content{transform-origin:top left;transform:none;width:auto;}
 /* Thick decorative boundary stays inside the existing report-card margins. It is an overlay, so it consumes no layout space and cannot change table widths, A4 fit, or content positioning. */
-.rc-theme-line{max-width:724px;margin:5px auto 0;text-align:center;font:700 11px/1.25 Georgia,'Times New Roman',serif;letter-spacing:.04em;color:var(--navy);overflow-wrap:anywhere;}
-@media print{.rc-theme-line{margin-top:1mm;font-size:8pt;color:#0A2A4A !important;}}
+.rc-theme-line{max-width:724px;margin:10px auto 0;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#000;overflow-wrap:anywhere;}
+@media print{.rc-theme-line{margin-top:2mm;font-size:10.5pt;font-weight:900;color:#000 !important;}}
 .rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
 /* Primary report cards receive a distinct two-layer ornamental frame; O-Level is untouched. */
 .primary-report-card{border:5px solid #1d4e89 !important;outline:2px solid #c99a3b;outline-offset:-10px;}
@@ -13365,7 +13365,7 @@ function schoolInfoView(){
         <div><label>Motto</label><input name="motto" value="${esc(i.motto||'')}"></div>
       </div>
       <label>THEME OF THE YEAR</label><input name="themeOfYear" value="${esc(i.themeOfYear||'')}" maxlength="120" placeholder="Type the theme only, e.g. Nurturing Excellence Through Discipline">
-      <p class="small">Optional. Once set, <b>THEME OF THE YEAR: …</b> is printed at the very bottom of every report card, inside the page border. Clear the box and save to remove it.</p>
+      <p class="small">Optional. Once set, <b>THEME OF THE YEAR: …</b> is printed in bold at the very bottom of every report card, inside the page border, below all other notes. Clear the box and save to remove it.</p>
       <label>Headteacher's full name</label><input name="headteacher" value="${esc(i.headteacher||'')}" required>
       <div class="flex" style="margin-top:6px;">
         ${i.stamp?`<img loading="lazy" decoding="async" src="${i.stamp}" class="photo-thumb" style="width:80px;height:80px;object-fit:contain;background:#f4f8fc;">`:''}
@@ -14707,7 +14707,7 @@ function oLevelSubjectsView(){
   ${!showPrimary ? '' : `
   <div class="card">
     <h3>Primary subjects by class</h3>
-    <p class="small">Each column is a Primary class and each row a subject. A <b>blue tick</b> means that subject is <b>compulsory</b>; a <b>red ✕</b> means it is not. Tap a box to switch it. A compulsory subject is automatically included on every student's report card in that class, no roster tick needed from the subject teacher. Anything marked with a red ✕ is optional: only students a subject teacher ticks into their own class roster will show it. Add a new subject only through the <b>Subject</b> column (last row) — it then appears in every class column and you simply switch it on for the classes that take it. Click <b>Save compulsory subjects</b> after making changes. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
+    <p class="small">Each column is a Primary class and each row a subject. A <b>green ✔</b> means that subject is <b>compulsory</b>; a <b>red ✘</b> means it is not. Tap a box to switch it. A compulsory subject is automatically included on every student's report card in that class, no roster tick needed from the subject teacher. Anything marked with a red ✘ is optional: only students a subject teacher ticks into their own class roster will show it. Add a new subject only through the <b>Subject</b> column (last row) — it then appears in every class column and you simply switch it on for the classes that take it. Click <b>Save compulsory subjects</b> after making changes. These start out matching the standard PLE core (English, Mathematics, Science, Social Studies), but you can change them for your school at any time.</p>
     <div class="note">Uganda's official PLE Division bands assume exactly 4 core subjects. If you tick a number of subjects other than 4 for a class in the Aggregate &amp; Division table below, the Aggregate figure still totals correctly, but the Division label becomes approximate rather than an exact match to the UNEB standard.</div>
     <form data-form="savePCompulsory" style="margin-top:10px;">
       ${pSubjectsTableHtml()}
@@ -14722,7 +14722,7 @@ function oLevelSubjectsView(){
   </div>
   <div class="card">
     <h3>Aggregate &amp; Division</h3>
-    <p class="small">For each Primary class, a <b>blue tick</b> marks a subject that counts, and a <b>red ✕</b> one that does not. Tap a box to switch it. These are the subjects used to work out the Aggregate and Division. Subjects added in the table above appear here automatically — switch them on for the classes that should include them. The note under the Performance Summary on the report card follows what you tick. Click <b>Save aggregate subjects</b> after making changes.</p>
+    <p class="small">For each Primary class, a <b>green ✔</b> marks a subject that counts, and a <b>red ✘</b> one that does not. Tap a box to switch it. These are the subjects used to work out the Aggregate and Division. Subjects added in the table above appear here automatically — switch them on for the classes that should include them. The note under the Performance Summary on the report card follows what you tick. Click <b>Save aggregate subjects</b> after making changes.</p>
     <form data-form="savePAgg" style="margin-top:10px;">
       ${pAggTableHtml()}
       <div style="margin-top:10px;"><button class="btn">Save aggregate subjects</button></div>
@@ -15830,7 +15830,7 @@ function reportsListView(){
   </div>
   ${isAdmin ? `<div class="card" style="margin-top:16px;">
     <h3>Positions and Total Average — Class Settings</h3>
-    <p class="small">Choose separately for each class whether its report cards should show the learner's Position in Class and Total Average. Blue tick = shown; red ✕ = hidden. Tap a box to switch it. These settings apply to report cards and their downloaded PDFs.</p>
+    <p class="small">Choose separately for each class whether its report cards should show the learner's Position in Class and Total Average. Green ✔ = shown; red ✘ = hidden. Tap a box to switch it. These settings apply to report cards and their downloaded PDFs.</p>
     <form data-form="saveClassReportOptions">
       <div style="overflow-x:auto;"><table class="data-table" style="min-width:100%;width:max-content;">
         <tr><th>CLASS</th>${DB.classes.map(c=>`<th style="min-width:110px;">${esc(classFullName(c))}</th>`).join('')}</tr>
@@ -15841,7 +15841,7 @@ function reportsListView(){
   </div>
   ${schoolGrade()==='primary' ? `<div class="card" style="margin-top:16px;">
     <h3>Aggregates and Division — Class Settings</h3>
-    <p class="small">Choose separately for each Primary class whether Aggregates and Division are used. Blue tick = in use; red ✕ = not in use. Tap a box to switch it. When off, Aggregates and Division disappear from that class's report cards (Performance Summary and remarks), their downloaded PDFs, and every list, rank list and mark sheet that shows them.</p>
+    <p class="small">Choose separately for each Primary class whether Aggregates and Division are used. Green ✔ = in use; red ✘ = not in use. Tap a box to switch it. When off, Aggregates and Division disappear from that class's report cards (Performance Summary and remarks), their downloaded PDFs, and every list, rank list and mark sheet that shows them.</p>
     ${DB.classes.some(c=>c.level==='P') ? `<form data-form="saveClassAggDivOptions">
       <div style="overflow-x:auto;"><table class="data-table" style="min-width:100%;width:max-content;">
         <tr><th>CLASS</th>${DB.classes.filter(c=>c.level==='P').map(c=>`<th style="min-width:110px;">${esc(classFullName(c))}</th>`).join('')}</tr>
@@ -20455,17 +20455,6 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.setLineWidth(0.5); pdf.rect(cardX+8.5, cardY+8.5, cardW-17, cardH-17);
   }
 
-  // ---- 2b. THEME OF THE YEAR: printed in the page margin BELOW the frame (outside the border).
-  // Drawn here, with the frame, so it sits outside the content transform and never moves the border or any content.
-  if(data.theme){
-    let _thTxt = 'THEME OF THE YEAR: ' + data.theme, _thSz = 7;
-    pdf.setFont('helvetica','bold'); pdf.setFontSize(_thSz);
-    while(_thSz > 4.5 && pdf.getTextWidth(_thTxt) > cardW-8){ _thSz -= 0.25; pdf.setFontSize(_thSz); }
-    if(pdf.getTextWidth(_thTxt) > cardW-8){ _thTxt = String(pdf.splitTextToSize(_thTxt, cardW-8)[0]).replace(/\s+$/,'') + '…'; }
-    pdf.setTextColor(navy[0],navy[1],navy[2]);
-    pdf.text(_thTxt, pageW/2, pageH-8, {align:'center'});
-  }
-
   // Keep the decorative frame outside the content transform so it always
   // remains fixed on the A4 page. The generated content is wrapped in a
   // vertical fit transform after its actual final height is known.
@@ -21052,6 +21041,16 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
   if(!assessmentsAddDirectly(data.cfg)) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
   if(data.assessNote){ if(!assessmentsAddDirectly(data.cfg)) cy += 9; centerText(data.assessNote, contentX, contentW, cy, 6.5, 'italic', muted); }
+  // THEME OF THE YEAR: the very last line, inside the border, below every other note — big, bold and clear.
+  if(data.theme){
+    cy += (data.assessNote || !assessmentsAddDirectly(data.cfg)) ? 20 : 12;
+    const _thTxt = 'THEME OF THE YEAR: ' + String(data.theme).toUpperCase();
+    let _thSz = 10.5; pdf.setFont('helvetica','bold'); pdf.setFontSize(_thSz);
+    while(_thSz > 6 && pdf.getTextWidth(_thTxt) > contentW-6){ _thSz -= 0.25; pdf.setFontSize(_thSz); }
+    const _thLines = pdf.getTextWidth(_thTxt) > contentW-6 ? pdf.splitTextToSize(_thTxt, contentW-6) : [_thTxt];
+    _thLines.forEach((ln,i)=> centerText(ln, contentX, contentW, cy + i*(_thSz+1.5), _thSz, 'bold', [0,0,0]));
+    cy += (_thLines.length-1)*(_thSz+1.5) + 2;
+  }
 
   // Fit the finished content exactly between the top and bottom insets of the
   // A4 frame. This works for both short and very long report cards. The frame
@@ -26855,6 +26854,25 @@ async function downloadMarksheetPDF(assignId, paper, kind, label, max){
 }
 
 /* ---------- Bulk PDF ---------- */
+// Nursery learners keep their own colourful card (pictures, departments, Nursery grading), exactly as the single
+// Nursery download produces it: the card is captured and placed on its own framed A4 page of the combined PDF.
+async function nurseryCardPdfPage(pdf, s, cls, term, year){
+  const holder = document.createElement('div');
+  holder.id = 'nrcPdfHolder';
+  holder.style.cssText = 'position:fixed;left:-12000px;top:0;width:794px;background:#fff;';
+  holder.innerHTML = nurseryReportCardHTML(s, cls, term, year, true, true);
+  document.body.appendChild(holder);
+  let canvas;
+  try{ canvas = await html2canvasBold(holder, {scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY}); }
+  finally{ holder.remove(); }
+  const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+  const innerW = pageW - PDF_FRAME_CONTENT*2, innerH = pageH - PDF_FRAME_CONTENT*2;
+  const scale = Math.min(innerW / canvas.width, innerH / canvas.height);
+  drawPdfFrame(pdf, true);
+  pdf.addImage(canvas.toDataURL('image/jpeg',0.95), 'JPEG',
+    PDF_FRAME_CONTENT + Math.max(0,(innerW-canvas.width*scale)/2), PDF_FRAME_CONTENT + Math.max(0,(innerH-canvas.height*scale)/2),
+    canvas.width*scale, canvas.height*scale);
+}
 async function pdfForStudents(students, filename, opts={}){
   if(reportOutputBlocked()){ reportOutputBlockedAlert(); return; }
   if(!students.length){ alert('No students to export.'); return; }
@@ -26866,6 +26884,8 @@ async function pdfForStudents(students, filename, opts={}){
   // visit starts sooner). html2canvas is still fetched separately, only if/when
   // the person opens a mark sheet / class analysis PDF (see downloadElementAsPdf).
   try{ await loadJsPdfOnly(); }catch(e){ alert(e.message); return; }
+  const _hasNursery = students.some(st=>{ const c = DB.classes.find(k=>k.id===st.classId); return c && c.level==='N'; });
+  if(_hasNursery){ try{ await loadPdfLibs(); }catch(e){ alert(e.message); return; } }   // html2canvas, for the Nursery cards
   const { jsPDF } = window.jspdf;
   // compress:true turns on jsPDF's internal stream (Flate) compression for the
   // PDF's own text/vector overhead — real text/lines compress extremely well,
@@ -26891,6 +26911,13 @@ async function pdfForStudents(students, filename, opts={}){
   }catch(e){}
   let _lastYield = Date.now();
   for(let i=0;i<students.length;i++){
+    const _nCls = DB.classes.find(k=>k.id===students[i].classId);
+    if(_nCls && _nCls.level==='N'){
+      if(i>0) pdf.addPage();
+      try{ await nurseryCardPdfPage(pdf, students[i], _nCls, DB.info.currentTerm, DB.info.currentYear); }
+      catch(e){ console.warn('Nursery card failed', e); pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text('The Nursery report card for '+(students[i].name||'this learner')+' could not be generated.', 40, 60); }
+      continue;
+    }
     const data = buildReportCardData(students[i].id);
     if(i>0) pdf.addPage();
     if(!data){
