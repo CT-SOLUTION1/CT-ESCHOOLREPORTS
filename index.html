@@ -8643,6 +8643,14 @@ function teacherForSubjectClass(subject, classId){
 // each is worth the same top value as a principal.
 function maxPointsFor(st, cls){ const top = aTopPoints(), pf = passFailMaxPoints(); return principalsFor(st, cls || classOf(st)).length*top + pf + pf + aCompulsoryExtra().length*top; }
 
+// True when this learner has a REAL saved score in the subject of the selected assessment type: Course Work only -> a Course Work
+// score, End of Term only -> an End of Term score, otherwise any in-use score. A hidden zero never counts as a score.
+function hasModeScore(st, subject, term, year){
+  if(!st) return false;
+  const rows = inUseRows(rawScores(st.id, subject, term, year), st.classId);
+  const k = raPeerKind();
+  return k ? rows.some(r=>r.kind===k) : rows.length>0;
+}
 // RESULT shown as the last row of O-Level report cards ONLY (A-Level and Primary cards end at TOTAL / OVERALL):
 //   2 = the student's grades are ALL E (only Es), OR the student MISSED A SUBJECT: has no score in a
 //       subject that other students in the class (who take it) already have scores in;
@@ -8657,11 +8665,11 @@ function reportResultFor(rows, breakdowns, cls, showEOT, st, term, year){
   const scored = rows.filter(r=>has(r.avg));
   if(!scored.length) return 3;
   // Missed a subject that other classmates have scores in
-  if(scored.length < rows.length && st){
+  if(st){
     const mates = DB.students.filter(x=>x.classId===cls.id && x.id!==st.id);
     for(const r of rows){
-      if(has(r.avg)) continue;
-      const othersHave = mates.some(m=> studentSubjects(m, cls).includes(r.subject) && has(subjectAverage(m.id, r.subject, term, year)));
+      if(has(r.avg) && hasModeScore(st, r.subject, term, year)) continue;   // a real score of the selected assessment type
+      const othersHave = mates.some(m=> studentSubjects(m, cls).includes(r.subject) && has(subjectAverage(m.id, r.subject, term, year)) && hasModeScore(m, r.subject, term, year));
       if(othersHave) return 2;
     }
   }
@@ -8832,7 +8840,7 @@ function missedSubjectsFor(st, cls, term, year){
   const rows = computeSubjectRows(st, cls, term, year).rows;
   if(!rows.length || !rows.some(r=>has(r.avg))) return [];
   const mates = DB.students.filter(x=>x.classId===cls.id && x.id!==st.id);
-  return rows.filter(r=> !has(r.avg) && mates.some(m=> studentSubjects(m, cls).includes(r.subject) && has(subjectAverage(m.id, r.subject, term, year))) ).map(r=>r.subject);
+  return rows.filter(r=> !(has(r.avg) && hasModeScore(st, r.subject, term, year)) && mates.some(m=> studentSubjects(m, cls).includes(r.subject) && has(subjectAverage(m.id, r.subject, term, year)) && hasModeScore(m, r.subject, term, year)) ).map(r=>r.subject);
 }
 // A subject that has enrolled students but NO scores for any of them yet (term/year) is left out of a learner's
 // subjects — unless it is compulsory for the class, in which case it still counts.
@@ -13211,6 +13219,12 @@ function classReportSummaryOptions(classId){
   return {average: saved && typeof saved.average==='boolean' ? saved.average : legacy,
           position: saved && typeof saved.position==='boolean' ? saved.position : legacy};
 }
+// Aggregates & Division per class (Grading Setup). Default ON. When OFF for a class, Aggregates and Division are hidden everywhere for that class.
+function showAggDiv(classId){
+  const all = (DB.info && DB.info.reportCardAggDivOptions) || {};
+  const v = classId!=null ? all[String(classId)] : undefined;
+  return typeof v==='boolean' ? v : true;
+}
 function showTotalAvgPos(classId, kind){
   const o = classReportSummaryOptions(classId);
   return kind==='position' ? o.position : kind==='average' ? o.average : (o.position && o.average);
@@ -15719,7 +15733,18 @@ function reportsListView(){
       </table></div>
       <button class="btn" style="margin-top:12px;">Submit — save class settings</button>
     </form>
-  </div>` : ''}`;
+  </div>
+  ${schoolGrade()==='primary' ? `<div class="card" style="margin-top:16px;">
+    <h3>Aggregates and Division — Class Settings</h3>
+    <p class="small">Choose separately for each Primary class whether Aggregates and Division are used. Tick to use them; untick to switch them off. When off, Aggregates and Division disappear from that class's report cards (Performance Summary and remarks), their downloaded PDFs, and every list, rank list and mark sheet that shows them.</p>
+    ${DB.classes.some(c=>c.level==='P') ? `<form data-form="saveClassAggDivOptions">
+      <div style="overflow-x:auto;"><table class="data-table" style="min-width:100%;width:max-content;">
+        <tr><th>CLASS</th>${DB.classes.filter(c=>c.level==='P').map(c=>`<th style="min-width:110px;">${esc(classFullName(c))}</th>`).join('')}</tr>
+        <tr><th>ACTION</th>${DB.classes.filter(c=>c.level==='P').map(c=>`<td style="vertical-align:top;white-space:nowrap;"><label style="display:block;margin:3px 0;"><input type="checkbox" name="agd_${esc(c.id)}" style="width:auto;" ${showAggDiv(c.id)?'checked':''}> Aggregates &amp; Division ✓</label></td>`).join('')}</tr>
+      </table></div>
+      <button class="btn" style="margin-top:12px;">Submit — save aggregates settings</button>
+    </form>` : '<p class="small">No Primary classes yet.</p>'}
+  </div>` : ''}` : ''}`;
 }
 // ---- Class picker (tick several classes, then OK) ----
 // RC_PICK holds the ticks BEFORE OK is pressed; VIEW.params.classIds holds the classes actually loaded.
@@ -15736,22 +15761,25 @@ function rcVisibleClasses(){
   return isT ? DB.classes.filter(c=>ids.some(id=>streamGroupIdsById(id).has(c.id))) : DB.classes;
 }
 var RC_BASE = '';
+var RC_OPEN = new Set();   // class groups ticked in the picker (several can be ticked at once)
 function rcGroups(){ return pickGroups(rcVisibleClasses()); }
 function rcPickedClasses(){ return rcVisibleClasses().filter(c=>RC_PICK.has(c.id)); }
 function rcDdSummary(){
   const ps = rcPickedClasses();
   if(!ps.length) return '-- select class --';
-  return ps.length===1 ? classFullName(ps[0]) : classBaseName(ps[0])+': '+ps.map(streamShortName).join(', ');
+  if(ps.length===1) return classFullName(ps[0]);
+  const by = new Map(); ps.forEach(c=>{ const b = classBaseName(c); if(!by.has(b)) by.set(b, []); by.get(b).push(c); });
+  return [...by.values()].map(a=> a.length===1 ? classFullName(a[0]) : classBaseName(a[0])+': '+a.map(streamShortName).join(', ')).join('; ');
 }
 function rcStreamsHTML(){
-  const g = rcGroups().find(x=>x.id===RC_BASE);
-  return (g && g.streams.length>1) ? `<p class="small" style="margin:12px 0 6px;">Tap the stream(s) to load.</p>` + streamCardsHTML(g.streams, RC_PICK, 'rcPickToggle', 'rcPickAll') : '';
+  return rcGroups().filter(g=>RC_OPEN.has(g.id) && g.streams.length>1).map(g=>`<p class="small" style="margin:12px 0 6px;"><b>${esc(g.label)}</b> — tap the stream(s) to load.</p>` + streamCardsHTML(g.streams, RC_PICK, 'rcPickToggle', `rcPickAllIn.bind(null,'${esc(g.id)}')`)).join('');
 }
 function rcPickRefresh(){
   const n = rcPickedClasses().length;
   const ok = document.getElementById('rcPickOk'); if(ok) ok.disabled = !n;
   const dl = document.getElementById('rcPickDl'); if(dl) dl.disabled = !n;
-  const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n ? n+' stream'+(n===1?'':'s')+' selected' : 'Nothing selected';
+  const ct = document.getElementById('rcPickCount'); if(ct) ct.textContent = n ? n+' class'+(n===1?'':'es')+' selected' : 'Nothing selected';
+  document.querySelectorAll('#rcModal input[name="rcBase"]').forEach(cb=>{ const g = rcGroups().find(x=>x.id===cb.value); cb.checked = !!g && (RC_OPEN.has(g.id) || g.streams.some(c=>RC_PICK.has(c.id))); });
   const tx = document.getElementById('rcDdTxt'); if(tx) tx.textContent = rcDdSummary();
   const st = document.getElementById('rcStreams'); if(st) st.innerHTML = rcStreamsHTML();
 }
@@ -15760,23 +15788,23 @@ function rcModalHTML(){
   const cnt = g => g.streams.reduce((t,c)=>t+DB.students.filter(s=>s.status!=='left' && s.classId===c.id).length,0);
   return `<div class="rc-modal" id="rcModal" onclick="if(event.target===this)rcDdToggle(false)">
     <div class="rc-modal-card" role="dialog" aria-modal="true" aria-label="Select class">
-      <div class="rc-modal-head"><div><h3>Select Class</h3><p>Pick a class. If it has streams, tap the stream cards.</p></div><button type="button" class="rc-modal-x" onclick="rcDdToggle(false)" aria-label="Close">×</button></div>
+      <div class="rc-modal-head"><div><h3>Select Class</h3><p>Tick one or more classes. If a class has streams, tap the stream cards.</p></div><button type="button" class="rc-modal-x" onclick="rcDdToggle(false)" aria-label="Close">×</button></div>
       <div class="rc-modal-list">
-        ${gs.length ? gs.map(g=>`<label class="rc-opt"><span class="rc-opt-name">${esc(g.label)}</span><span class="rc-opt-n">(${cnt(g)})</span><input type="radio" name="rcBase" class="rc-tick" value="${esc(g.id)}" ${RC_BASE===g.id?'checked':''} onchange="rcPickGroup(this.value)"></label>`).join('') : '<p class="small" style="margin:16px 0;">No classes yet.</p>'}
+        ${gs.length ? gs.map(g=>`<label class="rc-opt"><span class="rc-opt-name">${esc(g.label)}</span><span class="rc-opt-n">(${cnt(g)})</span><input type="checkbox" name="rcBase" class="rc-tick" value="${esc(g.id)}" ${(RC_OPEN.has(g.id) || g.streams.some(c=>RC_PICK.has(c.id)))?'checked':''} onchange="rcPickGroup(this.value, this.checked)"></label>`).join('') : '<p class="small" style="margin:16px 0;">No classes yet.</p>'}
         <div id="rcStreams">${rcStreamsHTML()}</div>
       </div>
       <div class="rc-modal-foot">
-        <span class="rc-splash-count" id="rcPickCount">${n ? n+' stream'+(n===1?'':'s')+' selected' : 'Nothing selected'}</span>
+        <span class="rc-splash-count" id="rcPickCount">${n ? n+' class'+(n===1?'':'es')+' selected' : 'Nothing selected'}</span>
         <button type="button" class="btn" id="rcPickOk" onclick="rcPickOk()" ${n?'':'disabled'}>Submit — load report cards</button>
       </div>
     </div>
   </div>`;
 }
-function rcPickGroup(id){
-  RC_BASE = id; RC_PICK.clear();
-  const g = rcGroups().find(x=>x.id===id); if(g && g.streams.length===1) RC_PICK.add(g.streams[0].id);
+function rcPickGroup(id, on){
+  const g = rcGroups().find(x=>x.id===id); if(!g) return;
+  if(on===false){ g.streams.forEach(c=>RC_PICK.delete(c.id)); RC_OPEN.delete(id); }
+  else { RC_OPEN.add(id); if(g.streams.length===1) RC_PICK.add(g.streams[0].id); }
   rcPickRefresh();
-  const st = document.getElementById('rcStreams'); if(st) st.innerHTML = rcStreamsHTML();
   rcFitModal();
 }
 // Shrinks every size in the class card together until the whole card fits the screen — no scrolling up/down
@@ -15796,7 +15824,7 @@ function rcDdToggle(force){
   const open = (typeof force==='boolean') ? force : !document.getElementById('rcModal');
   const old = document.getElementById('rcModal'); if(old) old.remove();
   if(open){
-    RC_PICK.clear(); RC_BASE = '';   // every opening starts with nothing ticked
+    RC_PICK.clear(); RC_BASE = ''; RC_OPEN.clear();   // every opening starts with nothing ticked
     const d = document.createElement('div'); d.innerHTML = rcModalHTML();
     document.body.appendChild(d.firstElementChild);
     document.body.style.overflow = 'hidden';
@@ -15807,9 +15835,9 @@ function rcDdToggle(force){
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('rcModal')) rcDdToggle(false); });
 function rcPickToggle(id, on){ if(on) RC_PICK.add(id); else RC_PICK.delete(id); rcPickRefresh(); }
-function rcPickAll(on){
-  const g = rcGroups().find(x=>x.id===RC_BASE); RC_PICK.clear();
-  if(on && g) g.streams.forEach(c=>RC_PICK.add(c.id));
+function rcPickAllIn(gid, on){
+  const g = rcGroups().find(x=>x.id===gid); if(!g) return;
+  g.streams.forEach(c=>{ if(on) RC_PICK.add(c.id); else RC_PICK.delete(c.id); });
   rcPickRefresh();
 }
 function rcPickedIds(){ return rcPickedClasses().map(c=>c.id); }
@@ -16307,6 +16335,7 @@ function generalSheetView(mode, scope){
   } else {
     const level = g.level, isA = level==='A', isP = level==='P', isO = level==='O';
     const cfg0 = examConfig(g.cls.id);
+    const aggOn = isP && g.classes.some(c=>showAggDiv(c.id));   // Primary: Aggregate + Division columns only if some class here uses them
     const anyCw = g.classes.some(c=>examConfig(c.id).cwEnabled), anyEot = g.classes.some(c=>examConfig(c.id).eotEnabled);
     // Level sheet: rank everyone of the level together (same rule as the General Rank List); class sheet: class position.
     let levelPos = null;
@@ -16321,7 +16350,7 @@ function generalSheetView(mode, scope){
     head = `<th>No.</th><th>Adm No</th><th>Student</th>${showCls?'<th>Class</th>':''}<th>Subjects</th>`
       + (anyCw ? `<th>Avg ${esc(cfg0.cwLabel)} (/${esc(String(cfg0.cwPercent))})</th>` : '')
       + (anyEot ? `<th>Avg ${esc(cfg0.eotLabel)} (/${esc(String(cfg0.eotPercent))})</th>` : '')
-      + `<th>Average</th>${isA?'<th>Points</th>':''}${isP?'<th>Aggregate</th><th>Division</th>':'<th>Grade</th>'}${isO?'<th>Result</th>':''}<th>Position</th>`;
+      + `<th>Average</th>${isA?'<th>Points</th>':''}${isP?(aggOn?'<th>Aggregate</th><th>Division</th>':''):'<th>Grade</th>'}${isO?'<th>Result</th>':''}<th>Position</th>`;
     rows = students.map((s,i)=>{
       const c = DB.classes.find(x=>x.id===s.classId) || g.cls;
       const bds = studentSubjects(s, c).map(su=>subjectBreakdown(s.id, su, term, year));
@@ -16330,18 +16359,18 @@ function generalSheetView(mode, scope){
       const has = sat>0 && d.countAvg>0;
       const cw = mean(bds.map(b=>b.aoiAvg)), eot = mean(bds.map(b=>b.eotAvg));
       const pos = has ? (g.isLevel ? levelPos.get(s.id) : classPosition(s, c, term, year)) : null;
-      const agg = (isP && has) ? primaryAggregate(s, c, term, year) : null;
+      const agg = (isP && has && showAggDiv(c.id)) ? primaryAggregate(s, c, term, year) : null;
       const gr = has ? gradeFor('', d.avgPct, c.level) : '—';
       return `<tr><td>${i+1}</td><td>${esc(s.admNo||'—')}</td><td style="text-align:left;">${esc(s.name)}</td>${showCls?`<td>${esc(classFullName(c))}</td>`:''}<td>${sat}</td>`
         + (anyCw ? `<td>${cw===null?'—':zp(cw.toFixed(1))}</td>` : '')
         + (anyEot ? `<td>${eot===null?'—':zp(eot.toFixed(1))}</td>` : '')
         + `<td>${has?zpct(d.avgPct,1):'—'}</td>`
         + (isA ? `<td>${has?`${d.totalPoints}/${maxPointsFor(s,c)}`:'—'}</td>` : '')
-        + (isP ? `<td style="font-weight:800;">${agg!==null?agg:'—'}</td><td style="font-weight:800;">${agg!==null?esc(String(primaryDivisionFor(agg)||'—')):'—'}</td>` : gradeTd(gr||'—'))
+        + (isP ? (aggOn ? `<td style="font-weight:800;">${agg!==null?agg:'—'}</td><td style="font-weight:800;">${agg!==null?esc(String(primaryDivisionFor(agg)||'—')):'—'}</td>` : '') : gradeTd(gr||'—'))
         + (isO ? `<td style="font-weight:800;">${has?resultTextFor(s,c,term,year):'—'}</td>` : '')
         + `<td>${pos?`${pos.position}/${pos.size}`:'—'}</td></tr>`;
     }).join('');
-    ncols = 3 + (showCls?1:0) + 1 + (anyCw?1:0) + (anyEot?1:0) + 1 + (isA?1:0) + (isP?2:1) + (isO?1:0) + 1;
+    ncols = 3 + (showCls?1:0) + 1 + (anyCw?1:0) + (anyEot?1:0) + 1 + (isA?1:0) + (isP?(aggOn?2:0):1) + (isO?1:0) + 1;
     foot = `<p class="small" style="margin-top:10px;">Overall results across every subject recorded for ${esc(term||'')}, ${esc(String(year||''))}. “—” means no scores are recorded yet.</p>`;
   }
   const label = mode==='empty' ? 'Empty' : (mode==='attendance' ? 'Attendance' : 'Filled');
@@ -16996,7 +17025,7 @@ function subjectPaperList(classList, subject, term, year){
   const add = p=>{ const v = (p===null||p===undefined) ? '' : String(p).trim(); if(v && !out.includes(v)) out.push(v); };
   const ids = new Set(); classList.forEach(c0=>aGroupClasses(c0).forEach(c=>{ subjectPapersFor(subject, c).forEach(add); ids.add(c.id); }));
   const stu = new Set(DB.students.filter(s=>s.status!=='left' && ids.has(s.classId)).map(s=>s.id));
-  liveScores().forEach(sc=>{ if(sc.subject===subject && sc.term===term && sc.year==year && stu.has(sc.studentId)) add(sc.paper); });
+  liveScores().forEach(sc=>{ if((!raPeerKind() || sc.kind===raPeerKind()) && sc.subject===subject && sc.term===term && sc.year==year && stu.has(sc.studentId)) add(sc.paper); });
   out.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
   return out;
 }
@@ -17155,7 +17184,7 @@ function classAnalysisViewCore(){
     const clsIds = new Set(((classList && classList.length) ? classList : [cls]).map(c=>c.id));
     const ids = new Set(DB.students.filter(s=>s.status!=='left' && clsIds.has(s.classId)).map(s=>s.id));
     const users = [];
-    liveScores().forEach(sc=>{ if(sc.subject===subj && (paper==null || String(sc.paper)===String(paper)) && sc.term===term && sc.year==year && sc.teacher && ids.has(sc.studentId) && !users.includes(sc.teacher)) users.push(sc.teacher); });
+    liveScores().forEach(sc=>{ if((!raPeerKind() || sc.kind===raPeerKind()) && sc.subject===subj && (paper==null || String(sc.paper)===String(paper)) && sc.term===term && sc.year==year && sc.teacher && ids.has(sc.studentId) && !users.includes(sc.teacher)) users.push(sc.teacher); });
     let names = users.map(u=>DB.accounts.find(a=>a.username===u)).filter(a=>a && a.role==='teacher').map(a=>a.name);
     if(!names.length) names = DB.assignments.filter(a=>clsIds.has(a.classId) && a.subject===subj && (paper==null || !Array.isArray(a.papers) || !a.papers.length || a.papers.some(x=>String(x)===String(paper)))).map(a=>DB.accounts.find(x=>x.username===a.teacherUsername)).filter(Boolean).map(a=>a.name);
     return [...new Set(names)];
@@ -17168,7 +17197,7 @@ function classAnalysisViewCore(){
     const stuIds = new Set(DB.students.filter(s=>s.status!=='left' && clsIds.has(s.classId)).map(s=>s.id));
     const out = [];
     const add = p=>{ const v = (p===null||p===undefined) ? '' : String(p).trim(); if(v && !out.includes(v)) out.push(v); };
-    liveScores().forEach(sc=>{ if(sc.subject===subj && sc.term===term && sc.year==year && stuIds.has(sc.studentId)) add(sc.paper); });
+    liveScores().forEach(sc=>{ if((!raPeerKind() || sc.kind===raPeerKind()) && sc.subject===subj && sc.term===term && sc.year==year && stuIds.has(sc.studentId)) add(sc.paper); });
     DB.assignments.forEach(a=>{ if(a.subject===subj && clsIds.has(a.classId) && Array.isArray(a.papers)) a.papers.forEach(add); });
     out.sort((x,y)=>String(x).localeCompare(String(y), undefined, {numeric:true}));
     return out.join(', ');
@@ -17265,6 +17294,7 @@ function classAnalysisViewCore(){
   // Same table as the General MarkSheets "Rank List" (same columns, same ranking, same descriptors), plus a
   // Combination (A-Level) / Optional Subjects (O-Level) column for the secondary levels.
   const lvl = cls.level, isAL = lvl==='A', isPL = lvl==='P', isOL = lvl==='O', hasCombo = isAL || isOL;
+  const aggOnB = isPL && showAggDiv(cls.id);   // Aggregates & Division switched on for this class?
   const spData = (SK ? [] : classRosterStudents(cls)).map(st=>{
     const d = computeSubjectRows(st, cls, term, year);
     const subjSet = new Set(studentSubjects(st, cls));
@@ -17276,7 +17306,7 @@ function classAnalysisViewCore(){
     return {st, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, lvl, st, cls, term, year),
       maxP: isAL ? maxPointsFor(st, cls) : 100,
       grade: isPL ? null : gradeFor('', d.avgPct, lvl),
-      agg: isPL ? primaryAggregate(st, cls, term, year) : null,
+      agg: aggOnB ? primaryAggregate(st, cls, term, year) : null,
       nSubj: subjSet.size, nSat,
       desc: hasScores ? rankOverallDescriptor(lvl, d.avgPct, gradeAny) : '—',
       resultTxt: isOL ? resultTextFor(st, cls, term, year) : '—',
@@ -17287,15 +17317,15 @@ function classAnalysisViewCore(){
   const spGradeTd = (g)=>`<td style="font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const studentRowsHtml = spData.map(r=>{
     const tail = isPL
-      ? `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
+      ? !aggOnB ? '' : `<td style="font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
       : (isOL ? spGradeTd(r.grade||'—') : '');
     return `<tr><td style="font-weight:800;">${r.pos}</td><td>${esc(r.st.admNo||'—')}</td><td class="stu-name" style="text-align:left;white-space:nowrap;">${esc(String(r.st.name||'').trim().replace(/\s+/g,' '))}</td>${hasCombo?`<td>${esc(comboLabel(r.st,cls))}</td>`:''}<td${isPL?' style="text-align:center;"':''}>${r.nSat}/${r.nSubj}</td><td>${zpct(r.avgPct,1)}</td>${isAL?`<td>${r.pts}/${r.maxP}</td>`:''}${tail}${isOL?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${esc(r.desc)}</td><td style="text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
   // Same column headings and writing format as the General Marksheets Rank List: Adm No and Student Name on ONE line; other two-word headings split over two lines.
   const spThS = 'white-space:nowrap;line-height:1.15;';
   const spTh2 = (a,b)=>`<th style="${spThS}">${a}${b?`<br>${b}`:''}</th>`;
-  const spHead = `${spTh2('Rank')}<th class="sp-nw" style="${spThS}">Adm No</th><th class="sp-nw" style="${spThS}text-align:left;">Student Name</th>${hasCombo?spTh2(isAL?'Combination':'Optional','Subjects'):''}${spTh2('Subjects')}${spTh2('Average')}${isAL?spTh2('Points'):''}${isPL?spTh2('Aggregate')+spTh2('Division'):''}${isOL?spTh2('Overall','Grade')+spTh2('Result'):''}${spTh2('Overall','Descriptor')}${spTh2('Weak','Subject')}`;
-  const spCols = 7 + (hasCombo?1:0) + (isAL?1:0) + (isPL?2:0) + (isOL?2:0);   // columns that apply to this level
+  const spHead = `${spTh2('Rank')}<th class="sp-nw" style="${spThS}">Adm No</th><th class="sp-nw" style="${spThS}text-align:left;">Student Name</th>${hasCombo?spTh2(isAL?'Combination':'Optional','Subjects'):''}${spTh2('Subjects')}${spTh2('Average')}${isAL?spTh2('Points'):''}${aggOnB?spTh2('Aggregate')+spTh2('Division'):''}${isOL?spTh2('Overall','Grade')+spTh2('Result'):''}${spTh2('Overall','Descriptor')}${spTh2('Weak','Subject')}`;
+  const spCols = 7 + (hasCombo?1:0) + (isAL?1:0) + (aggOnB?2:0) + (isOL?2:0);   // columns that apply to this level
   // RESULT 2 caused by a missed subject: listed below the table (student + subject(s) missed), in rank order — as on the Rank List.
   const spMissed = spData.filter(r=> r.resultTxt==='2').map(r=>({r, subs: missedSubjectsFor(r.st, cls, term, year)})).filter(x=>x.subs.length);
   const spTh = 'border:1px solid #000;padding:3px 8px;background:#eef1f6;font-weight:800;text-align:left;';
@@ -17617,6 +17647,7 @@ function masterMarkSheetViewCore(forExport){
   }
   const pg = paginateMarksheet(allStudents, sel.mmPage, !!forExport, 25);
   const students = pg.pageItems;
+  const aggOnC = isP && (isLevelSheet ? DB.classes.some(c=>c.level==='P' && showAggDiv(c.id)) : showAggDiv(cls.id));   // Aggregate + Division columns / Division summary
 
   const rowsData = students.map(s=>{
     const cls = clsOf(s); // each learner's OWN class (the same class on a single-class sheet)
@@ -17627,8 +17658,8 @@ function masterMarkSheetViewCore(forExport){
     const {position, size} = isLevelSheet ? levelPosOf.get(s.id) : classPosition(s, cls, term, year);
     const maxP = isA ? maxPointsFor(s, cls) : 100;
     const overallGrade = isP ? null : gradeFor('', avgPct, cls.level);
-    const pAggregate = isP ? primaryAggregate(s, cls, term, year) : null;
-    const pDivision = isP ? primaryDivisionFor(pAggregate) : null;
+    const pAggregate = (isP && showAggDiv(cls.id)) ? primaryAggregate(s, cls, term, year) : null;
+    const pDivision = (isP && showAggDiv(cls.id)) ? primaryDivisionFor(pAggregate) : null;
     const _enrolled = new Set(studentSubjects(s, cls));
     const perSubject = subjectMeta.map(sm=>{
       const bd = subjectBreakdown(s.id, sm.subject, term, year);
@@ -17677,15 +17708,15 @@ function masterMarkSheetViewCore(forExport){
     // on a results/release sheet.
     headerRow1 = `<th rowspan="2">#</th><th rowspan="2">Adm No</th><th rowspan="2">Student Name</th>${isLevelSheet?'<th rowspan="2">Class</th>':''}` +
       subjectMeta.map(sm=>`<th rowspan="2" title="${esc(sm.subject)}">${esc(msAbbr(sm.subject))}</th>`).join('') +
-      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th><th rowspan="2">${isP?'Aggregate':'Grade'}</th>${isP?'<th rowspan="2">Division</th>':''}${level==='O'?'<th rowspan="2">RESULT</th>':''}<th rowspan="2">Position</th>`;
+      `<th rowspan="2">Subjects</th><th rowspan="2">${isA?'Points':'Average'}</th>${isP?(aggOnC?'<th rowspan="2">Aggregate</th><th rowspan="2">Division</th>':''):'<th rowspan="2">Grade</th>'}${level==='O'?'<th rowspan="2">RESULT</th>':''}<th rowspan="2">Position</th>`;
     headerRow2 = '';
     bodyRows = rowsData.map((r,i)=>{
       const subjectCells = r.perSubject.map(ps=>gradeTd(ps.grade)).join('');
       const overallCell = isA ? `${r.totalPoints}/${r.maxP}` : zpct(r.avgPct,0);
       const gradeCell = isP ? (r.pAggregate!==null? String(r.pAggregate) : '—') : (r.overallGrade || '—');
-      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${r.subjCount}</td><td>${overallCell}</td>${isP?`<td style="font-weight:800;">${gradeCell}</td>`:gradeTd(gradeCell)}${isP?`<td style="font-weight:800;">${r.pDivision||'—'}</td>`:''}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
+      return `<tr><td>${pg.startIndex+i+1}</td><td>${esc(r.student.admNo||'—')}</td><td style="text-align:left;">${esc(r.student.name)}</td>${isLevelSheet?`<td>${esc(r.clsName)}</td>`:''}${subjectCells}<td>${r.subjCount}</td><td>${overallCell}</td>${isP?(aggOnC?`<td style="font-weight:800;">${gradeCell}</td><td style="font-weight:800;">${r.pDivision||'—'}</td>`:''):gradeTd(gradeCell)}${level==='O'?`<td style="font-weight:800;">${r.resultTxt}</td>`:''}<td>${r.position}/${r.size}</td></tr>`;
     }).join('');
-    colCount = 6 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.length + (isP?1:0);
+    colCount = 6 + (level==='O'?1:0) + (isLevelSheet?1:0) + subjectMeta.length + (isP?(aggOnC?1:-1):0);
   }
 
   // ---- Summary at the foot of the sheet: how many learners earned each overall Grade (or Primary
@@ -17708,7 +17739,7 @@ function masterMarkSheetViewCore(forExport){
     : [...new Set([...gradeColsFor(level), ...Object.keys(sumCounts.grades)])].filter(k=>k!=='—' || sumCounts.grades[k]);
   const sTh = 'border:1px solid #000;padding:3px 8px;background:#eef1f6;font-weight:800;text-align:center;';
   const sTd = 'border:1px solid #000;padding:3px 8px;text-align:center;font-weight:700;';
-  const summaryHtml = allStudents.length ? `
+  const summaryHtml = (allStudents.length && !(isP && !aggOnC)) ? `
     <div class="mm-summary" style="margin-top:12px;">
       <div style="font-weight:800;margin-bottom:4px;">SUMMARY — ${allStudents.length} student${allStudents.length===1?'':'s'}</div>
       <table style="border-collapse:collapse;font-size:12px;">
@@ -17728,7 +17759,7 @@ function masterMarkSheetViewCore(forExport){
     <div class="mm-header">
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
       <div class="mm-title">${isLevelSheet?'General Mark Sheet':'Master Mark Sheet'} — ${mode==='scores'?'Real Scores':'Letter Grades'}</div>
-      <div class="mm-meta">${isLevelSheet ? esc(mmLevelLabel(level))+' — all classes' : esc(classFullName(cls))} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
+      <div class="mm-meta">${isLevelSheet ? esc(mmLevelLabel(level))+' — all classes' : esc(classFullName(cls))} &nbsp;•&nbsp; ${esc(assessLabelMM)} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
     </div>
     <div class="mm-tablewrap">
       <table class="mm-table">
@@ -17743,7 +17774,7 @@ function masterMarkSheetViewCore(forExport){
     </div>
     ${summaryHtml}
     ${mode==='grades' ? `<p class="small" style="margin-top:10px;">${isP
-      ? 'Grading scale (Primary/PLE): D1, D2 = Distinction &nbsp; C3–C6 = Credit &nbsp; P7, P8 = Pass &nbsp; F9 = Fail. Aggregate = sum of grade-points for the compulsory subjects; Division is derived from that aggregate.'
+      ? 'Grading scale (Primary/PLE): D1, D2 = Distinction &nbsp; C3–C6 = Credit &nbsp; P7, P8 = Pass &nbsp; F9 = Fail.' + (aggOnC ? ' Aggregate = sum of grade-points for the compulsory subjects; Division is derived from that aggregate.' : '')
       : `Grading scale (${isA?'A-Level':'O-Level'}): A = Excellent &nbsp; B = Very Good &nbsp; C = Good &nbsp; D = Fair &nbsp; E = Weak${isA?' &nbsp; General Paper/Subsidiaries = Pass/Fail':''}.`
     }</p>` : ''}
     <div class="mm-footer">
@@ -18142,7 +18173,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     return {st, c, avgPct:d.avgPct, pts:d.totalPoints, k: rankKeyOf(d, c.level, st, c, term, year),
       maxP: isA ? maxPointsFor(st, c) : 100,
       grade: isP ? null : gradeFor('', d.avgPct, c.level),
-      agg: isP ? primaryAggregate(st, c, term, year) : null,
+      agg: (isP && showAggDiv(c.id)) ? primaryAggregate(st, c, term, year) : null,
       nSubj: subjSet.size, nSat,
       desc: hasScores ? rankOverallDescriptor(c.level, d.avgPct, gradeAny) : '—',
       resultTxt: (c.level==='O') ? resultTextFor(st, c, term, year) : '—',
@@ -18164,6 +18195,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   const pg = paginateMarksheet(data, sel.mmPage, !!forExport, 35);   // same 35 students per page as Result Analysis > Student Performance
   const gradeTd = (g)=>`<td style="${rkTd}font-weight:800;${g&&g!=='—'?`color:${gradeColorFor(g)};`:''}">${g}</td>`;
   const isO = level==='O';
+  const aggOnD = isP && (isLevel ? DB.classes.some(c=>c.level==='P' && showAggDiv(c.id)) : showAggDiv(cls.id));   // Aggregate + Division columns
   // Combination (A-Level) / Optional Subjects (O-Level) column, same as the Students Performance Analysis.
   const hasCombo = isA || isO;
   // Tight columns: every column hugs its contents (no idle space at the sides, set inline so the PDF export keeps it);
@@ -18175,13 +18207,13 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
   // Names always stay on ONE line, however many words they have.
   const rkName = (nm)=> esc(String(nm||'').trim().split(/\s+/).filter(Boolean).join(' '));
   const th2 = (a,b)=>`<th style="${rkTh}">${a}${b?`<br>${b}`:''}</th>`;
-  const head = `${th2('Rank')}<th style="${rkTh}">Adm No</th><th style="${rkThName}">Student Name</th>${isLevel?th2('Class'):''}${hasCombo?th2(isA?'Combination':'Optional','Subjects'):''}${th2('Subjects')}${th2('Average')}${isA?th2('Points'):''}${isP?th2('Aggregate')+th2('Division'):''}${isO?th2('Overall','Grade')+th2('Result'):''}${th2('Overall','Descriptor')}${th2('Weak','Subject')}`;
+  const head = `${th2('Rank')}<th style="${rkTh}">Adm No</th><th style="${rkThName}">Student Name</th>${isLevel?th2('Class'):''}${hasCombo?th2(isA?'Combination':'Optional','Subjects'):''}${th2('Subjects')}${th2('Average')}${isA?th2('Points'):''}${aggOnD?th2('Aggregate')+th2('Division'):''}${isO?th2('Overall','Grade')+th2('Result'):''}${th2('Overall','Descriptor')}${th2('Weak','Subject')}`;
   // Only what applies to the level: Primary = Aggregate + Division; O-Level = Overall Grade + Result; A-Level = Points (no separate grade / result).
-  const colCount = 7 + (isLevel?1:0) + (hasCombo?1:0) + (isA?1:0) + (isP?2:0) + (isO?2:0);
+  const colCount = 7 + (isLevel?1:0) + (hasCombo?1:0) + (isA?1:0) + (aggOnD?2:0) + (isO?2:0);
   const body = pg.pageItems.map(r=>{
     const clsName = r.c ? esc(classFullName(r.c)) : '—';
     const tail = isP
-      ? `<td style="${rkTd}font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="${rkTd}font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
+      ? !aggOnD ? '' : `<td style="${rkTd}font-weight:800;">${r.agg!==null?r.agg:'—'}</td><td style="${rkTd}font-weight:800;">${r.agg!==null?esc(String(primaryDivisionFor(r.agg)||'—')):'—'}</td>`
       : (isO ? gradeTd(r.grade||'—') : '');
     return `<tr><td style="${rkTd}font-weight:800;">${r.pos}</td><td style="${rkTd}">${esc(r.st.admNo||'—')}</td><td style="${rkTdName}">${rkName(r.st.name)}</td>${isLevel?`<td style="${rkTd}">${clsName}</td>`:''}${hasCombo?`<td style="${rkTd}">${esc(comboLabel(r.st, r.c))}</td>`:''}<td style="${rkTd}">${r.nSat}/${r.nSubj}</td><td style="${rkTd}">${zpct(r.avgPct,1)}</td>${isA?`<td style="${rkTd}">${r.pts}/${r.maxP}</td>`:''}${tail}${isO?`<td style="${rkTd}font-weight:800;">${r.resultTxt}</td>`:''}<td style="${rkTd}">${esc(r.desc)}</td><td style="${rkTd}text-align:left;">${esc(r.weakTxt)}</td></tr>`;
   }).join('');
@@ -18195,7 +18227,7 @@ function masterRankView({isAdmin, visibleClasses, cls, term, year, mode, sel, fo
     <div class="mm-header">
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="mm-logo" alt="">`:''}<span class="mm-school">${esc(DB.info.schoolName||'')}</span>
       <div class="mm-title">${title}</div>
-      <div class="mm-meta">${scope} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
+      <div class="mm-meta">${scope} &nbsp;•&nbsp; ${esc(assessLabelMM)} &nbsp;•&nbsp; ${esc(term)}, ${esc(String(year))} &nbsp;•&nbsp; ${pg.total} student${pg.total===1?'':'s'}</div>
     </div>
     <div class="mm-tablewrap">
       <table class="mm-table mm-rank" style="width:100%;">
@@ -19032,7 +19064,7 @@ function nurseryThemeCardHTML(){
 const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
 function nrcCss(){
   const css = `
-.nrc-card{--u:7.94px;width:100%;max-width:794px;height:auto;min-height:0;aspect-ratio:210/297;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;font-weight:700;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:2.8u 2.6u 2.4u;position:relative;overflow:hidden;display:flex;flex-direction:column;}
+.nrc-card{--u:7.94px;width:100%;max-width:794px;height:auto;min-height:0;aspect-ratio:210/297;margin:0 auto;background:#fff;color:#1d2433;font-family:Arial,Helvetica,sans-serif;font-size:1.4u;line-height:1.2;font-weight:700;box-sizing:border-box;border:0.9u solid var(--nf);border-radius:1.6u;padding:3.3u 3u 3u;position:relative;overflow:hidden;display:flex;flex-direction:column;}
 @supports (width:1cqw){.nrc-wrap{container-type:inline-size;} .nrc-card{--u:1cqw;}}
 .nrc-card.nrc-pdf{--u:7.94px;width:794px;max-width:none;height:1123px;min-height:1123px;aspect-ratio:auto;}
 .nrc-head{font-weight:700;display:flex;align-items:center;gap:1.6u;background:var(--nh);color:var(--nhi);border-radius:1.2u;padding:1.4u 2u;}
@@ -19123,8 +19155,57 @@ function nrcCss(){
 .nrc-bio td.nm{color:#0b2a6f;font-weight:900;font-size:1.7u;}
 .nrc-bio td.ph{padding:.5u;text-align:center;background:#fff;}
 .nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;border:.2u solid var(--nf);border-radius:.5u;}
+/* ONE-PAGE FIT: every size below is in "k" units = u x --nk. nurseryReportCardHTML() measures the card and sets --nk (1 = full size) so the whole
+   card always fits one A4 page; nothing is allowed to shrink, clip or overlap (flex-shrink:0), the grid just grows with its content. */
+.nrc-card{--nk:1;font-size:1.3k;line-height:1.22;}
+.nrc-card>*{flex-shrink:0;}
+.nrc-topline{font-size:1.05k;margin-bottom:.4k;}
+.nrc-topline .nrc-fees{font-size:1.25k;}
+.nrc-head{padding:.8k 1.6k;min-height:7k;margin-bottom:1k;border-radius:1.1k;}
+.nrc-head.nrc-hl{padding-left:13k;padding-right:13k;}
+.nrc-logo{left:1k;width:10.5k;max-width:10.5k;height:calc(100% - 1.2k);max-height:none;padding:.3k;border-width:.25k;border-radius:.8k;}
+.nrc-head .nrc-school{margin:.1k 0 .2k;}
+.nrc-head .nrc-addr{font-size:1.1k;margin-top:.2k;}
+.nrc-sub{font-size:1.15k;padding:.2k 1.4k;margin-top:.45k;}
+.nrc-bio{margin:0 0 .9k;}
+.nrc-bio td{padding:.45k .8k;font-size:1.35k;}
+.nrc-bio td.lbl{font-size:1k;}
+.nrc-bio td.nm{font-size:1.55k;}
+.nrc-bio-photo{width:6.4k;height:6.4k;}
+.nrc-key{font-size:1.05k;margin-bottom:.8k;gap:.6k;}
+.nrc-key span{padding:.2k .8k;}
+.nrc-key i{width:1.7k;height:1.7k;}
+.nrc-grid{flex:1 0 auto;min-height:0;gap:.7k 1.1k;align-content:space-evenly;}
+.nrc-pics{margin:.4k 0 0;gap:.4k;}
+.nrc-pics svg{max-width:10k;border-radius:.6k;}
+.nrc-nopics .nrc-grid>div:not(.nrc-dept){display:none;}
+.nrc-measure .nrc-grid{flex:0 0 auto !important;}   /* while measuring, the grid takes only the height its content needs */
+.nrc-dh{font-size:1.35k;padding:.4k 1k;letter-spacing:.06k;line-height:1.15;}
+.nrc-tb th{font-size:1.15k;padding:.3k .4k;line-height:1.15;}
+.nrc-tb td{font-size:1.25k;padding:.35k .5k;line-height:1.18;}
+.nrc-tb td.a{font-size:1.22k;line-height:1.16;}
+.nrc-tb td.m{font-size:1.2k;line-height:1.18;}
+.nrc-g{width:2.3k;height:2.3k;font-size:1.35k;}
+.nrc-overall-table{margin:.7k 0 0;font-size:1.3k;}
+.nrc-overall-table th,.nrc-overall-table td{padding:.4k .8k;line-height:1.15;}
+.nrc-cm{margin-top:.7k;border-radius:1k;}
+.nrc-cm div{padding:.5k 1.1k;font-size:1.3k;line-height:1.25;}
+.nrc-cm .s{min-width:9k;}
+.nrc-foot{margin-top:.7k;gap:.8k;font-size:1.3k;line-height:1.2;}
+.nrc-foot div{padding:.35k .8k;}
+.nrc-foot b{font-size:1k;}
+.nrc-theme{margin-top:.7k;font-size:1.1k;padding:.35k .8k;line-height:1.2;}
+.nrc-scale{margin-top:.7k;}
+.nrc-scale th,.nrc-scale td{padding:.25k .4k;font-size:1.05k;line-height:1.15;}
+.nrc-scale td{font-size:1.3k;}
+.nrc-cl{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;max-height:2.37em;}   /* descriptor: one or two lines only */
+.nrc-card.nrc-measure{height:auto !important;min-height:0 !important;aspect-ratio:auto !important;}
+.nrc-tb td,.nrc-tb th{overflow-wrap:anywhere;min-width:0;}
+.nrc-stage{position:relative;width:100%;aspect-ratio:210/297;overflow:hidden;}
+.nrc-stage>.nrc-card{position:absolute;left:0;top:0;margin:0;transform-origin:0 0;transform:scale(var(--ns,.9));}
+@media print{.nrc-stage>.nrc-card{--ns:.9235 !important;}}
 `;
-  return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`);
+  return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`).replace(/(\d+(?:\.\d+)?|\.\d+)k\b/g, (m,n)=>`calc(var(--u)*${n}*var(--nk))`);
 }
 /* Nursery department illustrations: fuller human figures, natural proportions and visible classroom/play actions. */
 const NRC_SVG = (()=>{
@@ -19175,6 +19256,67 @@ function nrcOverallComment(grade, name, kind, studentId){
   let h=0; for(let i=0;i<seed.length;i++) h=(h*31+seed.charCodeAt(i))>>>0;
   return list[h%list.length];
 }
+// Finds the largest scale (--nk, 1 = full size) at which the whole Nursery card fits ONE A4 page (794 x 1123 px).
+// The card is measured off-screen at its real A4 size with height:auto (nrc-measure), so its natural content height is compared
+// with the page height: nothing past the bottom edge, nothing wider than its box, no table cell spilling into its neighbour.
+// The result is then re-verified on the final settings and nudged down until it really fits. If even a heavily reduced card cannot
+// fit, the illustrations are dropped first. Every size is u-based, so the same layout holds on screen, in print and in the PDF.
+function nrcFitScale(cardHTML){
+  const out = {k:1, nopics:false};
+  let host = null;
+  try{
+    host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:-12000px;top:0;width:794px;visibility:hidden;pointer-events:none;';
+    host.innerHTML = cardHTML;
+    document.body.appendChild(host);
+    const c = host.querySelector('.nrc-card'); if(!c) return out;
+    c.classList.add('nrc-pdf','nrc-measure');
+    const PAGE_H = 1123 - 2;
+    let lineRule = false;   // when on, a descriptor that needs a 3rd line also counts as "does not fit"
+    const clipped = ()=>{ const el = c.querySelectorAll('.nrc-cl'); for(let i=0;i<el.length;i++){ if(el[i].scrollHeight > el[i].clientHeight+1) return true; } return false; };
+    const bad = ()=>{
+      if(lineRule && clipped()) return true;
+      if(c.getBoundingClientRect().height > PAGE_H) return true;
+      if(c.scrollWidth > c.clientWidth+1) return true;
+      const cells = c.querySelectorAll('.nrc-bio td,.nrc-tb th,.nrc-tb td,.nrc-head,.nrc-foot div,.nrc-cm div,.nrc-scale th,.nrc-scale td,.nrc-overall-table th,.nrc-overall-table td,.nrc-key');
+      for(let i=0;i<cells.length;i++){ if(cells[i].scrollWidth > cells[i].clientWidth+1) return true; }
+      return false;
+    };
+    const search = (min)=>{
+      c.style.setProperty('--nk', 1); if(!bad()) return 1;
+      c.style.setProperty('--nk', min); if(bad()) return 0;
+      let lo = min, hi = 1;
+      for(let i=0;i<12;i++){ const m=(lo+hi)/2; c.style.setProperty('--nk', m); if(bad()) hi=m; else lo=m; }
+      return lo;
+    };
+    let k = search(0.45);
+    if(!k){ c.classList.add('nrc-nopics'); out.nopics = true; k = search(0.35) || 0.35; }
+    // Learning-area descriptors must sit on one or two lines: shrink a little more until none needs a third line.
+    lineRule = true;
+    const kl = search(0.5);
+    k = Math.min(k, kl || 0.5);
+    if(!kl) lineRule = false;   // still too long at the floor: the 2-line clamp trims it rather than shrinking the card further
+    k = Math.floor(k*1000)/1000;
+    for(let i=0;i<60 && k>0.3;i++){ c.style.setProperty('--nk', k); if(!bad()) break; k = Math.floor((k-0.005)*1000)/1000; }
+    out.k = k;
+  }catch(e){ console.warn('nrcFitScale', e); }
+  finally{ if(host && host.parentNode) host.parentNode.removeChild(host); }
+  return out;
+}
+// On screen the Nursery card is laid out at its true A4 size (794 px wide) and the whole page is scaled to the width available,
+// so a phone, a tablet and a desktop all show the identical one-page layout (no re-wrapping, nothing clipped or overlapping).
+function nrcScaleAll(){
+  document.querySelectorAll('.nrc-stage').forEach(st=>{
+    const card = st.firstElementChild, w = st.clientWidth;
+    if(card && w) card.style.setProperty('--ns', (w/794).toFixed(5));
+  });
+}
+(function(){
+  let raf = 0;
+  const go = ()=>{ if(raf) return; raf = requestAnimationFrame(()=>{ raf = 0; nrcScaleAll(); }); };
+  window.addEventListener('resize', go);
+  try{ new MutationObserver(()=>{ if(document.querySelector('.nrc-stage')) nrcScaleAll(); }).observe(document.body, {childList:true, subtree:true}); }catch(e){}
+})();
 function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPeriods, isCurrentPeriod){
   const { rows } = computeSubjectRows(s, cls, term, year);
   const byName = new Map(rows.map(r=>[r.subject, r]));
@@ -19197,7 +19339,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
         ${d.areas.map(a=>{
           const r = byName.get(a.name); const g = (r && r.avg!=null) ? nurseryGradeFor(r.avg) : null;
           const txt = g ? nurseryDescriptor(a.id, g) : '';
-          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g)}</td>`:''}<td class="m" style="border-color:${th.line}">${esc(txt)}</td></tr>`;
+          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g)}</td>`:''}<td class="m" style="border-color:${th.line}"><div class="nrc-cl">${esc(txt)}</div></td></tr>`;
         }).join('')}
       </table>
     </div>`;
@@ -19212,15 +19354,15 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const info = DB.info;
   const termTxt = String(term||'').toUpperCase();
   const key = NURSERY_GRADES.map(g=>`<span><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
-  const card = `
+  let card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
-  <div class="nrc-card${embedded?' nrc-pdf':''}" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
+  <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
     <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
-    <div class="nrc-head">
+    <div class="nrc-head${info.logo?' nrc-hl':''}">
       ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="School logo">`:''}
       <div class="nrc-ht">
-        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.7:(String(info.schoolName||'').length>26?3.15:3.8)})">${esc(info.schoolName||'')}</div>
+        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.3:(String(info.schoolName||'').length>26?2.7:3.2)}*var(--nk))">${esc(info.schoolName||'')}</div>
         <div class="nrc-addr">Academic Year: ${esc(String(year||DB.info.currentYear||''))}${info.address?' &nbsp;|&nbsp; '+esc(info.address):''}</div>
         ${(info.phone||info.email)?`<div class="nrc-addr">${[info.phone?'Tel: '+esc(info.phone):'', info.email?'Email: '+esc(info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
         <div class="nrc-sub">STUDENT'S ACADEMIC REPORT CARD FORM</div>
@@ -19251,8 +19393,8 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
     </table>
     <div class="nrc-cm">
-      <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*3)'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
-      <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*5);vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
+      <div><b>Class Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</span> &nbsp;<b>Sign:</b>${ctSig?`<img src="${ctSig}" style="height:3u;vertical-align:middle;" alt="">`.replace('3u','calc(var(--u)*2.4*var(--nk))'):'<span class="s"></span>'} ${ctName?`<small>(${esc(ctName)})</small>`:''}</div>
+      <div><b>Head Teacher's comment:</b> <span class="w">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</span> &nbsp;<b>Sign:</b><span class="s"></span>${info.stamp?`<img src="${info.stamp}" style="height:calc(var(--u)*3.6*var(--nk));vertical-align:middle;margin-left:6px;" alt="">`:''}</div>
     </div>
     <div class="nrc-foot" style="grid-template-columns:1fr 1fr;">
       <div><b>Term ends on</b>${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
@@ -19264,6 +19406,9 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       <tr><th>GRADE GIVEN</th>${NURSERY_GRADES.map(g=>`<td style="color:${NRC_GRADE_COL[g]}">${g}</td>`).join('')}</tr>
     </table>
   </div></div>`;
+  { const f = nrcFitScale(card);
+    card = card.replace('style="--nf:', 'style="--nk:'+f.k+';--nf:').replace(/<div class="nrc-card(?= |")/, m=>m+(f.nopics?' nrc-nopics':''));
+    if(!embedded) card = card.replace('<div class="nrc-card', '<div class="nrc-stage"><div class="nrc-card').replace(/<\/div><\/div>\s*$/, '</div></div></div>'); }
   if(embedded || bareCard) return card;
   const picker = pickerPeriods && pickerPeriods.length ? `
   <div class="card" style="margin-bottom:10px;">
@@ -19293,7 +19438,7 @@ async function downloadNurseryReportPdf(studentId, term, year){
   document.body.appendChild(holder);
   try{
     const t = String(term||DB.info.currentTerm||'Term').replace(/\s+/g,'_');
-    await downloadElementAsPdf('nrcPdfHolder', `${s.name.replace(/\s+/g,'_')}_${t}_${year||DB.info.currentYear}_report.pdf`, {orientation:'portrait'});
+    await downloadElementAsPdf('nrcPdfHolder', `${s.name.replace(/\s+/g,'_')}_${t}_${year||DB.info.currentYear}_report.pdf`, {orientation:'portrait', onePage:true});
   } finally { holder.remove(); }
 }
 
@@ -19759,8 +19904,10 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         const _pairs = [{l:'Total Subjects', v:String(rows.length)}];
         if(isA) _pairs.push({l:'Total Points', v:`${totalPoints}/${maxP}`});
         else if(_showAvg) _pairs.push({l:'Total Final Average', v:zrpct(avgPct,0)});
-        _pairs.push({l:isP?'Total Aggregates':'Overall Grade', v:isP?(pAggregate!==null?pAggregate:'—'):(overallGrade||'—')});
-        _pairs.push({l:isP?'Division':'Level', v:isP?(pDivision||'—'):(overallDesc||'—')});
+        if(!isP || showAggDiv(cls.id)){   // Primary: Aggregates + Division only when switched on for this class
+          _pairs.push({l:isP?'Total Aggregates':'Overall Grade', v:isP?(pAggregate!==null?pAggregate:'—'):(overallGrade||'—')});
+          _pairs.push({l:isP?'Division':'Level', v:isP?(pDivision||'—'):(overallDesc||'—')});
+        }
         if(_showPos) _pairs.push({l:`${termLbl} Position`, v:`${ordSup(position)} / ${size}`, pos:true});
         _pairs.push({l:`Weak Subject${weakSubjects && weakSubjects.length>1?'s':''}`, v:weakSubjects && weakSubjects.length?esc(weakSubjects.map(msAbbr).join(', ')):'—'});
         return summaryRowsLayout(_pairs).map(r=>{
@@ -19803,8 +19950,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <colgroup><col style="width:50%"><col style="width:50%"></colgroup>
       <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
       <tr>
-        <td>${isP ? esc(primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</td>
-        <td>${isP ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</td>
+        <td>${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</td>
+        <td>${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</td>
       </tr>
     </table>`}
 
@@ -20026,10 +20173,10 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       prevPeriod, prevPosition, weakSubjects
     },
     comments: {
-      classComment: isP ? primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak),
-      headComment: isP ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
+      classComment: (isP && showAggDiv(cls.id)) ? primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak),
+      headComment: (isP && showAggDiv(cls.id)) ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
     },
-    classId: cls.id, showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
+    classId: cls.id, showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showAggDiv: showAggDiv(cls.id), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
     signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
     feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, photo: s.photo
@@ -20521,8 +20668,10 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const _pairs = [['Total Subjects', String(data.totals.subjectCount)]];
   if(data.isA) _pairs.push(['Total Points', `${data.totals.totalPoints}/${sm.maxP}`]);
   else if(_showAvg) _pairs.push(['Total Final Average', zrpct(sm.avgPct,0)]);
-  _pairs.push([data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')]);
-  _pairs.push([data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—')]);
+  if(!data.isP || data.showAggDiv !== false){   // Primary: Aggregates + Division only when switched on for this class
+    _pairs.push([data.isP?'Total Aggregates':'Overall Grade', data.isP?(sm.pAggregate!=null?String(sm.pAggregate):'—'):(sm.overallGrade||'—')]);
+    _pairs.push([data.isP?'Division':'Level', data.isP?(sm.pDivision||'—'):(sm.overallDesc||'—')]);
+  }
   if(_showPos) _pairs.push([`${data.term} Position`, `${ordSup(sm.position,'pdf')} / ${sm.size}`, true]);
   _pairs.push([`Weak Subject${sm.weakSubjects&&sm.weakSubjects.length>1?'s':''}`, (sm.weakSubjects&&sm.weakSubjects.length?sm.weakSubjects.map(msAbbr).join(', '):'—')]);
   const summaryRows = summaryRowsLayout(_pairs);
@@ -23043,7 +23192,7 @@ document.addEventListener('submit', async (e)=>{
     'createAccount','uploadStaffTemplate','uploadFeesCodes','saveBands','saveOBands','savePBands','saveNurseryAreas','saveNurseryBands','savePromoRules','saveExamConfig','addCwTest','editCwTest','saveAssessInUse','saveClassExamConfig','addClassCwTest','editClassCwTest','schoolInfo','setTerm','restoreBackup','promote','promoteAll','quickAddStudent',
     'financeUnlock','addFinanceFee','editFinanceFee','addFinancePayment','editFinancePayment','addRequirement','editRequirement','addDefaultRequirements','setFinancePassword','forceFinanceReset','setOwnerCode','updateTeacherProfile','editAssignPapers','updateStudentProfile','updateClass','saveOCompulsory','savePCompulsory','saveACompulsoryExtra','browseRestore','selectiveRestore','addShortfallSettlement',
     'addDefaultExpenseTypes','addExpenseType','editExpenseType','addExpense','editExpense','recordReqCash','linkParentChild',
-    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade','saveSummaryOptions','saveClassReportOptions']);
+    'setClassAgreedFee','setStudentAgreedFee','setFeeClassAgreed','setFeeIndividualAgreed','addInstallment','saveClassReqSelection','setProjectGrading','schoolGrade','saveSummaryOptions','saveClassReportOptions','saveClassAggDivOptions']);
   try{
     if(ADMIN_ONLY_FORMS.has(type) && (!CUR || CUR.role!=='admin')){
       alert('Only an Admin can do that.'); return;
@@ -24776,6 +24925,11 @@ document.addEventListener('submit', async (e)=>{
       });
       await saveInfo(); render();
     }
+    else if(type==='saveClassAggDivOptions'){
+      DB.info.reportCardAggDivOptions = DB.info.reportCardAggDivOptions || {};
+      DB.classes.forEach(c=>{ if(c.level==='P') DB.info.reportCardAggDivOptions[String(c.id)] = fd.get('agd_'+c.id)==='on'; });
+      await saveInfo(); render();
+    }
     else if(type==='saveSummaryOptions'){
       DB.info.showTotalAvgPos = fd.get('showTotalAvgPos')==='on';
       await saveInfo(); render();
@@ -26083,12 +26237,13 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
   // top-to-bottom) as needed at that legible size — every column still ends up in the
   // PDF, it just spans more pages for very wide classes.
   const MIN_SCALE = 0.55;
-  const naturalScale = (pageW - PDF_FRAME_CONTENT*2) / canvas.width;
-  const scale = Math.max(naturalScale, MIN_SCALE);
   const innerW = pageW - PDF_FRAME_CONTENT*2, innerH = pageH - PDF_FRAME_CONTENT*2; // area inside the frame
+  const naturalScale = innerW / canvas.width;
+  // opts.onePage (Nursery report card): the whole card is shrunk to fit ONE A4 page, both ways, never tiled across pages.
+  const scale = opts.onePage ? Math.min(innerW / canvas.width, innerH / canvas.height) : Math.max(naturalScale, MIN_SCALE);
   const pxPerPageW = innerW / scale, pxPerPageH = innerH / scale;
-  const cols = Math.max(1, Math.ceil(canvas.width / pxPerPageW));
-  const rows = Math.max(1, Math.ceil(canvas.height / pxPerPageH));
+  const cols = opts.onePage ? 1 : Math.max(1, Math.ceil(canvas.width / pxPerPageW));
+  const rows = opts.onePage ? 1 : Math.max(1, Math.ceil(canvas.height / pxPerPageH));
   const multiPage = cols>1 || rows>1;
 
   let first = true;
@@ -26105,7 +26260,7 @@ async function downloadElementAsPdf(elementId, filename, opts={}){
       if(!first) pdf.addPage();
       first = false;
       drawPdfFrame(pdf, true);
-      pdf.addImage(img,'JPEG',PDF_FRAME_CONTENT,PDF_FRAME_CONTENT, sw*scale, sh*scale);
+      pdf.addImage(img,'JPEG',PDF_FRAME_CONTENT + (opts.onePage ? Math.max(0,(innerW-sw*scale)/2) : 0),PDF_FRAME_CONTENT + (opts.onePage ? Math.max(0,(innerH-sh*scale)/2) : 0), sw*scale, sh*scale);
       if(multiPage){
         pdf.setFontSize(7); pdf.setTextColor(150);
         pdf.text(`sheet section — row ${r+1}/${rows}, column ${c+1}/${cols}`, PDF_FRAME_CONTENT, pageH-14);
