@@ -961,7 +961,7 @@ table.rc-info-table td.val{font-weight:700;}
 /* Keep the learner name vertically centered in its information row on Primary, O-Level and A-Level cards, matching Nursery. */
 table.rc-info-table td.rc-stu-name{vertical-align:middle !important;line-height:1.2;padding-top:8px;padding-bottom:8px;}
 table.rc-info-table td.photo-cell{padding:0;position:relative;overflow:hidden;text-align:center;vertical-align:middle;background:#fff;}
-table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 0%;border:0;border-radius:0;display:block;}
+table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 0%;border:0;border-radius:0;display:block;max-width:none;max-height:none;}
 /* PDF capture only: swap to separate borders, which is what actually avoids the
    html2canvas rowspan-painting bug mentioned above (collapse vs separate makes no
    visible difference at this border weight once rendered into the final PDF image). */
@@ -1165,7 +1165,7 @@ table.rc-comments-table td{border:1.4px solid var(--blue);padding:9px 10px;font-
 .rc-sign-row{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:18px;font-size:11px;margin:18px 0 10px;font-weight:700;}
 .rc-sign-block{min-width:0;text-align:center;position:relative;}
 .rc-sign-block .rc-person{display:block;border-bottom:1px solid var(--ink);padding-bottom:3px;min-height:17px;}
-.rc-sign-block .rc-action{display:block;border-bottom:1px solid var(--ink);padding:5px 4px 3px;min-height:20px;font-weight:700;}
+.rc-sign-block .rc-action{display:block;border-bottom:1px solid var(--ink);padding:5px 4px 3px;min-height:20px;font-weight:700;text-align:left;}
 /* School stamp overlay: sits diagonally on top of the Head Teacher name / "School
    Stamp" line, shrunk to fit within that block's own footprint. It's absolutely
    positioned and pointer-events:none, so it never takes up layout space or shifts
@@ -19330,7 +19330,7 @@ function nrcCss(){
 .nrc-foot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1u;margin-top:1u;font-size:1.4u;}
 .nrc-foot div{border:.2u solid var(--nf);border-radius:.9u;padding:.7u 1u;background:var(--nfp);}
 .nrc-foot b{color:var(--nf);display:block;font-size:1.15u;text-transform:uppercase;}
-.nrc-theme{margin-top:auto;margin-bottom:-1u;white-space:nowrap;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
+.nrc-theme{margin-top:auto;margin-bottom:1.2u;white-space:normal;overflow-wrap:anywhere;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
 /* Readability pass: keep Nursery report text comfortably legible at A4 print size. */
 .nrc-card{font-size:max(11px,calc(var(--u)*1.5));line-height:1.24;}
 .nrc-school{font-size:clamp(22px,calc(var(--u)*3.6),34px);line-height:1.12;display:block;transform:none;}
@@ -19397,7 +19397,10 @@ function nrcCss(){
 .nrc-key{font-size:1.05k;margin-bottom:.8k;gap:.6k;}
 .nrc-key span{padding:.2k .8k;}
 .nrc-key i{width:1.7k;height:1.7k;}
-.nrc-grid{flex:1 0 auto;min-height:0;gap:.7k 1.1k;align-content:space-evenly;}
+.nrc-grid{flex:1 1 0;min-height:0;grid-template-rows:minmax(0,1fr) auto minmax(0,1fr) auto;align-content:stretch;gap:.7k 1.1k;}
+.nrc-grid>.nrc-dept{min-width:0;min-height:0;display:flex;flex-direction:column;}
+.nrc-grid>.nrc-dept>.nrc-tb{width:100%;min-width:0;table-layout:fixed;}
+.nrc-grid>.nrc-dept>.nrc-tb td,.nrc-grid>.nrc-dept>.nrc-tb th{white-space:normal;overflow-wrap:anywhere;word-break:normal;}
 .nrc-pics{margin:.4k 0 0;gap:.4k;}
 .nrc-pics svg{max-width:10k;border-radius:.6k;}
 .nrc-nopics .nrc-grid>div:not(.nrc-dept){display:none;}
@@ -19426,7 +19429,8 @@ function nrcCss(){
 .nrc-cl{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;white-space:normal;overflow:hidden;text-overflow:ellipsis;max-height:calc(2 * 1.24em);overflow-wrap:anywhere;word-break:normal;line-height:1.24;}
 .nrc-tb td.m{vertical-align:middle;overflow:hidden;overflow-wrap:anywhere;word-break:normal;}
 .nrc-card.nrc-measure{height:auto !important;min-height:0 !important;aspect-ratio:auto !important;}
-.nrc-tb td,.nrc-tb th{overflow-wrap:anywhere;min-width:0;}
+.nrc-tb td,.nrc-tb th{overflow-wrap:anywhere;word-break:normal;min-width:0;height:auto;}
+.nrc-tb tr{break-inside:avoid;page-break-inside:avoid;}
 .nrc-stage{position:relative;width:100%;aspect-ratio:210/297;overflow:hidden;}
 .nrc-stage>.nrc-card{position:absolute;left:0;top:0;margin:0;transform-origin:0 0;transform:scale(var(--ns,.9));}
 @media print{.nrc-stage>.nrc-card{--ns:.9235 !important;}}
@@ -19445,7 +19449,7 @@ function nrcCss(){
 .nrc-sign{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:1.6k;margin:1k 0 .5k;font-size:1.1k;font-weight:700;}
 .nrc-sg{min-width:0;text-align:center;position:relative;}
 .nrc-sg .p{display:block;border-bottom:.15k solid #1d2433;padding-bottom:.25k;min-height:1.5k;line-height:1.2;}
-.nrc-sg .a{display:block;border-bottom:.15k solid #1d2433;padding:.45k .3k .25k;min-height:1.9k;position:relative;line-height:1.2;}
+.nrc-sg .a{display:block;border-bottom:.15k solid #1d2433;padding:.45k .3k .25k;min-height:1.9k;position:relative;line-height:1.2;text-align:left;}
 .nrc-sg .a img{position:absolute;left:50%;bottom:.15k;max-width:88%;max-height:2.4k;transform:translateX(-50%);object-fit:contain;pointer-events:none;mix-blend-mode:multiply;}
 .nrc-sg .stamp{position:absolute;left:50%;top:50%;width:8k;height:8k;max-width:92%;transform:translate(-50%,-50%) rotate(-18deg);object-fit:contain;opacity:.6;pointer-events:none;z-index:3;mix-blend-mode:multiply;}
 .nrc-tm{justify-self:center;width:90%;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Times New Roman',Times,serif;font-size:1.1k;line-height:1.3;color:#000;font-weight:900;}
@@ -19461,6 +19465,7 @@ function nrcCss(){
   const plus1 = t => t.replace(/font-size:\s*([^;}]+)/g, (m,v)=>`font-size:calc(${v.trim()} + 1px)`);
   // Final overrides (not enlarged): Primary-style theme line, black bold motto, very bold table headers.
   const extra = `
+.nrc-promotion{display:block !important;text-align:left !important;margin-left:0 !important;}
 .nrc-mot{margin-top:calc(var(--u)*2.2) !important;}
 .nrc-legend .fee-gap{width:40px;}
 .nrc-card{padding-top:calc(var(--u)*3) !important;padding-bottom:calc(var(--u)*3.2) !important;}
@@ -19547,10 +19552,17 @@ function nrcFitScale(cardHTML){
     c.classList.add('nrc-pdf','nrc-measure');
     const PAGE_H = 1123 - 2;
     const bad = ()=>{
-      if(c.getBoundingClientRect().height > PAGE_H) return true;
+      // Include the complete scrollable content (especially the final theme strip),
+      // not only the card's fixed A4 box, which can hide overflow via overflow:hidden.
+      if(Math.max(c.getBoundingClientRect().height, c.scrollHeight) > PAGE_H) return true;
       if(c.scrollWidth > c.clientWidth+1) return true;
-      const cells = c.querySelectorAll('.nrc-bio td,.nrc-tb th,.nrc-tb td,.nrc-head,.nrc-gs th,.nrc-gs td,.nrc-cmt th,.nrc-cmt td,.nrc-overall-table th,.nrc-overall-table td,.nrc-key');
-      for(let i=0;i<cells.length;i++){ if(cells[i].scrollWidth > cells[i].clientWidth+1) return true; }
+      const cells = c.querySelectorAll('.nrc-bio td,.nrc-tb th,.nrc-tb td,.nrc-head,.nrc-gs th,.nrc-gs td,.nrc-cmt th,.nrc-cmt td,.nrc-overall-table th,.nrc-overall-table td,.nrc-key,.nrc-theme');
+      for(let i=0;i<cells.length;i++){
+        if(cells[i].scrollWidth > cells[i].clientWidth+1) return true;
+        if(cells[i].scrollHeight > cells[i].clientHeight+1) return true;
+      }
+      const theme = c.querySelector('.nrc-theme');
+      if(theme && theme.getBoundingClientRect().bottom > c.getBoundingClientRect().bottom-2) return true;
       return false;
     };
     const search = (min)=>{
@@ -19645,7 +19657,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     </div>
     <table class="nrc-bio">
       <colgroup>${s.photo
-        ? '<col style="width:18%"><col style="width:27%"><col style="width:18%"><col style="width:27%"><col style="width:10%">'
+        ? '<col style="width:18%"><col style="width:27%"><col style="width:15%"><col style="width:24%"><col style="width:16%">'
         : '<col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%">'}</colgroup>
       <tr>
         <td class="lbl">Name</td><td class="val nm">${esc(s.name)}</td>
@@ -19664,7 +19676,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     ${showG ? `<div class="nrc-key"><b>KEY:</b>${key}</div>` : ''}
     ${grid}
     <table class="nrc-overall-table" style="width:100%;border-collapse:collapse;margin:1u 0;font-size:1.25u;">
-      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall Grade</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b>${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? ` <span class="nrc-promotion" style="font-weight:900;color:#c62828;font-size:max(11px,calc(var(--u)*1.5));margin-left:.8em;line-height:1.2;">${esc(pd.text)}</span>` : ''; })()}</td></tr>
+      <tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);width:38%;">Overall Grade</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b>${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? ` <span class="nrc-promotion" style="display:block;text-align:right;font-weight:900;color:#c62828;font-size:max(11px,calc(var(--u)*1.5));margin:calc(var(--u)*.25) 0 0;line-height:1.2;">${esc(pd.text)}</span>` : ''; })()}</td></tr>
       ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
     </table>
     <table class="nrc-gs">
@@ -20114,7 +20126,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     <table class="rc-info-table">
       <colgroup>${s.photo
-        ? '<col style="width:18%"><col style="width:27%"><col style="width:18%"><col style="width:27%"><col style="width:10%">'
+        ? '<col style="width:18%"><col style="width:27%"><col style="width:15%"><col style="width:24%"><col style="width:16%">'
         : '<col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%">'}</colgroup>
       <tr>
         <td class="lbl">Name</td><td class="val rc-stu-name">${esc(s.name)}</td>
@@ -20969,10 +20981,10 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     if(hasRes){
       boldLabel('RESULT :', contentX, w1, cy+resH-4.5, bodySize+2);
       centerText(String(data.result), contentX+w1, w2, cy+resH-4, bodySize+4, 'bold', RED);
-      if(promo) fitText(promo.text, contentX+w1+w2, w3, bodySize+2);
+      if(promo) leftText(promo.text, contentX+w1+w2+4, cy+resH-4.5, Math.min(bodySize+2, 10), 'bold', RED);
     } else {
       boldLabel('DECISION :', contentX, w1, cy+resH-4.5, bodySize+2);
-      fitText(promo.text, contentX+w1, w2, bodySize+3);
+      leftText(promo.text, contentX+w1+4, cy+resH-4.5, Math.min(bodySize+3, 10), 'bold', RED);
     }
     cy += resH;
   } }
@@ -21159,7 +21171,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // ---- 10. Sign-off row ----
   const thirdW = contentW/3;
   leftText(`Class Teacher: ${data.signOff.ctName}`, contentX, cy, 8, 'bold');
-  leftText('Signature: ______________', contentX, cy+11, 7.5);
+  pdf.setFont('helvetica','normal'); pdf.setFontSize(7.5); setC(ink); pdf.text('Signature: ______________', contentX+4, cy+11);
   // Uploaded Class Teacher signature: drawn directly above the "Signature: ____" line,
   // scaled to fit within this sign-off block's own footprint (never wider than the
   // Class Teacher column, capped in height) so it never shifts or reflows anything
@@ -26153,8 +26165,11 @@ document.addEventListener('keydown', function(e){
       prevW = card.style.width; prevZoom = card.style.zoom;
       card.style.zoom = ''; card.style.width = '194mm'; card.style.margin = '0 auto';
       const availH = 281 * 96 / 25.4;                       // A4 height minus 8mm top/bottom, in CSS px
-      const h = card.offsetHeight || 0;
-      if(h > availH) card.style.zoom = String(Math.max(0.3, availH / h));
+      const availW = 194 * 96 / 25.4;                       // printable width inside the frame
+      const h = Math.max(card.offsetHeight || 0, card.scrollHeight || 0);
+      const w = Math.max(card.offsetWidth || 0, card.scrollWidth || 0);
+      const fit = Math.min(1, availH / Math.max(1,h), availW / Math.max(1,w));
+      if(fit < 1) card.style.zoom = String(Math.max(0.3, fit));
       st = document.createElement('style'); st.id = 'rcNativePrintFix';
       st.textContent = '@media print{'
         + '@page{size:A4 portrait;margin:0;}'
