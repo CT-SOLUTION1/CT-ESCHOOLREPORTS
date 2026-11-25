@@ -897,8 +897,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    uses otherwise-free space on the left instead of stealing a table/header column.
    Its natural aspect ratio is preserved, so a wide uploaded logo stays wide rather
    than being squeezed into a reserved column. */
-.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;max-width:40%;object-fit:contain;object-position:left center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
-#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;max-width:40% !important;object-fit:contain !important;object-position:left center !important;}
+.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;aspect-ratio:1/1;max-width:40%;object-fit:cover;object-position:center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
+#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;aspect-ratio:1/1 !important;max-width:40% !important;object-fit:cover !important;object-position:center !important;}
 .rc-title-block .rc-header-text{width:100%;min-width:0;text-align:center;}
 /* Only when the logo would physically collide with a long school name do we reserve
    a small amount of left breathing room. The header remains centered within the full
@@ -16074,7 +16074,7 @@ async function downloadReportCardPdf(studentId, term, year){
     catch(e){ console.warn('Score refresh failed; generating from current local data.', e); }
     const data = buildReportCardData(studentId, term, year);
     if(!data){ alert('This student has no class assigned or could not be found.'); return; }
-    if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
+    if(data.school.logo){ data.school.logo = await toPngDataUrl(data.school.logo); data.school.logoSquare = await rcLogoCover(data.school.logo); }
     if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
     if(data.photo) data.photo = await rcPhotoCover(data.photo);
     const pdf = new jsPDF({orientation:'p', unit:'pt', format:'a4', compress:true});
@@ -19188,7 +19188,7 @@ function nrcCss(){
 @supports (width:1cqw){.nrc-wrap{container-type:inline-size;} .nrc-card{--u:1cqw;}}
 .nrc-card.nrc-pdf{--u:7.94px;width:794px;max-width:none;height:1123px;min-height:1123px;aspect-ratio:auto;}
 .nrc-head{font-weight:700;display:flex;align-items:center;gap:1.6u;background:var(--nh);color:var(--nhi);border-radius:1.2u;padding:1.4u 2u;}
-.nrc-logo{width:9u;height:9u;border-radius:50%;background:#fff;object-fit:contain;flex:none;border:0.4u solid #f2c94c;}
+.nrc-logo{width:9u;height:9u;border-radius:50%;background:#fff;object-fit:cover;flex:none;border:0.4u solid #f2c94c;}
 .nrc-ht{flex:1;text-align:center;min-width:0;}
 .nrc-school{font-size:3.6u;font-weight:950;letter-spacing:.055u;text-transform:uppercase;line-height:1.08;display:block;transform:none;transform-origin:center;text-shadow:0 .18u .18u rgba(0,0,0,.24);font-family:Georgia,'Times New Roman',serif;}
 .nrc-addr{font-size:1.3u;font-weight:700;margin-top:.5u;color:var(--nhi);opacity:.94;}
@@ -19263,7 +19263,7 @@ function nrcCss(){
 .nrc-topline{display:flex;justify-content:space-between;font-size:1.15u;font-weight:700;font-family:monospace;color:#5a6270;margin-bottom:.5u;}
 .nrc-topline .nrc-fees{font-family:Arial,Helvetica,sans-serif;font-size:1.4u;font-weight:800;letter-spacing:.04em;color:#1d2433;}
 .nrc-head{display:block;position:relative;text-align:center;gap:0;padding:1u 2u;min-height:8.5u;border-radius:1.2u;background:var(--nh);color:var(--nhi);margin-bottom:1.2u;}
-.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;max-width:26%;border-radius:1u;background:#fff;object-fit:contain;object-position:center;padding:.4u;border:.3u solid #f2c94c;box-sizing:border-box;z-index:2;}
+.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;max-width:26%;border-radius:1u;background:#fff;object-fit:cover;object-position:center;padding:0;border:.3u solid #f2c94c;box-sizing:border-box;overflow:hidden;z-index:2;}
 .nrc-ht{width:100%;min-width:0;text-align:center;}
 .nrc-head .nrc-school{font-family:Arial,Helvetica,sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:0;text-shadow:none;line-height:1.12;margin:.1u 0 .3u;overflow-wrap:break-word;}
 .nrc-head .nrc-addr{font-size:1.25u;font-weight:700;font-style:italic;line-height:1.25;margin-top:.3u;opacity:1;}
@@ -19280,12 +19280,12 @@ function nrcCss(){
 .nrc-card>*{flex-shrink:0;}
 .nrc-topline{font-size:1.05k;margin-bottom:.4k;}
 .nrc-topline .nrc-fees{font-size:1.25k;}
-.nrc-head{padding:.8k 1.6k;min-height:7k;margin-bottom:1k;border-radius:1.1k;}
-.nrc-head.nrc-hl{padding-left:13k;padding-right:13k;}
-.nrc-logo{left:1k;width:10.5k;max-width:10.5k;height:calc(100% - 1.2k);max-height:none;padding:.3k;border-width:.25k;border-radius:.8k;}
-.nrc-head .nrc-school{margin:.1k 0 .2k;}
-.nrc-head .nrc-addr{font-size:1.1k;margin-top:.2k;}
-.nrc-sub{font-size:1.15k;padding:.2k 1.4k;margin-top:.45k;}
+.nrc-head{padding:1.4k 1.8k;min-height:11k;margin-bottom:1.2k;border-radius:1.1k;}
+.nrc-head.nrc-hl{padding-left:14.5k;padding-right:14.5k;}
+.nrc-logo{left:1k;width:12k;max-width:12k;height:calc(100% - 1.6k);max-height:none;padding:0;border-width:.25k;border-radius:.8k;}
+.nrc-head .nrc-school{margin:.2k 0 .5k;line-height:1.2;}
+.nrc-head .nrc-addr{font-size:1.45k;margin-top:.4k;line-height:1.35;}
+.nrc-sub{font-size:1.5k;padding:.35k 1.8k;margin-top:.8k;}
 .nrc-bio{margin:0 0 .9k;}
 .nrc-bio td{padding:.45k .8k;font-size:1.35k;}
 .nrc-bio td.lbl{font-size:1k;}
@@ -19348,7 +19348,19 @@ function nrcCss(){
 .nrc-bio td.ph{padding:0;position:relative;overflow:hidden;}
 .nrc-bio td.ph .nrc-bio-photo{position:absolute;left:0;top:0;width:100% !important;height:100% !important;margin:0;border:0;border-radius:0;object-fit:cover;display:block;}
 `;
-  return css.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`).replace(/(\d+(?:\.\d+)?|\.\d+)k\b/g, (m,n)=>`calc(var(--u)*${n}*var(--nk))`);
+  const conv = t => t.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`).replace(/(\d+(?:\.\d+)?|\.\d+)k\b/g, (m,n)=>`calc(var(--u)*${n}*var(--nk))`);
+  // Every Nursery font size gets +1px (applied after the one-page scaling, so the fit check still measures the real size).
+  const plus1 = t => t.replace(/font-size:\s*([^;}]+)/g, (m,v)=>`font-size:calc(${v.trim()} + 1px)`);
+  // Final overrides (not enlarged): Primary-style theme line, black bold motto, very bold table headers.
+  const extra = `
+.nrc-mot{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.4px #000;}
+.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.35em 1em !important;max-width:724px;margin:10px auto 0 !important;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;overflow-wrap:anywhere;}
+.nrc-g.nrc-sh{background:none !important;border-radius:0 !important;position:relative;}
+.nrc-g.nrc-sh svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
+.nrc-g.nrc-sh i{position:relative;z-index:1;font-style:normal;line-height:1;}
+.nrc-tb th,.nrc-gs th,.nrc-cmt th,.nrc-scale th,.nrc-overall-table th,.nrc-bio td.lbl,.nrc-dh{font-weight:900 !important;-webkit-text-stroke:.4px currentColor;}
+`;
+  return plus1(conv(css)) + extra;
 }
 /* Nursery department illustrations: fuller human figures, natural proportions and visible classroom/play actions. */
 const NRC_SVG = (()=>{
@@ -19464,7 +19476,14 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const { rows } = computeSubjectRows(s, cls, term, year);
   const byName = new Map(rows.map(r=>[r.subject, r]));
   const conf = nurseryConfig();
-  const gradeChip = g => g ? `<span class="nrc-g" style="background:${NRC_GRADE_COL[g]}">${g}</span>` : `<span class="nrc-g" style="background:#9aa1ad">–</span>`;
+  const NRC_SHAPES = [
+    c=>`<circle cx="12" cy="12" r="12" fill="${c}"/>`,
+    c=>`<path d="M12 23C4 16 .5 11.5 .5 7.6A5.8 5.8 0 0 1 12 5.6 5.8 5.8 0 0 1 23.5 7.6C23.5 11.5 20 16 12 23Z" fill="${c}"/>`,
+    c=>`<rect x="3.5" y="3.5" width="17" height="17" rx="2" transform="rotate(45 12 12)" fill="${c}"/>`,
+    c=>`<g fill="${c}">${[0,45,90,135,180,225,270,315].map(a=>`<circle cx="12" cy="5.2" r="4.8" transform="rotate(${a} 12 12)"/>`).join('')}<circle cx="12" cy="12" r="6.5"/></g>`
+  ];
+  const gradeChip = (g, i) => { const col = g ? NRC_GRADE_COL[g] : '#9aa1ad', sh = NRC_SHAPES[((i||0)%4+4)%4];
+    return `<span class="nrc-g nrc-sh"><svg viewBox="0 0 24 24" aria-hidden="true">${sh(col)}</svg><i>${g||'–'}</i></span>`; };
   const sumAvg = rows.filter(r=>r.avg!=null);
   const overallAvg = sumAvg.length ? sumAvg.reduce((a,r)=>a+r.avg,0)/sumAvg.length : null;
   const overall = overallAvg!=null ? nurseryGradeFor(overallAvg) : null;
@@ -19479,10 +19498,10 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       <table class="nrc-tb" style="background:${th.pale}">
         <colgroup>${showS&&showG ? '<col style="width:24%"><col style="width:11%"><col style="width:11%"><col>' : '<col style="width:28%"><col style="width:12%"><col>'}</colgroup>
         <tr><th style="border-color:${th.line}">Learning Area</th>${showS?`<th style="border-color:${th.line}">Score</th>`:''}${showG?`<th style="border-color:${th.line}">Grade</th>`:''}<th style="border-color:${th.line}">Comment</th></tr>
-        ${d.areas.map(a=>{
+        ${d.areas.map((a,ai)=>{
           const r = byName.get(a.name); const g = (r && r.avg!=null) ? nurseryGradeFor(r.avg) : null;
           const txt = g ? nurseryDescriptor(a.id, g) : '';
-          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g)}</td>`:''}<td class="m" style="border-color:${th.line}"><div class="nrc-cl">${esc(txt)}</div></td></tr>`;
+          return `<tr><td class="a" style="border-color:${th.line};border-left:.8px solid ${th.dark}">${esc(a.name)}</td>${showS?`<td class="g" style="border-color:${th.line};font-weight:900;color:#1d2433;">${nurseryScoreTxt(r&&r.avg)}</td>`:''}${showG?`<td class="g" style="border-color:${th.line}">${gradeChip(g, ai)}</td>`:''}<td class="m" style="border-color:${th.line}"><div class="nrc-cl">${esc(txt)}</div></td></tr>`;
         }).join('')}
       </table>
     </div>`;
@@ -19506,7 +19525,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     <div class="nrc-head${info.logo?' nrc-hl':''}">
       ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="School logo">`:''}
       <div class="nrc-ht">
-        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.3:(String(info.schoolName||'').length>26?2.7:3.2)}*var(--nk))">${esc(info.schoolName||'')}</div>
+        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.9:(String(info.schoolName||'').length>26?3.4:4)}*var(--nk))">${esc(info.schoolName||'')}</div>
         <div class="nrc-addr">Academic Year: ${esc(String(year||DB.info.currentYear||''))}${info.address?' &nbsp;|&nbsp; '+esc(info.address):''}</div>
         ${(info.phone||info.email)?`<div class="nrc-addr">${[info.phone?'Tel: '+esc(info.phone):'', info.email?'Email: '+esc(info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
         <div class="nrc-sub">STUDENT'S ACADEMIC REPORT CARD FORM</div>
@@ -20517,10 +20536,9 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       widest = Math.max(widest, pdf.getTextWidth(_ft) + 16);
       const freeW = Math.max(0, (contentW - Math.min(widest, contentW))/2 - 6);
       // True proportions: height-driven, widened for wide badges, but capped by the free width (never deformed, never entering the header text).
-      let logoH = FRAME, logoW = FRAME*ratio;
-      const maxW = Math.max(20, freeW);
-      if(logoW > maxW){ logoW = maxW; logoH = logoW/ratio; }
-      pdf.addImage(data.school.logo, 'PNG', contentX, titleTop + (FRAME-logoH)/2, logoW, logoH, 'rcLogo');
+      // The badge is centre-cropped to a square and fills its frame completely (no empty space), like the learner photo.
+      const sq = Math.min(FRAME, Math.max(20, freeW));
+      pdf.addImage(data.school.logoSquare || data.school.logo, 'PNG', contentX, titleTop + (FRAME-sq)/2, sq, sq, 'rcLogoSq');
     }catch(e){ /* skip logo, keep going */ }
   }
   centerText(schoolNameText, textX, textW, titleTop+13, schoolNameSize, 'bold', navy);
@@ -25764,6 +25782,30 @@ async function rcPhotoCover(src){
   _photoCoverCache.set(png, out);
   return out;
 }
+// School badge for the report-card PDF header: centre-cropped to a square so it fills its frame edge to edge
+// with no empty space (same result as CSS object-fit:cover on screen). PNG keeps any transparency.
+const _logoCoverCache = new Map();
+async function rcLogoCover(src){
+  const png = await toPngDataUrl(src);
+  if(!png) return png;
+  if(_logoCoverCache.has(png)) return _logoCoverCache.get(png);
+  const out = await new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const iw = img.naturalWidth||img.width, ih = img.naturalHeight||img.height;
+        const side = Math.min(iw, ih);
+        const c = document.createElement('canvas'); c.width = 400; c.height = 400;
+        c.getContext('2d').drawImage(img, (iw-side)/2, (ih-side)/2, side, side, 0, 0, 400, 400);
+        resolve(c.toDataURL('image/png'));
+      }catch(e){ resolve(png); }
+    };
+    img.onerror = ()=>resolve(png);
+    img.src = png;
+  });
+  _logoCoverCache.set(png, out);
+  return out;
+}
 // Delivers a finished jsPDF document to the user, on phone and computer, with a
 // single tap.
 //
@@ -26984,7 +27026,7 @@ async function pdfForStudents(students, filename, opts={}){
     } else {
       // Normalize logo/photo/stamp to PNG before drawing — see toPngDataUrl() above.
       // The conversion is cache-hit-instant after the first student in a bulk run.
-      if(data.school.logo) data.school.logo = await toPngDataUrl(data.school.logo);
+      if(data.school.logo){ data.school.logo = await toPngDataUrl(data.school.logo); data.school.logoSquare = await rcLogoCover(data.school.logo); }
       if(data.school.stamp) data.school.stamp = await toPngDataUrl(data.school.stamp);
       if(data.photo) data.photo = await rcPhotoCover(data.photo);
       renderReportCardPageFitted(pdf, data);
