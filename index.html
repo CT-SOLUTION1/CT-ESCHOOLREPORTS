@@ -869,8 +869,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    a report contains many subjects/rows. */
 .rc-card:not(.pdf-report-card) .rc-content{transform-origin:top left;transform:none;width:auto;}
 /* Thick decorative boundary stays inside the existing report-card margins. It is an overlay, so it consumes no layout space and cannot change table widths, A4 fit, or content positioning. */
-.rc-theme-line{max-width:724px;margin:10px auto 0;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#000;overflow-wrap:anywhere;}
-@media print{.rc-theme-line{margin-top:2mm;font-size:10.5pt;font-weight:900;color:#000 !important;}}
+.rc-theme-line{max-width:724px;margin:4px auto 0;white-space:nowrap;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#000;overflow-wrap:anywhere;}
+@media print{.rc-theme-line{margin-top:1mm;font-size:10.5pt;font-weight:900;color:#000 !important;}}
 .rc-card::after{content:'';position:absolute;inset:6px;border:3px double var(--navy);border-radius:2px;pointer-events:none;z-index:4;box-sizing:border-box;}
 /* Primary report cards receive a distinct two-layer ornamental frame; O-Level is untouched. */
 .primary-report-card{border:5px solid #1d4e89 !important;outline:2px solid #c99a3b;outline-offset:-10px;}
@@ -945,7 +945,7 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    table on the card. As a plain cell in the same full-width table, the photo
    no longer affects the table's outer edges, so all tables now line up on
    identical left/right edges. */
-.rc-bio-photo{width:64px;height:64px;object-fit:cover;border:1px solid var(--blue);border-radius:4px;}
+.rc-bio-photo{width:64px;height:64px;object-fit:cover;object-position:50% 0%;border:1px solid var(--blue);border-radius:4px;}
 /* table-layout:fixed + an explicit <colgroup> (see reportCardHTML) means every column's
    width is set directly instead of being computed from cell content — this is what
    guarantees the table always fills 100% of the card, identically on screen, in the
@@ -959,7 +959,7 @@ table.rc-info-table td{border:1.4px solid var(--blue);padding:6px 10px;font-size
 table.rc-info-table td.lbl{background:var(--blue-light);font-weight:900;text-transform:uppercase;font-size:10px;letter-spacing:.03em;color:var(--shade-ink,var(--navy));}
 table.rc-info-table td.val{font-weight:700;}
 table.rc-info-table td.photo-cell{padding:0;position:relative;overflow:hidden;text-align:center;vertical-align:middle;background:#fff;}
-table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;border:0;border-radius:0;display:block;}
+table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 0%;border:0;border-radius:0;display:block;}
 /* PDF capture only: swap to separate borders, which is what actually avoids the
    html2canvas rowspan-painting bug mentioned above (collapse vs separate makes no
    visible difference at this border weight once rendered into the final PDF image). */
@@ -9214,7 +9214,7 @@ function fitOnePage(root, settle=true){
 
   const title = inner.querySelector('.rc-title-block');
   const logo = title && title.querySelector('.rc-logo');
-  if(logo) logo.style.maxWidth = '';   // re-measure from the natural proportions each time
+  if(logo){ logo.style.maxWidth = ''; logo.style.height = ''; }   // re-measure from the natural proportions each time
   const schoolName = title && title.querySelector('.school');
   if(schoolName){
     const nameLength = (schoolName.textContent || '').trim().length;
@@ -9239,6 +9239,7 @@ function fitOnePage(root, settle=true){
     const freeW = nameLeft - 8 - logo.offsetLeft;
     if(freeW > 0 && logo.offsetWidth > freeW){
       logo.style.maxWidth = freeW + 'px';
+      logo.style.height = freeW + 'px';   // stays a perfect square
     }
     const logoRight2 = logo.offsetLeft + logo.offsetWidth;
     if(logoRight2 + 8 > nameLeft && freeW < logo.offsetHeight*0.5){
@@ -13316,6 +13317,8 @@ function showTotalAvgPos(classId, kind){
   return kind==='position' ? o.position : kind==='average' ? o.average : (o.position && o.average);
 }
 // Set by the admin under School Info & Logo. Empty = nothing is printed.
+// One-line fit for THEME OF THE YEAR: the longer the theme, the smaller the font (never wraps to a second line).
+function themeFitPx(maxPx, budgetPx){ const n = ('THEME OF THE YEAR: ' + themeOfYearText()).length; return Math.max(6, Math.min(maxPx, Math.floor(budgetPx/(Math.max(n,1)*0.8)*10)/10)); }
 function themeOfYearText(){ return String((DB.info && DB.info.themeOfYear) || '').replace(/\s+/g,' ').trim(); }
 // Splits the Performance Summary's label/value pairs into balanced rows of at most 3 pairs, so hiding
 // some of them never leaves an empty cell. Row of 3 pairs = 1+1 columns each, 2 pairs = 1+2, 1 pair = 2+4 (of 6).
@@ -19169,6 +19172,7 @@ function nurseryThemeCardHTML(){
   <button type="button" class="btn-outline" onclick="setNurseryTheme('reset')">Reset to default colours</button></div>`;
 }
 const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
+const NRC_GRADE_BG  = {A:'#d6f1dd', B:'#d3e8fa', C:'#fdeeba', D:'#fddcc0', E:'#f8d2cf'};   // soft tint behind each key (dark text stays readable)
 // Flower border between the outer and inner Nursery frames, drawn as real SVG (not a CSS mask/gradient) so it is
 // captured into the PDF and printed exactly as on screen.
 function nrcFlowersSvg(col){
@@ -19227,7 +19231,7 @@ function nrcCss(){
 .nrc-foot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1u;margin-top:1u;font-size:1.4u;}
 .nrc-foot div{border:.2u solid var(--nf);border-radius:.9u;padding:.7u 1u;background:var(--nfp);}
 .nrc-foot b{color:var(--nf);display:block;font-size:1.15u;text-transform:uppercase;}
-.nrc-theme{margin-top:1u;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
+.nrc-theme{margin-top:auto;margin-bottom:-1u;white-space:nowrap;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
 /* Readability pass: keep Nursery report text comfortably legible at A4 print size. */
 .nrc-card{font-size:max(11px,calc(var(--u)*1.5));line-height:1.24;}
 .nrc-school{font-size:clamp(22px,calc(var(--u)*3.6),34px);line-height:1.12;display:block;transform:none;}
@@ -19263,7 +19267,7 @@ function nrcCss(){
 .nrc-topline{display:flex;justify-content:space-between;font-size:1.15u;font-weight:700;font-family:monospace;color:#5a6270;margin-bottom:.5u;}
 .nrc-topline .nrc-fees{font-family:Arial,Helvetica,sans-serif;font-size:1.4u;font-weight:800;letter-spacing:.04em;color:#1d2433;}
 .nrc-head{display:block;position:relative;text-align:center;gap:0;padding:1u 2u;min-height:8.5u;border-radius:1.2u;background:var(--nh);color:var(--nhi);margin-bottom:1.2u;}
-.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;max-width:26%;border-radius:1u;background:#fff;object-fit:cover;object-position:center;padding:0;border:.3u solid #f2c94c;box-sizing:border-box;overflow:hidden;z-index:2;}
+.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;aspect-ratio:1/1;max-width:none;border-radius:1u;background:#fff;object-fit:cover;object-position:center;padding:0;border:.3u solid #f2c94c;box-sizing:border-box;overflow:hidden;z-index:2;}
 .nrc-ht{width:100%;min-width:0;text-align:center;}
 .nrc-head .nrc-school{font-family:Arial,Helvetica,sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:0;text-shadow:none;line-height:1.12;margin:.1u 0 .3u;overflow-wrap:break-word;}
 .nrc-head .nrc-addr{font-size:1.25u;font-weight:700;font-style:italic;line-height:1.25;margin-top:.3u;opacity:1;}
@@ -19273,7 +19277,7 @@ function nrcCss(){
 .nrc-bio td.lbl{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.15u;letter-spacing:.03em;}
 .nrc-bio td.nm{color:#0b2a6f;font-weight:900;font-size:1.7u;}
 .nrc-bio td.ph{padding:.5u;text-align:center;background:#fff;}
-.nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;border:.2u solid var(--nf);border-radius:.5u;}
+.nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;object-position:50% 0%;border:.2u solid var(--nf);border-radius:.5u;}
 /* ONE-PAGE FIT: every size below is in "k" units = u x --nk. nurseryReportCardHTML() measures the card and sets --nk (1 = full size) so the whole
    card always fits one A4 page; nothing is allowed to shrink, clip or overlap (flex-shrink:0), the grid just grows with its content. */
 .nrc-card{--nk:1;font-size:1.3k;line-height:1.22;}
@@ -19282,7 +19286,7 @@ function nrcCss(){
 .nrc-topline .nrc-fees{font-size:1.25k;}
 .nrc-head{padding:1.4k 1.8k;min-height:11k;margin-bottom:1.2k;border-radius:1.1k;}
 .nrc-head.nrc-hl{padding-left:14.5k;padding-right:14.5k;}
-.nrc-logo{left:1k;width:12k;max-width:12k;height:calc(100% - 1.6k);max-height:none;padding:0;border-width:.25k;border-radius:.8k;}
+.nrc-logo{left:1k;width:auto;aspect-ratio:1/1;max-width:none;height:calc(100% - 1.6k);max-height:12.5k;padding:0;border-width:.25k;border-radius:.8k;}
 .nrc-head .nrc-school{margin:.2k 0 .5k;line-height:1.2;}
 .nrc-head .nrc-addr{font-size:1.45k;margin-top:.4k;line-height:1.35;}
 .nrc-sub{font-size:1.5k;padding:.35k 1.8k;margin-top:.8k;}
@@ -19313,7 +19317,7 @@ function nrcCss(){
 .nrc-foot{margin-top:.7k;gap:.8k;font-size:1.3k;line-height:1.2;}
 .nrc-foot div{padding:.35k .8k;}
 .nrc-foot b{font-size:1k;}
-.nrc-theme{margin-top:.7k;font-size:1.1k;padding:.35k .8k;line-height:1.2;}
+.nrc-theme{margin-top:auto;margin-bottom:-1.2k;font-size:1.1k;padding:.35k .8k;line-height:1.2;}
 .nrc-scale{margin-top:.7k;}
 .nrc-scale th,.nrc-scale td{padding:.25k .4k;font-size:1.05k;line-height:1.15;}
 .nrc-scale td{font-size:1.3k;}
@@ -19346,7 +19350,7 @@ function nrcCss(){
 .nrc-mot{text-align:center;font-weight:900;font-size:1.4k;letter-spacing:.04em;line-height:1.25;color:var(--nf);margin:.6k 0 .2k;}
 .nrc-tm div{color:#000;font-weight:900;}
 .nrc-bio td.ph{padding:0;position:relative;overflow:hidden;}
-.nrc-bio td.ph .nrc-bio-photo{position:absolute;left:0;top:0;width:100% !important;height:100% !important;margin:0;border:0;border-radius:0;object-fit:cover;display:block;}
+.nrc-bio td.ph .nrc-bio-photo{position:absolute;left:0;top:0;width:100% !important;height:100% !important;margin:0;border:0;border-radius:0;object-fit:cover;object-position:50% 0%;display:block;}
 `;
   const conv = t => t.replace(/(\d+(?:\.\d+)?|\.\d+)u\b/g, (m,n)=>`calc(var(--u)*${n})`).replace(/(\d+(?:\.\d+)?|\.\d+)k\b/g, (m,n)=>`calc(var(--u)*${n}*var(--nk))`);
   // Every Nursery font size gets +1px (applied after the one-page scaling, so the fit check still measures the real size).
@@ -19354,7 +19358,7 @@ function nrcCss(){
   // Final overrides (not enlarged): Primary-style theme line, black bold motto, very bold table headers.
   const extra = `
 .nrc-mot{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.4px #000;}
-.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.35em 1em !important;max-width:724px;margin:10px auto 0 !important;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;overflow-wrap:anywhere;}
+.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.35em 1em !important;max-width:724px;margin:auto auto -10px !important;white-space:nowrap;text-align:center;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
 .nrc-g.nrc-sh{background:none !important;border-radius:0 !important;position:relative;}
 .nrc-g.nrc-sh svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
 .nrc-g.nrc-sh i{position:relative;z-index:1;font-style:normal;line-height:1;}
@@ -19515,7 +19519,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const ctName = acc ? acc.name : '', ctSig = acc ? acc.signature : null;
   const info = DB.info;
   const termTxt = String(term||'').toUpperCase();
-  const key = NURSERY_GRADES.map(g=>`<span><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
+  const key = NURSERY_GRADES.map(g=>`<span style="background:${NRC_GRADE_BG[g]};border-color:${NRC_GRADE_COL[g]};color:#1d2433"><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
   let card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
   <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
@@ -19523,7 +19527,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
     <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
     <div class="nrc-head${info.logo?' nrc-hl':''}">
-      ${info.logo?`<img class="nrc-logo" src="${info.logo}" alt="School logo">`:''}
+      ${info.logo?`<img class="nrc-logo" src="${trimmedLogoSrc()}" alt="School logo">`:''}
       <div class="nrc-ht">
         <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.9:(String(info.schoolName||'').length>26?3.4:4)}*var(--nk))">${esc(info.schoolName||'')}</div>
         <div class="nrc-addr">Academic Year: ${esc(String(year||DB.info.currentYear||''))}${info.address?' &nbsp;|&nbsp; '+esc(info.address):''}</div>
@@ -19583,7 +19587,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       <span><b>FEES BALANCE</b>: ${s.feesBalance!=null?((s.feesBalCur||FEES_CUR)+' '+Number(s.feesBalance).toLocaleString()):'—'} · <b>NEXT TERM FEES</b>: ${s.nextTermFees!=null?((s.nextFeesCur||FEES_CUR)+' '+Number(s.nextTermFees).toLocaleString()):'—'}</span>
     </div>
     ${info.motto?`<div class="nrc-mot">"${esc(info.motto)}"</div>`:''}
-    ${themeOfYearText()?`<div class="nrc-theme">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
+    ${themeOfYearText()?`<div class="nrc-theme" style="font-size:${themeFitPx(14,680)}px !important;white-space:nowrap;">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
   </div></div>`;
   { const f = nrcFitScale(card);
     card = card.replace('style="--nf:', 'style="--nk:'+f.k+';--nf:').replace(/<div class="nrc-card(?= |")/, m=>m+(f.nopics?' nrc-nopics':''));
@@ -19994,7 +19998,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     <div class="rc-topline"><span>${s.feesCode?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
 
     <div class="rc-title-block"${DB.info.logo?' data-has-logo="1"':''}>
-      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-logo" alt="School logo">`:''}
+      ${DB.info.logo?`<img loading="lazy" decoding="async" src="${trimmedLogoSrc()}" class="rc-logo" alt="School logo">`:''}
       <div class="rc-header-text">
         <div class="school">${esc(DB.info.schoolName)}</div>
         <div class="meta">Academic Year: ${yearLbl}${DB.info.address?' &nbsp;|&nbsp; '+esc(DB.info.address):''}</div>
@@ -20161,7 +20165,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     ${assessmentsAddDirectly(cfg) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
     ${(()=>{ const _n = assessNoteFor(cls && cls.id); return _n ? `<div class="rc-scoring-note">${esc(_n)}</div>` : ''; })()}
-    ${themeOfYearText()?`<div class="rc-theme-line">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
+    ${themeOfYearText()?`<div class="rc-theme-line" style="font-size:${themeFitPx(14,700)}px;">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
     </div>
   </div>${bareCard ? '' : '</div>'}`;
 }
@@ -20429,7 +20433,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const hdrDiv = !_shade.custom ? [255,255,255] : (_shade.dark ? _shade.seam.map(v=>Math.round(v)) : [29,78,137]);
   // Primary cards carry a flower border (flowers centred 17pt in from the card edge): content keeps clear of it on every
   // side while still using the full remaining width. Other levels keep their original, tighter margins.
-  const _padTop = data.isP ? 26 : 14, _padSide = data.isP ? 25 : 16, _padBottom = data.isP ? 26 : 12;
+  const _padTop = data.isP ? 26 : 14, _padSide = data.isP ? 25 : 16, _padBottom = (data.isP ? 26 : 12) - (data.theme ? 6 : 0);   // theme line sits close to the border
   let cy = cardY + _padTop; // running vertical cursor
 
   function setC(rgb){ pdf.setTextColor(rgb[0],rgb[1],rgb[2]); }
@@ -21092,11 +21096,11 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   if(data.assessNote){ if(!assessmentsAddDirectly(data.cfg)) cy += 9; centerText(data.assessNote, contentX, contentW, cy, 6.5, 'italic', muted); }
   // THEME OF THE YEAR: the very last line, inside the border, below every other note — big, bold and clear.
   if(data.theme){
-    cy += (data.assessNote || !assessmentsAddDirectly(data.cfg)) ? 20 : 12;
+    cy += (data.assessNote || !assessmentsAddDirectly(data.cfg)) ? 14 : 8;
     const _thTxt = 'THEME OF THE YEAR: ' + String(data.theme).toUpperCase();
     let _thSz = 10.5; pdf.setFont('helvetica','bold'); pdf.setFontSize(_thSz);
-    while(_thSz > 6 && pdf.getTextWidth(_thTxt) > contentW-6){ _thSz -= 0.25; pdf.setFontSize(_thSz); }
-    const _thLines = pdf.getTextWidth(_thTxt) > contentW-6 ? pdf.splitTextToSize(_thTxt, contentW-6) : [_thTxt];
+    while(_thSz > 3.5 && pdf.getTextWidth(_thTxt) > contentW-6){ _thSz -= 0.25; pdf.setFontSize(_thSz); }
+    const _thLines = [_thTxt];   // always ONE line (the font shrinks to fit instead of wrapping)
     _thLines.forEach((ln,i)=> centerText(ln, contentX, contentW, cy + i*(_thSz+1.5), _thSz, 'bold', [0,0,0]));
     cy += (_thLines.length-1)*(_thSz+1.5) + 2;
   }
@@ -25772,7 +25776,7 @@ async function rcPhotoCover(src){
         if(iw/ih > RC_PHOTO_RATIO) sw = ih*RC_PHOTO_RATIO; else sh = iw/RC_PHOTO_RATIO;
         const c = document.createElement('canvas'); c.width = 360; c.height = 300;
         const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,360,300);
-        g.drawImage(img, (iw-sw)/2, (ih-sh)/2, sw, sh, 0, 0, 360, 300);
+        g.drawImage(img, (iw-sw)/2, 0, sw, sh, 0, 0, 360, 300);   // top-aligned: any crop comes off the bottom, so heads are never cut
         resolve(c.toDataURL('image/jpeg', 0.92));
       }catch(e){ resolve(png); }
     };
@@ -25784,9 +25788,54 @@ async function rcPhotoCover(src){
 }
 // School badge for the report-card PDF header: centre-cropped to a square so it fills its frame edge to edge
 // with no empty space (same result as CSS object-fit:cover on screen). PNG keeps any transparency.
+// Zoom: trims the empty (transparent / plain white) margin around the badge so the badge itself fills its square box.
+const _logoTrimCache = new Map();
+async function rcLogoTrim(src){
+  const png = await toPngDataUrl(src);
+  if(!png) return png;
+  if(_logoTrimCache.has(png)) return _logoTrimCache.get(png);
+  const out = await new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const k = Math.min(1, 800/Math.max(img.naturalWidth||img.width, img.naturalHeight||img.height));
+        const w = Math.max(1, Math.round((img.naturalWidth||img.width)*k)), h = Math.max(1, Math.round((img.naturalHeight||img.height)*k));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
+        const d = g.getImageData(0, 0, w, h).data;
+        const blank = (i)=> d[i+3] < 20 || (d[i] > 245 && d[i+1] > 245 && d[i+2] > 245);
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(!blank((y*w+x)*4)){ if(x<x0) x0=x; if(x>x1) x1=x; if(y<y0) y0=y; if(y>y1) y1=y; } } }
+        if(x1<0 || (x1-x0+1) > w*0.97 && (y1-y0+1) > h*0.97){ resolve(png); return; }
+        const padX = Math.round((x1-x0+1)*0.015), padY = Math.round((y1-y0+1)*0.015);
+        x0 = Math.max(0, x0-padX); y0 = Math.max(0, y0-padY); x1 = Math.min(w-1, x1+padX); y1 = Math.min(h-1, y1+padY);
+        const o = document.createElement('canvas'); o.width = x1-x0+1; o.height = y1-y0+1;
+        o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+        resolve(o.toDataURL('image/png'));
+      }catch(e){ resolve(png); }
+    };
+    img.onerror = ()=>resolve(png);
+    img.src = png;
+  });
+  _logoTrimCache.set(png, out);
+  return out;
+}
+// Sync accessor for the HTML templates: the zoomed badge once it is ready, the original until then.
+let _logoTrimSrc = null, _logoTrimOut = null, _logoTrimBusy = false;
+function logoTrimKick(src){
+  if(_logoTrimBusy || _logoTrimSrc === src) return;
+  _logoTrimBusy = true;
+  rcLogoTrim(src).then(o=>{ _logoTrimSrc = src; _logoTrimOut = o; }).catch(()=>{ _logoTrimSrc = src; _logoTrimOut = null; }).then(()=>{ _logoTrimBusy = false; });
+}
+function trimmedLogoSrc(){
+  const src = DB.info && DB.info.logo; if(!src) return '';
+  if(_logoTrimSrc === src && _logoTrimOut) return _logoTrimOut;
+  logoTrimKick(src); return src;
+}
+(function(){ let n = 0; const t = setInterval(function(){ n++; try{ if(DB && DB.info && DB.info.logo){ logoTrimKick(DB.info.logo); clearInterval(t); } }catch(e){} if(n > 40) clearInterval(t); }, 1500); })();
 const _logoCoverCache = new Map();
 async function rcLogoCover(src){
-  const png = await toPngDataUrl(src);
+  const png = await rcLogoTrim(src);
   if(!png) return png;
   if(_logoCoverCache.has(png)) return _logoCoverCache.get(png);
   const out = await new Promise(resolve=>{
