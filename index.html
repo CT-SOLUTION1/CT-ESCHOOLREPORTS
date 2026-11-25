@@ -897,8 +897,8 @@ tr.stu-row-focus .btn-outline:focus{outline:2px solid var(--gold,#e0a800);outlin
    uses otherwise-free space on the left instead of stealing a table/header column.
    Its natural aspect ratio is preserved, so a wide uploaded logo stays wide rather
    than being squeezed into a reserved column. */
-.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;aspect-ratio:1/1;max-width:40%;object-fit:cover;object-position:center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
-#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;aspect-ratio:1/1 !important;max-width:40% !important;object-fit:cover !important;object-position:center !important;}
+.rc-title-block .rc-logo{position:absolute;left:0;top:50%;transform:translateY(-50%);height:calc(100% - 12px);max-height:130px;width:auto;aspect-ratio:auto;max-width:40%;object-fit:contain;object-position:left center;border-radius:0;background:transparent;box-shadow:none;border:0;display:block;z-index:2;}   /* square, invisible frame the height of the header; the badge fills it at its true proportions */
+#pdfCaptureHolder .rc-title-block .rc-logo{position:absolute !important;left:0 !important;top:50% !important;transform:translateY(-50%) !important;height:calc(100% - 12px) !important;max-height:130px !important;width:auto !important;aspect-ratio:auto !important;max-width:40% !important;object-fit:contain !important;object-position:left center !important;}
 .rc-title-block .rc-header-text{width:100%;min-width:0;text-align:center;}
 /* Only when the logo would physically collide with a long school name do we reserve
    a small amount of left breathing room. The header remains centered within the full
@@ -1423,6 +1423,11 @@ body>*{position:relative;z-index:1;}
    3. Each printed mark-sheet page was a separate auto-sized table, so columns
       drifted from page to page (fixed in printPortrait() with a shared <colgroup>).
    ============================================================ */
+@media print{
+  #printArea table.rc-info-table td.photo-cell{position:relative !important;overflow:hidden !important;padding:0 !important;}
+  #printArea table.rc-info-table td.photo-cell .rc-bio-photo,
+  #printArea table.nrc-bio td.ph .nrc-bio-photo{position:absolute !important;left:0 !important;top:0 !important;width:100% !important;height:100% !important;max-width:none !important;max-height:none !important;object-fit:cover !important;object-position:50% 0% !important;}
+}
 @media print{
   html,body{background:#fff !important;}
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
@@ -3157,12 +3162,19 @@ function examConfig(classId){
 function assessListFor(classId){
   const cfg = examConfig(classId), out = [];
   if(cfg.cwEnabled){
-    if(cfg.cwTests.length) cfg.cwTests.forEach(t=>out.push({key:'AOI::'+normLabel(t.name), label:t.name, sub:cfg.cwLabel+' \u00B7 out of '+t.max}));
-    else out.push({key:'AOI', label:cfg.cwLabel, sub:'Continuous assessment \u00B7 out of '+cfg.cwPercent});
+    if(cfg.cwTests.length) cfg.cwTests.forEach(t=>out.push({key:'AOI::'+normLabel(t.name), label:t.name, max:Number(t.max), sub:cfg.cwLabel+' \u00B7 out of '+t.max}));
+    else out.push({key:'AOI', label:cfg.cwLabel, max:Number(cfg.cwPercent), sub:'Continuous assessment \u00B7 out of '+cfg.cwPercent});
   }
-  if(cfg.eotEnabled) out.push({key:'EOT', label:cfg.eotLabel, sub:'End of term \u00B7 out of '+cfg.eotPercent});
+  if(cfg.eotEnabled) out.push({key:'EOT', label:cfg.eotLabel, max:Number(cfg.eotPercent), sub:'End of term \u00B7 out of '+cfg.eotPercent});
   return out;
 }
+// Assessments actually counted for this class (not switched off).
+function assessInUseFor(classId){ const off = assessOffSet(classId); return assessListFor(classId).filter(x=>!off || !off.has(x.key)); }
+// Only ONE assessment is in use AND it is already marked out of 100: its mark IS the percentage, so the
+// Final Average (%) column and the "converted to a percentage" note add nothing and are left out.
+function singleAssessOutOf100(classId){ const l = assessInUseFor(classId); return l.length===1 && Math.abs(Number(l[0].max)-100) < 1e-9; }
+// Final Average (%) column: needed with 2+ assessments, or with a single one that is NOT out of 100.
+function finalAvgColumnNeeded(classId){ const l = assessInUseFor(classId); return l.length>1 || (l.length===1 && !singleAssessOutOf100(classId)); }
 function assessOffSet(classId){
   const cls = DB.classes.find(c=>c.id===classId);
   return (cls && Array.isArray(cls.assessOff) && cls.assessOff.length) ? new Set(cls.assessOff) : null;
@@ -8670,6 +8682,11 @@ function pAggList(form){
 }
 // One-line statement printed under the Performance Summary (Primary report cards) saying what the
 // Aggregate and Division were worked out from. Follows the subjects ticked for that class.
+// True when the class's whole subject list is already exactly the 4 core subjects: the note adds nothing then.
+function pClassIsCore4Only(cls){
+  const pool = pAllSubjectPool(cls && cls.form);
+  return pool.length===P_CORE_SUBJECTS.length && P_CORE_SUBJECTS.every(x=>pool.includes(x));
+}
 function pAggNoteText(cls){
   const form = cls && cls.form;
   const list = pAggList(form);
@@ -19267,7 +19284,7 @@ function nrcCss(){
 .nrc-topline{display:flex;justify-content:space-between;font-size:1.15u;font-weight:700;font-family:monospace;color:#5a6270;margin-bottom:.5u;}
 .nrc-topline .nrc-fees{font-family:Arial,Helvetica,sans-serif;font-size:1.4u;font-weight:800;letter-spacing:.04em;color:#1d2433;}
 .nrc-head{display:block;position:relative;text-align:center;gap:0;padding:1u 2u;min-height:8.5u;border-radius:1.2u;background:var(--nh);color:var(--nhi);margin-bottom:1.2u;}
-.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;aspect-ratio:1/1;max-width:none;border-radius:1u;background:#fff;object-fit:cover;object-position:center;padding:0;border:.3u solid #f2c94c;box-sizing:border-box;overflow:hidden;z-index:2;}
+.nrc-logo{position:absolute;left:1.2u;top:50%;transform:translateY(-50%);width:auto;height:calc(100% - 1.6u);max-height:11u;aspect-ratio:auto;max-width:34%;border-radius:1u;background:#fff;object-fit:contain;object-position:center;padding:0;border:.3u solid #f2c94c;box-sizing:border-box;overflow:hidden;z-index:2;}
 .nrc-ht{width:100%;min-width:0;text-align:center;}
 .nrc-head .nrc-school{font-family:Arial,Helvetica,sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:0;text-shadow:none;line-height:1.12;margin:.1u 0 .3u;overflow-wrap:break-word;}
 .nrc-head .nrc-addr{font-size:1.25u;font-weight:700;font-style:italic;line-height:1.25;margin-top:.3u;opacity:1;}
@@ -19286,7 +19303,7 @@ function nrcCss(){
 .nrc-topline .nrc-fees{font-size:1.25k;}
 .nrc-head{padding:1.4k 1.8k;min-height:11k;margin-bottom:1.2k;border-radius:1.1k;}
 .nrc-head.nrc-hl{padding-left:14.5k;padding-right:14.5k;}
-.nrc-logo{left:1k;width:auto;aspect-ratio:1/1;max-width:none;height:calc(100% - 1.6k);max-height:12.5k;padding:0;border-width:.25k;border-radius:.8k;}
+.nrc-logo{left:1k;width:auto;aspect-ratio:auto;max-width:34%;height:calc(100% - 1.6k);max-height:12.5k;padding:0;border-width:.25k;border-radius:.8k;}
 .nrc-head .nrc-school{margin:.2k 0 .5k;line-height:1.2;}
 .nrc-head .nrc-addr{font-size:1.45k;margin-top:.4k;line-height:1.35;}
 .nrc-sub{font-size:1.5k;padding:.35k 1.8k;margin-top:.8k;}
@@ -19708,7 +19725,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const cwTests = cfg.cwTests || [];
   const useCwTestCols = showCW && cwTests.length>1; // split into test sub-columns only when multiple tests are configured
   const _inUseAssessments = assessListFor(cls.id).filter(x=>{ const off=assessOffSet(cls.id); return !off || !off.has(x.key); });
-  const showFinalAverageColumn = _inUseAssessments.length > 1;
+  const showFinalAverageColumn = finalAvgColumnNeeded(cls.id);
   const showPaperAverageColumn = !isP && rows.some(r=>subjectPapersFor(r.subject, cls).length > 1);
   const breakdowns = rows.map(r=>subjectBreakdown(s.id, r.subject, term, year));
 
@@ -20099,7 +20116,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         }).join('\n      ');
       })()}
     </table>
-    ${(isP && showAggDiv(cls.id)) ? `<div class="rc-agg-note">${esc(pAggNoteText(cls))}</div>` : ''}
+    ${(isP && showAggDiv(cls.id) && !pClassIsCore4Only(cls)) ? `<div class="rc-agg-note">${esc(pAggNoteText(cls))}</div>` : ''}
 
     ${!isP ? `
     <div class="rc-section-title">Grading Key</div>
@@ -20163,7 +20180,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     ${DB.info.motto?`<div class="rc-motto">"${esc(DB.info.motto)}"</div>`:''}
 
-    ${assessmentsAddDirectly(cfg) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
+    ${(assessmentsAddDirectly(cfg) || singleAssessOutOf100(cls.id)) ? '' : `<div class="rc-scoring-note">All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.</div>`}
     ${(()=>{ const _n = assessNoteFor(cls && cls.id); return _n ? `<div class="rc-scoring-note">${esc(_n)}</div>` : ''; })()}
     ${themeOfYearText()?`<div class="rc-theme-line" style="font-size:${themeFitPx(14,700)}px;">THEME OF THE YEAR: ${esc(themeOfYearText())}</div>`:''}
     </div>
@@ -20251,7 +20268,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   // Same rules as the on-screen card (reportCardHTML): these two flags are returned in the data object below
   // and drive which columns the PDF draws. They were never defined here, which made every download/print fail.
   const _inUseAssessments = assessListFor(cls.id).filter(x=>{ const off=assessOffSet(cls.id); return !off || !off.has(x.key); });
-  const showFinalAverageColumn = _inUseAssessments.length > 1;
+  const showFinalAverageColumn = finalAvgColumnNeeded(cls.id);
   const showPaperAverageColumn = !isP && rows.some(r=>subjectPapersFor(r.subject, cls).length > 1);
 
   function assignmentFor(subject, paper){
@@ -20525,7 +20542,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const schoolNameSize = schoolNameText.trim().length <= 22 ? 18 : (schoolNameText.trim().length <= 38 ? 16 : 14);
   if(data.school.logo){
     try{
-      const props = pdf.getImageProperties(data.school.logo);
+      const props = pdf.getImageProperties(data.school.logoSquare || data.school.logo);
       const FRAME = 54;   // header height: the badge never exceeds this
       const ratio = props.width/props.height;
       // Free width to the left of the widest centred header line (school name, meta lines, form-title badge).
@@ -20541,8 +20558,10 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
       const freeW = Math.max(0, (contentW - Math.min(widest, contentW))/2 - 6);
       // True proportions: height-driven, widened for wide badges, but capped by the free width (never deformed, never entering the header text).
       // The badge is centre-cropped to a square and fills its frame completely (no empty space), like the learner photo.
-      const sq = Math.min(FRAME, Math.max(20, freeW));
-      pdf.addImage(data.school.logoSquare || data.school.logo, 'PNG', contentX, titleTop + (FRAME-sq)/2, sq, sq, 'rcLogoSq');
+      // Fit the WHOLE logo inside (freeW x FRAME) at its true proportions: nothing cropped, nothing stretched.
+      const boxW = Math.max(20, freeW);
+      let lh = Math.min(FRAME, boxW/ratio), lw = lh*ratio;
+      pdf.addImage(data.school.logoSquare || data.school.logo, 'PNG', contentX, titleTop + (FRAME-lh)/2, lw, lh, 'rcLogoFit');
     }catch(e){ /* skip logo, keep going */ }
   }
   centerText(schoolNameText, textX, textW, titleTop+13, schoolNameSize, 'bold', navy);
@@ -20575,7 +20594,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // ---- 5. Student info table ----
   const infoRowH = 15;
   const hasPhoto = !!data.photo;
-  const photoColW = hasPhoto ? 54 : 0;
+  const photoColW = hasPhoto ? 38 : 0;
   const infoTableW = contentW - photoColW;
   const lblW = infoTableW*0.20, valW = infoTableW*0.30;
   const infoRows = [
@@ -20897,7 +20916,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     });
   });
   cy += sumRowH*summaryRows.length;
-  if(data.isP && data.showAggDiv !== false){
+  if(data.isP && data.showAggDiv !== false && !pClassIsCore4Only(DB.classes.find(c=>c.id===data.classId))){
     const _noteCls = DB.classes.find(c=>c.id===data.classId);
     const _noteTxt = pAggNoteText(_noteCls);
     let _nfs = 7; pdf.setFont('helvetica','bold'); pdf.setFontSize(_nfs);
@@ -21092,11 +21111,12 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const feesTxt = `FEES BALANCE: ${data.feesBalance!=null?((data.feesBalCur||FEES_CUR)+' '+Number(data.feesBalance).toLocaleString()):'—'}  ·  NEXT TERM FEES: ${data.nextTermFees!=null?((data.nextFeesCur||FEES_CUR)+' '+Number(data.nextTermFees).toLocaleString()):'—'}`;
   centerText(feesTxt, contentX, contentW, cy, 7.5, 'bold', muted); cy += 10;
   if(data.school.motto){ centerText(`"${data.school.motto}"`, contentX, contentW, cy, 11.5, 'bold', [0,0,0]); cy += 16; }
-  if(!assessmentsAddDirectly(data.cfg)) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
-  if(data.assessNote){ if(!assessmentsAddDirectly(data.cfg)) cy += 9; centerText(data.assessNote, contentX, contentW, cy, 6.5, 'italic', muted); }
+  const _convNote = !assessmentsAddDirectly(data.cfg) && !singleAssessOutOf100(data.classId);
+  if(_convNote) centerText('All assessments are first converted to a percentage before being averaged into the Paper Average and Final Average.', contentX, contentW, cy, 6.5, 'italic', muted);
+  if(data.assessNote){ if(_convNote) cy += 9; centerText(data.assessNote, contentX, contentW, cy, 6.5, 'italic', muted); }
   // THEME OF THE YEAR: the very last line, inside the border, below every other note — big, bold and clear.
   if(data.theme){
-    cy += (data.assessNote || !assessmentsAddDirectly(data.cfg)) ? 14 : 8;
+    cy += (data.assessNote || _convNote) ? 14 : 8;
     const _thTxt = 'THEME OF THE YEAR: ' + String(data.theme).toUpperCase();
     let _thSz = 10.5; pdf.setFont('helvetica','bold'); pdf.setFontSize(_thSz);
     while(_thSz > 3.5 && pdf.getTextWidth(_thTxt) > contentW-6){ _thSz -= 0.25; pdf.setFontSize(_thSz); }
@@ -25761,7 +25781,7 @@ function toPngDataUrl(dataUrl){
 }
 // Learner photo for the report-card PDF: centre-cropped to exactly the proportions of the photo box (54 x 45 pt) so it
 // fills the box edge to edge with no empty space (same result as CSS object-fit:cover on screen).
-const RC_PHOTO_RATIO = 54/45;
+const RC_PHOTO_RATIO = 38/45;
 const _photoCoverCache = new Map();
 async function rcPhotoCover(src){
   const png = await toPngDataUrl(src);
@@ -25774,9 +25794,9 @@ async function rcPhotoCover(src){
         const iw = img.naturalWidth||img.width, ih = img.naturalHeight||img.height;
         let sw = iw, sh = ih;
         if(iw/ih > RC_PHOTO_RATIO) sw = ih*RC_PHOTO_RATIO; else sh = iw/RC_PHOTO_RATIO;
-        const c = document.createElement('canvas'); c.width = 360; c.height = 300;
-        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,360,300);
-        g.drawImage(img, (iw-sw)/2, 0, sw, sh, 0, 0, 360, 300);   // top-aligned: any crop comes off the bottom, so heads are never cut
+        const c = document.createElement('canvas'); c.width = 380; c.height = 450;
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,380,450);
+        g.drawImage(img, (iw-sw)/2, 0, sw, sh, 0, 0, 380, 450);   // top-aligned: any crop comes off the bottom, so heads are never cut
         resolve(c.toDataURL('image/jpeg', 0.92));
       }catch(e){ resolve(png); }
     };
@@ -25835,25 +25855,8 @@ function trimmedLogoSrc(){
 (function(){ let n = 0; const t = setInterval(function(){ n++; try{ if(DB && DB.info && DB.info.logo){ logoTrimKick(DB.info.logo); clearInterval(t); } }catch(e){} if(n > 40) clearInterval(t); }, 1500); })();
 const _logoCoverCache = new Map();
 async function rcLogoCover(src){
-  const png = await rcLogoTrim(src);
-  if(!png) return png;
-  if(_logoCoverCache.has(png)) return _logoCoverCache.get(png);
-  const out = await new Promise(resolve=>{
-    const img = new Image();
-    img.onload = ()=>{
-      try{
-        const iw = img.naturalWidth||img.width, ih = img.naturalHeight||img.height;
-        const side = Math.min(iw, ih);
-        const c = document.createElement('canvas'); c.width = 400; c.height = 400;
-        c.getContext('2d').drawImage(img, (iw-side)/2, (ih-side)/2, side, side, 0, 0, 400, 400);
-        resolve(c.toDataURL('image/png'));
-      }catch(e){ resolve(png); }
-    };
-    img.onerror = ()=>resolve(png);
-    img.src = png;
-  });
-  _logoCoverCache.set(png, out);
-  return out;
+  // No square crop any more: the whole badge (full width and height) is kept; only the empty margin is trimmed.
+  return await rcLogoTrim(src);
 }
 // Delivers a finished jsPDF document to the user, on phone and computer, with a
 // single tap.
