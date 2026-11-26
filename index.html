@@ -961,6 +961,7 @@ table.rc-info-table td.val{font-weight:700;}
 /* Keep the learner name vertically centered in its information row on Primary, O-Level and A-Level cards, matching Nursery. */
 table.rc-info-table td.rc-stu-name{vertical-align:middle !important;line-height:1.2;padding-top:8px;padding-bottom:8px;}
 table.rc-info-table td.photo-cell{padding:0;position:relative;overflow:hidden;text-align:center;vertical-align:middle;background:#fff;}
+table.rc-info-table td.rc-term-val{text-transform:uppercase;font-weight:900 !important;-webkit-text-stroke:.35px currentColor;}
 table.rc-info-table td.photo-cell .rc-photo-sq{display:block;width:100%;height:0;padding-top:100%;}
 table.rc-info-table td.photo-cell .rc-bio-photo{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 0%;border:0;border-radius:0;display:block;max-width:none;max-height:none;}
 /* PDF capture only: swap to separate borders, which is what actually avoids the
@@ -1707,6 +1708,10 @@ sup.ord-sup{font-size:.62em;line-height:0;vertical-align:baseline;position:relat
 .tile.tile-orange:hover,.tile.tile-orange:active{background:#d96a00 !important;}
 .tile.tile-orange .tile-label{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.6px #000 !important;text-shadow:none !important;}
 .tile.tile-orange .tile-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
+.tile.tile-pink{background:#FF6FB5 !important;border:2px solid #d81b78 !important;box-shadow:0 3px 10px rgba(255,79,163,.5);}
+.tile.tile-pink:hover,.tile.tile-pink:active{background:#ff4fa3 !important;}
+.tile.tile-pink .tile-label{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.6px #000 !important;text-shadow:none !important;}
+.tile.tile-pink .tile-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
 
 /* All dashboard tiles: thick pink outline, bold thick labels. Result Analysis reads RESULT / icon / ANALYSIS. */
 .tile-grid button.tile{border:0.5px solid #FF4FA3 !important;box-sizing:border-box;}
@@ -7572,6 +7577,16 @@ function gateLabel(key){
   return k;
 }
 
+// Report-card titles: a woman is shown as "Mdm. Name", a man as "Mr. Name"; nothing is added when the sex is not set
+// or the name already carries a title.
+function staffTitled(name, sex){
+  const n = String(name||'').trim(); if(!n) return n;
+  if(/^(mr|mrs|ms|mdm|madam|miss|dr|prof|rev|sr|fr|hon)\b\.?\s/i.test(n)) return n;
+  const g = String(sex||'').trim().toLowerCase();
+  if(g==='female' || g==='f') return 'Mdm. '+n;
+  if(g==='male' || g==='m') return 'Mr. '+n;
+  return n;
+}
 function initials(name){ if(!name) return '--'; const parts=name.trim().split(/\s+/); return (parts[0][0]+(parts[1]?parts[1][0]:'')).toUpperCase(); }
 function esc(s){ return (s===null||s===undefined?'':s).toString().replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -10089,7 +10104,7 @@ function navByRoleRaw(role){
       ['staffaccounts','Teaching Staff','🧑‍🏫'],['classes','Classes','📚'],['students','ADD NEW or VIEW STUDENTS','🎓'],
       ['assignsubjects','Assign Subjects','📌'],['olevel',extraSubjectsLabel,'📖'],
       ['grading','Grading Setup','⚙️'],['examsetup','Exam Setup','🧮'],
-      ['ascores','Enter / Download / Edit Scores','✍️'],['projects','Project Assessment','🧪'],
+      ['ascores','Enter / Download / Edit Scores','✍️'],(schoolGrade()==='primary' ? ['nurseryset','NURSERY SET UP','🧸'] : ['projects','Project Assessment','🧪']),
       ['parentaccounts','PARENTS AND NON TEACHING STAFF','👪'],['oldstudents','Old Students','🎒'],
       ['marksheets','SCORES SHEETS AND ATTENDANCES','📋'],['classanalysis','RESULT ANALYSIS','📈'],
       ['finance','ACCOUNT SECTION','💰'],['mastermarksheet','GENERAL MARKSHEETS AND RANK LISTS','🗂️'],['subjectlists','EDIT STUDENT SUBJECTS','🧾'],['databackup','Data Backup Plan','💾'],['otherSettings','Other Settings','⚙️'],
@@ -10142,7 +10157,7 @@ function featureTilesHTML(role, excludeKey){
       <span class="tile-label rc-word">REPORT</span>
       <span class="tile-icon">${icon}</span>
       <span class="tile-label rc-word">CARDS</span>
-    </button>` : `<button type="button" class="tile" data-action="nav:${k}">
+    </button>` : `<button type="button" class="tile${(role==='admin' && k==='nurseryset')?' tile-pink':''}" data-action="nav:${k}">
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">${(role==='admin' && k==='databackup') ? 'BACK UP' : l}</span>
     </button>`}`).join('')}</div>`;
@@ -10178,6 +10193,7 @@ function renderShell(){
 // by any other route (e.g. a stray VIEW.name) regardless of who is signed in.
 const ADMIN_ONLY_VIEWS = new Set(['dashboard','schoolinfo','classes','classedit','staffaccounts','parentaccounts','students','oldstudents','assignsubjects','olevel','grading','examsetup','promote','finance','financestudent','teacherprofile','studentprofile','restoreitems','databackup']);
 ADMIN_ONLY_VIEWS.add('subjectlists');
+ADMIN_ONLY_VIEWS.add('nurseryset');
 ADMIN_ONLY_VIEWS.add('assessinuse');
 // Class Analysis and the Master Mark Sheet are whole-class views (every subject, every
 // student) — open to Admin always, and to a Teacher only for a class where they're the
@@ -10235,6 +10251,7 @@ function renderView(view){
       case 'combinedmarksheet': return combinedSheetView(VIEW.params.mode, VIEW.params.classId);
       case 'classanalysis': return classAnalysisView();
       case 'projects': return projectAssessmentView();
+      case 'nurseryset': return nurserySetupView();
       case 'mastermarksheet': return masterMarkSheetView();
       case 'subjectlists': return subjectListView();
       case 'tdash': return teacherDashboard();
@@ -13477,6 +13494,8 @@ function schoolInfoView(){
       <label>THEME OF THE YEAR</label><input name="themeOfYear" value="${esc(i.themeOfYear||'')}" maxlength="120" placeholder="Type the theme only, e.g. Nurturing Excellence Through Discipline">
       <p class="small">Optional. Once set, <b>THEME OF THE YEAR: …</b> is printed in bold at the very bottom of every report card, inside the page border, below all other notes. Clear the box and save to remove it.</p>
       <label>Headteacher's full name</label><input name="headteacher" value="${esc(i.headteacher||'')}" required>
+      <label>Headteacher's sex (used for Mr. / Mdm. on report cards)</label>
+      <select name="headteacherGender"><option value="">-- select --</option><option value="Female" ${i.headteacherGender==='Female'?'selected':''}>Female</option><option value="Male" ${i.headteacherGender==='Male'?'selected':''}>Male</option></select>
       <div class="flex" style="margin-top:6px;">
         ${i.stamp?`<img loading="lazy" decoding="async" src="${i.stamp}" class="photo-thumb" style="width:80px;height:80px;object-fit:contain;background:#f4f8fc;">`:''}
         <div><label>Upload / change school stamp</label><input type="file" name="stamp" accept="image/*">
@@ -13637,6 +13656,7 @@ function staffAccountsView(){
     <form data-form="createAccount" class="staff-create">
       <input type="hidden" name="role" value="teacher">
       <label>Full name</label><input name="name" required>
+      <label>Sex (used for Mr. / Mdm. on report cards)</label><select name="gender"><option value="">-- select --</option><option value="Female">Female</option><option value="Male">Male</option></select>
       <label>Username</label><input name="username" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces" placeholder="Max 10 characters, no spaces">
       <label>Password</label><input name="password" type="password" required minlength="4" maxlength="6" pattern="[A-Za-z0-9]{4,6}" title="4 to 6 letters and/or figures" placeholder="4-6 letters and/or figures">
       <div id="teacherRecoveryWrap"><label>Recovery code (optional)</label><input name="recovery">
@@ -14948,6 +14968,8 @@ function teacherProfileView(username){
         <div><label>Full name</label><input name="name" value="${esc(t.name)}" required></div>
         <div><label>Username</label><input name="username" value="${esc(t.username)}" required maxlength="10" pattern="\\S{1,10}" title="Maximum 10 characters, no spaces"></div>
       </div>
+      <label>Sex (used for Mr. / Mdm. on report cards)</label>
+      <select name="gender"><option value="">-- select --</option><option value="Female" ${t.gender==='Female'?'selected':''}>Female</option><option value="Male" ${t.gender==='Male'?'selected':''}>Male</option></select>
       <div class="flex" style="margin-top:6px;">
         ${t.signature?`<img loading="lazy" decoding="async" src="${t.signature}" class="photo-thumb" style="width:130px;height:60px;object-fit:contain;background:#f4f8fc;">`:''}
         <div><label>Upload / change signature</label><input type="file" name="signature" accept="image/*">
@@ -15304,13 +15326,13 @@ function nurseryAreaRowHTML(deptId, a){
   </div>`;
 }
 var NURSERY_SETUP_CLASS_ID = '';
-function nurseryGradingHTML(){
+function nurseryGradingHTML(part){
   const nurseryClasses = DB.classes.filter(x=>x.level==='N');
   if(!nurseryClasses.length) return `<div class="card"><h3>Nursery — departments &amp; learning areas</h3><p class="small">Add a Nursery class first. You can then configure its departments and learning areas separately.</p></div>`;
   if(!NURSERY_SETUP_CLASS_ID || !nurseryClasses.some(x=>x.id===NURSERY_SETUP_CLASS_ID)) NURSERY_SETUP_CLASS_ID = nurseryClasses[0].id;
   const cls = nurseryClasses.find(x=>x.id===NURSERY_SETUP_CLASS_ID), c = nurseryConfig(cls.id);
   const classOptions = nurseryClasses.map(x=>`<option value="${esc(x.id)}" ${x.id===cls.id?'selected':''}>${esc(x.name)}</option>`).join('');
-  return `
+  const _all = `
   <div class="card" style="margin-top:14px;">
     <h3>Nursery — departments &amp; learning areas</h3>
     <p class="small">Select a Nursery class first. The departments and learning areas saved below belong only to that class. Each learning area is treated as a subject for the selected class. Select another class to configure its own learning areas.</p>
@@ -15345,6 +15367,26 @@ function nurseryGradingHTML(){
       <button class="btn" style="margin-top:12px;">Submit — save shared scale and ${esc(cls.name)} descriptors</button>
     </form>
   </div>`;
+  const _cut = _all.indexOf('<div class="card">\n    <h3>Nursery — shared grading scale');
+  if(part==='areas') return _all.slice(0,_cut);
+  if(part==='scale') return `<div class="card" style="margin-top:14px;"><label for="nurserySetupClass">Nursery class</label>
+    <select id="nurserySetupClass" class="btn" style="display:block;width:100%;max-width:360px;" onchange="setNurserySetupClass(this.value)">${classOptions}</select></div>` + _all.slice(_cut);
+  return _all;
+}
+// NURSERY SET UP page (admin dashboard tile, pink): two tiles, one for each nursery section that used to sit in Grading Setup.
+function nurserySetupView(){
+  const tab = VIEW.params && VIEW.params.nsTab;
+  const back = `<div style="margin:8px 0;"><button type="button" class="btn-outline" data-action="nsTab:">← Back to NURSERY SET UP</button></div>`;
+  if(tab==='areas') return `<h2>NURSERY SET UP — Departments and Learning Areas</h2>${back}${nurseryGradingHTML('areas')}`;
+  if(tab==='scale') return `<h2>NURSERY SET UP — Nursery Grading Scale</h2>${back}${nurseryGradingHTML('scale')}`;
+  const tiles = [['nsTab:areas','📚','DEPARTMENTS AND LEARNING AREAS'],['nsTab:scale','🎯','NURSERY GRADING SCALE']];
+  return `<h2>NURSERY SET UP</h2>
+  <p class="small">Choose what to set up for the Nursery classes.</p>
+  <div class="tile-grid fin-tiles" style="max-width:420px;margin-left:0;grid-template-columns:repeat(2,minmax(0,1fr)) !important;">${tiles.map(([act,icon,label])=>`
+    <button type="button" class="tile" data-action="${act}" aria-label="${esc(label)}">
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label">${esc(label)}</span>
+    </button>`).join('')}</div>`;
 }
 function setNurserySetupClass(id){ NURSERY_SETUP_CLASS_ID=id; render(); }
 
@@ -15403,7 +15445,6 @@ function gradingView(gcClassId){
       <button class="btn" style="margin-top:14px;">Submit — save O-Level bands</button>
     </form>
   </div>`}
-  ${!showPrimary ? '' : nurseryGradingHTML()}
   ${!showPrimary ? '' : `
   <div class="card">
     <h3>Primary bands — per subject (PLE scale)</h3>
@@ -19361,7 +19402,7 @@ function nrcFlowersSvg(col, hasFees){
 // steps down only when a very long name would otherwise run out of its box.
 function nrcSignFit(a,b){
   const len = Math.max(1, String(a||'').length, String(b||'').length);   // one shared size, so both sign-off blocks line up row for row
-  const f = Math.max(1.0, Math.min(1.45, 46/len));
+  const f = Math.max(1.0, Math.min(1.45, 40/len));
   return 'font-size:calc(var(--u)*'+f.toFixed(2)+'*var(--nk)) !important;';
 }
 function nrcCss(){
@@ -19570,11 +19611,15 @@ function nrcCss(){
 .nrc-g.nrc-sh i{position:relative;z-index:1;font-style:normal;line-height:1;}
 .nrc-tb th,.nrc-gs th,.nrc-cmt th,.nrc-scale th,.nrc-overall-table th,.nrc-bio td.lbl,.nrc-dh{font-weight:900 !important;-webkit-text-stroke:.4px currentColor;}
 /* Class Teacher / Head Teacher / Signature / School Stamp areas: very bold, larger, single line (no wrapping). */
-.nrc-sign{grid-template-columns:1.2fr 1.1fr 1.2fr !important;column-gap:calc(var(--u)*1.2*var(--nk)) !important;}
+.nrc-sign{grid-template-columns:1fr 1.5fr 1fr !important;column-gap:calc(var(--u)*1.2*var(--nk)) !important;}
 .nrc-sg .p,.nrc-sg .a{white-space:nowrap !important;color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.55px #000;font-size:calc(var(--u)*1.45*var(--nk)) !important;letter-spacing:0;}
 .nrc-sg .p{overflow:hidden;text-overflow:clip;text-align:left !important;padding-left:calc(var(--u)*.3*var(--nk)) !important;padding-right:calc(var(--u)*.3*var(--nk)) !important;box-sizing:border-box;}
 .nrc-sg .a{text-align:left !important;box-sizing:border-box;}
 .nrc-tm{width:100% !important;}
+.nrc-bio td.tm{text-transform:uppercase;font-weight:900 !important;-webkit-text-stroke:.5px currentColor;}
+/* Term ended / Next term begins: very bold, large, clear. */
+.nrc-tm{font-size:calc(var(--u)*1.65*var(--nk)) !important;line-height:1.35 !important;}
+.nrc-tm div{font-weight:900 !important;color:#000 !important;-webkit-text-stroke:.6px #000;}
 /* Learning-area descriptors in every department: a little bolder. */
 .nrc-tb td.m{font-weight:900 !important;-webkit-text-stroke:.3px currentColor;}
 /* Student name: very bold. Class and Term values: a little bolder. */
@@ -19749,16 +19794,16 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
       <div class="nrc-dept-cell">${dept(d[3],3)}${nrcPics(pics[3],d[3].name)}</div>
     </div>`;
   const acc = DB.accounts.find(a=>a.username===cls.classTeacher);
-  const ctName = acc ? acc.name : '', ctSig = acc ? acc.signature : null;
-  const info = DB.info;
+  const ctName = acc ? staffTitled(acc.name, acc.gender) : '', ctSig = acc ? acc.signature : null;
+  const info = Object.assign({}, DB.info, {headteacher: staffTitled(DB.info.headteacher, DB.info.headteacherGender)});
   const termTxt = String(term||'').toUpperCase();
   const key = NURSERY_GRADES.map(g=>`<span style="background:${NRC_GRADE_BG[g]};border-color:${NRC_GRADE_COL[g]};color:#1d2433"><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
   let card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
   <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
-    ${nrcFlowersSvg(nrcThemeCfg().frame, !!s.feesCode)}
+    ${nrcFlowersSvg(nrcThemeCfg().frame, false)}
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
-    <div class="nrc-topline"><span>${s.feesCode?`<span class="nrc-fees">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span class="nrc-printed">Printed ${fmtDateOrd(Date.now())}</span></div>
+    <div class="nrc-topline"><span></span><span class="nrc-printed">Printed ${fmtDateOrd(Date.now())}</span></div>
     <div class="nrc-head${info.logo?' nrc-hl':''}">
       ${info.logo?`<img class="nrc-logo" src="${trimmedLogoSrc()}" alt="School logo">`:''}
       <div class="nrc-ht">
@@ -19778,20 +19823,29 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
         ${s.photo?`<td class="ph" rowspan="3"><img class="nrc-bio-photo" src="${s.photo}" alt="Learner photograph"></td>`:''}
       </tr>
       <tr>
-        <td class="lbl">Term</td><td class="val cv">${esc(term||'—')}, ${esc(String(year||DB.info.currentYear||''))}</td>
+        <td class="lbl">Term</td><td class="val cv tm">${esc(String(term||'—').toUpperCase())}, ${esc(String(year||DB.info.currentYear||''))}</td>
         <td class="lbl">Sex</td><td class="val">${esc(s.gender||'—')}</td>
       </tr>
       <tr>
-        <td class="lbl">Fees Pay Code</td><td class="val">${s.feesCode?esc(s.feesCode):'—'}</td>
+        <td class="lbl">${s.feesCode?'Fees Pay Code':'&nbsp;'}</td><td class="val">${s.feesCode?esc(s.feesCode):'&nbsp;'}</td>
         <td class="lbl">Admission No</td><td class="val">${esc(s.admNo||'—')}</td>
       </tr>
     </table>
     ${showG ? `<div class="nrc-key"><b>KEY:</b>${key}</div>` : ''}
     ${grid}
     <table class="nrc-overall-table" style="width:100%;border-collapse:collapse;table-layout:fixed;margin:1u 0;font-size:1.25u;">
-      <colgroup><col style="width:24%"><col style="width:51%"><col style="width:25%"></colgroup>
-      <tr><th style="text-align:left;padding:.4u .55u;border:1px solid var(--nf);">Overall Grade</th><td class="nrc-overall-value" style="padding:.4u .55u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b></td><td class="nrc-promotion-cell" style="padding:.4u .55u;border:1px solid var(--nf);text-align:right;vertical-align:middle;font-weight:900;color:#e00000;font-size:max(11px,calc(var(--u)*1.5));line-height:1.15;overflow-wrap:anywhere;">${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? esc(pd.text) : ''; })()}</td></tr>
-      ${showTotalAvgPos(cls.id,'position') ? `<tr><th style="text-align:left;padding:.8u;border:1px solid var(--nf);">Position in Class</th><td style="padding:.8u;border:1px solid var(--nf);font-weight:900;">${nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—'}</td></tr>` : ''}
+      ${(()=>{
+        // ONE row: Overall Grade | grade | [Total] | [Position in class] | Promotion.
+        // Total and Position only appear when switched on for this class under "Positions and Total Average — Class Settings".
+        const _xs = [];
+        if(showTotalAvgPos(cls.id,'average')) _xs.push({l:'Total', v: sumAvg.length ? nurseryScoreTxt(sumAvg.reduce((t,r)=>t+r.avg,0)) : '—', w:13});   // overall total = sum of the learner's learning-area scores
+        if(showTotalAvgPos(cls.id,'position')) _xs.push({l:'Position', v: nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—', w:18});
+        const _xw = _xs.reduce((t,x)=>t+x.w,0), _gw = _xs.length ? 17 : 24, _pw = _xs.length ? 22 : 25, _vw = 100-_gw-_pw-_xw;
+        const _cg = `<colgroup><col style="width:${_gw}%"><col style="width:${_vw}%">${_xs.map(x=>`<col style="width:${x.w}%">`).join('')}<col style="width:${_pw}%"></colgroup>`;
+        const _xc = _xs.map(x=>`<td class="nrc-ov-x" style="padding:.4u .3u;border:1px solid var(--nf);text-align:center;vertical-align:middle;font-weight:900;line-height:1.15;white-space:nowrap;"><span class="nrc-ov-l" style="font-weight:900;color:var(--nf);">${x.l}:</span> ${x.v}</td>`).join('');
+        return `${_cg}
+      <tr><th style="text-align:left;padding:.4u .55u;border:1px solid var(--nf);">Overall Grade</th><td class="nrc-overall-value" style="padding:.4u .55u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b></td>${_xc}<td class="nrc-promotion-cell" style="padding:.4u .55u;border:1px solid var(--nf);text-align:right;vertical-align:middle;font-weight:900;color:#e00000;font-size:max(11px,calc(var(--u)*1.5));line-height:1.15;overflow-wrap:anywhere;">${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? esc(pd.text) : ''; })()}</td></tr>`;
+      })()}
     </table>
     <table class="nrc-gs">
       <tr><th>MARKS RANGE</th>${NURSERY_GRADES.map(g=>`<th>${conf.bands[g][0]}–${conf.bands[g][1]}%</th>`).join('')}</tr>
@@ -20151,6 +20205,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   const ctName = classTeacherAcc? classTeacherAcc.name : '';
   const ctSignature = classTeacherAcc? classTeacherAcc.signature : null;
   const htName = DB.info.headteacher || '';
+  const ctShown = staffTitled(ctName, classTeacherAcc && classTeacherAcc.gender), htShown = staffTitled(htName, DB.info.headteacherGender);
 
   const yearLbl = esc(String(year||''));
   const termLbl = esc(term||'—');
@@ -20226,7 +20281,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
   ${bareCard ? '' : '<div id="printArea">'}<div class="rc-card${isP ? " primary-report-card" : ""}${embedded ? " pdf-report-card" : ""}" style="${rcShadeStyle()}${embedded ? `--pdf-table-head-size:${pdfTableHeadSize}px;--pdf-table-body-size:${pdfTableBodySize}px;--pdf-table-sub-size:${pdfTableSubSize}px;--pdf-table-pad-y:${pdfTablePadY}px;--pdf-table-pad-x:${pdfTablePadX}px;` : ""}">
     ${DB.info.logo?`<img loading="lazy" decoding="async" src="${DB.info.logo}" class="rc-watermark" alt="">`:''}
     <div class="rc-content">
-    <div class="rc-topline"><span>${s.feesCode?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
+    <div class="rc-topline"><span>${(s.feesCode && !isP)?`<span class="fees-code-tag">FEES CODE: ${esc(s.feesCode)}</span>`:''}</span><span>Printed ${fmtDateOrd(Date.now())}</span></div>
 
     <div class="rc-title-block"${DB.info.logo?' data-has-logo="1"':''}>
       ${DB.info.logo?`<img loading="lazy" decoding="async" src="${trimmedLogoSrc()}" class="rc-logo" alt="School logo">`:''}
@@ -20248,11 +20303,11 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         ${s.photo?`<td class="photo-cell" rowspan="3"><div class="rc-photo-sq"></div><img loading="lazy" decoding="async" src="${s.photo}" class="rc-bio-photo"></td>`:''}
       </tr>
       <tr>
-        <td class="lbl">Term</td><td class="val">${termLbl}, ${yearLbl}</td>
+        <td class="lbl">Term</td><td class="val rc-term-val">${String(termLbl).toUpperCase()}, ${yearLbl}</td>
         <td class="lbl">Sex</td><td class="val">${esc(s.gender||'—')}</td>
       </tr>
       <tr>
-        <td class="lbl">${isA?'Combination':(isP?'Fees Pay Code':'Optional Subjects')}</td><td class="val">${isP?(s.feesCode?esc(s.feesCode):'—'):esc(comboLabel(s,cls))}</td>
+        <td class="lbl">${isA?'Combination':(isP?(s.feesCode?'Fees Pay Code':'&nbsp;'):'Optional Subjects')}</td><td class="val">${isP?(s.feesCode?esc(s.feesCode):'&nbsp;'):esc(comboLabel(s,cls))}</td>
         <td class="lbl">Admission No</td><td class="val">${esc(s.admNo||'—')}</td>
       </tr>
     </table>
@@ -20372,7 +20427,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     <div class="rc-sign-row">
       <div class="rc-sign-block">
-        <span class="rc-person">Class Teacher: ${esc(ctName)}</span>
+        <span class="rc-person">Class Teacher: ${esc(ctShown)}</span>
         <span class="rc-action">Signature:${ctSignature?`<img loading="lazy" decoding="async" src="${ctSignature}" class="rc-teacher-signature" alt="">`:''}</span>
       </div>
 
@@ -20382,7 +20437,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </div>
 
       <div class="rc-sign-block">
-        <span class="rc-person">Head Teacher: ${esc(htName)}</span>
+        <span class="rc-person">Head Teacher: ${esc(htShown)}</span>
         <span class="rc-action">School Stamp:</span>
         ${DB.info.stamp?`<img loading="lazy" decoding="async" src="${DB.info.stamp}" class="rc-stamp" alt="">`:''}
       </div>
@@ -20565,6 +20620,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
   const ctName = classTeacherAcc? classTeacherAcc.name : '';
   const ctSignature = classTeacherAcc? classTeacherAcc.signature : null;
   const htName = DB.info.headteacher || '';
+  const ctShown = staffTitled(ctName, classTeacherAcc && classTeacherAcc.gender), htShown = staffTitled(htName, DB.info.headteacherGender);
 
   return {
     student: s, cls, term, year, isA, isP, isO,
@@ -20590,7 +20646,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
       headComment: (isP && showAggDiv(cls.id)) ? primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak) : overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak)
     },
     classId: cls.id, rowSubjects: rows.map(r=>r.subject), showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showAggDiv: showAggDiv(cls.id), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
-    signOff: { ctName, ctSignature, htName, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
+    signOff: { ctName: ctShown, ctSignature, htName: htShown, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
     feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, feeDisplayMode: reportFeeDisplayMode(), photo: s.photo
   };
@@ -20757,7 +20813,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
 
   // ---- 3. Topline: fees code + printed date ----
   pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted);
-  if(data.feesCode){ pdf.setFont('helvetica','bold'); pdf.setFontSize(10.5); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy+5); /* +4: nudged down off the card border, still clear of the logo below */ pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted); }
+  if(data.feesCode && !data.isP){ pdf.setFont('helvetica','bold'); pdf.setFontSize(10.5); setC(navy); pdf.text(`FEES CODE: ${data.feesCode}`, contentX, cy+5); /* +4: nudged down off the card border, still clear of the logo below */ pdf.setFont('courier','normal'); pdf.setFontSize(7.5); setC(muted); }
   supText(`Printed ${fmtDateOrd(Date.now(),'pdf')}`, contentX+contentW, cy, 'right');
   cy += 10;
 
@@ -20828,9 +20884,9 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const lblW = infoTableW*0.20, valW = infoTableW*0.30;
   const infoRows = [
     ['Name', data.student.name, 'Class', classFullName(data.cls)],
-    ['Term', `${data.term}, ${data.year}`, 'Sex', data.student.gender||'—'],
-    [data.isA?'Combination':(data.isP?'Fees Pay Code':'Optional Subjects'),
-      data.isP?(data.feesCode||'—'):comboLabel(data.student, data.cls),
+    ['Term', `${String(data.term==null?'':data.term).toUpperCase()}, ${data.year}`, 'Sex', data.student.gender||'—'],
+    [data.isA?'Combination':(data.isP?(data.feesCode?'Fees Pay Code':''):'Optional Subjects'),
+      data.isP?(data.feesCode||''):comboLabel(data.student, data.cls),
       'Admission No', data.student.admNo||'—']
   ];
   const infoTop = cy;
@@ -22434,6 +22490,7 @@ Continue?`);
     case 'finBackToStudentTable': VIEW = {name:'finance', params:{finTab:VIEW.params.finTab, finClassId:VIEW.params.finClassId, reqProceed:VIEW.params.reqProceed, reqOpen:VIEW.params.reqOpen, reqTerm:VIEW.params.reqTerm, reqYear:VIEW.params.reqYear, feeProceed:VIEW.params.feeProceed, feeOpen:VIEW.params.feeOpen, feeTerm:VIEW.params.feeTerm, feeYear:VIEW.params.feeYear, feeCat:VIEW.params.feeCat}}; render(); break;
     case 'printDemandNote': printDemandNoteFor(arg); break;
     case 'downloadDemandNote': await downloadDemandNoteFor(arg); break;
+    case 'nsTab': VIEW.params = arg ? {nsTab: arg} : {}; render(); window.scrollTo(0,0); break
     case 'finTab': if(FINANCE_UNLOCKED && FIN_SUB && !FIN_SUB_OPEN[FIN_SUB]) break; if(FIN_SUB && !finTabAllowed(FIN_SUB, arg)) break; FIN_EMBED = !!FIN_EMBED_TABS[arg]; VIEW.params = {finTab: arg}; render(); break;
     case 'finBackToTabs': FIN_EMBED = false; VIEW = {name:'finance', params:{}}; render(); break;
     case 'finGroup': VIEW.params = {...VIEW.params, finGroupId: arg, finClassId: null}; render(); break;
@@ -24724,7 +24781,7 @@ document.addEventListener('submit', async (e)=>{
       if(emailChanged && isSchoolEmailTaken(newEmail, SCHOOL_ID)){
         alert('That email is already registered to another school. Each school needs its own email address.'); return;
       }
-      DB.info.email=fd.get('email'); DB.info.motto=fd.get('motto'); DB.info.headteacher=fd.get('headteacher');
+      DB.info.email=fd.get('email'); DB.info.motto=fd.get('motto'); DB.info.headteacher=fd.get('headteacher'); DB.info.headteacherGender=fd.get('headteacherGender')||'';
       DB.info.themeOfYear = String(fd.get('themeOfYear')||'').replace(/\s+/g,' ').trim();
       await saveInfo();
       if(emailChanged){
@@ -24811,7 +24868,8 @@ document.addEventListener('submit', async (e)=>{
       DB.accounts.push({username:uname, password:fd.get('password'), role, name:fd.get('name'),
         status:'active', studentIds: role==='parent'? fd.getAll('studentIds').filter(Boolean) : null,
         ...(role==='parent' ? {category: fd.get('category')==='nonteaching' ? 'nonteaching' : 'parent', reportAccess: fd.get('reportAccess')!=='no'} : {}),
-        recovery: role==='teacher' ? ((fd.get('recovery')||'').trim()||null) : null});
+        recovery: role==='teacher' ? ((fd.get('recovery')||'').trim()||null) : null,
+        ...(role==='teacher' ? {gender: fd.get('gender')||null} : {})});
       await saveAccounts();
       if(role==='teacher') speak(`Staff member ${fd.get('name')} has been registered successfully.`);
       render();
@@ -25217,6 +25275,7 @@ document.addEventListener('submit', async (e)=>{
       }
       const newName = (fd.get('name')||'').trim();
       if(!newName){ alert('Please enter a name.'); return; }
+      t.gender = fd.get('gender') || null;
       const newUsername = (fd.get('username')||'').trim();
       if(!newUsername){ alert('Please enter a username.'); return; }
       if(newUsername.toLowerCase()!==oldUsername.toLowerCase() && !userNameOk(newUsername)){ alert(USER_MSG); return; }
