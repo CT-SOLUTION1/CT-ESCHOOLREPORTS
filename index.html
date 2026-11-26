@@ -15974,6 +15974,30 @@ function reportFeeSettingsHTML(){
   return `<div class="card" style="margin-top:16px;"><h3>Fees Display on Report Cards</h3><p class="small">Choose which fee information should appear at the bottom of every report card. Swipe the options sideways to select one of the four positions.</p><div style="display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:5px 2px 10px;-webkit-overflow-scrolling:touch;">${opts.map(([v,label])=>`<button type="button" onclick="setReportFeeDisplayMode('${v}')" aria-pressed="${mode===v?'true':'false'}" style="flex:0 0 auto;min-width:155px;scroll-snap-align:start;border:2px solid ${mode===v?'var(--navy,#12345a)':'#aab7c5'};background:${mode===v?'var(--navy,#12345a)':'var(--card,#fff)'};color:${mode===v?'#fff':'var(--text,#17212b)'};border-radius:10px;padding:12px 14px;font-weight:800;white-space:nowrap;">${mode===v?'✓ ':''}${label}</button>`).join('')}</div><p class="small" style="margin-bottom:0;">Current selection: <b>${opts.find(x=>x[0]===mode)[1]}</b></p></div>`;
 }
 
+/* Report-card term dates ("<Term> ended on…" / "Next term begins on…"): both is the backwards-compatible default. */
+function reportTermDatesMode(){
+  const v = DB && DB.info && DB.info.reportTermDates;
+  return ['end','next','both','none'].includes(v) ? v : 'both';
+}
+function reportTermDateVisible(which){
+  const m=reportTermDatesMode();
+  if(which==='end') return m==='end' || m==='both';
+  if(which==='next') return m==='next' || m==='both';
+  return false;
+}
+async function setReportTermDatesMode(mode){
+  if(CUR.role!=='admin' || !['end','next','both','none'].includes(mode)) return;
+  const old=DB.info.reportTermDates;
+  DB.info.reportTermDates=mode;
+  try{ await saveInfo(); showDeliveredToast('Report-card term dates display saved'); render(); }
+  catch(e){ DB.info.reportTermDates=old; alert('Could not save the report-card term dates setting. Please try again.'); }
+}
+function reportTermDatesSettingsHTML(){
+  const mode=reportTermDatesMode();
+  const opts=[['end','END OF TERM DATE ONLY'],['next','NEXT TERM DATE ONLY'],['both','BOTH'],['none','NONE']];
+  return `<div class="card" style="margin-top:16px;"><h3>Term Dates on Report Cards</h3><p class="small">Choose which term dates should appear in the sign-off row of every report card (the “ended on” and “Next term begins on” dates). Swipe the options sideways to select one of the four positions.</p><div style="display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:5px 2px 10px;-webkit-overflow-scrolling:touch;">${opts.map(([v,label])=>`<button type="button" onclick="setReportTermDatesMode('${v}')" aria-pressed="${mode===v?'true':'false'}" style="flex:0 0 auto;min-width:155px;scroll-snap-align:start;border:2px solid ${mode===v?'var(--navy,#12345a)':'#aab7c5'};background:${mode===v?'var(--navy,#12345a)':'var(--card,#fff)'};color:${mode===v?'#fff':'var(--text,#17212b)'};border-radius:10px;padding:12px 14px;font-weight:800;white-space:nowrap;">${mode===v?'✓ ':''}${label}</button>`).join('')}</div><p class="small" style="margin-bottom:0;">Current selection: <b>${opts.find(x=>x[0]===mode)[1]}</b></p></div>`;
+}
+
 /* ---------- Reports list (admin & teacher) ---------- */
 function reportsListView(){
   const isTeacher = CUR.role==='teacher';
@@ -16020,7 +16044,8 @@ function reportsListView(){
   ${togglesCard}
   ${(isAdmin && DB.classes.some(c=>c.level==='N')) ? nurseryShowCardHTML() : ''}
   ${isAdmin ? rcShadeCard() : ''}
-  ${isAdmin ? reportFeeSettingsHTML() : ''}`}
+  ${isAdmin ? reportFeeSettingsHTML() : ''}
+  ${isAdmin ? reportTermDatesSettingsHTML() : ''}`}
   <div class="card">
     ${(!rcCollapsed && !RC_QUERY.trim()) ? `<p class="small">Tap “Filter report cards by class(es)” above, tick one or more classes and submit, or search a student by name, to see the report card list.</p>` : (()=>{
       const listStudents = rcListedStudents(rcIds);
@@ -19794,6 +19819,71 @@ function nrcScaleAll(){
   window.addEventListener('resize', go);
   try{ new MutationObserver(()=>{ if(document.querySelector('.nrc-stage')) nrcScaleAll(); }).observe(document.body, {childList:true, subtree:true}); }catch(e){}
 })();
+
+/* ---------- Nursery learner photo: exactly SQUARE box, photo fills it, nothing stretched ----------
+   1) The photo cell (rowspan 3) is made square by widening/narrowing its column to match its own height.
+   2) The picture is cropped (never stretched) to that exact box with the TOP kept, so the head is never cut
+      and the crop comes off the bottom only; for a portrait photo the square then shows head AND chest.
+   The crop is done on a canvas, so print, the PDF capture and the screen all show the same pixels
+   (html2canvas does not honour object-fit / object-position, which is what stretched the photo in PDFs). */
+const _nrcCropCache = new Map();
+function nrcCropToBox(src, w, h){
+  const key = src.length+'|'+src.slice(-64)+'|'+w+'x'+h;
+  if(_nrcCropCache.has(key)) return Promise.resolve(_nrcCropCache.get(key));
+  return new Promise(res=>{
+    const im = new Image();
+    im.onload = ()=>{
+      try{
+        const iw = im.naturalWidth||im.width, ih = im.naturalHeight||im.height;
+        if(!iw || !ih){ res(src); return; }
+        const k = 3, cw = Math.max(40, Math.round(w*k)), ch = Math.max(40, Math.round(h*k));
+        const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,cw,ch);
+        g.imageSmoothingQuality = 'high';
+        const sc = Math.max(cw/iw, ch/ih), dw = iw*sc, dh = ih*sc;
+        g.drawImage(im, (cw-dw)/2, 0, dw, dh);          // centred sideways, TOP-aligned: head never cropped
+        const out = c.toDataURL('image/jpeg', 0.92);
+        _nrcCropCache.set(key, out); res(out);
+      }catch(e){ res(src); }
+    };
+    im.onerror = ()=>res(src);
+    im.src = src;
+  });
+}
+async function nrcPrepareBioPhotos(root){
+  const tbls = (root||document).querySelectorAll('table.nrc-bio');
+  for(const tbl of tbls){
+    const td = tbl.querySelector('td.ph'); const img = td && td.querySelector('img.nrc-bio-photo');
+    if(!td || !img) continue;
+    const cols = tbl.querySelectorAll('colgroup col');
+    if(cols.length===5){
+      if(!tbl._nrcCols) tbl._nrcCols = Array.from(cols).map(c=>parseFloat(c.style.width)||0);
+      const base = tbl._nrcCols, otherBase = 100-base[4], tw = tbl.offsetWidth;
+      if(tw && otherBase>0){
+        img.style.visibility = 'hidden';
+        const setW = px=>{ const pPct = px/tw*100, k = (100-pPct)/otherBase;
+          for(let i=0;i<4;i++) cols[i].style.width = (base[i]*k).toFixed(3)+'%';
+          cols[4].style.width = pPct.toFixed(3)+'%'; };
+        let w = tw*base[4]/100;
+        for(let i=0;i<8;i++){
+          setW(w);
+          const W = td.offsetWidth, H = td.offsetHeight;
+          if(Math.abs(H-W) < 0.6) break;
+          w = Math.min(tw*0.30, Math.max(50, H));
+        }
+        img.style.visibility = '';
+      }
+    }
+    const W = td.offsetWidth, H = td.offsetHeight;
+    if(W>10 && H>10){
+      if(!img.dataset.orig) img.dataset.orig = img.getAttribute('src');
+      img.src = await nrcCropToBox(img.dataset.orig, W, H);
+      img.style.objectFit = 'fill';                      // already cropped to the exact box shape
+      tbl.dataset.phOk = '1';
+    }
+  }
+}
+
 function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPeriods, isCurrentPeriod){
   const { rows } = computeSubjectRows(s, cls, term, year);
   const byName = new Map(rows.map(r=>[r.subject, r]));
@@ -19906,8 +19996,8 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
         <span class="p" style="${nrcSignFit('Class Teacher: '+ctName,'Head Teacher: '+(info.headteacher||''))}">Class Teacher: ${esc(ctName)}</span>
       </div>
       <div class="nrc-tm">
-        <div>${esc(term||info.currentTerm||'Term')} ended on ${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
-        <div>Next term begins on ${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>
+        ${reportTermDateVisible('end')?`<div>${esc(term||info.currentTerm||'Term')} ended on ${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>`:''}
+        ${reportTermDateVisible('next')?`<div>Next term begins on ${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>`:''}
       </div>
       <div class="nrc-sg">
         <span class="a">School Stamp:</span>
@@ -19950,6 +20040,7 @@ async function downloadNurseryReportPdf(studentId, term, year){
   holder.innerHTML = nurseryReportCardHTML(s, cls, term||DB.info.currentTerm, year||DB.info.currentYear, true, true);
   document.body.appendChild(holder);
   try{
+    try{ await nrcPrepareBioPhotos(holder); }catch(e){}
     try{ rcFitComments(holder, true); }catch(e){}
     const t = String(term||DB.info.currentTerm||'Term').replace(/\s+/g,'_');
     await downloadElementAsPdf('nrcPdfHolder', `${s.name.replace(/\s+/g,'_')}_${t}_${year||DB.info.currentYear}_report.pdf`, {orientation:'portrait', onePage:true});
@@ -20477,9 +20568,9 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         <span class="rc-person">Class Teacher: ${esc(ctShown)}</span>
       </div>
 
-      <div class="rc-term-middle"${showEOT?'':' style="visibility:hidden;"'}>
-        ${showEOT?`<div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDateOrd(DB.info.termEndDate)}</div>
-        <div>Next term begins on ${fmtDateOrd(DB.info.nextTermBeginDate)}</div>`:''}
+      <div class="rc-term-middle"${(showEOT && reportTermDatesMode()!=='none')?'':' style="visibility:hidden;"'}>
+        ${showEOT?`${reportTermDateVisible('end')?`<div>${esc(DB.info.currentTerm||'Term')} ended on ${fmtDateOrd(DB.info.termEndDate)}</div>`:''}
+        ${reportTermDateVisible('next')?`<div>Next term begins on ${fmtDateOrd(DB.info.nextTermBeginDate)}</div>`:''}`:''}
       </div>
 
       <div class="rc-sign-block">
@@ -20694,7 +20785,7 @@ function buildReportCardData(studentId, viewTerm, viewYear){
     classId: cls.id, rowSubjects: rows.map(r=>r.subject), showTotalAvgPos: showTotalAvgPos(cls.id), showShowAverage: showTotalAvgPos(cls.id, 'average'), showAggDiv: showAggDiv(cls.id), showShowPosition: showTotalAvgPos(cls.id, 'position'), showFinalAverageColumn, showPaperAverageColumn, theme: themeOfYearText(),
     signOff: { ctName: ctShown, ctSignature, htName: htShown, termEndDate: DB.info.termEndDate, nextTermBeginDate: DB.info.nextTermBeginDate, currentTerm: DB.info.currentTerm },
     school: { name: DB.info.schoolName, address: DB.info.address, phone: DB.info.phone, email: DB.info.email, logo: DB.info.logo, motto: DB.info.motto, stamp: DB.info.stamp },
-    feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, feeDisplayMode: reportFeeDisplayMode(), photo: s.photo
+    feesCode: s.feesCode, feesBalance: s.feesBalance, nextTermFees: s.nextTermFees, feesBalCur: s.feesBalCur, nextFeesCur: s.nextFeesCur, feeDisplayMode: reportFeeDisplayMode(), termDatesMode: reportTermDatesMode(), photo: s.photo
   };
 }
 
@@ -21423,7 +21514,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const signBlockTop = cy - 6, signBlockBottom = cy + 15, dateH = signBlockBottom - signBlockTop;
   const dateW = thirdW*0.88, dateX = contentX + thirdW + (thirdW-dateW)/2;
   // Only drawn when the card has an End of Term column (otherwise the middle cell stays empty).
-  if(data.showEOT){
+  const _tdm = data.termDatesMode||'both';
+  if(data.showEOT && _tdm!=='none'){
     pdf.setFillColor(29,78,137); pdf.setDrawColor(10,42,74); pdf.setLineWidth(0.6);
     const dateY = signBlockTop;
     pdf.rect(dateX, dateY, dateW, dateH, 'F');
@@ -21432,10 +21524,11 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     pdf.setFillColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH, 'F'); pdf.setDrawColor(10,42,74); pdf.rect(dateX, dateY, dateW, dateH);
     const _tl1 = `${data.signOff.currentTerm||'Term'} ended on ${fmtDateOrd(data.signOff.termEndDate,'pdf')}`;
     const _tl2 = `Next term begins on ${fmtDateOrd(data.signOff.nextTermBeginDate,'pdf')}`;
+    const _dl = (_tdm==='end') ? [[_tl1, dateCenterY+3.5]] : (_tdm==='next') ? [[_tl2, dateCenterY+3.5]] : [[_tl1, dateCenterY-2],[_tl2, dateCenterY+9]];
     let _tfs = 9.6; pdf.setFont('times','bold');
-    while(_tfs>5.2){ pdf.setFontSize(_tfs); if(Math.max(pdf.getTextWidth(_tl1.replace(/\u0001/g,'')), pdf.getTextWidth(_tl2.replace(/\u0001/g,''))) <= dateW-8) break; _tfs -= 0.2; }
+    while(_tfs>5.2){ pdf.setFontSize(_tfs); if(Math.max(..._dl.map(d=>pdf.getTextWidth(d[0].replace(/\u0001/g,'')))) <= dateW-8) break; _tfs -= 0.2; }
     pdf.setLineWidth(0.35);
-    [[_tl1, dateCenterY-2],[_tl2, dateCenterY+9]].forEach(([tx,ty])=>{
+    _dl.forEach(([tx,ty])=>{
       pdf.setFont('times','bold'); pdf.setFontSize(_tfs); pdf.setTextColor(255,255,255);
       supText(tx, dateX+dateW/2, ty, 'center');
     });
@@ -27409,6 +27502,7 @@ async function nurseryCardPdfPage(pdf, s, cls, term, year){
   holder.innerHTML = nurseryReportCardHTML(s, cls, term, year, true, true);
   document.body.appendChild(holder);
   let canvas;
+  try{ try{ await nrcPrepareBioPhotos(holder); }catch(e){} }catch(e){}
   try{ canvas = await html2canvasBold(holder, {scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:-window.scrollY}); }
   finally{ holder.remove(); }
   const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
@@ -28832,8 +28926,8 @@ function rcFitComments(root, force){
 }
 (function(){
   let t = 0;
-  const go = (force)=>{ clearTimeout(t); t = setTimeout(()=>rcFitComments(document, force), 30); };
-  try{ new MutationObserver(()=>{ if(!_rcFitBusy && document.querySelector('[data-cmt-fit]:not([data-cmt-done])')) go(false); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  const go = (force)=>{ clearTimeout(t); t = setTimeout(()=>{ rcFitComments(document, force); try{ nrcPrepareBioPhotos(document); }catch(e){} }, 30); };
+  try{ new MutationObserver(()=>{ if(!_rcFitBusy && document.querySelector('[data-cmt-fit]:not([data-cmt-done]), table.nrc-bio:not([data-ph-ok]) td.ph')) go(false); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   window.addEventListener('resize', ()=>go(true));
   window.addEventListener('load', ()=>go(true));
   try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>go(true)); }catch(e){}
