@@ -3022,18 +3022,22 @@ function weakestSubjectNames(rows){
   if(g.length<2) return [];
   const min = Math.min(...g.map(r=>Number(r.avg)));
   const names = g.filter(r=>Math.abs(Number(r.avg)-min)<0.05).map(r=>r.subject);
-  return names.length>=g.length ? [] : names;   // every subject tied = no single weakest; otherwise ALL tied subjects are named
+  return names.length>=g.length ? [] : names.slice(0,2);   // every subject tied = no single weakest; never more than TWO weak subjects are named
 }
 // Weakest-subject sentence for the HEAD teacher's comment. tier: 0 strong, 1 middle, 2 weak.
 function weakSubjectSentence(names, tier, showEOT, seed){
-  const period = showEOT ? 'next term' : 'in the end-of-term examinations';
-  if(!names || !names.length) return `Review every subject, give extra practice to the topics with the lowest marks, and seek help from the subject teachers ${period}.`;
-  const W = names.length>1 ? names.slice(0,-1).join(', ')+' and '+names[names.length-1] : names[0];
-  const sub = names.length>1 ? 'subjects' : 'subject';
+  // Kept SHORT on purpose: with the base remark it must fit the 2-line comment box, and it is the part
+  // of the head teacher's comment that is never dropped. Subjects are named by their abbreviations.
+  const p = showEOT ? 'next term' : 'before end of term exams';
+  if(!names || !names.length) return `Give extra practice to the lowest-scoring subjects ${p}.`;
+  const codes = [...new Set(names.slice(0,2).map(n=>msAbbr(n)).filter(Boolean))];
+  if(!codes.length) return `Give extra practice to the lowest-scoring subjects ${p}.`;
+  const W = codes.length>1 ? codes.slice(0,-1).join(', ')+' and '+codes[codes.length-1] : codes[0];
+  const many = codes.length>1;
   const options = [
-    `The weakest ${sub} ${names.length>1?'are':'is'} ${W}; revise the lesson notes and complete extra written exercises ${period}.`,
-    `${W} ${names.length>1?'are':'is'} the weakest ${sub}; attend remedial support and practise past exercises ${period}.`,
-    `Give priority to ${W}, the weakest ${sub}; review corrections, practise difficult topics and seek subject-teacher guidance ${period}.`
+    `Improve in ${W} ${p}.`,
+    `${W} ${many?'need':'needs'} special attention ${p}.`,
+    `Work harder in ${W} ${p}.`
   ];
   return remarkPick(options, seed, 1);
 }
@@ -20427,7 +20431,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
     ${isO ? `
     <div class="rc-comments-plain">
       <div class="rc-comments-line" data-cmt-fit><b>Class teacher's comment:</b> <span class="cmt-t">${esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</span></div>
-      <div class="rc-comments-line" data-cmt-fit><b>Head teacher's comment:</b> <span class="cmt-t">${esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</span></div>
+      <div class="rc-comments-line" data-cmt-fit data-cmt-keep="last"><b>Head teacher's comment:</b> <span class="cmt-t">${esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</span></div>
     </div>` : `
     <div class="rc-section-title">Comments</div>
     <table class="rc-comments-table">
@@ -20435,7 +20439,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
       <tr>
         <td><div data-cmt-fit><span class="cmt-t">${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</span></div></td>
-        <td><div data-cmt-fit><span class="cmt-t">${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</span></div></td>
+        <td><div data-cmt-fit data-cmt-keep="last"><span class="cmt-t">${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</span></div></td>
       </tr>
     </table>`}
 
@@ -20748,10 +20752,19 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   // complete comment still fits; otherwise remove that suggestion altogether.
   // If a manually entered base comment is itself unusually long, keep its first
   // two wrapped lines so it cannot expand the report-card layout.
-  function commentWrapTwo(text, w, size, style){
+  function commentWrapTwo(text, w, size, style, keepLast){
     pdf.setFont('helvetica', style||'normal'); pdf.setFontSize(size);
     let candidate = String(text==null?'':text).trim();
     let lines = candidate ? pdf.splitTextToSize(candidate, w) : [''];
+    if(keepLast){
+      // Head teacher: the last sentence is the weak-subject hint; drop earlier sentences first.
+      const full = candidate, ends = [...full.matchAll(/[.!?]+[\"')\]]*(?=\s|$)/g)].map(m=>m.index+m[0].length);
+      for(let i=1; lines.length>2 && i<ends.length; i++){
+        candidate = full.slice(ends[i-1]).trim();
+        lines = pdf.splitTextToSize(candidate, w);
+      }
+      return lines.length>2 ? lines.slice(0,2) : (lines.length ? lines : ['']);
+    }
     while(lines.length>2){
       const cuts = [...candidate.matchAll(/[.!?]+[\"')\]]*(?=\s|$)/g)];
       if(cuts.length<2) break;
@@ -21321,18 +21334,18 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     // O-Level: plain statement lines instead of the boxed two-column table.
     // Each comment wraps onto as many lines as it needs (hanging indent under the label) so a
     // longer comment can never run past the right edge or into the next comment.
-    function labeledLine(label, value, yPos){
+    function labeledLine(label, value, yPos, keepLast){
       pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); setC(navy);
       pdf.text(label, contentX, yPos);
       const labelW = pdf.getTextWidth(label + ' ');
       pdf.setFont('helvetica','normal'); pdf.setFontSize(8.5); setC(ink);
-      const lines = commentWrapTwo(value, contentW - labelW - 2, 8.5, 'normal');
+      const lines = commentWrapTwo(value, contentW - labelW - 2, 8.5, 'normal', keepLast);
       lines.forEach((ln,i)=>pdf.text(ln, contentX + labelW, yPos + i*10.5));
       return Math.max(1, lines.length);
     }
     const _ctN = labeledLine("Class teacher's comment:", data.comments.classComment, cy);
     cy += 4 + _ctN*10.5;
-    const _htN = labeledLine("Head teacher's comment:", data.comments.headComment, cy);
+    const _htN = labeledLine("Head teacher's comment:", data.comments.headComment, cy, true);
     cy += 6 + _htN*10.5;
   } else {
     leftText('COMMENTS', contentX, cy, 9, 'bold', navy);
@@ -21340,7 +21353,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     cy += 12;
     const halfW = contentW/2;
     const ctLines = commentWrapTwo(data.comments.classComment, halfW-8, 8);
-    const htLines = commentWrapTwo(data.comments.headComment, halfW-8, 8);
+    const htLines = commentWrapTwo(data.comments.headComment, halfW-8, 8, 'normal', true);
     const commentBodyH = Math.max(ctLines.length, htLines.length)*10 + 8;
     setDrawC([29,78,137]); pdf.setLineWidth(0.6);
     pdf.rect(contentX, cy, halfW, 14); pdf.rect(contentX+halfW, cy, halfW, 14);
@@ -28759,10 +28772,19 @@ function rcFitOne(block){
   if(rcCountLines(block) > 2){
     const ends = [...full.matchAll(/[.!?]+["')\]]*(?=\s|$)/g)].map(m=>m.index+m[0].length);
     shown = '';
-    for(let i=ends.length-1;i>=0;i--){
-      const cand = full.slice(0,ends[i]).trim();
-      span.textContent = cand;
-      if(rcCountLines(block) <= 2){ shown = cand; break; }
+    if(block.dataset.cmtKeep==='last'){
+      // Head teacher: the last sentence is the weak-subject hint, so drop the EARLIER sentences instead.
+      for(let i=1;i<ends.length;i++){
+        const cand = full.slice(ends[i-1]).trim();
+        span.textContent = cand;
+        if(rcCountLines(block) <= 2){ shown = cand; break; }
+      }
+    } else {
+      for(let i=ends.length-1;i>=0;i--){
+        const cand = full.slice(0,ends[i]).trim();
+        span.textContent = cand;
+        if(rcCountLines(block) <= 2){ shown = cand; break; }
+      }
     }
     if(!shown){                                              // even the first sentence is longer than 2 lines
       const words = full.split(/\s+/); let lo=1, hi=words.length-1, best=1;
