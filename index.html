@@ -15387,7 +15387,8 @@ function nurserySetupView(){
   const back = `<div style="margin:8px 0;"><button type="button" class="btn-outline" data-action="nsTab:">← Back to NURSERY SET UP</button></div>`;
   if(tab==='areas') return `<h2>NURSERY SET UP — Departments and Learning Areas</h2>${back}${nurseryGradingHTML('areas')}`;
   if(tab==='scale') return `<h2>NURSERY SET UP — Nursery Grading Scale</h2>${back}${nurseryGradingHTML('scale')}`;
-  const tiles = [['nsTab:areas','📚','DEPARTMENTS AND LEARNING AREAS'],['nsTab:scale','🎯','NURSERY GRADING SCALE']];
+  if(tab==='theme') return `<h2>NURSERY SET UP — Theme Colors</h2>${back}${nurseryThemeCardHTML()}`;
+  const tiles = [['nsTab:areas','📚','DEPARTMENTS AND LEARNING AREAS'],['nsTab:scale','🎯','NURSERY GRADING SCALE'],['nsTab:theme','🎨','THEME COLORS']];
   return `<h2>NURSERY SET UP</h2>
   <p class="small">Choose what to set up for the Nursery classes.</p>
   <div class="tile-grid fin-tiles" style="max-width:420px;margin-left:0;grid-template-columns:repeat(2,minmax(0,1fr)) !important;">${tiles.map(([act,icon,label])=>`
@@ -19345,7 +19346,7 @@ const NRC_THEME = [
   {dark:'#6a35b0', pale:'#f1eafa', line:'#c2a6e6'},   // Language Development
   {dark:'#c25e00', pale:'#fff2e2', line:'#f0bf84'}    // Mathematical Concepts
 ];
-const NRC_DEFAULT_THEME = {frame:'#8b1c2c', head:'#8b1c2c', d0:'#1b7f3b', d1:'#0f6fb3', d2:'#6a35b0', d3:'#c25e00'};
+const NRC_DEFAULT_THEME = {frame:'#8b1c2c', inner:'#8b1c2c', tables:'#8b1c2c', head:'#8b1c2c', schoolInk:'', d0:'#1b7f3b', d1:'#0f6fb3', d2:'#6a35b0', d3:'#c25e00'};
 function nrcHexRgb(x){ const m=/^#([0-9a-f]{6})$/i.exec(x||''); if(!m) return null; const n=parseInt(m[1],16); return [n>>16&255,n>>8&255,n&255]; }
 function nrcMix(x,t){ const c=nrcHexRgb(x)||[0,0,0]; return '#'+c.map(v=>Math.round(v+(255-v)*t).toString(16).padStart(2,'0')).join(''); }
 function nrcLum(x){
@@ -19360,15 +19361,26 @@ function nrcContrastInk(bg){
   const lightContrast=(Math.max(L,1)+.05)/(Math.min(L,1)+.05);
   return darkContrast>=lightContrast?dark:light;
 }
-function nrcThemeCfg(){ const t=(DB.info&&DB.info.nurseryTheme)||{}; const o={}; Object.keys(NRC_DEFAULT_THEME).forEach(k=>{ o[k]=nrcHexRgb(t[k])?t[k]:NRC_DEFAULT_THEME[k]; }); return o; }
+function nrcThemeCfg(){
+  const t=(DB.info&&DB.info.nurseryTheme)||{}; const o={};
+  Object.keys(NRC_DEFAULT_THEME).forEach(k=>{ o[k]=nrcHexRgb(t[k])?t[k]:NRC_DEFAULT_THEME[k]; });
+  // Cards saved before these options existed keep their old look: inner line and tables followed the old single "frame" colour.
+  if(!nrcHexRgb(t.inner)) o.inner=o.frame;
+  if(!nrcHexRgb(t.tables)) o.tables=o.frame;
+  o.deptSame = t.deptSame==='1';
+  return o;
+}
 function nrcDeptTheme(i){
-  const dark=nrcThemeCfg()['d'+(i%4)], pale=nrcMix(dark,.9), bodyBg=nrcMix(dark,.965);
+  const cfg=nrcThemeCfg(), dark=cfg[cfg.deptSame?'d0':'d'+(i%4)], pale=nrcMix(dark,.9), bodyBg=nrcMix(dark,.965);
   return {dark, pale, bodyBg, line:nrcMix(dark,.55), ink:nrcContrastInk(dark), bodyInk:nrcContrastInk(bodyBg)};
 }
 async function setNurseryTheme(key,val){
   if(!CUR || CUR.role!=='admin'){ alert('Only an Admin can do that.'); return; }
   DB.info.nurseryTheme = DB.info.nurseryTheme || {};
-  if(key==='reset') DB.info.nurseryTheme = {}; else if(nrcHexRgb(val)) DB.info.nurseryTheme[key]=val;
+  if(key==='reset') DB.info.nurseryTheme = {};
+  else if(key==='deptSame'){ if(val==='1') DB.info.nurseryTheme.deptSame='1'; else delete DB.info.nurseryTheme.deptSame; }
+  else if(val==='auto') delete DB.info.nurseryTheme[key];
+  else if(nrcHexRgb(val)) DB.info.nurseryTheme[key]=val;
   await saveInfo(); render();
 }
 // What Nursery report cards show per learning area: 'grade' (grade + descriptor, the default), 'score' (score + descriptor) or 'both'.
@@ -19385,11 +19397,27 @@ function nurseryShowCardHTML(){
 }
 function nurseryThemeCardHTML(){
   const t=nrcThemeCfg(), c=nurseryConfig();
-  const row=(k,l)=>`<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="color" value="${t[k]}" onchange="setNurseryTheme('${k}',this.value)" style="width:48px;height:32px;padding:0;"> ${esc(l)}</label>`;
+  const row=(k,l,v)=>`<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="color" value="${v||t[k]}" onchange="setNurseryTheme('${k}',this.value)" style="width:48px;height:32px;padding:0;"> ${esc(l)}</label>`;
+  const sec=h=>`<h4 style="margin:16px 0 4px;">${h}</h4>`;
+  const autoInk = nrcLum(t.head)>.62 ? '#1d2433' : '#ffffff';
+  const same = t.deptSame;
+  const tog=(on,val,label)=>`<button type="button" class="btn-outline" style="${on?'background:var(--navy,#0a2a4a);color:#fff;':''}" onclick="setNurseryTheme('deptSame','${val}')">${label}</button>`;
   return `<div class="card"><h3>Nursery report card colours</h3>
-  <p class="small">Pick this school's colours. Pale row tints and white/dark wording are worked out automatically so the text always stays readable. School name, term, year, learner and class always come from your own data.</p>
-  ${row('frame','Decorative border')}${row('head','School header background')}${c.depts.map((d,i)=>row('d'+i,d.name)).join('')}
-  <button type="button" class="btn-outline" onclick="setNurseryTheme('reset')">Reset to default colours</button></div>`;
+  <p class="small">Pick this school's colours. Pale row tints and white/dark wording are worked out automatically so the text always stays readable. Learner, class, term and year always come from your own data.</p>
+  ${sec('Header')}
+  ${row('head','Header background colour')}
+  ${row('schoolInk','School name text colour', t.schoolInk||autoInk)}
+  <button type="button" class="btn-outline" onclick="setNurseryTheme('schoolInk','auto')">School name text: automatic</button>
+  ${sec('Departments')}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px;">${tog(!same,'0','Different colour for each')}${tog(same,'1','Same colour for all')}</div>
+  ${same ? row('d0','Colour for all departments') : c.depts.map((d,i)=>row('d'+i,d.name)).join('')}
+  ${sec('Boundary')}
+  ${row('inner','Inner boundary colour')}
+  ${row('frame','Outer border and flowers colour')}
+  ${sec('Other tables')}
+  <p class="small" style="margin:0 0 4px;">Bio-data, grading scale, comments, overall result and the other tables that are not departments.</p>
+  ${row('tables','Tables colour')}
+  <div style="margin-top:14px;"><button type="button" class="btn-outline" onclick="setNurseryTheme('reset')">Reset to default colours</button></div></div>`;
 }
 const NRC_GRADE_COL = {A:'#1b7f3b', B:'#0f6fb3', C:'#b58300', D:'#d2650a', E:'#c0261f'};
 const NRC_GRADE_BG  = {A:'#d6f1dd', B:'#d3e8fa', C:'#fdeeba', D:'#fddcc0', E:'#f8d2cf'};   // soft tint behind each key (dark text stays readable)
@@ -19452,18 +19480,18 @@ function nrcCss(){
 .nrc-pics{display:flex;justify-content:space-around;align-items:flex-end;gap:.6u;margin:.9u 0 0;}
 .nrc-pics img{display:block;width:100%;max-width:100%;height:auto;aspect-ratio:600/380;object-fit:contain;border-radius:.8u;box-shadow:0 .2u .5u rgba(20,35,50,.12);}
 .nrc-overall{display:flex;align-items:center;gap:1.6u;margin:1.4u 0 .8u;padding:.9u 1.6u;border-radius:1.2u;background:#fff8e1;border:.25u solid #f2c94c;}
-.nrc-overall .t{font-weight:900;font-size:1.8u;color:var(--nf);}
+.nrc-overall .t{font-weight:900;font-size:1.8u;color:var(--nt);}
 .nrc-overall .n{margin-left:auto;font-size:1.4u;color:#1d2433;}
-.nrc-cm{border:.25u solid var(--nf);border-radius:1.2u;overflow:hidden;margin-top:.8u;}
+.nrc-cm{border:.25u solid var(--nt);border-radius:1.2u;overflow:hidden;margin-top:.8u;}
 .nrc-cm div{padding:.8u 1.4u;font-size:1.6u;}
 .nrc-cm div+div{border-top:.2u dashed #c9a5ab;}
-.nrc-cm b{color:var(--nf);}
+.nrc-cm b{color:var(--nt);}
 .nrc-cm .w{color:#0b2a6f;font-weight:700;}
 .nrc-cm .s{display:inline-block;min-width:12u;border-bottom:.2u solid #1d2433;margin-left:1u;}
 .nrc-foot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1u;margin-top:1u;font-size:1.4u;}
-.nrc-foot div{border:.2u solid var(--nf);border-radius:.9u;padding:.7u 1u;background:var(--nfp);}
-.nrc-foot b{color:var(--nf);display:block;font-size:1.15u;text-transform:uppercase;}
-.nrc-theme{margin-top:auto;margin-bottom:1.2u;white-space:normal;overflow-wrap:anywhere;background:var(--nf);color:var(--nfi);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
+.nrc-foot div{border:.2u solid var(--nt);border-radius:.9u;padding:.7u 1u;background:var(--ntp);}
+.nrc-foot b{color:var(--nt);display:block;font-size:1.15u;text-transform:uppercase;}
+.nrc-theme{margin-top:auto;margin-bottom:1.2u;white-space:normal;overflow-wrap:anywhere;background:var(--nt);color:var(--nti);text-align:center;font-weight:700;font-size:1.3u;padding:.7u 1u;border-radius:.9u;}
 /* Readability pass: keep Nursery report text comfortably legible at A4 print size. */
 .nrc-card{font-size:max(11px,calc(var(--u)*1.5));line-height:1.24;}
 .nrc-school{font-size:clamp(22px,calc(var(--u)*3.6),34px);line-height:1.12;display:block;transform:none;}
@@ -19487,13 +19515,13 @@ function nrcCss(){
 .nrc-theme{font-size:max(10px,calc(var(--u)*1.4));line-height:1.2;}
 .nrc-wm{position:absolute;left:50%;top:52%;width:50u;height:50u;transform:translate(-50%,-50%);opacity:.06;object-fit:contain;pointer-events:none;}
 .nrc-flw{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5;display:block;}
-.nrc-card:after{content:'';position:absolute;inset:8px;border:2px double var(--nf);border-radius:1u;pointer-events:none;z-index:5;box-sizing:border-box;}
+.nrc-card:after{content:'';position:absolute;inset:8px;border:2px double var(--nin);border-radius:1u;pointer-events:none;z-index:5;box-sizing:border-box;}
 .nrc-outer{position:relative;padding:0 !important;border:0 !important;box-shadow:none !important;min-height:0 !important;height:auto !important;aspect-ratio:210/297 !important;max-width:724px !important;}
 .nrc-outer:after{content:none !important;}
 @media (max-width:760px){.nrc-card:not(.nrc-pdf){height:auto;min-height:0;aspect-ratio:210/297;}.nrc-grid{align-content:space-between;}}
 .nrc-scale{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:1u;text-align:center;}
-.nrc-scale th,.nrc-scale td{border:.18u solid var(--nf);padding:.4u .5u;font-size:1.3u;line-height:1.2;}
-.nrc-scale th{background:var(--nfp);color:#1d2433;font-weight:900;}
+.nrc-scale th,.nrc-scale td{border:.18u solid var(--nt);padding:.4u .5u;font-size:1.3u;line-height:1.2;}
+.nrc-scale th{background:var(--ntp);color:#1d2433;font-weight:900;}
 .nrc-scale td{font-weight:900;font-size:1.6u;background:#fff;}
 /* Header + learner bio data laid out like the Primary report card (centred school block, logo on the left, bio table with photo cell), keeping the Nursery colours. */
 .nrc-topline{display:flex;justify-content:space-between;font-size:1.15u;font-weight:700;font-family:monospace;color:#5a6270;margin-bottom:.5u;}
@@ -19504,12 +19532,12 @@ function nrcCss(){
 .nrc-head .nrc-school{font-family:Arial,Helvetica,sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:0;text-shadow:none;line-height:1.12;margin:.1u 0 .3u;overflow-wrap:break-word;}
 .nrc-head .nrc-addr{font-size:1.25u;font-weight:700;font-style:italic;line-height:1.25;margin-top:.3u;opacity:1;}
 .nrc-sub{display:inline-block;margin-top:.6u;background:#fff;color:#1d2433;border:.15u solid rgba(0,0,0,.28);border-radius:.5u;padding:.3u 1.6u;font-size:1.35u;font-weight:800;text-transform:uppercase;letter-spacing:.03em;line-height:1.3;}
-.nrc-bio{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;margin:0 0 1.2u;border-top:.18u solid var(--nf);border-left:.18u solid var(--nf);}
-.nrc-bio td{border-right:.18u solid var(--nf);border-bottom:.18u solid var(--nf);padding:.55u 1u;font-size:1.45u;font-weight:700;line-height:1.2;overflow-wrap:anywhere;word-break:break-word;vertical-align:middle;}
-.nrc-bio td.lbl{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.15u;letter-spacing:.03em;}
+.nrc-bio{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;margin:0 0 1.2u;border-top:.18u solid var(--nt);border-left:.18u solid var(--nt);}
+.nrc-bio td{border-right:.18u solid var(--nt);border-bottom:.18u solid var(--nt);padding:.55u 1u;font-size:1.45u;font-weight:700;line-height:1.2;overflow-wrap:anywhere;word-break:break-word;vertical-align:middle;}
+.nrc-bio td.lbl{background:var(--ntp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.15u;letter-spacing:.03em;}
 .nrc-bio td.nm{color:#0b2a6f;font-weight:900;font-size:1.7u;vertical-align:middle;padding-top:.8u;padding-bottom:.8u;}
 .nrc-bio td.ph{padding:.5u;text-align:center;background:#fff;}
-.nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;object-position:50% 0%;border:.2u solid var(--nf);border-radius:.5u;}
+.nrc-bio-photo{display:block;margin:0 auto;width:8u;height:8u;object-fit:cover;object-position:50% 0%;border:.2u solid var(--nt);border-radius:.5u;}
 /* ONE-PAGE FIT: every size below is in "k" units = u x --nk. nurseryReportCardHTML() measures the card and sets --nk (1 = full size) so the whole
    card always fits one A4 page; nothing is allowed to shrink, clip or overlap (flex-shrink:0), the grid just grows with its content. */
 .nrc-card{--nk:1;font-size:1.3k;line-height:1.22;}
@@ -19573,15 +19601,15 @@ function nrcCss(){
 .nrc-stage>.nrc-card{position:absolute;left:0;top:0;margin:0;transform-origin:0 0;transform:scale(var(--ns,.9));}
 @media print{.nrc-stage>.nrc-card{--ns:.9235 !important;}}
 /* Bottom section laid out like the Primary report card (Grading Scale, Comments, signatures, fees strip, motto, theme) but in the Nursery colours. */
-.nrc-sec{margin:.9k 0 .4k;padding:.3k 1k;background:var(--nf);color:var(--nfi);font-weight:900;font-size:1.15k;letter-spacing:.04em;text-transform:uppercase;border-radius:.8k;line-height:1.15;}
+.nrc-sec{margin:.9k 0 .4k;padding:.3k 1k;background:var(--nt);color:var(--nti);font-weight:900;font-size:1.15k;letter-spacing:.04em;text-transform:uppercase;border-radius:.8k;line-height:1.15;}
 .nrc-gs,.nrc-cmt{width:100%;border-collapse:collapse;table-layout:fixed;}
-.nrc-gs th,.nrc-gs td{border:.18k solid var(--nf);padding:.3k .4k;font-size:1.05k;line-height:1.15;text-align:center;}
-.nrc-gs th{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;}
+.nrc-gs th,.nrc-gs td{border:.18k solid var(--nt);padding:.3k .4k;font-size:1.05k;line-height:1.15;text-align:center;}
+.nrc-gs th{background:var(--ntp);color:#1d2433;font-weight:900;text-transform:uppercase;}
 .nrc-gs td{font-weight:900;font-size:1.3k;background:#fff;}
 .nrc-gs{margin-top:.9k;}
 .nrc-gs tr:first-child th:first-child{width:22%;}
-.nrc-cmt th,.nrc-cmt td{border:.18k solid var(--nf);padding:.45k .9k;font-size:1.1k;line-height:1.25;text-align:left;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
-.nrc-cmt th{background:var(--nfp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.2k;}
+.nrc-cmt th,.nrc-cmt td{border:.18k solid var(--nt);padding:.45k .9k;font-size:1.1k;line-height:1.25;text-align:left;vertical-align:top;width:50%;overflow-wrap:break-word;word-break:break-word;}
+.nrc-cmt th{background:var(--ntp);color:#1d2433;font-weight:900;text-transform:uppercase;font-size:1.2k;}
 .nrc-cmt td{color:#0b2a6f;font-weight:700;font-size:1.25k;line-height:1.3;}
 .nrc-cmt td .nrc-comment-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;text-overflow:ellipsis;line-height:1.3;max-height:2.6em;overflow-wrap:anywhere;word-break:normal;}
 .nrc-sign{display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:stretch;column-gap:1.6k;margin:1k 0 .5k;font-size:1.1k;font-weight:700;}
@@ -19593,7 +19621,7 @@ function nrcCss(){
 .nrc-tm{justify-self:center;width:90%;display:flex;flex-direction:column;justify-content:center;text-align:center;font-family:'Times New Roman',Times,serif;font-size:1.1k;line-height:1.3;color:#000;font-weight:900;}
 .nrc-legend{display:flex;gap:.8k;flex-wrap:wrap;justify-content:center;align-items:center;font-size:.95k;margin-top:.6k;color:#4a5262;line-height:1.2;}
 .nrc-legend b{color:#1d2433;}
-.nrc-mot{text-align:center;font-weight:900;font-size:1.4k;letter-spacing:.04em;line-height:1.25;color:var(--nf);margin:.6k 0 .2k;}
+.nrc-mot{text-align:center;font-weight:900;font-size:1.4k;letter-spacing:.04em;line-height:1.25;color:var(--nt);margin:.6k 0 .2k;}
 .nrc-tm div{color:#000;font-weight:900;}
 .nrc-bio td.ph{padding:0;position:relative;overflow:hidden;}
 .nrc-bio td.ph .nrc-bio-photo{position:absolute;left:0;top:0;width:100% !important;height:100% !important;margin:0;border:0;border-radius:0;object-fit:cover;object-position:50% 0%;display:block;}
@@ -19613,7 +19641,7 @@ function nrcCss(){
 .nrc-topline>span:empty{display:none;}
 .nrc-topline .nrc-fees{font-size:9px !important;letter-spacing:.03em;color:#000;}
 .nrc-mot{color:#000 !important;font-weight:900 !important;-webkit-text-stroke:.4px #000;}
-.nrc-theme{background:var(--nf) !important;color:var(--nfi) !important;border-radius:.9em !important;padding:.45em 1em !important;width:100%;max-width:100%;box-sizing:border-box;margin:auto auto 0 !important;white-space:normal;text-align:center;overflow-wrap:anywhere;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
+.nrc-theme{background:var(--nt) !important;color:var(--nti) !important;border-radius:.9em !important;padding:.45em 1em !important;width:100%;max-width:100%;box-sizing:border-box;margin:auto auto 0 !important;white-space:normal;text-align:center;overflow-wrap:anywhere;font:900 14px/1.25 Arial,Helvetica,sans-serif !important;letter-spacing:.05em;text-transform:uppercase;}
 .nrc-g.nrc-sh{background:none !important;border-radius:0 !important;position:relative;}
 .nrc-g.nrc-sh svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
 .nrc-g.nrc-sh i{position:relative;z-index:1;font-style:normal;line-height:1;}
@@ -19817,14 +19845,14 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
   const key = NURSERY_GRADES.map(g=>`<span style="background:${NRC_GRADE_BG[g]};border-color:${NRC_GRADE_COL[g]};color:#1d2433"><i style="background:${NRC_GRADE_COL[g]}">${g}</i>${esc(NURSERY_GRADE_KEY[g])}</span>`).join('');
   let card = `
   <div class="nrc-wrap"><style>${nrcCss()}</style>
-  <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
+  <div class="nrc-card nrc-pdf" style="--nf:${nrcThemeCfg().frame};--nin:${nrcThemeCfg().inner};--nt:${nrcThemeCfg().tables};--ntp:${nrcMix(nrcThemeCfg().tables,.92)};--nti:${nrcLum(nrcThemeCfg().tables)>.62?'#1d2433':'#fff'};--nh:${nrcThemeCfg().head};--nhi:${nrcLum(nrcThemeCfg().head)>.62?'#1d2433':'#fff'};--nfp:${nrcMix(nrcThemeCfg().frame,.92)};--nfi:${nrcLum(nrcThemeCfg().frame)>.62?'#1d2433':'#fff'}">
     ${nrcFlowersSvg(nrcThemeCfg().frame, false)}
     ${info.logo?`<img class="nrc-wm" src="${info.logo}" alt="">`:''}
     <div class="nrc-topline"><span></span><span class="nrc-printed">Printed ${fmtDateOrd(Date.now())}</span></div>
     <div class="nrc-head${info.logo?' nrc-hl':''}">
       ${info.logo?`<img class="nrc-logo" src="${trimmedLogoSrc()}" alt="School logo">`:''}
       <div class="nrc-ht">
-        <div class="nrc-school" style="font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.9:(String(info.schoolName||'').length>26?3.4:4)}*var(--nk))">${esc(info.schoolName||'')}</div>
+        <div class="nrc-school" style="${nrcThemeCfg().schoolInk?'color:'+nrcThemeCfg().schoolInk+';':''}font-size:calc(var(--u)*${String(info.schoolName||'').length>38?2.9:(String(info.schoolName||'').length>26?3.4:4)}*var(--nk))">${esc(info.schoolName||'')}</div>
         <div class="nrc-addr">Academic Year: ${esc(String(year||DB.info.currentYear||''))}${info.address?' &nbsp;|&nbsp; '+esc(info.address):''}</div>
         ${(info.phone||info.email)?`<div class="nrc-addr">${[info.phone?'Tel: '+esc(info.phone):'', info.email?'Email: '+esc(info.email):''].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
         <div class="nrc-sub">STUDENT'S ACADEMIC REPORT CARD FORM</div>
@@ -19859,9 +19887,9 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
         if(showTotalAvgPos(cls.id,'position')) _xs.push({l:'Position', v: nurseryRank.position ? `${ordSup(nurseryRank.position)} / ${nurseryRank.size}` : '—', w:18});
         const _xw = _xs.reduce((t,x)=>t+x.w,0), _gw = _xs.length ? 17 : 24, _pw = _xs.length ? 22 : 25, _vw = 100-_gw-_pw-_xw;
         const _cg = `<colgroup><col style="width:${_gw}%"><col style="width:${_vw}%">${_xs.map(x=>`<col style="width:${x.w}%">`).join('')}<col style="width:${_pw}%"></colgroup>`;
-        const _xc = _xs.map(x=>`<td class="nrc-ov-x" style="padding:.4u .3u;border:1px solid var(--nf);text-align:center;vertical-align:middle;font-weight:900;line-height:1.15;white-space:nowrap;"><span class="nrc-ov-l" style="font-weight:900;color:var(--nf);">${x.l}:</span> ${x.v}</td>`).join('');
+        const _xc = _xs.map(x=>`<td class="nrc-ov-x" style="padding:.4u .3u;border:1px solid var(--nt);text-align:center;vertical-align:middle;font-weight:900;line-height:1.15;white-space:nowrap;"><span class="nrc-ov-l" style="font-weight:900;color:var(--nt);">${x.l}:</span> ${x.v}</td>`).join('');
         return `${_cg}
-      <tr><th style="text-align:left;padding:.4u .55u;border:1px solid var(--nf);">Overall Grade</th><td class="nrc-overall-value" style="padding:.4u .55u;border:1px solid var(--nf);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b></td>${_xc}<td class="nrc-promotion-cell" style="padding:.4u .55u;border:1px solid var(--nf);text-align:right;vertical-align:middle;font-weight:900;color:#e00000;font-size:max(11px,calc(var(--u)*1.5));line-height:1.15;overflow-wrap:anywhere;">${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? esc(pd.text) : ''; })()}</td></tr>`;
+      <tr><th style="text-align:left;padding:.4u .55u;border:1px solid var(--nt);">Overall Grade</th><td class="nrc-overall-value" style="padding:.4u .55u;border:1px solid var(--nt);font-weight:900;">${showS && overallAvg!=null ? nurseryScoreTxt(overallAvg)+'% &nbsp; ' : ''}${showG?gradeChip(overall)+' ':''}<b>${overall?esc(NURSERY_GRADE_KEY[overall]):(showG?'No grades yet':'—')}</b></td>${_xc}<td class="nrc-promotion-cell" style="padding:.4u .55u;border:1px solid var(--nt);text-align:right;vertical-align:middle;font-weight:900;color:#e00000;font-size:max(11px,calc(var(--u)*1.5));line-height:1.15;overflow-wrap:anywhere;">${(()=>{ const pd=promotionDecisionFor(s,cls,term,{year,avgPct:overallAvg,overallGrade:overall,rows}); return pd ? esc(pd.text) : ''; })()}</td></tr>`;
       })()}
     </table>
     <table class="nrc-gs">
@@ -21179,10 +21207,10 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     if(hasRes){
       boldLabel('RESULT :', contentX, w1, cy+resH-4.5, bodySize+2);
       centerText(String(data.result), contentX+w1, w2, cy+resH-4, bodySize+4, 'bold', RED);
-      if(promo) leftText(promo.text, contentX+w1+w2+4, cy+resH-4.5, Math.min(bodySize+2, 10), 'bold', RED);
+      if(promo) fitText(String(promo.text), contentX+w1+w2, w3, Math.min(bodySize+2, 10));
     } else {
       boldLabel('DECISION :', contentX, w1, cy+resH-4.5, bodySize+2);
-      leftText(promo.text, contentX+w1+4, cy+resH-4.5, Math.min(bodySize+3, 10), 'bold', RED);
+      fitText(String(promo.text), contentX+w1, contentW-w1, Math.min(bodySize+3, 10));
     }
     cy += resH;
   } }
