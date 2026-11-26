@@ -19902,16 +19902,16 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     </table>
     <div class="nrc-sign">
       <div class="nrc-sg">
-        <span class="p" style="${nrcSignFit('Class Teacher: '+ctName,'Head Teacher: '+(info.headteacher||''))}">Class Teacher: ${esc(ctName)}</span>
         <span class="a">Signature:${ctSig?`<img src="${ctSig}" alt="">`:''}</span>
+        <span class="p" style="${nrcSignFit('Class Teacher: '+ctName,'Head Teacher: '+(info.headteacher||''))}">Class Teacher: ${esc(ctName)}</span>
       </div>
       <div class="nrc-tm">
         <div>${esc(term||info.currentTerm||'Term')} ended on ${info.termEndDate?fmtDateOrd(info.termEndDate):'—'}</div>
         <div>Next term begins on ${info.nextTermBeginDate?fmtDateOrd(info.nextTermBeginDate):'—'}</div>
       </div>
       <div class="nrc-sg">
-        <span class="p" style="${nrcSignFit('Class Teacher: '+ctName,'Head Teacher: '+(info.headteacher||''))}">Head Teacher: ${esc(info.headteacher||'')}</span>
         <span class="a">School Stamp:</span>
+        <span class="p" style="${nrcSignFit('Class Teacher: '+ctName,'Head Teacher: '+(info.headteacher||''))}">Head Teacher: ${esc(info.headteacher||'')}</span>
         ${info.stamp?`<img class="stamp" src="${info.stamp}" alt="">`:''}
       </div>
     </div>
@@ -20473,8 +20473,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     <div class="rc-sign-row">
       <div class="rc-sign-block">
-        <span class="rc-person">Class Teacher: ${esc(ctShown)}</span>
         <span class="rc-action">Signature:${ctSignature?`<img loading="lazy" decoding="async" src="${ctSignature}" class="rc-teacher-signature" alt="">`:''}</span>
+        <span class="rc-person">Class Teacher: ${esc(ctShown)}</span>
       </div>
 
       <div class="rc-term-middle"${showEOT?'':' style="visibility:hidden;"'}>
@@ -20483,8 +20483,8 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
       </div>
 
       <div class="rc-sign-block">
-        <span class="rc-person">Head Teacher: ${esc(htShown)}</span>
         <span class="rc-action">School Stamp:</span>
+        <span class="rc-person">Head Teacher: ${esc(htShown)}</span>
         ${DB.info.stamp?`<img loading="lazy" decoding="async" src="${DB.info.stamp}" class="rc-stamp" alt="">`:''}
       </div>
     </div>
@@ -21396,8 +21396,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
 
   // ---- 10. Sign-off row ----
   const thirdW = contentW/3;
-  leftText(`Class Teacher: ${data.signOff.ctName}`, contentX, cy, 8, 'bold');
-  pdf.setFont('helvetica','normal'); pdf.setFontSize(7.5); setC(ink); pdf.text('Signature: ______________', contentX+4, cy+11);
+  pdf.setFont('helvetica','normal'); pdf.setFontSize(7.5); setC(ink); pdf.text('Signature: ______________', contentX+4, cy);
+  leftText(`Class Teacher: ${data.signOff.ctName}`, contentX, cy+11, 8, 'bold');   // name sits BELOW the signature line
   // Uploaded Class Teacher signature: drawn directly above the "Signature: ____" line,
   // scaled to fit within this sign-off block's own footprint (never wider than the
   // Class Teacher column, capped in height) so it never shifts or reflows anything
@@ -21406,12 +21406,12 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   if(data.signOff.ctSignature){
     try{
       const sigProps = pdf.getImageProperties(data.signOff.ctSignature);
-      const sigBoxW = thirdW*0.72, sigBoxH = 13;
+      const sigBoxW = thirdW*0.72, sigBoxH = 12;
       const sigRatio = sigProps.width/sigProps.height;
       let sigW = sigBoxW, sigH = sigW/sigRatio;
       if(sigH > sigBoxH){ sigH = sigBoxH; sigW = sigH*sigRatio; }
       const sigX = contentX + (thirdW - sigW)/2;
-      const sigY = cy + 10 - sigH; // sit just above the signature line, not touching the name above
+      const sigY = cy - 1.5 - sigH; // sit just above the signature line (the name is now below it)
       pdf.addImage(data.signOff.ctSignature, 'PNG', sigX, sigY, sigW, sigH);
     }catch(e){ /* unreadable/unsupported signature image — skip it, never block the PDF */ }
   }
@@ -21443,8 +21443,8 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   }
 
   const rightX = contentX+thirdW*2;
-  leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy, 8, 'bold');
-  leftText('School Stamp: ______________', rightX, cy+11, 7.5);
+  leftText('School Stamp: ______________', rightX, cy, 7.5);
+  leftText(`Head Teacher: ${data.signOff.htName}`, rightX, cy+11, 8, 'bold');   // name sits BELOW the stamp line
   // School stamp overlay: shrunk to fit within this sign-off block's own footprint
   // (never wider/taller than the Head Teacher column) and rotated diagonally, the
   // way a real ink stamp lands across a name/signature line. Drawn faded (opacity)
