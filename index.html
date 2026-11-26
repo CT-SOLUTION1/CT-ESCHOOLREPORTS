@@ -19717,6 +19717,7 @@ function nrcFitScale(cardHTML){
     c.classList.add('nrc-pdf','nrc-measure');
     const PAGE_H = 1123 - 2;
     const bad = ()=>{
+      try{ rcFitComments(c, true); }catch(e){}
       // Include the complete scrollable content (especially the final theme strip),
       // not only the card's fixed A4 box, which can hide overflow via overflow:hidden.
       if(Math.max(c.getBoundingClientRect().height, c.scrollHeight) > PAGE_H) return true;
@@ -19865,7 +19866,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
     </table>
     <table class="nrc-cmt">
       <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
-      <tr><td><div class="nrc-comment-text">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</div></td><td><div class="nrc-comment-text">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</div></td></tr>
+      <tr><td><div class="nrc-comment-text" data-cmt-fit><span class="cmt-t">${overall?esc(nrcOverallComment(overall,s.name,'class',s.id)):''}</span></div></td><td><div class="nrc-comment-text" data-cmt-fit><span class="cmt-t">${overall?esc(nrcOverallComment(overall,s.name,'head',s.id)):''}</span></div></td></tr>
     </table>
     <div class="nrc-sign">
       <div class="nrc-sg">
@@ -19917,6 +19918,7 @@ async function downloadNurseryReportPdf(studentId, term, year){
   holder.innerHTML = nurseryReportCardHTML(s, cls, term||DB.info.currentTerm, year||DB.info.currentYear, true, true);
   document.body.appendChild(holder);
   try{
+    try{ rcFitComments(holder, true); }catch(e){}
     const t = String(term||DB.info.currentTerm||'Term').replace(/\s+/g,'_');
     await downloadElementAsPdf('nrcPdfHolder', `${s.name.replace(/\s+/g,'_')}_${t}_${year||DB.info.currentYear}_report.pdf`, {orientation:'portrait', onePage:true});
   } finally { holder.remove(); }
@@ -20424,16 +20426,16 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
 
     ${isO ? `
     <div class="rc-comments-plain">
-      <div class="rc-comments-line"><b>Class teacher's comment:</b> ${esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</div>
-      <div class="rc-comments-line"><b>Head teacher's comment:</b> ${esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</div>
+      <div class="rc-comments-line" data-cmt-fit><b>Class teacher's comment:</b> <span class="cmt-t">${esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</span></div>
+      <div class="rc-comments-line" data-cmt-fit><b>Head teacher's comment:</b> <span class="cmt-t">${esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</span></div>
     </div>` : `
     <div class="rc-section-title">Comments</div>
     <table class="rc-comments-table">
       <colgroup><col style="width:50%"><col style="width:50%"></colgroup>
       <tr><th>Class Teacher's Comment</th><th>Head Teacher's Comment</th></tr>
       <tr>
-        <td>${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</td>
-        <td>${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</td>
+        <td><div data-cmt-fit><span class="cmt-t">${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'class',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'class',showEOT,remarkSeed,remarkWeak))}</span></div></td>
+        <td><div data-cmt-fit><span class="cmt-t">${(isP && showAggDiv(cls.id)) ? esc(primaryRemark(pDivision,'head',showEOT,remarkSeed,remarkWeak)) : esc(overallRemark(pct,'head',showEOT,remarkSeed,remarkWeak))}</span></div></td>
       </tr>
     </table>`}
 
@@ -20751,9 +20753,10 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
     let candidate = String(text==null?'':text).trim();
     let lines = candidate ? pdf.splitTextToSize(candidate, w) : [''];
     while(lines.length>2){
-      const cuts = [...candidate.matchAll(/[.!?](?:\\s+|$)/g)];
+      const cuts = [...candidate.matchAll(/[.!?]+[\"')\]]*(?=\s|$)/g)];
       if(cuts.length<2) break;
-      candidate = candidate.slice(0, cuts[cuts.length-2].index + 1).trim();
+      const prev = cuts[cuts.length-2];
+      candidate = candidate.slice(0, prev.index + prev[0].length).trim();
       lines = pdf.splitTextToSize(candidate, w);
     }
     return lines.length>2 ? lines.slice(0,2) : (lines.length ? lines : ['']);
@@ -28730,6 +28733,63 @@ h6:not(#printArea *):not(.rc-card *):not(.pdf-thin *),
   });
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   window.addEventListener('load', function(){ setTimeout(scanAll, 300); });
+})();
+
+/* ---------- Report-card comments: at most 2 lines, ending on a COMPLETE sentence ----------
+   Browsers wrap text differently on screen, in the print dialog and in captured PDFs, so a comment that
+   "looks complete" on screen can be clipped elsewhere. Every comment block is marked data-cmt-fit and holds
+   its text in span.cmt-t. The text is measured in the real layout; if it needs more than 2 lines the last
+   sentence(s) are dropped until what remains fits, so nothing ever ends mid-statement. */
+function rcCountLines(block){
+  const r = document.createRange(); r.selectNodeContents(block);
+  const rects = Array.from(r.getClientRects()).filter(q=>q.width>0 && q.height>0).sort((a,b)=>(a.top+a.bottom)-(b.top+b.bottom));
+  let n = 0, lastC = -1e9, minH = 1e9;
+  rects.forEach(q=>{ const c=(q.top+q.bottom)/2; minH=Math.min(minH,q.height); if(c-lastC > minH*0.6){ n++; lastC=c; } });
+  return n;
+}
+function rcFitOne(block){
+  const span = block.querySelector('.cmt-t'); if(!span) return;
+  if(span.dataset.full===undefined) span.dataset.full = span.textContent;
+  const full = span.dataset.full.trim();
+  span.textContent = full;
+  if(!block.getClientRects().length) return;               // hidden: try again when visible
+  const key = Math.round(block.getBoundingClientRect().width*100)+'|'+full.length+'|'+(parseFloat(getComputedStyle(block).fontSize)||0);
+  if(block.dataset.cmtKey===key && block.dataset.cmtDone) { span.textContent = span.dataset.shown!==undefined ? span.dataset.shown : full; return; }
+  let shown = full;
+  if(rcCountLines(block) > 2){
+    const ends = [...full.matchAll(/[.!?]+["')\]]*(?=\s|$)/g)].map(m=>m.index+m[0].length);
+    shown = '';
+    for(let i=ends.length-1;i>=0;i--){
+      const cand = full.slice(0,ends[i]).trim();
+      span.textContent = cand;
+      if(rcCountLines(block) <= 2){ shown = cand; break; }
+    }
+    if(!shown){                                              // even the first sentence is longer than 2 lines
+      const words = full.split(/\s+/); let lo=1, hi=words.length-1, best=1;
+      while(lo<=hi){ const m=(lo+hi)>>1; span.textContent = words.slice(0,m).join(' ')+'…'; if(rcCountLines(block)<=2){ best=m; lo=m+1; } else hi=m-1; }
+      shown = words.slice(0,best).join(' ').replace(/[,;:\s]+$/,'')+'…';
+    }
+    span.textContent = shown;
+  }
+  span.dataset.shown = shown; block.dataset.cmtKey = key; block.dataset.cmtDone = '1';
+}
+let _rcFitBusy = false;
+function rcFitComments(root, force){
+  if(_rcFitBusy) return; _rcFitBusy = true;
+  try{
+    (root||document).querySelectorAll('[data-cmt-fit]').forEach(b=>{ if(force){ delete b.dataset.cmtDone; } try{ rcFitOne(b); }catch(e){} });
+  } finally { _rcFitBusy = false; }
+}
+(function(){
+  let t = 0;
+  const go = (force)=>{ clearTimeout(t); t = setTimeout(()=>rcFitComments(document, force), 30); };
+  try{ new MutationObserver(()=>{ if(!_rcFitBusy && document.querySelector('[data-cmt-fit]:not([data-cmt-done])')) go(false); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  window.addEventListener('resize', ()=>go(true));
+  window.addEventListener('load', ()=>go(true));
+  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>go(true)); }catch(e){}
+  // Registered after the print-scaling handler, so it measures the card at its final print width.
+  window.addEventListener('beforeprint', ()=>rcFitComments(document, true));
+  window.addEventListener('afterprint', ()=>go(true));
 })();
 </script>
 </body>
