@@ -10148,6 +10148,10 @@ function featureTilesHTML(role, excludeKey){
       <span class="tile-icon">${icon}</span>
       <span class="tile-label">VIEW</span>
       <span class="tile-label">STUDENTS</span>
+    </button>` : (role==='admin' && k==='nurseryset') ? `<button type="button" class="tile tile-pink tile-ra" data-action="nav:${k}" aria-label="${esc(l)}">
+      <span class="tile-label">NURSERY</span>
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-label">SET UP</span>
     </button>` : (role==='teacher' && k==='tscores') ? `<button type="button" class="tile tile-red tile-scores" data-action="nav:${k}" aria-label="${esc(l)}">
       <span class="tile-label rc-word">ENTER</span>
       <span class="tile-icon">${icon}</span>
@@ -19625,6 +19629,14 @@ function nrcCss(){
 /* Student name: very bold. Class and Term values: a little bolder. */
 .nrc-bio td.nm{font-weight:900 !important;-webkit-text-stroke:.85px currentColor;}
 .nrc-bio td.cv{font-weight:900 !important;-webkit-text-stroke:.3px currentColor;}
+/* Illustrations: tight strips that SCALE with the card (same --nk as every other size), so when learning areas / rows increase and the
+   page is fitted, the pictures shrink with everything else instead of keeping a fixed height and pushing the lower departments and
+   tables down. Never cut off or hidden: overflow stays visible and the strip has a small minimum height. */
+.nrc-card .nrc-grid{row-gap:calc(var(--u)*.3*var(--nk)) !important;}
+.nrc-card .nrc-grid>.nrc-dept-cell>.nrc-pics{display:flex !important;align-items:center !important;justify-content:center !important;gap:1.2% !important;flex:none !important;height:max(24px,calc(var(--u)*5.2*var(--nk))) !important;min-height:0 !important;max-height:none !important;overflow:visible !important;margin-top:calc(var(--u)*.2*var(--nk)) !important;}
+.nrc-card .nrc-pics img.nrc-child-scene{height:100% !important;width:auto !important;max-width:46% !important;max-height:none !important;object-fit:contain !important;flex:0 1 auto !important;}
+.nrc-card .nrc-pics .nrc-learning-objects{height:100% !important;max-height:none !important;}
+.nrc-card .nrc-pics .nrc-object{height:78% !important;max-height:none !important;font-size:calc(var(--u)*1.7*var(--nk)) !important;}
 `;
   return plus1(conv(css)) + extra;
 }
@@ -19827,7 +19839,7 @@ function nurseryReportCardHTML(s, cls, term, year, embedded, bareCard, pickerPer
         <td class="lbl">Sex</td><td class="val">${esc(s.gender||'—')}</td>
       </tr>
       <tr>
-        <td class="lbl">${s.feesCode?'Fees Pay Code':'&nbsp;'}</td><td class="val">${s.feesCode?esc(s.feesCode):'&nbsp;'}</td>
+        <td class="lbl">Fees Pay Code</td><td class="val">${s.feesCode?esc(s.feesCode):'&nbsp;'}</td>
         <td class="lbl">Admission No</td><td class="val">${esc(s.admNo||'—')}</td>
       </tr>
     </table>
@@ -20307,7 +20319,7 @@ function reportCardHTML(studentId, embedded, viewTerm, viewYear, bareCard){
         <td class="lbl">Sex</td><td class="val">${esc(s.gender||'—')}</td>
       </tr>
       <tr>
-        <td class="lbl">${isA?'Combination':(isP?(s.feesCode?'Fees Pay Code':'&nbsp;'):'Optional Subjects')}</td><td class="val">${isP?(s.feesCode?esc(s.feesCode):'&nbsp;'):esc(comboLabel(s,cls))}</td>
+        <td class="lbl">${isA?'Combination':(isP?'Fees Pay Code':'Optional Subjects')}</td><td class="val">${isP?(s.feesCode?esc(s.feesCode):'&nbsp;'):esc(comboLabel(s,cls))}</td>
         <td class="lbl">Admission No</td><td class="val">${esc(s.admNo||'—')}</td>
       </tr>
     </table>
@@ -20885,7 +20897,7 @@ function _drawReportCardPageCore(pdf, data, gapBoost){
   const infoRows = [
     ['Name', data.student.name, 'Class', classFullName(data.cls)],
     ['Term', `${String(data.term==null?'':data.term).toUpperCase()}, ${data.year}`, 'Sex', data.student.gender||'—'],
-    [data.isA?'Combination':(data.isP?(data.feesCode?'Fees Pay Code':''):'Optional Subjects'),
+    [data.isA?'Combination':(data.isP?'Fees Pay Code':'Optional Subjects'),
       data.isP?(data.feesCode||''):comboLabel(data.student, data.cls),
       'Admission No', data.student.admNo||'—']
   ];
